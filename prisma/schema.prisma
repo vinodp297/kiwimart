@@ -1,0 +1,640 @@
+// prisma/schema.prisma
+// ─── KiwiMart — Production Prisma Schema ─────────────────────────────────────
+// Database: Neon PostgreSQL (serverless)
+// ORM: Prisma 5 with Accelerate for connection pooling at the edge
+//
+// Conventions:
+//   • All IDs: cuid2 (collision-resistant, URL-safe, no timestamp leakage)
+//   • All timestamps: UTC, stored as DateTime
+//   • Soft deletes: deletedAt nullable field (never hard-delete listings/orders)
+//   • Row-level security enforced via Prisma middleware in Sprint 4 (not in schema)
+//   • Money: stored as INTEGER cents (NZD) — never floating point
+//   • Ratings: stored as INTEGER 1–50 (represents 0.1–5.0 with 1 decimal)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ListingCondition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  PARTS
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  RESERVED
+  SOLD
+  EXPIRED
+  REMOVED
+}
+
+enum ShippingOption {
+  PICKUP
+  COURIER
+  BOTH
+}
+
+enum OrderStatus {
+  AWAITING_PAYMENT
+  PAYMENT_HELD
+  DISPATCHED
+  DELIVERED
+  COMPLETED
+  DISPUTED
+  REFUNDED
+  CANCELLED
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+enum DisputeReason {
+  ITEM_NOT_RECEIVED
+  ITEM_NOT_AS_DESCRIBED
+  ITEM_DAMAGED
+  SELLER_UNRESPONSIVE
+  OTHER
+}
+
+enum AuditAction {
+  USER_REGISTER
+  USER_LOGIN
+  USER_LOGOUT
+  USER_PASSWORD_CHANGED
+  USER_EMAIL_CHANGED
+  LISTING_CREATED
+  LISTING_UPDATED
+  LISTING_DELETED
+  ORDER_CREATED
+  ORDER_STATUS_CHANGED
+  OFFER_CREATED
+  OFFER_ACCEPTED
+  OFFER_DECLINED
+  PAYMENT_INITIATED
+  PAYMENT_COMPLETED
+  PAYMENT_FAILED
+  PAYOUT_INITIATED
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED
+  ADMIN_ACTION
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  emailVerified DateTime?
+  username      String   @unique
+  displayName   String
+
+  // Auth — password stored as Argon2id hash, never plaintext
+  // Min cost: 3, memory: 64MB, parallelism: 1 (OWASP recommendation)
+  passwordHash  String?
+  
+  // OAuth accounts (Auth.js)
+  accounts      Account[]
+  sessions      Session[]
+
+  // Profile
+  avatarKey     String?   // Cloudflare R2 object key (not URL — generate signed URLs at request time)
+  bio           String?   @db.Text
+  phone         String?
+  dateOfBirth   DateTime? // For age verification, never surfaced in UI
+  
+  // NZ location
+  region        String?
+  suburb        String?
+  
+  // Verification
+  idVerified    Boolean  @default(false)
+  idVerifiedAt  DateTime?
+  nzbn          String?  @unique  // NZ Business Number (GST-registered sellers)
+  gstRegistered Boolean  @default(false)
+
+  // Seller settings
+  sellerEnabled       Boolean @default(false)
+  stripeAccountId     String? @unique  // Stripe Connect account ID
+  stripeOnboarded     Boolean @default(false)
+  payoutBankAccount   String? // Encrypted — last 4 digits only stored in plain
+
+  // Flags
+  isBanned      Boolean  @default(false)
+  bannedAt      DateTime?
+  bannedReason  String?
+  isAdmin       Boolean  @default(false)
+  
+  // Privacy
+  agreeMarketing Boolean @default(false)
+  agreedTermsAt  DateTime?
+
+  // Timestamps
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime? // Soft delete (GDPR right to erasure)
+
+  // Relations
+  listings       Listing[]
+  buyerOrders    Order[]    @relation("BuyerOrders")
+  sellerOrders   Order[]    @relation("SellerOrders")
+  offers         Offer[]    @relation("BuyerOffers")
+  receivedOffers Offer[]    @relation("SellerOffers")
+  reviews        Review[]   @relation("ReviewedSeller")
+  writtenReviews Review[]   @relation("ReviewAuthor")
+  sentMessages   Message[]  @relation("MessageSender")
+  watchlist      WatchlistItem[]
+  passwordResets PasswordResetToken[]
+  emailVerTokens EmailVerificationToken[]
+  auditLogs      AuditLog[]
+  payouts        Payout[]
+
+  @@index([email])
+  @@index([username])
+  @@index([createdAt])
+}
+
+// Auth.js required models ─────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Security tokens
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  // Store the HASH of the token — raw token sent by email only, never stored
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  
+  // IP and user-agent for audit trail
+  requestIp String?
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Listings
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Listing {
+  id          String         @id @default(cuid())
+  sellerId    String
+  
+  title       String         @db.VarChar(100)
+  description String         @db.Text
+  
+  // Price in NZD cents (integer — no floating point money)
+  priceNzd    Int
+  gstIncluded Boolean        @default(false)
+  
+  condition    ListingCondition
+  status       ListingStatus    @default(DRAFT)
+  
+  // Category
+  categoryId      String
+  subcategoryName String?
+  
+  // Location
+  region  String
+  suburb  String
+  
+  // Shipping
+  shippingOption ShippingOption
+  // Shipping price in NZD cents; null = free or pickup-only
+  shippingNzd    Int?
+  pickupAddress  String?
+  
+  // Commerce
+  offersEnabled Boolean @default(true)
+  
+  // Engagement counters (denormalised for query performance)
+  viewCount    Int @default(0)
+  watcherCount Int @default(0)
+  
+  // Full-text search vector (maintained by Postgres trigger)
+  searchVector Unsupported("tsvector")?
+  
+  // Lifecycle
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  soldAt      DateTime?
+  
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  seller   User            @relation(fields: [sellerId], references: [id])
+  images   ListingImage[]
+  attrs    ListingAttribute[]
+  orders   Order[]
+  offers   Offer[]
+  watchers WatchlistItem[]
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([categoryId])
+  @@index([region])
+  @@index([priceNzd])
+  @@index([createdAt])
+  @@index([searchVector], type: Gin)
+}
+
+model ListingImage {
+  id        String  @id @default(cuid())
+  listingId String
+  r2Key     String  // Cloudflare R2 object key
+  altText   String?
+  order     Int     @default(0)
+  width     Int?
+  height    Int?
+  sizeBytes Int?
+  // ClamAV scan result — never serve images that haven't been scanned
+  scanned   Boolean @default(false)
+  safe      Boolean @default(false)
+  scannedAt DateTime?
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@unique([listingId, order])
+}
+
+model ListingAttribute {
+  id        String @id @default(cuid())
+  listingId String
+  label     String @db.VarChar(50)
+  value     String @db.VarChar(200)
+  order     Int    @default(0)
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Orders
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Order {
+  id        String @id @default(cuid())
+  buyerId   String
+  sellerId  String
+  listingId String
+  
+  // Prices in NZD cents at time of purchase (snapshot — listing price may change)
+  itemNzd     Int
+  shippingNzd Int  @default(0)
+  totalNzd    Int
+  
+  status  OrderStatus @default(AWAITING_PAYMENT)
+  
+  // Stripe
+  stripePaymentIntentId String? @unique
+  stripeTransferId      String? // Transfer to seller's Connect account
+  
+  // Delivery
+  trackingNumber String?
+  trackingUrl    String?
+  dispatchedAt   DateTime?
+  deliveredAt    DateTime?
+  completedAt    DateTime?
+  
+  // Dispute
+  disputeReason    DisputeReason?
+  disputeOpenedAt  DateTime?
+  disputeNotes     String?       @db.Text
+  disputeResolvedAt DateTime?
+  
+  // Shipping address (snapshot)
+  shippingName    String?
+  shippingLine1   String?
+  shippingLine2   String?
+  shippingCity    String?
+  shippingRegion  String?
+  shippingPostcode String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  buyer   User    @relation("BuyerOrders", fields: [buyerId], references: [id])
+  seller  User    @relation("SellerOrders", fields: [sellerId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
+  review  Review?
+  payout  Payout?
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Offers
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Offer {
+  id        String @id @default(cuid())
+  listingId String
+  buyerId   String
+  sellerId  String
+  
+  amountNzd Int   // Offer amount in cents
+  note      String? @db.VarChar(300)
+  
+  status    OfferStatus @default(PENDING)
+  
+  // Expiry — offers expire after 48 hours by default
+  expiresAt DateTime
+  
+  respondedAt DateTime?
+  declineNote String?   @db.VarChar(300)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listing Listing @relation(fields: [listingId], references: [id])
+  buyer   User    @relation("BuyerOffers", fields: [buyerId], references: [id])
+  seller  User    @relation("SellerOffers", fields: [sellerId], references: [id])
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reviews
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Review {
+  id         String @id @default(cuid())
+  orderId    String @unique  // One review per order
+  sellerId   String
+  authorId   String
+  
+  // Rating stored as integer 1–50 (represents 1.0–5.0 in 0.1 increments)
+  rating     Int
+  comment    String @db.Text
+  
+  sellerReply   String?   @db.Text
+  sellerRepliedAt DateTime?
+  
+  // Moderation
+  approved    Boolean  @default(true)
+  flagged     Boolean  @default(false)
+  flagReason  String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order  Order @relation(fields: [orderId], references: [id])
+  seller User  @relation("ReviewedSeller", fields: [sellerId], references: [id])
+  author User  @relation("ReviewAuthor", fields: [authorId], references: [id])
+
+  @@index([sellerId])
+  @@index([authorId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Messaging
+// ─────────────────────────────────────────────────────────────────────────────
+
+model MessageThread {
+  id          String @id @default(cuid())
+  listingId   String?
+  participant1Id String
+  participant2Id String
+  
+  lastMessageAt DateTime @default(now())
+  
+  createdAt DateTime @default(now())
+
+  messages Message[]
+
+  @@unique([participant1Id, participant2Id, listingId])
+  @@index([participant1Id])
+  @@index([participant2Id])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id        String @id @default(cuid())
+  threadId  String
+  senderId  String
+  
+  body String @db.Text
+  read Boolean @default(false)
+  readAt DateTime?
+  
+  // Content moderation
+  flagged    Boolean @default(false)
+  flagReason String?
+  
+  createdAt DateTime @default(now())
+
+  thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User          @relation("MessageSender", fields: [senderId], references: [id])
+
+  @@index([threadId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Watchlist
+// ─────────────────────────────────────────────────────────────────────────────
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, listingId])
+  @@index([userId])
+  @@index([listingId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Payouts
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Payout {
+  id      String @id @default(cuid())
+  orderId String @unique
+  userId  String
+
+  amountNzd          Int          // Amount in cents after platform fee
+  platformFeeNzd     Int          // KiwiMart's cut (0 during beta)
+  stripeFeeNzd       Int          // Stripe processing fee
+  
+  status    PayoutStatus @default(PENDING)
+  
+  stripeTransferId String? @unique
+  
+  initiatedAt DateTime?
+  paidAt      DateTime?
+  failedAt    DateTime?
+  failReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit Log — immutable, append-only
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id     String      @id @default(cuid())
+  userId String?     // null for system actions
+  action AuditAction
+  
+  // Entity being acted on
+  entityType String?
+  entityId   String?
+  
+  // Snapshot of changes (JSON diff)
+  metadata   Json?
+  
+  // Request context for forensics
+  ip        String?
+  userAgent String?
+  
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Categories (managed in code — this table is seeded, not user-editable)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Category {
+  id           String @id
+  name         String @unique
+  icon         String // emoji
+  slug         String @unique
+  displayOrder Int    @default(0)
+  active       Boolean @default(true)
+  
+  subcategories Subcategory[]
+
+  @@index([slug])
+}
+
+model Subcategory {
+  id         String @id @default(cuid())
+  categoryId String
+  name       String
+  slug       String
+  
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@unique([categoryId, slug])
+  @@index([categoryId])
+}
+

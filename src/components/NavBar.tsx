@@ -1,0 +1,573 @@
+'use client';
+// src/components/NavBar.tsx  (Sprint 3 update)
+// ─── Navigation Bar ───────────────────────────────────────────────────────────
+// Sprint 3: wired to Auth.js useSession() — real session replaces mock.
+
+import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
+import CATEGORIES from '@/data/categories';
+
+// ─────────────────────────────────────────────────────────────────────────────
+export default function NavBar() {
+  const pathname = usePathname();
+  const { data: session, status } = useSession();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Normalise session.user into local shape
+  const user = session?.user
+    ? {
+        displayName: session.user.name ?? session.user.email ?? 'Account',
+        email: session.user.email ?? '',
+        sellerEnabled: ((session.user as Record<string, unknown>).sellerEnabled as boolean) ?? false,
+        avatarUrl: session.user.image ?? null,
+      }
+    : null;
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (accountRef.current && !accountRef.current.contains(e.target as Node)) {
+        setAccountOpen(false);
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Close mobile on route change
+  useEffect(() => {
+    setMobileOpen(false);
+    setAccountOpen(false);
+  }, [pathname]);
+
+  const initials = user?.displayName
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <>
+      {/* ── Compliance bar ─────────────────────────────────────────────── */}
+      <div className="bg-[#141414] text-[11px] text-white/50 text-center py-1.5 px-4">
+        🥝 New Zealand&apos;s most trusted marketplace · $0 listing fees ·{' '}
+        <Link href="/trust" className="underline hover:text-white transition-colors">
+          $3,000 buyer protection
+        </Link>
+      </div>
+
+      {/* ── Main nav ───────────────────────────────────────────────────── */}
+      <header
+        className="sticky top-0 z-[200] bg-white/95 backdrop-blur-md
+          border-b border-[#E3E0D9] shadow-sm"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center h-14 gap-4">
+
+            {/* Logo */}
+            <Link
+              href="/"
+              className="flex items-center gap-2 shrink-0 group"
+              aria-label="KiwiMart home"
+            >
+              <div
+                className="w-7 h-7 rounded-full bg-[#141414] flex items-center
+                  justify-center text-[#D4A843] text-xs font-bold
+                  group-hover:bg-[#D4A843] group-hover:text-[#141414]
+                  transition-colors duration-200"
+              >
+                K
+              </div>
+              <span
+                className="font-[family-name:var(--font-playfair)] text-[1.15rem]
+                  text-[#141414] tracking-tight hidden sm:block"
+              >
+                Kiwi<em className="not-italic text-[#D4A843]">Mart</em>
+              </span>
+            </Link>
+
+            {/* Search bar — desktop */}
+            <form
+              action="/search"
+              method="get"
+              className="flex-1 hidden md:flex items-center gap-2 max-w-xl"
+              role="search"
+            >
+              <div className="relative flex-1">
+                <input
+                  name="q"
+                  type="search"
+                  placeholder="Search listings…"
+                  aria-label="Search listings"
+                  className="w-full h-9 pl-9 pr-4 rounded-xl border border-[#C9C5BC]
+                    bg-[#F8F7F4] text-[#141414] text-[13px] placeholder:text-[#C9C5BC]
+                    focus:outline-none focus:border-[#D4A843] focus:bg-white
+                    focus:ring-2 focus:ring-[#D4A843]/20 transition"
+                />
+                <svg
+                  aria-hidden
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9A91]"
+                  width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+              </div>
+              <button
+                type="submit"
+                className="h-9 px-4 rounded-xl bg-[#D4A843] text-[#141414]
+                  font-semibold text-[12.5px] hover:bg-[#B8912E] hover:text-white
+                  transition-colors duration-150 whitespace-nowrap shrink-0"
+              >
+                Search
+              </button>
+            </form>
+
+            {/* Right side */}
+            <div className="flex items-center gap-1.5 ml-auto">
+              {/* Sell CTA */}
+              <Link
+                href="/sell"
+                className="hidden sm:flex items-center gap-1.5 h-8 px-3.5 rounded-xl
+                  bg-[#141414] text-white text-[12px] font-semibold
+                  hover:bg-[#D4A843] hover:text-[#141414] transition-colors
+                  duration-150 whitespace-nowrap"
+              >
+                <svg
+                  width="11" height="11" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="3"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Sell
+              </Link>
+
+              {user ? (
+                <>
+                  {/* Notifications */}
+                  <div ref={notifRef} className="relative">
+                    <button
+                      onClick={() => {
+                        setNotifOpen((v) => !v);
+                        setAccountOpen(false);
+                      }}
+                      aria-label="Notifications"
+                      aria-expanded={notifOpen}
+                      className="relative w-9 h-9 rounded-xl flex items-center justify-center
+                        text-[#73706A] hover:text-[#141414] hover:bg-[#F8F7F4]
+                        transition-colors"
+                    >
+                      <svg
+                        width="17" height="17" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="1.8"
+                      >
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                      </svg>
+                      {/* Unread dot */}
+                      <span
+                        className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full
+                          bg-[#D4A843] ring-2 ring-white"
+                        aria-label="Unread notifications"
+                      />
+                    </button>
+
+                    {notifOpen && (
+                      <div
+                        className="absolute top-full right-0 mt-2 w-72 bg-white
+                          border border-[#E3E0D9] rounded-2xl shadow-xl overflow-hidden
+                          z-[300]"
+                      >
+                        <div
+                          className="flex items-center justify-between px-4 py-3
+                            border-b border-[#F0EDE8]"
+                        >
+                          <p className="text-[13px] font-semibold text-[#141414]">
+                            Notifications
+                          </p>
+                          <button className="text-[11.5px] text-[#D4A843] font-semibold hover:text-[#B8912E]">
+                            Mark all read
+                          </button>
+                        </div>
+                        <div className="divide-y divide-[#F8F7F4]">
+                          {[
+                            {
+                              icon: '📦',
+                              text: 'Your Sony headphones order has been dispatched',
+                              time: '2h ago',
+                              unread: true,
+                            },
+                            {
+                              icon: '💬',
+                              text: 'TechDealsNZ replied to your message',
+                              time: '4h ago',
+                              unread: true,
+                            },
+                            {
+                              icon: '❤️',
+                              text: 'Someone is watching your MacBook listing',
+                              time: '1d ago',
+                              unread: false,
+                            },
+                          ].map((n, i) => (
+                            <div
+                              key={i}
+                              className={`flex items-start gap-3 px-4 py-3 text-left
+                                hover:bg-[#F8F7F4] cursor-pointer transition-colors
+                                ${n.unread ? 'bg-[#F5ECD4]/40' : ''}`}
+                            >
+                              <span className="text-lg shrink-0 mt-0.5">{n.icon}</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[12px] text-[#141414] leading-relaxed">
+                                  {n.text}
+                                </p>
+                                <p className="text-[11px] text-[#9E9A91] mt-0.5">{n.time}</p>
+                              </div>
+                              {n.unread && (
+                                <div className="w-2 h-2 rounded-full bg-[#D4A843] shrink-0 mt-1.5" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        <Link
+                          href="/notifications"
+                          className="block text-center py-3 text-[12px] font-semibold
+                            text-[#D4A843] hover:text-[#B8912E] transition-colors
+                            border-t border-[#F0EDE8]"
+                        >
+                          View all notifications
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Account dropdown */}
+                  <div ref={accountRef} className="relative">
+                    <button
+                      onClick={() => {
+                        setAccountOpen((v) => !v);
+                        setNotifOpen(false);
+                      }}
+                      aria-label="Account menu"
+                      aria-expanded={accountOpen}
+                      className="flex items-center gap-2 h-9 pl-2 pr-3 rounded-xl
+                        hover:bg-[#F8F7F4] transition-colors"
+                    >
+                      <div
+                        className="w-7 h-7 rounded-full bg-[#141414] text-white text-[11px]
+                          font-bold flex items-center justify-center shrink-0"
+                      >
+                        {initials}
+                      </div>
+                      <svg
+                        aria-hidden
+                        className={`text-[#9E9A91] transition-transform duration-150
+                          ${accountOpen ? 'rotate-180' : ''}`}
+                        width="11" height="11" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" strokeWidth="2.5"
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+
+                    {accountOpen && (
+                      <div
+                        className="absolute top-full right-0 mt-2 w-56 bg-white
+                          border border-[#E3E0D9] rounded-2xl shadow-xl overflow-hidden
+                          z-[300]"
+                      >
+                        {/* User info */}
+                        <div className="px-4 py-3 border-b border-[#F0EDE8]">
+                          <p className="text-[13px] font-semibold text-[#141414] truncate">
+                            {user.displayName}
+                          </p>
+                          <p className="text-[11.5px] text-[#9E9A91] truncate">{user.email}</p>
+                        </div>
+
+                        {/* Buyer links */}
+                        <div className="py-1">
+                          {[
+                            { href: '/dashboard/buyer', label: 'My orders & purchases', icon: '📦' },
+                            { href: '/dashboard/buyer?tab=watchlist', label: 'Watchlist', icon: '❤️' },
+                            { href: '/dashboard/buyer?tab=messages', label: 'Messages', icon: '💬' },
+                          ].map(({ href, label, icon }) => (
+                            <Link
+                              key={href}
+                              href={href}
+                              className="flex items-center gap-3 px-4 py-2.5 text-[13px]
+                                text-[#141414] hover:bg-[#F8F7F4] transition-colors"
+                            >
+                              <span className="text-base">{icon}</span>
+                              {label}
+                            </Link>
+                          ))}
+                        </div>
+
+                        {/* Seller section */}
+                        {user.sellerEnabled && (
+                          <>
+                            <div className="border-t border-[#F0EDE8] py-1">
+                              <p className="px-4 py-1.5 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
+                                Selling
+                              </p>
+                              {[
+                                { href: '/dashboard/seller', label: 'Seller dashboard', icon: '📊' },
+                                { href: '/sell', label: 'Create listing', icon: '➕' },
+                              ].map(({ href, label, icon }) => (
+                                <Link
+                                  key={href}
+                                  href={href}
+                                  className="flex items-center gap-3 px-4 py-2.5 text-[13px]
+                                    text-[#141414] hover:bg-[#F8F7F4] transition-colors"
+                                >
+                                  <span className="text-base">{icon}</span>
+                                  {label}
+                                </Link>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
+                        {/* Account + sign out */}
+                        <div className="border-t border-[#F0EDE8] py-1">
+                          <Link
+                            href="/account/settings"
+                            className="flex items-center gap-3 px-4 py-2.5 text-[13px]
+                              text-[#141414] hover:bg-[#F8F7F4] transition-colors"
+                          >
+                            <span className="text-base">⚙️</span>
+                            Account settings
+                          </Link>
+                          <button
+                            onClick={() => signOut({ callbackUrl: '/login' })}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px]
+                              text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <span className="text-base">🚪</span>
+                            Sign out
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : status === 'loading' ? (
+                /* Loading skeleton */
+                <div className="w-9 h-9 rounded-xl bg-[#F0EDE8] animate-pulse" aria-hidden />
+              ) : (
+                /* Unauthenticated state */
+                <div className="flex items-center gap-1.5">
+                  <Link
+                    href="/login"
+                    className="h-8 px-4 rounded-xl text-[12.5px] font-semibold
+                      text-[#141414] hover:bg-[#F8F7F4] transition-colors
+                      hidden sm:flex items-center"
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="h-8 px-4 rounded-xl bg-[#D4A843] text-[#141414]
+                      text-[12.5px] font-semibold hover:bg-[#B8912E] hover:text-white
+                      transition-colors duration-150 flex items-center whitespace-nowrap"
+                  >
+                    Register free
+                  </Link>
+                </div>
+              )}
+
+              {/* Mobile menu button */}
+              <button
+                onClick={() => setMobileOpen((v) => !v)}
+                aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={mobileOpen}
+                className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center
+                  text-[#73706A] hover:bg-[#F8F7F4] transition-colors"
+              >
+                {mobileOpen ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Category strip — desktop ──────────────────────────────────── */}
+        <div
+          className="hidden md:block border-t border-[#F0EDE8] bg-[#FAFAF8]"
+        >
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="flex items-center gap-0 overflow-x-auto scrollbar-none">
+              <Link
+                href="/search"
+                className="flex items-center gap-1.5 px-3 py-2.5 text-[12px]
+                  font-semibold text-[#73706A] hover:text-[#141414]
+                  border-b-2 border-transparent hover:border-[#D4A843]
+                  transition-all duration-150 whitespace-nowrap"
+              >
+                All
+              </Link>
+              {CATEGORIES.map((cat) => (
+                <Link
+                  key={cat.id}
+                  href={`/search?category=${cat.id}`}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 text-[12px]
+                    font-semibold border-b-2 transition-all duration-150 whitespace-nowrap
+                    ${pathname === `/search` ? 'text-[#73706A] hover:text-[#141414] border-transparent hover:border-[#D4A843]'
+                    : 'text-[#73706A] hover:text-[#141414] border-transparent hover:border-[#D4A843]'}`}
+                >
+                  <span aria-hidden>{cat.icon}</span>
+                  {cat.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Mobile drawer ──────────────────────────────────────────────── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-[150] md:hidden"
+          aria-modal="true"
+          role="dialog"
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+          />
+
+          {/* Drawer panel */}
+          <div
+            className="absolute top-0 right-0 h-full w-80 max-w-[90vw] bg-white
+              shadow-2xl flex flex-col overflow-y-auto"
+          >
+            {/* Header */}
+            <div
+              className="flex items-center justify-between px-5 py-4 border-b
+                border-[#E3E0D9] shrink-0"
+            >
+              <span
+                className="font-[family-name:var(--font-playfair)] text-[1.1rem]
+                  text-[#141414]"
+              >
+                Kiwi<em className="not-italic text-[#D4A843]">Mart</em>
+              </span>
+              <button
+                onClick={() => setMobileOpen(false)}
+                aria-label="Close menu"
+                className="w-8 h-8 rounded-full bg-[#F8F7F4] flex items-center
+                  justify-center text-[#73706A]"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Mobile search */}
+            <div className="px-5 py-4 border-b border-[#E3E0D9]">
+              <form action="/search" method="get" role="search">
+                <div className="relative">
+                  <input
+                    name="q"
+                    type="search"
+                    placeholder="Search listings…"
+                    className="w-full h-10 pl-9 pr-4 rounded-xl border border-[#C9C5BC]
+                      bg-[#F8F7F4] text-[13px] text-[#141414] placeholder:text-[#C9C5BC]
+                      focus:outline-none focus:border-[#D4A843] transition"
+                  />
+                  <svg aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9A91]"
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                  </svg>
+                </div>
+              </form>
+            </div>
+
+            {/* Nav links */}
+            <nav className="flex-1 py-3">
+              {/* Categories */}
+              <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
+                Categories
+              </p>
+              {CATEGORIES.map((cat) => (
+                <Link
+                  key={cat.id}
+                  href={`/search?category=${cat.id}`}
+                  className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414]
+                    hover:bg-[#F8F7F4] transition-colors"
+                >
+                  <span className="text-base">{cat.icon}</span>
+                  {cat.name}
+                </Link>
+              ))}
+
+              {/* Account */}
+              <div className="border-t border-[#E3E0D9] mt-3 pt-3">
+                <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
+                  Account
+                </p>
+                {user ? (
+                  <>
+                    <Link href="/dashboard/buyer" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
+                      📦 My orders
+                    </Link>
+                    <Link href="/dashboard/seller" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
+                      📊 Seller dashboard
+                    </Link>
+                    <button onClick={() => signOut({ callbackUrl: '/login' })} className="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors">
+                      🚪 Sign out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/login" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
+                      Sign in
+                    </Link>
+                    <Link href="/register" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#D4A843] font-semibold hover:bg-[#F8F7F4] transition-colors">
+                      Register free
+                    </Link>
+                  </>
+                )}
+              </div>
+            </nav>
+
+            {/* Sell CTA */}
+            <div className="px-5 py-4 border-t border-[#E3E0D9] shrink-0">
+              <Link
+                href="/sell"
+                className="flex items-center justify-center gap-2 w-full h-11
+                  rounded-xl bg-[#D4A843] text-[#141414] font-semibold text-[14px]
+                  hover:bg-[#B8912E] hover:text-white transition-colors"
+              >
+                + Sell an item
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+

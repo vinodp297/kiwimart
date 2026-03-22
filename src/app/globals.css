@@ -1,26 +1,75 @@
 @import "tailwindcss";
+@config "../../tailwind.config.ts";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ── KiwiMart brand theme ────────────────────────────────────────────────────── */
+@theme {
+  /* Colors */
+  --color-gold:         #D4A843;
+  --color-gold-dark:    #B8912E;
+  --color-gold-light:   #F5ECD4;
+  --color-gold-pale:    #FDF6E3;
+  --color-ink:          #141414;
+  --color-ink-mid:      #73706A;
+  --color-ink-dim:      #9E9A91;
+  --color-surface:      #F8F7F4;
+  --color-surface-2:    #EFEDE8;
+  --color-surface-off:  #FAFAF8;
+  --color-border:       #C9C5BC;
+  --color-border-light: #E3E0D9;
+
+  /* Fonts */
+  --font-playfair: var(--font-playfair), Georgia, serif;
+  --font-sans:     var(--font-dm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Border radius */
+  --radius-4xl: 2rem;
+
+  /* Shadows */
+  --shadow-sm:   0 2px 8px rgba(0,0,0,.06);
+  --shadow:      0 4px 20px rgba(0,0,0,.09);
+  --shadow-lg:   0 12px 40px rgba(0,0,0,.13);
+  --shadow-xl:   0 24px 60px rgba(0,0,0,.17);
+  --shadow-gold: 0 4px 20px rgba(212,168,67,.25);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ── Scrollbar hide ─────────────────────────────────────────────────────────── */
+@utility scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Base ────────────────────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  ::selection {
+    background: rgba(212, 168, 67, 0.2);
+  }
+
+  /* Remove default number input spinners */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  /* Remove default search cancel button */
+  input[type='search']::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+
+  /* Focus visible outline fallback */
+  :focus-visible {
+    outline: 2px solid #D4A843;
+    outline-offset: 2px;
+  }
 }
