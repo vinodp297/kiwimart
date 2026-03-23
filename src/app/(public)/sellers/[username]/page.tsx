@@ -268,6 +268,19 @@ export default async function SellerProfilePage({
                   </svg>
                   Message
                 </Link>
+                <Link
+                  href={`/report?user=${seller.id}`}
+                  className="flex items-center gap-2 h-9 px-4 rounded-xl bg-white/5
+                    hover:bg-red-500/20 text-white/50 hover:text-red-400 text-[12.5px]
+                    font-semibold transition-colors border border-white/10"
+                  title="Report this user"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                    <line x1="4" y1="22" x2="4" y2="15" />
+                  </svg>
+                  Report
+                </Link>
               </div>
             </div>
 

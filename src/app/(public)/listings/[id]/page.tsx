@@ -14,6 +14,7 @@ import SellerPanel from './SellerPanel';
 import ShippingEstimate from './ShippingEstimate';
 import { getListingById } from '@/server/actions/listings';
 import { searchListings } from '@/server/actions/search';
+import SafetyBanner from '@/components/SafetyBanner';
 import type { ListingDetail, SellerPublic, ListingImage, ListingAttribute, Condition, NZRegion, SellerBadge } from '@/types';
 
 // ── Helper: build R2 image URL ────────────────────────────────────────────────
@@ -257,6 +258,9 @@ export default async function ListingDetailPage({
                   </a>
                 </p>
               </div>
+
+              {/* ── Safety banner ──────────────────────────────────────── */}
+              <SafetyBanner />
 
               {/* ── Related listings ────────────────────────────────────── */}
               {relatedListings.length > 0 && (

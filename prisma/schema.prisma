@@ -101,6 +101,25 @@ enum AuditAction {
   DISPUTE_OPENED
   DISPUTE_RESOLVED
   ADMIN_ACTION
+  PHONE_VERIFIED
+  REPORT_CREATED
+  PASSWORD_CHANGED
+}
+
+enum ReportReason {
+  SCAM
+  COUNTERFEIT
+  PROHIBITED
+  OFFENSIVE
+  SPAM
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,8 +144,10 @@ model User {
   // Profile
   avatarKey     String?   // Cloudflare R2 object key (not URL — generate signed URLs at request time)
   bio           String?   @db.Text
-  phone         String?
-  dateOfBirth   DateTime? // For age verification, never surfaced in UI
+  phone           String?
+  phoneVerified   Boolean   @default(false)
+  phoneVerifiedAt DateTime?
+  dateOfBirth     DateTime? // For age verification, never surfaced in UI
   
   // NZ location
   region        String?
@@ -173,6 +194,9 @@ model User {
   emailVerTokens EmailVerificationToken[]
   auditLogs      AuditLog[]
   payouts        Payout[]
+  phoneTokens    PhoneVerificationToken[]
+  reportsFiled   Report[]   @relation("ReportFiler")
+  reportsReceived Report[]  @relation("ReportTarget")
 
   @@index([email])
   @@index([username])
@@ -631,10 +655,65 @@ model Subcategory {
   categoryId String
   name       String
   slug       String
-  
+
   category Category @relation(fields: [categoryId], references: [id])
 
   @@unique([categoryId, slug])
   @@index([categoryId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phone Verification Tokens
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PhoneVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String
+  // Store the HASH of the 6-digit code — raw code sent by SMS only, never stored
+  codeHash  String
+  phone     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int      @default(0) // Track failed verification attempts
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([phone])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reports (Trust & Safety)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Report {
+  id          String       @id @default(cuid())
+  reporterId  String
+  // The user being reported (seller or buyer)
+  targetUserId String?
+  // The listing being reported (optional)
+  listingId   String?
+
+  reason      ReportReason
+  description String       @db.Text
+  status      ReportStatus @default(OPEN)
+
+  // Admin resolution
+  resolvedBy    String?
+  resolvedAt    DateTime?
+  resolvedNote  String?    @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reporter   User  @relation("ReportFiler", fields: [reporterId], references: [id])
+  targetUser User? @relation("ReportTarget", fields: [targetUserId], references: [id])
+
+  @@index([reporterId])
+  @@index([targetUserId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
 }
 

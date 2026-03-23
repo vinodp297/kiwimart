@@ -10,6 +10,8 @@ const LINKS = {
   Trust: [
     { label: 'How it works', href: '/how-it-works' },
     { label: 'Buyer protection', href: '/trust' },
+    { label: 'Safety guide', href: '/safety' },
+    { label: 'Report a problem', href: '/report' },
     { label: 'Escrow payments', href: '/escrow' },
     { label: 'Verified sellers', href: '/verified' },
   ],
@@ -99,8 +101,8 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row
           items-center justify-between gap-3 text-[11.5px] text-white/30">
-          <p>© {new Date().getFullYear()} KiwiMart Limited. New Zealand owned.</p>
-          <p>GST No. 123-456-789 · FSP registered</p>
+          <p>© {new Date().getFullYear()} KiwiMart Limited. Auckland, New Zealand.</p>
+          <p>GST No. 123-456-789 · FSP registered · Consumer Guarantees Act applies</p>
         </div>
       </div>
     </footer>

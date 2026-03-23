@@ -8,6 +8,7 @@
 import type { Metadata } from 'next';
 import { Playfair_Display, DM_Sans } from 'next/font/google';
 import SessionProvider from '@/components/SessionProvider';
+import PostHogProvider from '@/components/PostHogProvider';
 import { auth } from '@/lib/auth';
 import './globals.css';
 
@@ -67,7 +68,9 @@ export default async function RootLayout({
       </head>
       <body className={`${dmSans.className} antialiased`} suppressHydrationWarning>
         <SessionProvider session={session}>
-          {children}
+          <PostHogProvider>
+            {children}
+          </PostHogProvider>
         </SessionProvider>
       </body>
     </html>

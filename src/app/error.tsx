@@ -5,6 +5,7 @@
 // Sprint 3: wire error.digest to Sentry.captureException(error) before render.
 
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import Link from 'next/link';
 
 interface Props {
@@ -14,7 +15,7 @@ interface Props {
 
 export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
-    // Sprint 3: Sentry.captureException(error)
+    Sentry.captureException(error);
     console.error('[KiwiMart] Unhandled error:', error);
   }, [error]);
 
