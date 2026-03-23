@@ -19,6 +19,8 @@ const PROTECTED_PREFIXES = [
   '/checkout',
   '/messages',
   '/sell',
+  '/orders',
+  '/reviews',
 ];
 
 const AUTH_PREFIXES = ['/login', '/register', '/forgot-password', '/reset-password'];

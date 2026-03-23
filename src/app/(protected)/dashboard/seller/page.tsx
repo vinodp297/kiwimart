@@ -23,8 +23,11 @@ import type {
   SellerOrderRow,
   SellerPayoutRow,
 } from '@/server/actions/dashboard';
+import { markDispatched } from '@/server/actions/orders';
+import { replyToReview } from '@/server/actions/reviews';
+import { getStripeAccountStatus } from '@/server/actions/stripe';
 
-type Tab = 'overview' | 'listings' | 'orders' | 'payouts';
+type Tab = 'overview' | 'listings' | 'orders' | 'payouts' | 'reviews';
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SellerDashboardPage() {
@@ -41,13 +44,18 @@ export default function SellerDashboardPage() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null);
+  const [reviews, setReviews] = useState<SellerReviewRow[]>([]);
 
   // Fetch real data on mount
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const result = await fetchSellerDashboard();
+        const [result, stripeResult] = await Promise.all([
+          fetchSellerDashboard(),
+          getStripeAccountStatus(),
+        ]);
         if (cancelled) return;
         if (result.success) {
           setUser(result.data.user);
@@ -57,6 +65,9 @@ export default function SellerDashboardPage() {
           setPayouts(result.data.payouts);
         } else {
           setError(result.error);
+        }
+        if (stripeResult.success) {
+          setStripeOnboarded(stripeResult.data.onboarded);
         }
       } catch {
         if (!cancelled) setError('Failed to load seller dashboard.');
@@ -126,6 +137,7 @@ export default function SellerDashboardPage() {
     { id: 'listings', label: 'My Listings', badge: listings.length },
     { id: 'orders', label: 'Orders', badge: pendingOrders.length || undefined },
     { id: 'payouts', label: 'Payouts' },
+    { id: 'reviews', label: 'Reviews', badge: stats.reviewCount || undefined },
   ];
 
   return (
@@ -371,6 +383,28 @@ export default function SellerDashboardPage() {
               {/* Tips */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
+                  // Stripe Connect setup card — show only if not onboarded
+                  ...(stripeOnboarded === false
+                    ? [
+                        {
+                          title: 'Set up payouts',
+                          body: 'Connect your Stripe account to receive payments when buyers purchase your listings.',
+                          cta: 'Connect Stripe',
+                          href: '/account/stripe',
+                          colour: 'border-[#D4A843]/40 bg-[#F5ECD4]/40',
+                        },
+                      ]
+                    : stripeOnboarded === true
+                    ? [
+                        {
+                          title: 'Payouts active',
+                          body: 'Your Stripe account is connected and ready to receive payments from buyers.',
+                          cta: 'Manage payouts',
+                          href: '/account/stripe',
+                          colour: 'border-emerald-200 bg-emerald-50/50',
+                        },
+                      ]
+                    : []),
                   {
                     title: 'Complete your verification',
                     body: 'Verified sellers get 3x more views and build buyer trust faster.',
@@ -384,13 +418,6 @@ export default function SellerDashboardPage() {
                     cta: 'Edit listings',
                     href: '#',
                     colour: 'border-sky-200 bg-sky-50/50',
-                  },
-                  {
-                    title: 'Enable offers',
-                    body: 'Accepting offers can increase your sell-through rate by up to 40%.',
-                    cta: 'Manage listings',
-                    href: '#',
-                    colour: 'border-emerald-200 bg-emerald-50/50',
                   },
                 ].map(({ title, body, cta, href, colour }) => (
                   <div
@@ -483,52 +510,7 @@ export default function SellerDashboardPage() {
                 </div>
               ) : (
                 orders.map((order) => (
-                  <article
-                    key={order.id}
-                    className="bg-white rounded-2xl border border-[#E3E0D9] p-5
-                      flex flex-col sm:flex-row items-start sm:items-center gap-4"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={order.listingThumbnail}
-                      alt={order.listingTitle}
-                      className="w-14 h-14 rounded-xl object-cover border border-[#E3E0D9] shrink-0"
-                    />
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13.5px] font-semibold text-[#141414] line-clamp-1">
-                        {order.listingTitle}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
-                        <OrderStatusBadge status={order.status as OrderStatus} />
-                        <span className="text-[12px] text-[#9E9A91]">
-                          Buyer: <strong className="text-[#141414]">{order.buyerName}</strong>
-                        </span>
-                        <span className="text-[12px] text-[#9E9A91]">
-                          {new Date(order.createdAt).toLocaleDateString('en-NZ')}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2.5 shrink-0">
-                      <p
-                        className="font-[family-name:var(--font-playfair)] text-[1.1rem]
-                          font-semibold text-[#141414]"
-                      >
-                        {formatPrice(order.total)}
-                      </p>
-                      <div className="flex gap-2">
-                        {order.status === 'payment_held' && (
-                          <Button variant="gold" size="sm">
-                            Mark dispatched
-                          </Button>
-                        )}
-                        <Button variant="secondary" size="sm">
-                          View details
-                        </Button>
-                      </div>
-                    </div>
-                  </article>
+                  <SellerOrderCard key={order.id} order={order} />
                 ))
               )}
             </div>
@@ -613,6 +595,15 @@ export default function SellerDashboardPage() {
                   </Link>
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════
+              REVIEWS TAB
+          ════════════════════════════════════════════════════════════ */}
+          {activeTab === 'reviews' && (
+            <div role="tabpanel" aria-label="Reviews" className="space-y-3">
+              <ReviewsTabContent sellerId={user.id} />
             </div>
           )}
         </div>
@@ -743,6 +734,263 @@ function SellerListingRow({
         </div>
       </div>
     </article>
+  );
+}
+
+// ── Seller Order Card ─────────────────────────────────────────────────────────
+
+function SellerOrderCard({ order }: { order: SellerOrderRow }) {
+  const [showDispatch, setShowDispatch] = useState(false);
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [trackingUrl, setTrackingUrl] = useState('');
+  const [dispatching, setDispatching] = useState(false);
+
+  async function handleDispatch() {
+    setDispatching(true);
+    await markDispatched({
+      orderId: order.id,
+      trackingNumber: trackingNumber || undefined,
+      trackingUrl: trackingUrl || undefined,
+    });
+    setDispatching(false);
+    setShowDispatch(false);
+    window.location.reload();
+  }
+
+  return (
+    <>
+      <article
+        className="bg-white rounded-2xl border border-[#E3E0D9] p-5
+          flex flex-col sm:flex-row items-start sm:items-center gap-4"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={order.listingThumbnail}
+          alt={order.listingTitle}
+          className="w-14 h-14 rounded-xl object-cover border border-[#E3E0D9] shrink-0"
+        />
+        <div className="flex-1 min-w-0">
+          <p className="text-[13.5px] font-semibold text-[#141414] line-clamp-1">
+            {order.listingTitle}
+          </p>
+          <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
+            <OrderStatusBadge status={order.status as OrderStatus} />
+            <span className="text-[12px] text-[#9E9A91]">
+              Buyer: <strong className="text-[#141414]">{order.buyerName}</strong>
+            </span>
+            <span className="text-[12px] text-[#9E9A91]">
+              {new Date(order.createdAt).toLocaleDateString('en-NZ')}
+            </span>
+          </div>
+          {order.trackingNumber && (
+            <p className="text-[11.5px] text-[#73706A] mt-1.5">
+              Tracking: <span className="font-mono">{order.trackingNumber}</span>
+            </p>
+          )}
+          {order.status === 'dispatched' && (
+            <p className="text-[11.5px] text-amber-600 font-medium mt-1">
+              Awaiting buyer confirmation
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-2.5 shrink-0">
+          <p className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">
+            {formatPrice(order.total)}
+          </p>
+          <div className="flex gap-2">
+            {order.status === 'payment_held' && (
+              <Button variant="gold" size="sm" onClick={() => setShowDispatch(true)}>
+                Mark dispatched
+              </Button>
+            )}
+            <Link href={`/orders/${order.id}`}>
+              <Button variant="secondary" size="sm">View details</Button>
+            </Link>
+          </div>
+        </div>
+      </article>
+
+      {showDispatch && (
+        <div
+          className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog" aria-modal="true"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDispatch(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+              Mark as dispatched
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                  Courier / tracking number
+                </label>
+                <input
+                  value={trackingNumber}
+                  onChange={(e) => setTrackingNumber(e.target.value)}
+                  placeholder="e.g. NZP123456789"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
+                />
+              </div>
+              <div>
+                <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                  Tracking URL <span className="text-[#9E9A91] font-normal">(optional)</span>
+                </label>
+                <input
+                  value={trackingUrl}
+                  onChange={(e) => setTrackingUrl(e.target.value)}
+                  placeholder="e.g. https://nzpost.co.nz/track/..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button variant="gold" size="md" onClick={handleDispatch} loading={dispatching}>
+                  Confirm dispatch
+                </Button>
+                <Button variant="ghost" size="md" onClick={() => setShowDispatch(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Reviews Tab Content ──────────────────────────────────────────────────────
+
+interface SellerReviewRow {
+  id: string;
+  buyerName: string;
+  rating: number;
+  comment: string;
+  listingTitle: string;
+  createdAt: string;
+  sellerReply: string | null;
+}
+
+function ReviewsTabContent({ sellerId }: { sellerId: string }) {
+  const [reviews, setReviews] = useState<SellerReviewRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [replyId, setReplyId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [replyLoading, setReplyLoading] = useState(false);
+
+  useEffect(() => {
+    async function loadReviews() {
+      try {
+        const { fetchSellerReviews } = await import('@/server/actions/sellerReviews');
+        const result = await fetchSellerReviews();
+        if (result.success) {
+          setReviews(result.data);
+        }
+      } catch {
+        // Silently fail
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadReviews();
+  }, [sellerId]);
+
+  async function handleReply(reviewId: string) {
+    if (!replyText.trim()) return;
+    setReplyLoading(true);
+    const result = await replyToReview({ reviewId, reply: replyText });
+    if (result.success) {
+      setReviews((prev) =>
+        prev.map((r) => (r.id === reviewId ? { ...r, sellerReply: replyText } : r))
+      );
+      setReplyId(null);
+      setReplyText('');
+    }
+    setReplyLoading(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="animate-pulse space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-white rounded-2xl border border-[#E3E0D9] h-32" />
+        ))}
+      </div>
+    );
+  }
+
+  if (reviews.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-dashed border-[#C9C5BC] p-12 text-center">
+        <p className="text-[14px] text-[#9E9A91]">No reviews yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {reviews.map((review) => (
+        <article key={review.id} className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-[13px] font-semibold text-[#141414]">{review.buyerName}</p>
+                <div className="flex gap-0.5">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <svg
+                      key={s}
+                      width="12" height="12" viewBox="0 0 24 24"
+                      fill={s <= review.rating ? '#D4A843' : 'none'}
+                      stroke={s <= review.rating ? '#D4A843' : '#C9C5BC'}
+                      strokeWidth="1.5"
+                    >
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                    </svg>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[12px] text-[#9E9A91] mb-2">
+                {review.listingTitle} · {relativeTime(review.createdAt)}
+              </p>
+            </div>
+          </div>
+          <p className="text-[13px] text-[#141414] leading-relaxed">{review.comment}</p>
+
+          {review.sellerReply ? (
+            <div className="mt-3 bg-[#F8F7F4] rounded-xl p-3 border-l-2 border-[#D4A843]">
+              <p className="text-[11.5px] font-semibold text-[#141414] mb-1">Your reply</p>
+              <p className="text-[12.5px] text-[#73706A]">{review.sellerReply}</p>
+            </div>
+          ) : replyId === review.id ? (
+            <div className="mt-3 space-y-2">
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Write your reply..."
+                rows={3}
+                maxLength={500}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+              />
+              <div className="flex gap-2">
+                <Button variant="primary" size="sm" onClick={() => handleReply(review.id)} loading={replyLoading}>
+                  Post reply
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => { setReplyId(null); setReplyText(''); }}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setReplyId(review.id)}
+              className="mt-3 text-[12px] font-semibold text-[#D4A843] hover:text-[#B8912E] transition-colors"
+            >
+              Reply to review →
+            </button>
+          )}
+        </article>
+      ))}
+    </div>
   );
 }
 

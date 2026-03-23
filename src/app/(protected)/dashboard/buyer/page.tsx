@@ -13,6 +13,7 @@ import { fetchBuyerDashboard } from '@/server/actions/dashboard';
 import type { DashboardUser, BuyerOrderRow, WatchlistRow, ThreadRow, MessageRow } from '@/server/actions/dashboard';
 import { sendMessage as sendMessageAction } from '@/server/actions/messages';
 import { toggleWatch } from '@/server/actions/listings';
+import { confirmDelivery } from '@/server/actions/orders';
 
 type Tab = 'orders' | 'watchlist' | 'messages';
 
@@ -412,88 +413,153 @@ export default function BuyerDashboardPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function OrderCard({ order }: { order: BuyerOrderRow }) {
+function OrderCard({ order, onRefresh }: { order: BuyerOrderRow; onRefresh?: () => void }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  async function handleConfirmDelivery() {
+    setActionLoading(true);
+    const result = await confirmDelivery(order.id);
+    if (result.success) {
+      setShowConfirm(false);
+      onRefresh?.();
+    }
+    setActionLoading(false);
+  }
+
+  const isCompleted = order.status === 'completed';
+  const isPaymentHeld = order.status === 'payment_held';
+
   return (
-    <article
-      className="bg-white rounded-2xl border border-[#E3E0D9] p-5 flex flex-col
-        sm:flex-row items-start sm:items-center gap-4"
-    >
-      <Link href={`/listings/${order.listingId}`} className="shrink-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={order.listingThumbnail}
-          alt={order.listingTitle}
-          className="w-16 h-16 rounded-xl object-cover border border-[#E3E0D9]"
-        />
-      </Link>
-
-      <div className="flex-1 min-w-0">
-        <Link
-          href={`/listings/${order.listingId}`}
-          className="text-[13.5px] font-semibold text-[#141414] hover:text-[#D4A843]
-            transition-colors line-clamp-1"
-        >
-          {order.listingTitle}
+    <>
+      <article
+        className="bg-white rounded-2xl border border-[#E3E0D9] p-5 flex flex-col
+          sm:flex-row items-start sm:items-center gap-4"
+      >
+        <Link href={`/orders/${order.id}`} className="shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={order.listingThumbnail}
+            alt={order.listingTitle}
+            className="w-16 h-16 rounded-xl object-cover border border-[#E3E0D9]"
+          />
         </Link>
-        <div className="flex flex-wrap items-center gap-3 mt-1.5">
-          <OrderStatusBadge status={order.status as OrderStatus} />
-          <span className="text-[12px] text-[#9E9A91]">
-            Seller:{' '}
-            <Link
-              href={`/sellers/${order.sellerUsername}`}
-              className="text-[#141414] font-medium hover:text-[#D4A843] transition-colors"
-            >
-              {order.sellerName}
-            </Link>
-          </span>
-          <span className="text-[12px] text-[#9E9A91]">
-            {new Date(order.createdAt).toLocaleDateString('en-NZ')}
-          </span>
-        </div>
-        {order.trackingNumber && (
-          <div className="mt-2 flex items-center gap-1.5 text-[12px] text-[#73706A]">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-            </svg>
-            Tracking:{' '}
-            {order.trackingUrl ? (
-              <a
-                href={order.trackingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#D4A843] hover:underline font-mono text-[11px]"
-              >
-                {order.trackingNumber}
-              </a>
-            ) : (
-              <span className="font-mono text-[11px]">{order.trackingNumber}</span>
-            )}
-          </div>
-        )}
-      </div>
 
-      <div className="flex flex-col items-end gap-2.5 shrink-0">
-        <p className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold
-          text-[#141414]">
-          {formatPrice(order.total)}
-        </p>
-        <div className="flex gap-2">
-          {order.canConfirmDelivery && (
-            <Button variant="gold" size="sm">
-              Confirm delivery
-            </Button>
-          )}
-          {order.canDispute && (
-            <Button variant="ghost" size="sm">
-              Dispute
-            </Button>
-          )}
-          <Link href={`/listings/${order.listingId}`}>
-            <Button variant="secondary" size="sm">View</Button>
+        <div className="flex-1 min-w-0">
+          <Link
+            href={`/orders/${order.id}`}
+            className="text-[13.5px] font-semibold text-[#141414] hover:text-[#D4A843]
+              transition-colors line-clamp-1"
+          >
+            {order.listingTitle}
           </Link>
+          <div className="flex flex-wrap items-center gap-3 mt-1.5">
+            <OrderStatusBadge status={order.status as OrderStatus} />
+            {isPaymentHeld && (
+              <span className="text-[11.5px] text-emerald-600 font-medium">
+                Payment held securely in escrow
+              </span>
+            )}
+            <span className="text-[12px] text-[#9E9A91]">
+              Seller:{' '}
+              <Link
+                href={`/sellers/${order.sellerUsername}`}
+                className="text-[#141414] font-medium hover:text-[#D4A843] transition-colors"
+              >
+                {order.sellerName}
+              </Link>
+            </span>
+            <span className="text-[12px] text-[#9E9A91]">
+              {new Date(order.createdAt).toLocaleDateString('en-NZ')}
+            </span>
+          </div>
+          {order.trackingNumber && (
+            <div className="mt-2 flex items-center gap-1.5 text-[12px] text-[#73706A]">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+              </svg>
+              Tracking:{' '}
+              {order.trackingUrl ? (
+                <a
+                  href={order.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#D4A843] hover:underline font-mono text-[11px]"
+                >
+                  {order.trackingNumber}
+                </a>
+              ) : (
+                <span className="font-mono text-[11px]">{order.trackingNumber}</span>
+              )}
+            </div>
+          )}
         </div>
-      </div>
-    </article>
+
+        <div className="flex flex-col items-end gap-2.5 shrink-0">
+          <p className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold
+            text-[#141414]">
+            {formatPrice(order.total)}
+          </p>
+          <div className="flex gap-2">
+            {order.canConfirmDelivery && (
+              <Button variant="gold" size="sm" onClick={() => setShowConfirm(true)}>
+                Confirm delivery
+              </Button>
+            )}
+            {order.canDispute && (
+              <Link href={`/orders/${order.id}`}>
+                <Button variant="ghost" size="sm">Dispute</Button>
+              </Link>
+            )}
+            {isCompleted && !order.hasReview && (
+              <Link href={`/reviews/new?orderId=${order.id}`}>
+                <Button variant="secondary" size="sm">Leave a review</Button>
+              </Link>
+            )}
+            {isCompleted && order.hasReview && (
+              <span className="text-[11.5px] text-emerald-600 font-medium">Review submitted</span>
+            )}
+            <Link href={`/orders/${order.id}`}>
+              <Button variant="secondary" size="sm">View</Button>
+            </Link>
+          </div>
+        </div>
+      </article>
+
+      {/* Confirm delivery modal */}
+      {showConfirm && (
+        <div
+          className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowConfirm(false); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 text-center">
+            <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2">
+              Confirm delivery
+            </h2>
+            <p className="text-[13px] text-[#73706A] mb-6">
+              Confirming releases payment to the seller. Only confirm if you have received the item.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Button variant="gold" size="md" onClick={handleConfirmDelivery} loading={actionLoading}>
+                Yes, I received it
+              </Button>
+              <Button variant="ghost" size="md" onClick={() => setShowConfirm(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

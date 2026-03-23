@@ -38,6 +38,7 @@ export interface BuyerOrderRow {
   trackingUrl: string | null;
   canConfirmDelivery: boolean;
   canDispute: boolean;
+  hasReview: boolean;
 }
 
 export interface WatchlistRow {
@@ -138,6 +139,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
           },
         },
         seller: { select: { displayName: true, username: true } },
+        review: { select: { id: true } },
       },
     }),
     // Watchlist
@@ -203,6 +205,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
       trackingUrl: o.trackingUrl,
       canConfirmDelivery: status === 'dispatched',
       canDispute: status === 'dispatched' || status === 'delivered',
+      hasReview: !!o.review,
     };
   });
 

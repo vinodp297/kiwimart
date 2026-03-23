@@ -21,7 +21,7 @@ import type { ActionResult } from '@/types';
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2026-02-25.clover',
 });
 
 // ── createOrder ───────────────────────────────────────────────────────────────
@@ -164,6 +164,7 @@ export async function confirmDelivery(
       id: true,
       buyerId: true,
       sellerId: true,
+      listingId: true,
       status: true,
       stripePaymentIntentId: true,
       totalNzd: true,
@@ -198,7 +199,7 @@ export async function confirmDelivery(
     }),
     // Mark listing as sold
     db.listing.update({
-      where: { id: order.id },
+      where: { id: order.listingId },
       data: { status: 'SOLD', soldAt: new Date() },
     }),
   ]);

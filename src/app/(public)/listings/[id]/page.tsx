@@ -11,6 +11,7 @@ import { formatPrice, CONDITION_LABELS, relativeTime } from '@/lib/utils';
 import ListingGallery from './ListingGallery';
 import ListingActions from './ListingActions';
 import SellerPanel from './SellerPanel';
+import ShippingEstimate from './ShippingEstimate';
 import { getListingById } from '@/server/actions/listings';
 import { searchListings } from '@/server/actions/search';
 import type { ListingDetail, SellerPublic, ListingImage, ListingAttribute, Condition, NZRegion, SellerBadge } from '@/types';
@@ -283,6 +284,9 @@ export default async function ListingDetailPage({
             <div className="flex flex-col gap-4">
               {/* Price / action panel (client — handles offer modal, watchlist) */}
               <ListingActions listing={detail} />
+
+              {/* Shipping estimate */}
+              <ShippingEstimate sellerRegion={detail.region} />
 
               {/* Seller panel */}
               <SellerPanel seller={detail.seller} listingId={detail.id} />
