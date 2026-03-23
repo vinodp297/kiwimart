@@ -331,13 +331,13 @@ export default async function ListingDetailPage({
               </div>
 
               {/* Report link */}
-              <button
-                className="text-[11.5px] text-[#C9C5BC] hover:text-red-500
+              <a
+                href={`/report?listing=${detail.id}`}
+                className="block text-[11.5px] text-[#C9C5BC] hover:text-red-500
                   transition-colors text-center"
-                onClick={() => {/* Sprint 3: open report modal */}}
               >
                 Report this listing
-              </button>
+              </a>
             </div>
           </div>
         </div>
