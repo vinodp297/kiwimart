@@ -36,6 +36,7 @@ export interface BuyerOrderRow {
   updatedAt: string;
   trackingNumber: string | null;
   trackingUrl: string | null;
+  dispatchedAt: string | null;
   canConfirmDelivery: boolean;
   canDispute: boolean;
   hasReview: boolean;
@@ -136,7 +137,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
       select: {
         id: true, listingId: true, itemNzd: true, shippingNzd: true, totalNzd: true,
         status: true, createdAt: true, updatedAt: true,
-        trackingNumber: true, trackingUrl: true,
+        trackingNumber: true, trackingUrl: true, dispatchedAt: true,
         listing: {
           select: {
             title: true,
@@ -208,6 +209,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
       updatedAt: o.updatedAt.toISOString(),
       trackingNumber: o.trackingNumber,
       trackingUrl: o.trackingUrl,
+      dispatchedAt: o.dispatchedAt?.toISOString() ?? null,
       canConfirmDelivery: status === 'dispatched',
       canDispute: status === 'dispatched' || status === 'delivered',
       hasReview: !!o.review,

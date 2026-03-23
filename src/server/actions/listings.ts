@@ -32,7 +32,7 @@ export async function createListing(
   // 2. Authorise — check account is not banned and email is verified
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { isBanned: true, emailVerified: true, sellerEnabled: true },
+    select: { isBanned: true, emailVerified: true, sellerEnabled: true, stripeOnboarded: true },
   });
   if (!user || user.isBanned) {
     return { success: false, error: 'Your account is not permitted to create listings.' };
@@ -41,6 +41,12 @@ export async function createListing(
     return {
       success: false,
       error: 'Please verify your email address before creating a listing.',
+    };
+  }
+  if (!user.stripeOnboarded) {
+    return {
+      success: false,
+      error: 'Please set up your payment account before listing items.',
     };
   }
 

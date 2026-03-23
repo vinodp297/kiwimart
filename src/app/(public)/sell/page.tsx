@@ -9,7 +9,7 @@
 //  - Submission → createListing() server action (auth-guarded, Zod validated)
 //  - User must be authenticated (proxy redirects to /login?from=/sell)
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
@@ -60,6 +60,28 @@ interface ImagePreview {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SellPage() {
+  // ── Seller status check ──────────────────────────────────────────────────
+  const [sellerStatus, setSellerStatus] = useState<{
+    loading: boolean;
+    stripeOnboarded: boolean;
+    authenticated: boolean;
+  }>({ loading: true, stripeOnboarded: false, authenticated: false });
+
+  useEffect(() => {
+    fetch('/api/seller/status')
+      .then((r) => r.json())
+      .then((data) =>
+        setSellerStatus({
+          loading: false,
+          stripeOnboarded: data.stripeOnboarded,
+          authenticated: data.authenticated,
+        })
+      )
+      .catch(() =>
+        setSellerStatus({ loading: false, stripeOnboarded: false, authenticated: false })
+      );
+  }, []);
+
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -376,6 +398,72 @@ export default function SellPage() {
               }}>
                 List another item
               </Button>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  // ── Seller status loading state ────────────────────────────────────────────
+  if (sellerStatus.loading) {
+    return (
+      <>
+        <NavBar />
+        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-[#D4A843] border-t-transparent rounded-full animate-spin" />
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  // ── Stripe not configured gate ─────────────────────────────────────────────
+  if (sellerStatus.authenticated && !sellerStatus.stripeOnboarded) {
+    return (
+      <>
+        <NavBar />
+        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center px-4 py-12">
+          <div className="max-w-md w-full">
+            <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-sm p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-[#F5ECD4] flex items-center justify-center mx-auto mb-6">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                  <line x1="12" y1="1" x2="12" y2="23" />
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              </div>
+              <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] mb-3">
+                Set up payments first
+              </h1>
+              <p className="text-[14px] text-[#73706A] leading-relaxed mb-6">
+                Before listing items you need to connect your bank account so buyers can pay you.
+                It only takes 2 minutes and is completely free.
+              </p>
+              <div className="text-left space-y-3 mb-8">
+                {[
+                  'Get paid directly to your NZ bank account',
+                  'Funds held safely in escrow until delivery',
+                  'Automatic payout within 3 business days',
+                  'Bank-grade security powered by Stripe',
+                ].map((benefit) => (
+                  <div key={benefit} className="flex items-start gap-2.5">
+                    <span className="text-[#D4A843] shrink-0 mt-0.5 font-bold">✓</span>
+                    <span className="text-[13.5px] text-[#73706A]">{benefit}</span>
+                  </div>
+                ))}
+              </div>
+              <a
+                href="/account/stripe"
+                className="block w-full py-3.5 px-6 bg-[#D4A843] hover:bg-[#B8912E]
+                  text-[#141414] font-semibold text-[15px] rounded-full
+                  transition-colors text-center"
+              >
+                Set up payments →
+              </a>
+              <p className="mt-4 text-[11.5px] text-[#C9C5BC]">
+                Secured by Stripe · No monthly fees · Cancel anytime
+              </p>
             </div>
           </div>
         </main>

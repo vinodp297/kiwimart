@@ -1,38 +1,9 @@
 // src/server/email/index.ts
-// ─── Transactional Email — Postmark ──────────────────────────────────────────
-// Uses Postmark for transactional email delivery.
-// All templates are plain-text + HTML (generated inline — React Email in Sprint 5).
-//
-// Why Postmark:
-//   • Purpose-built for transactional (not marketing) email
-//   • Best deliverability in NZ/AU market
-//   • Detailed message stream tracking
-//   • Free tier: 100 emails/month
-//
-// Security:
-//   • Server token kept server-side only (never in client bundle)
-//   • All emails HTML-escaped before insertion
-//   • Unsubscribe links included in marketing emails (NZ Unsolicited Electronic
-//     Messages Act 2007)
+// ─── Transactional Email ──────────────────────────────────────────────────────
+// Transport layer: Resend (when RESEND_API_KEY is set) or console logging.
+// All HTML templates are kept here; only the delivery mechanism changed from Postmark.
 
-import { ServerClient } from 'postmark';
-
-// Lazily initialised to avoid errors in test environments
-let client: ServerClient | null = null;
-
-function getPostmarkClient(): ServerClient {
-  if (!client) {
-    const token = process.env.POSTMARK_SERVER_TOKEN;
-    if (!token) {
-      throw new Error('Missing POSTMARK_SERVER_TOKEN environment variable.');
-    }
-    client = new ServerClient(token);
-  }
-  return client;
-}
-
-const FROM_ADDRESS = process.env.EMAIL_FROM ?? 'KiwiMart <noreply@kiwimart.co.nz>';
-const REPLY_TO = 'support@kiwimart.co.nz';
+import { sendTransactionalEmail } from './transport';
 
 // ── Helper: HTML-escape ───────────────────────────────────────────────────────
 
@@ -65,10 +36,16 @@ function baseTemplate(content: string, previewText: string): string {
     .btn { display:inline-block; background:#D4A843; color:#141414; font-size:14px;
       font-weight:700; text-decoration:none; padding:12px 28px;
       border-radius:999px; margin:8px 0 24px; }
+    .btn-secondary { display:inline-block; background:#F8F7F4; color:#141414; font-size:14px;
+      font-weight:600; text-decoration:none; padding:12px 28px;
+      border-radius:999px; margin:8px 0 24px; border:1px solid #E3E0D9; }
     .divider { border:0; border-top:1px solid #F0EDE8; margin:24px 0; }
     .footer { padding:24px 32px; text-align:center; font-size:11px; color:#C9C5BC; }
     .trust { background:#F5ECD4; border:1px solid rgba(212,168,67,.3);
       border-radius:12px; padding:14px 18px; font-size:13px; color:#8B6914;
+      margin:16px 0; }
+    .warning { background:#FEF3C7; border:1px solid rgba(245,158,11,.3);
+      border-radius:12px; padding:14px 18px; font-size:13px; color:#92400E;
       margin:16px 0; }
   </style>
 </head>
@@ -107,16 +84,10 @@ export async function sendWelcomeEmail(params: {
     <div class="trust">Your account is protected by secure escrow payments and ID-verified sellers.</div>`,
     `Welcome to KiwiMart, ${params.displayName}!`
   );
-
-  await getPostmarkClient().sendEmail({
-    From: FROM_ADDRESS,
-    To: params.to,
-    ReplyTo: REPLY_TO,
-    Subject: `Welcome to KiwiMart, ${params.displayName}! 🥝`,
-    HtmlBody: html,
-    TextBody: `Welcome to KiwiMart!\n\nYou're now part of Aotearoa's most trusted marketplace.\n\nBrowse listings at ${process.env.NEXT_PUBLIC_APP_URL}\n\nKiwiMart Team`,
-    MessageStream: 'outbound',
-    TrackOpens: true,
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Welcome to KiwiMart, ${params.displayName}! 🥝`,
+    html,
   });
 }
 
@@ -136,15 +107,10 @@ export async function sendPasswordResetEmail(params: {
     <p style="font-size:11px; color:#C9C5BC;">For security, this link can only be used once and expires after ${params.expiresInMinutes} minutes.</p>`,
     'Reset your KiwiMart password'
   );
-
-  await getPostmarkClient().sendEmail({
-    From: FROM_ADDRESS,
-    To: params.to,
-    ReplyTo: REPLY_TO,
-    Subject: 'Reset your KiwiMart password',
-    HtmlBody: html,
-    TextBody: `Hi ${params.displayName},\n\nReset your KiwiMart password:\n${params.resetUrl}\n\nThis link expires in ${params.expiresInMinutes} minutes.\n\nIf you didn't request this, ignore this email.\n\nKiwiMart Team`,
-    MessageStream: 'outbound',
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: 'Reset your KiwiMart password',
+    html,
   });
 }
 
@@ -165,16 +131,10 @@ export async function sendOfferReceivedEmail(params: {
     <p style="font-size:12px; color:#9E9A91;">Offers expire after 48 hours. Sign in to accept or decline.</p>`,
     `You received a ${formatted} offer`
   );
-
-  await getPostmarkClient().sendEmail({
-    From: FROM_ADDRESS,
-    To: params.to,
-    Subject: `Offer received: ${formatted} for "${params.listingTitle}"`,
-    HtmlBody: html,
-    TextBody: `Hi ${params.sellerName},\n\n${params.buyerName} made an offer of ${formatted} on your listing "${params.listingTitle}".\n\nView and respond: ${params.listingUrl}\n\nKiwiMart Team`,
-    MessageStream: 'outbound',
-    TrackOpens: true,
-    TrackLinks: 'HtmlOnly',
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Offer received: ${formatted} for "${params.listingTitle}"`,
+    html,
   });
 }
 
@@ -202,18 +162,7 @@ export async function sendOfferResponseEmail(params: {
         <a href="${esc(params.listingUrl)}" class="btn">View listing →</a>`,
     subject
   );
-
-  await getPostmarkClient().sendEmail({
-    From: FROM_ADDRESS,
-    To: params.to,
-    Subject: subject,
-    HtmlBody: html,
-    TextBody: params.accepted
-      ? `Hi ${params.buyerName}, your offer on "${params.listingTitle}" was accepted! Complete your purchase: ${params.listingUrl}`
-      : `Hi ${params.buyerName}, your offer on "${params.listingTitle}" was declined. View the listing: ${params.listingUrl}`,
-    MessageStream: 'outbound',
-    TrackOpens: true,
-  });
+  await sendTransactionalEmail({ to: params.to, subject, html });
 }
 
 export async function sendOrderDispatchedEmail(params: {
@@ -235,15 +184,70 @@ export async function sendOrderDispatchedEmail(params: {
     <div class="trust">Your payment is held securely until you confirm receipt. Don't confirm delivery until you're happy with the item.</div>`,
     'Your order has been dispatched'
   );
-
-  await getPostmarkClient().sendEmail({
-    From: FROM_ADDRESS,
-    To: params.to,
-    Subject: `Your order has been dispatched — ${params.listingTitle}`,
-    HtmlBody: html,
-    TextBody: `Hi ${params.buyerName}, your order "${params.listingTitle}" has been dispatched. View order: ${params.orderUrl}`,
-    MessageStream: 'outbound',
-    TrackOpens: true,
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Your order has been dispatched — ${params.listingTitle}`,
+    html,
   });
 }
 
+// ── Delivery reminder emails (for auto-release cron) ─────────────────────────
+
+export async function sendDeliveryReminderEmail(params: {
+  to: string;
+  buyerName: string;
+  listingTitle: string;
+  trackingNumber?: string;
+  orderId: string;
+  daysRemaining: number;
+  confirmUrl: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Please confirm delivery 📦</h1>
+    <p>Hi ${esc(params.buyerName)}, your order for <strong>${esc(params.listingTitle)}</strong> has been dispatched.</p>
+    ${params.trackingNumber ? `<p>Tracking: <strong>${esc(params.trackingNumber)}</strong></p>` : ''}
+    <p>Once you receive your item, please confirm delivery so the seller gets paid.</p>
+    <div class="trust">
+      You have <strong>${params.daysRemaining} days</strong> before payment is automatically released to the seller.
+      If you have not received the item or it is not as described, open a dispute before then.
+    </div>
+    <a href="${esc(params.confirmUrl)}" class="btn">Confirm delivery →</a>
+    <p style="font-size:12px; color:#9E9A91;">If there is an issue with your order, <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer" style="color:#D4A843;">open a dispute</a> before the auto-release date.</p>`,
+    `Reminder: please confirm delivery — ${params.listingTitle}`
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Reminder: Please confirm delivery — ${params.listingTitle}`,
+    html,
+  });
+}
+
+export async function sendFinalDeliveryReminderEmail(params: {
+  to: string;
+  buyerName: string;
+  listingTitle: string;
+  trackingNumber?: string;
+  orderId: string;
+  daysRemaining: number;
+  confirmUrl: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>⚠️ Action required — payment releases tomorrow</h1>
+    <p>Hi ${esc(params.buyerName)}, this is an urgent reminder about your order:</p>
+    <p><strong>${esc(params.listingTitle)}</strong></p>
+    ${params.trackingNumber ? `<p>Tracking: <strong>${esc(params.trackingNumber)}</strong></p>` : ''}
+    <div class="warning">
+      <strong>Payment will be automatically released to the seller TOMORROW</strong> if you do not take action.
+      If you have NOT received the item or it is NOT as described, please open a dispute immediately.
+    </div>
+    <a href="${esc(params.confirmUrl)}" class="btn">Confirm delivery →</a>
+    <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer" class="btn-secondary">Open a dispute</a>
+    <p style="font-size:12px; color:#9E9A91;">Once payment is released it cannot be reversed. Act now if there is an issue.</p>`,
+    `⚠️ Action required — payment releases tomorrow for ${params.listingTitle}`
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `⚠️ Action required — payment releases tomorrow for ${params.listingTitle}`,
+    html,
+  });
+}

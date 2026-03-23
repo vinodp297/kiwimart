@@ -16,6 +16,7 @@ export default function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [showSellBanner, setShowSellBanner] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -49,6 +50,16 @@ export default function NavBar() {
     setMobileOpen(false);
     setAccountOpen(false);
   }, [pathname]);
+
+  // Show sell banner for logged-in users who haven't set up selling
+  useEffect(() => {
+    if (user && !user.sellerEnabled) {
+      const dismissed = sessionStorage.getItem('sell-banner-dismissed');
+      if (!dismissed) setShowSellBanner(true);
+    } else {
+      setShowSellBanner(false);
+    }
+  }, [user]);
 
   const initials = user?.displayName
     .split(' ')
@@ -458,6 +469,32 @@ export default function NavBar() {
           </div>
         </div>
       </header>
+
+      {/* ── Sell banner (buyers without seller setup) ───────────────────── */}
+      {showSellBanner && (
+        <div className="bg-[#F5ECD4] border-b border-[#D4A843]/20 px-4 py-2 flex
+          items-center justify-between gap-4">
+          <p className="text-[12.5px] text-[#8B6914]">
+            🛍 Want to sell on KiwiMart?{' '}
+            <a
+              href="/account/stripe"
+              className="font-semibold underline ml-1 hover:text-[#141414] transition-colors"
+            >
+              Set up payments to start listing items →
+            </a>
+          </p>
+          <button
+            onClick={() => {
+              sessionStorage.setItem('sell-banner-dismissed', 'true');
+              setShowSellBanner(false);
+            }}
+            aria-label="Dismiss"
+            className="text-[#9E9A91] hover:text-[#141414] shrink-0 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* ── Mobile drawer ──────────────────────────────────────────────── */}
       {mobileOpen && (

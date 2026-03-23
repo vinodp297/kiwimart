@@ -146,6 +146,30 @@ export default function SellerDashboardPage() {
       <main className="bg-[#FAFAF8] min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
 
+          {/* ── Stripe setup card (shown until onboarded) ──────────────── */}
+          {stripeOnboarded === false && (
+            <div className="bg-[#141414] text-white rounded-2xl p-6 mb-6 flex
+              flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-[family-name:var(--font-playfair)] text-[1.1rem]
+                  font-semibold mb-1">
+                  ⚡ Complete your seller setup
+                </h3>
+                <p className="text-white/60 text-[13.5px]">
+                  Connect your bank account to receive payments from buyers.
+                </p>
+              </div>
+              <a
+                href="/account/stripe"
+                className="shrink-0 px-5 py-2.5 bg-[#D4A843] text-[#141414]
+                  font-semibold text-[13.5px] rounded-full hover:bg-[#F5C84A]
+                  transition-colors whitespace-nowrap"
+              >
+                Connect Stripe →
+              </a>
+            </div>
+          )}
+
           {/* ── Seller header ──────────────────────────────────────────── */}
           <div
             className="relative bg-[#141414] rounded-2xl text-white p-6 sm:p-8 mb-6

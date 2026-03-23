@@ -493,6 +493,9 @@ function OrderCard({ order, onRefresh }: { order: BuyerOrderRow; onRefresh?: () 
               )}
             </div>
           )}
+          {order.status === 'dispatched' && order.dispatchedAt && (
+            <AutoReleaseCountdown dispatchedAt={order.dispatchedAt} />
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2.5 shrink-0">
@@ -560,6 +563,45 @@ function OrderCard({ order, onRefresh }: { order: BuyerOrderRow; onRefresh?: () 
         </div>
       )}
     </>
+  );
+}
+
+// ── Auto-release countdown pill ───────────────────────────────────────────────
+
+function AutoReleaseCountdown({ dispatchedAt }: { dispatchedAt: string }) {
+  // Compute business-day-based release date client-side
+  function addBusinessDays(date: Date, days: number): Date {
+    const result = new Date(date);
+    let added = 0;
+    while (added < days) {
+      result.setDate(result.getDate() + 1);
+      const day = result.getDay();
+      if (day !== 0 && day !== 6) added++;
+    }
+    return result;
+  }
+
+  const releaseDate = addBusinessDays(new Date(dispatchedAt), 4);
+  const msRemaining = releaseDate.getTime() - Date.now();
+  const daysRemaining = Math.max(0, Math.ceil(msRemaining / (1000 * 60 * 60 * 24)));
+
+  let cls = 'text-[11.5px] font-medium';
+  let label: string;
+  if (daysRemaining === 0) {
+    cls += ' text-red-600 font-semibold';
+    label = 'Payment auto-releases today — please confirm delivery';
+  } else if (daysRemaining === 1) {
+    cls += ' text-amber-600 font-semibold';
+    label = `Payment auto-releases in ${daysRemaining} day — please confirm delivery`;
+  } else {
+    cls += ' text-[#73706A]';
+    label = `Payment auto-releases in ${daysRemaining} days if not confirmed`;
+  }
+
+  return (
+    <p className={`mt-1.5 ${cls}`}>
+      ⏱ {label}
+    </p>
   );
 }
 
