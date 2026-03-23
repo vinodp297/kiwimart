@@ -105,11 +105,18 @@ export async function createOrder(params: {
 
   // 5d. Create Stripe PaymentIntent with Connect transfer
   // Platform fee = 0% during beta (KiwiMart's $0 fee promise)
+  // Only include transfer_data for real Connect accounts (not seed/placeholder IDs)
+  const isRealConnectAccount =
+    typeof listing.seller.stripeAccountId === 'string' &&
+    /^acct_[A-Za-z0-9]{16,}$/.test(listing.seller.stripeAccountId);
+
   const paymentIntent = await stripe.paymentIntents.create({
     amount: totalNzd, // NZD cents
     currency: 'nzd',
-    // Transfer to seller's Connect account after capture
-    transfer_data: { destination: listing.seller.stripeAccountId },
+    // Transfer to seller's Connect account after capture (skipped for seed/test accounts)
+    ...(isRealConnectAccount
+      ? { transfer_data: { destination: listing.seller.stripeAccountId! } }
+      : {}),
     // Afterpay (BNPL) — enabled for eligible NZ orders
     payment_method_types: ['card', 'afterpay_clearpay'],
     metadata: {
@@ -119,7 +126,7 @@ export async function createOrder(params: {
       sellerId: listing.sellerId,
     },
     description: `KiwiMart: ${listing.title}`,
-    statement_descriptor: 'KIWIMART NZ',
+    statement_descriptor_suffix: 'KIWIMART',
     // Capture manually after buyer confirms receipt (escrow model)
     capture_method: 'manual',
   });
