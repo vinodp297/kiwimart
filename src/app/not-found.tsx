@@ -80,15 +80,38 @@ export default function NotFound() {
             </Link>
           </div>
 
+          {/* Popular categories */}
+          <div className="mt-8 pt-6 border-t border-[#E3E0D9]">
+            <p className="text-[12px] text-[#9E9A91] mb-3">Popular categories</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {[
+                { href: '/search?category=electronics', label: 'Electronics' },
+                { href: '/search?category=fashion', label: 'Fashion' },
+                { href: '/search?category=home-garden', label: 'Home & Garden' },
+                { href: '/search?category=sport-outdoors', label: 'Sports' },
+                { href: '/search?category=vehicles', label: 'Vehicles' },
+              ].map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="px-3 py-1.5 rounded-full bg-[#F8F7F4] border border-[#E3E0D9]
+                    text-[12px] text-[#73706A] hover:border-[#D4A843] hover:text-[#141414]
+                    transition-colors font-medium"
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
           {/* Quick links */}
-          <div className="mt-10 pt-6 border-t border-[#E3E0D9]">
-            <p className="text-[12px] text-[#9E9A91] mb-3">Or jump to</p>
+          <div className="mt-6">
             <div className="flex flex-wrap justify-center gap-3">
               {[
                 { href: '/sell', label: 'Sell an item' },
                 { href: '/login', label: 'Sign in' },
                 { href: '/register', label: 'Register' },
-                { href: '/support', label: 'Help & support' },
+                { href: '/safety', label: 'Safety guide' },
               ].map(({ href, label }) => (
                 <Link
                   key={href}

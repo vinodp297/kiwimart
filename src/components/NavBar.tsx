@@ -24,8 +24,9 @@ export default function NavBar() {
     ? {
         displayName: session.user.name ?? session.user.email ?? 'Account',
         email: session.user.email ?? '',
-        sellerEnabled: ((session.user as Record<string, unknown>).sellerEnabled as boolean) ?? false,
+        sellerEnabled: (session.user as { sellerEnabled?: boolean }).sellerEnabled ?? false,
         avatarUrl: session.user.image ?? null,
+        isAdmin: (session.user as { isAdmin?: boolean }).isAdmin ?? false,
       }
     : null;
 
@@ -294,6 +295,20 @@ export default function NavBar() {
                           </p>
                           <p className="text-[11.5px] text-[#9E9A91] truncate">{user.email}</p>
                         </div>
+
+                        {/* Admin Panel link */}
+                        {user.isAdmin && (
+                          <div className="border-b border-[#F0EDE8]">
+                            <Link
+                              href="/admin"
+                              className="flex items-center gap-3 px-4 py-2.5 text-[13px]
+                                text-[#D4A843] font-semibold hover:bg-[#F5ECD4]/40 transition-colors"
+                            >
+                              <span className="text-base">⚡</span>
+                              Admin Panel
+                            </Link>
+                          </div>
+                        )}
 
                         {/* Buyer links */}
                         <div className="py-1">

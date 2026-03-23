@@ -17,6 +17,8 @@ import { searchListings } from '@/server/actions/search';
 import SafetyBanner from '@/components/SafetyBanner';
 import type { ListingDetail, SellerPublic, ListingImage, ListingAttribute, Condition, NZRegion, SellerBadge } from '@/types';
 
+export const revalidate = 60;
+
 // ── Helper: build R2 image URL ────────────────────────────────────────────────
 function r2Url(r2Key: string | null): string {
   if (!r2Key) return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop';
@@ -158,8 +160,34 @@ export default async function ListingDetailPage({
     { label: detail.title.length > 40 ? detail.title.slice(0, 40) + '…' : detail.title },
   ];
 
+  // JSON-LD structured data for Google rich results
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: listing.title,
+    description: listing.description ?? listing.title,
+    image: images[0]?.url,
+    offers: {
+      '@type': 'Offer',
+      price: price.toFixed(2),
+      priceCurrency: 'NZD',
+      availability:
+        listing.status === 'ACTIVE'
+          ? 'https://schema.org/InStock'
+          : 'https://schema.org/OutOfStock',
+      seller: {
+        '@type': 'Person',
+        name: listing.seller.displayName,
+      },
+    },
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <NavBar />
 
       <main className="bg-[#FAFAF8] min-h-screen">

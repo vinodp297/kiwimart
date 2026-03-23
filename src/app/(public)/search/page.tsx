@@ -7,6 +7,8 @@ import SearchPageClient from './SearchPageClient';
 import { searchListings } from '@/server/actions/search';
 import type { SortOption } from '@/types';
 
+export const revalidate = 300;
+
 export const metadata: Metadata = {
   title: 'Search Listings — KiwiMart',
   description: 'Search and filter thousands of listings from verified New Zealand sellers.',

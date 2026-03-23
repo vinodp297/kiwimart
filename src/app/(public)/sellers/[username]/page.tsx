@@ -63,6 +63,8 @@ async function getSellerByUsername(username: string) {
   });
 }
 
+export const revalidate = 300;
+
 export async function generateMetadata({
   params,
 }: {

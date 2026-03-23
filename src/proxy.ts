@@ -15,6 +15,7 @@ import { getToken } from 'next-auth/jwt';
 // /sell blocks /sell and /sell/* but NOT /sellers/* (public seller profiles).
 const PROTECTED_PREFIXES = [
   '/dashboard',
+  '/admin',
   '/account',
   '/checkout',
   '/messages',
@@ -83,7 +84,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   });
 
   const isAuthenticated = !!token;
-  const sellerEnabled = !!(token as { sellerEnabled?: boolean } | null)?.sellerEnabled;
+  const tokenAny = token as { sellerEnabled?: boolean; isAdmin?: boolean } | null;
+  const sellerEnabled = !!tokenAny?.sellerEnabled;
+  const isAdmin = !!tokenAny?.isAdmin;
   const defaultDashboard = sellerEnabled ? '/dashboard/seller' : '/dashboard/buyer';
 
   const isProtected = matchesProtected(pathname);
@@ -93,6 +96,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Admin-only routes: redirect non-admins to buyer dashboard
+  const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
+  if (isAdminPath && isAuthenticated && !isAdmin) {
+    return NextResponse.redirect(new URL('/dashboard/buyer', request.url));
   }
 
   if (isAuthPath && isAuthenticated) {

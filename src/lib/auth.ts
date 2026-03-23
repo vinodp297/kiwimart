@@ -194,7 +194,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
   events: {
     // Emit audit events for session lifecycle
-    async signOut({ token }) {
+    async signOut(params) {
+      const token = ('token' in params ? params.token : null);
       if (token?.sub) {
         audit({
           userId: token.sub,

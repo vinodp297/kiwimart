@@ -8,23 +8,21 @@ const LINKS = {
     { label: 'Recent listings', href: '/search?sort=newest' },
   ],
   Trust: [
-    { label: 'How it works', href: '/how-it-works' },
     { label: 'Buyer protection', href: '/trust' },
     { label: 'Safety guide', href: '/safety' },
+    { label: 'Fees', href: '/fees' },
     { label: 'Report a problem', href: '/report' },
-    { label: 'Escrow payments', href: '/escrow' },
-    { label: 'Verified sellers', href: '/verified' },
   ],
   Company: [
     { label: 'About us', href: '/about' },
+    { label: 'Contact', href: '/contact' },
     { label: 'Careers', href: '/careers' },
     { label: 'Blog', href: '/blog' },
-    { label: 'Contact', href: '/contact' },
   ],
   Legal: [
     { label: 'Terms of service', href: '/terms' },
     { label: 'Privacy policy', href: '/privacy' },
-    { label: 'Cookie policy', href: '/cookies' },
+    { label: 'Fees', href: '/fees' },
     { label: 'NZ Consumer law', href: '/consumer-law' },
   ],
 };
@@ -101,8 +99,8 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row
           items-center justify-between gap-3 text-[11.5px] text-white/30">
-          <p>© {new Date().getFullYear()} KiwiMart Limited. Auckland, New Zealand.</p>
-          <p>GST No. 123-456-789 · FSP registered · Consumer Guarantees Act applies</p>
+          <p>© 2026 KiwiMart Limited. Auckland, New Zealand.</p>
+          <p>GST No. 123-456-789 · All transactions covered by NZ Consumer Guarantees Act 1993</p>
         </div>
       </div>
     </footer>
