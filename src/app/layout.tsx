@@ -8,6 +8,7 @@
 import type { Metadata } from 'next';
 import { Playfair_Display, DM_Sans } from 'next/font/google';
 import SessionProvider from '@/components/SessionProvider';
+import { auth } from '@/lib/auth';
 import './globals.css';
 
 const playfair = Playfair_Display({
@@ -51,11 +52,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
+
   return (
     <html lang="en-NZ" className={`${playfair.variable} ${dmSans.variable}`} data-scroll-behavior="smooth">
       <head>
@@ -63,7 +66,7 @@ export default function RootLayout({
         <meta name="color-scheme" content="light" />
       </head>
       <body className={`${dmSans.className} antialiased`} suppressHydrationWarning>
-        <SessionProvider>
+        <SessionProvider session={session}>
           {children}
         </SessionProvider>
       </body>

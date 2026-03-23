@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --src-dir --import-alias \"@/*\" --no-eslint --no-turbopack --yes)",
+      "Read(//c/Users/vinod/OneDrive/Desktop/Kiwi cart/**)",
+      "Bash(npx create-next-app@latest kiwimart --typescript --tailwind --app --src-dir --import-alias \"@/*\" --no-eslint --no-turbopack --yes)",
+      "Bash(cp -r \"C:/Users/vinod/OneDrive/Desktop/Kiwi cart/kiwimart/.\" \"C:/Users/vinod/OneDrive/Desktop/Kiwi cart/Kiwi Project/\")",
+      "Bash(rm -rf \"C:/Users/vinod/OneDrive/Desktop/Kiwi cart/kiwimart\")",
+      "Bash(npm install:*)",
+      "Bash(bash \"C:/Users/vinod/Downloads/sprint1_install.sh\")",
+      "Bash(bash \"C:/Users/vinod/Downloads/sprint2_install.sh\")",
+      "Bash(bash \"C:/Users/vinod/Downloads/sprint3_install.sh\")",
+      "Bash(npm run:*)",
+      "Bash(node -e \"console.log\\(require\\(''crypto''\\).randomBytes\\(32\\).toString\\(''base64''\\)\\)\")",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(taskkill /PID 19152 /F)",
+      "Bash(cmd /c \"taskkill /PID 19152 /F\")",
+      "Bash(cmd /c \"taskkill /PID 19152 /F 2>&1\")",
+      "Bash(cmd /c \"taskkill /F /IM node.exe /T\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(netstat -ano)",
+      "Bash(cmd /c \"netstat -ano | findstr :3000\")",
+      "Bash(cmd /c \"taskkill /F /PID 19408\")",
+      "Bash(where npm:*)",
+      "Bash(cmd /c \"where npx\")",
+      "Bash(cmd /c \"where node\")",
+      "Bash(xargs grep:*)",
+      "Bash(node -e \"const p = require\\(''./node_modules/@prisma/adapter-pg/package.json''\\); console.log\\(''adapter-pg version:'', p.version\\); const e = p.exports; console.log\\(''exports keys:'', Object.keys\\(e||{}\\).join\\('', ''\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''./node_modules/@prisma/adapter-pg''\\); console.log\\(Object.keys\\(m\\)\\); console.log\\(typeof m.PrismaPg\\); console.log\\(m.PrismaPg?.toString?.\\(\\).slice\\(0,300\\)\\)\")",
+      "Bash(find 'C:/Users/vinod/OneDrive/Desktop/Kiwi cart/Kiwi Project/node_modules/.prisma' -name *.js)",
+      "Bash(node node_modules/prisma/build/index.js generate)",
+      "Bash(node -e \"const p = require\\(''./node_modules/@prisma/client/package.json''\\); console.log\\(''prisma client:'', p.version\\); const a = require\\(''./node_modules/@auth/prisma-adapter/package.json''\\); console.log\\(''auth adapter:'', a.version\\); const na = require\\(''./node_modules/next-auth/package.json''\\); console.log\\(''next-auth:'', na.version\\);\")",
+      "Bash(grep -rl adapterFn 'C:/Users/vinod/OneDrive/Desktop/Kiwi cart/Kiwi Project/node_modules/' --include=*.js --include=*.mjs)",
+      "Bash(node -e \"const p = require\\(''./node_modules/tailwindcss/package.json''\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"console.log\\(require\\(''crypto''\\).randomBytes\\(32\\).toString\\(''hex''\\)\\)\")",
+      "Bash(npx tsx:*)",
+      "Bash(node -e \"require\\(''dotenv''\\).config\\({path:''.env.local''}\\); console.log\\(''DB_DIRECT:'', process.env.DATABASE_DIRECT_URL ? ''SET'' : ''NOT SET''\\)\")",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

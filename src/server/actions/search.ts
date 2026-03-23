@@ -173,7 +173,7 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
     region: row.region as ListingCard['region'],
     suburb: row.suburb,
     thumbnailUrl: row.images[0]?.r2Key
-      ? `https://r2.kiwimart.co.nz/${row.images[0].r2Key}`
+      ? (row.images[0].r2Key.startsWith('http') ? row.images[0].r2Key : `https://r2.kiwimart.co.nz/${row.images[0].r2Key}`)
       : 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop',
     sellerName: row.seller.displayName,
     sellerUsername: row.seller.username,

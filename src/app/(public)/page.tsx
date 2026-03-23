@@ -190,7 +190,7 @@ export default async function HomePage() {
         region: row.region as typeof LISTINGS[0]['region'],
         suburb: row.suburb,
         thumbnailUrl: row.images[0]?.r2Key
-          ? `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${row.images[0].r2Key}`
+          ? (row.images[0].r2Key.startsWith('http') ? row.images[0].r2Key : `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${row.images[0].r2Key}`)
           : 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop',
         sellerName: row.seller.displayName,
         sellerUsername: row.seller.username,

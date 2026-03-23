@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
+        hostname: '*.cloudflarestorage.com',
+      },
+      {
+        protocol: 'https',
         hostname: 'r2.kiwimart.co.nz',
       },
     ],
