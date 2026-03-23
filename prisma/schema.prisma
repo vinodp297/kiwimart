@@ -357,7 +357,10 @@ model ListingImage {
   order     Int     @default(0)
   width     Int?
   height    Int?
-  sizeBytes Int?
+  sizeBytes         Int?
+  thumbnailKey      String?
+  processedAt       DateTime?
+  originalSizeBytes Int?
   // ClamAV scan result — never serve images that haven't been scanned
   scanned   Boolean @default(false)
   safe      Boolean @default(false)

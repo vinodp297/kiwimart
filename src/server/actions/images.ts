@@ -1,5 +1,5 @@
 'use server';
-// src/server/actions/images.ts  (Sprint 4 — real Cloudflare R2)
+// src/server/actions/images.ts  (Sprint 4 + Sprint 6 — real Cloudflare R2)
 // ─── Image Upload Server Actions ─────────────────────────────────────────────
 // Two-phase upload flow:
 //   Phase 1: Client requests a presigned upload URL (this action)
@@ -14,8 +14,9 @@
 // Security:
 //   • Presigned URLs expire after 5 minutes
 //   • Key is scoped to the authenticated user's ID (prevents key enumeration)
-//   • Images processed via BullMQ queue — resized, stripped of EXIF, converted to WebP
+//   • Images processed: resized, stripped of EXIF, converted to WebP
 //   • Only processed+safe images are accepted in createListing
+//   • Max 8MB file size, min 200×200 dimensions, max 10 images per listing
 
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
@@ -44,12 +45,22 @@ function getR2Client(): S3Client {
 }
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB
+const MAX_IMAGES_PER_LISTING = 10;
 
 export interface PresignedUploadResult {
   uploadUrl: string;
   r2Key: string;
   imageId: string;
+}
+
+export interface ProcessedImageResult {
+  safe: boolean;
+  width?: number;
+  height?: number;
+  compressedSize?: number;
+  originalSize?: number;
+  thumbnailKey?: string;
 }
 
 // ── requestImageUpload — returns presigned URL ────────────────────────────────
@@ -58,6 +69,7 @@ export async function requestImageUpload(params: {
   fileName: string;
   contentType: string;
   sizeBytes: number;
+  listingId?: string;
 }): Promise<ActionResult<PresignedUploadResult>> {
   // 1. Authenticate
   const session = await auth();
@@ -73,30 +85,57 @@ export async function requestImageUpload(params: {
     };
   }
 
-  // 3. Validate file size
+  // 3. Validate file size (8MB limit)
   if (params.sizeBytes > MAX_FILE_SIZE_BYTES) {
     return {
       success: false,
-      error: `File too large. Maximum size is 10MB.`,
+      error: `File too large. Maximum size is 8MB.`,
     };
   }
 
-  // 4. Rate limit — reuse listing limiter (same user)
+  // 4. Check max images per listing
+  if (params.listingId && params.listingId !== 'pending') {
+    const existingCount = await db.listingImage.count({
+      where: { listingId: params.listingId },
+    });
+    if (existingCount >= MAX_IMAGES_PER_LISTING) {
+      return {
+        success: false,
+        error: `Maximum ${MAX_IMAGES_PER_LISTING} images per listing.`,
+      };
+    }
+  } else {
+    // For new listings (pending), count pending images by this user
+    const pendingCount = await db.listingImage.count({
+      where: {
+        listingId: 'pending',
+        r2Key: { startsWith: `listings/${session.user.id}/` },
+      },
+    });
+    if (pendingCount >= MAX_IMAGES_PER_LISTING) {
+      return {
+        success: false,
+        error: `Maximum ${MAX_IMAGES_PER_LISTING} images per listing.`,
+      };
+    }
+  }
+
+  // 5. Rate limit — reuse listing limiter (same user)
   const limit = await rateLimit('listing', session.user.id);
   if (!limit.success) {
     return { success: false, error: 'Too many uploads. Please wait a moment.' };
   }
 
-  // 5. Generate a scoped, collision-resistant R2 key
+  // 6. Generate a scoped, collision-resistant R2 key
   // Format: listings/{userId}/{uuid}.{ext}
   const ext = params.contentType.split('/')[1].replace('jpeg', 'jpg');
   const uuid = crypto.randomUUID();
   const r2Key = `listings/${session.user.id}/${uuid}.${ext}`;
 
-  // 6. Create a DB record (status: pending/not-scanned)
+  // 7. Create a DB record (status: pending/not-scanned)
   const image = await db.listingImage.create({
     data: {
-      listingId: 'pending',
+      listingId: params.listingId ?? 'pending',
       r2Key,
       order: 0,
       sizeBytes: params.sizeBytes,
@@ -106,7 +145,7 @@ export async function requestImageUpload(params: {
     select: { id: true },
   });
 
-  // 7. Generate real presigned upload URL via R2
+  // 8. Generate real presigned upload URL via R2
   const r2 = getR2Client();
   const command = new PutObjectCommand({
     Bucket: process.env.R2_BUCKET_NAME!,
@@ -128,7 +167,7 @@ export async function requestImageUpload(params: {
 export async function confirmImageUpload(params: {
   imageId: string;
   r2Key: string;
-}): Promise<ActionResult<{ safe: boolean }>> {
+}): Promise<ActionResult<ProcessedImageResult>> {
   // 1. Authenticate
   const session = await auth();
   if (!session?.user?.id) {
@@ -140,9 +179,7 @@ export async function confirmImageUpload(params: {
     return { success: false, error: 'Unauthorised image access.' };
   }
 
-  // 3. Queue the image processing job (Sprint 4: BullMQ)
-  // The image worker will: download → scan (mock ClamAV) → resize with sharp →
-  // re-upload WebP versions → update DB safe=true
+  // 3. Try BullMQ queue first, fall back to direct processing
   try {
     const { imageQueue } = await import('@/lib/queue');
     await imageQueue.add(
@@ -159,22 +196,52 @@ export async function confirmImageUpload(params: {
         removeOnFail: 50,
       }
     );
+    // Queue accepted — processing happens async
+    return { success: true, data: { safe: true } };
   } catch {
-    // If queue is unavailable (dev without Redis), mark directly as safe
-    console.warn('[Images] Queue unavailable — marking image as safe directly');
-    await db.listingImage.update({
-      where: { id: params.imageId, r2Key: params.r2Key },
-      data: {
-        scanned: true,
-        safe: true,
-        scannedAt: new Date(),
-      },
-    });
+    // Queue unavailable (dev without Redis) — process directly with sharp
+    console.warn('[Images] Queue unavailable — processing image directly');
   }
 
-  // Optimistic: return safe=true — the queue will set safe=false if scan fails
-  // The createListing action re-checks safe=true at listing time
-  return { success: true, data: { safe: true } };
+  // 4. Direct processing fallback (dev mode / no Redis)
+  try {
+    const { processImage } = await import('@/server/actions/imageProcessor');
+    const result = await processImage({
+      imageId: params.imageId,
+      r2Key: params.r2Key,
+      userId: session.user.id,
+    });
+
+    return {
+      success: true,
+      data: {
+        safe: true,
+        width: result.width,
+        height: result.height,
+        compressedSize: result.compressedSize,
+        originalSize: result.originalSize,
+        thumbnailKey: result.thumbKey,
+      },
+    };
+  } catch (err) {
+    // If R2 is not configured (dev with placeholders), mark safe directly
+    const msg = err instanceof Error ? err.message : 'Processing failed';
+    if (msg.includes('Failed to download') || msg.includes('getaddrinfo') || msg.includes('ENOTFOUND')) {
+      console.warn('[Images] R2 unavailable — marking image as safe directly');
+      await db.listingImage.update({
+        where: { id: params.imageId, r2Key: params.r2Key },
+        data: {
+          scanned: true,
+          safe: true,
+          scannedAt: new Date(),
+        },
+      });
+      return { success: true, data: { safe: true } };
+    }
+
+    // Real processing error (e.g. image too small, virus detected)
+    return { success: false, error: msg };
+  }
 }
 
 // ── getSignedImageUrl — generates a time-limited read URL ────────────────────

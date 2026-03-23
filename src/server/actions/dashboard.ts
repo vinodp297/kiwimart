@@ -99,6 +99,11 @@ function r2Url(key: string | null): string {
   return `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${key}`;
 }
 
+function thumbUrl(img: { r2Key: string; thumbnailKey?: string | null } | undefined): string {
+  if (!img) return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop';
+  return r2Url(img.thumbnailKey ?? img.r2Key);
+}
+
 // ── fetchBuyerDashboard ──────────────────────────────────────────────────────
 
 export async function fetchBuyerDashboard(): Promise<ActionResult<{
@@ -135,7 +140,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
         listing: {
           select: {
             title: true,
-            images: { where: { order: 0 }, select: { r2Key: true }, take: 1 },
+            images: { where: { order: 0 }, select: { r2Key: true, thumbnailKey: true }, take: 1 },
           },
         },
         seller: { select: { displayName: true, username: true } },
@@ -153,7 +158,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
           select: {
             id: true, title: true, priceNzd: true, condition: true,
             region: true, suburb: true, status: true,
-            images: { where: { order: 0, safe: true }, select: { r2Key: true }, take: 1 },
+            images: { where: { order: 0, safe: true }, select: { r2Key: true, thumbnailKey: true }, take: 1 },
             seller: { select: { displayName: true } },
           },
         },
@@ -192,7 +197,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
       id: o.id,
       listingId: o.listingId,
       listingTitle: o.listing.title,
-      listingThumbnail: r2Url(o.listing.images[0]?.r2Key ?? null),
+      listingThumbnail: thumbUrl(o.listing.images[0]),
       sellerName: o.seller.displayName,
       sellerUsername: o.seller.username,
       price: o.itemNzd / 100,
@@ -215,7 +220,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
     title: w.listing.title,
     price: w.listing.priceNzd / 100,
     condition: COND_MAP[w.listing.condition] ?? 'good',
-    thumbnailUrl: r2Url(w.listing.images[0]?.r2Key ?? null),
+    thumbnailUrl: thumbUrl(w.listing.images[0]),
     sellerName: w.listing.seller.displayName,
     region: w.listing.region,
     suburb: w.listing.suburb,
@@ -241,7 +246,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
           where: { id: { in: listingIds } },
           select: {
             id: true, title: true,
-            images: { where: { order: 0 }, select: { r2Key: true }, take: 1 },
+            images: { where: { order: 0 }, select: { r2Key: true, thumbnailKey: true }, take: 1 },
           },
         })
       : Promise.resolve([]),
@@ -264,7 +269,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
       otherPartyAvatar: other?.avatarKey ? r2Url(other.avatarKey) : null,
       listingId: t.listingId ?? '',
       listingTitle: listing?.title ?? 'General inquiry',
-      listingThumbnail: r2Url(listing?.images[0]?.r2Key ?? null),
+      listingThumbnail: thumbUrl(listing?.images[0]),
       lastMessage: lastMsg?.body ?? '',
       lastMessageAt: t.lastMessageAt.toISOString(),
       unreadCount: unread,
@@ -411,7 +416,7 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
         categoryId: true, subcategoryName: true, region: true, suburb: true,
         shippingOption: true, shippingNzd: true, offersEnabled: true,
         viewCount: true, watcherCount: true, expiresAt: true, createdAt: true, status: true,
-        images: { where: { order: 0, safe: true }, select: { r2Key: true }, take: 1 },
+        images: { where: { order: 0, safe: true }, select: { r2Key: true, thumbnailKey: true }, take: 1 },
         _count: { select: { offers: { where: { status: 'PENDING' } } } },
       },
     }),
@@ -426,7 +431,7 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
         listing: {
           select: {
             title: true,
-            images: { where: { order: 0 }, select: { r2Key: true }, take: 1 },
+            images: { where: { order: 0 }, select: { r2Key: true, thumbnailKey: true }, take: 1 },
           },
         },
         buyer: { select: { displayName: true } },
@@ -467,7 +472,7 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
     title: l.title,
     price: l.priceNzd / 100,
     condition: COND_MAP[l.condition] ?? 'good',
-    thumbnailUrl: r2Url(l.images[0]?.r2Key ?? null),
+    thumbnailUrl: thumbUrl(l.images[0]),
     viewCount: l.viewCount,
     watcherCount: l.watcherCount,
     offerCount: l._count.offers,
@@ -491,7 +496,7 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
     id: o.id,
     listingId: o.listingId,
     listingTitle: o.listing.title,
-    listingThumbnail: r2Url(o.listing.images[0]?.r2Key ?? null),
+    listingThumbnail: thumbUrl(o.listing.images[0]),
     buyerName: o.buyer.displayName,
     total: o.totalNzd / 100,
     status: STATUS_MAP[o.status] ?? o.status.toLowerCase(),

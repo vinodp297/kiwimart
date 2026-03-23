@@ -49,9 +49,13 @@ interface ImagePreview {
   r2Key: string | null;
   imageId: string | null;
   uploading: boolean;
+  processing: boolean;
   progress: number;
   error: string | null;
   uploaded: boolean;
+  compressedSize: number | null;
+  originalSize: number | null;
+  dimensions: { width: number; height: number } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +97,7 @@ export default function SellPage() {
   // ── Upload a single file to R2 via presigned URL ───────────────────────
   async function uploadFileToR2(img: ImagePreview): Promise<void> {
     setImages((prev) =>
-      prev.map((i) => (i.id === img.id ? { ...i, uploading: true, progress: 0, error: null } : i))
+      prev.map((i) => (i.id === img.id ? { ...i, uploading: true, processing: false, progress: 0, error: null } : i))
     );
 
     try {
@@ -141,13 +145,38 @@ export default function SellPage() {
         xhr.send(img.file);
       });
 
-      // Phase 3: Confirm upload (triggers processing pipeline)
-      await confirmImageUpload({ imageId, r2Key });
+      // Phase 3: Confirm upload — triggers processing (compress, WebP, EXIF strip, thumbnail)
+      setImages((prev) =>
+        prev.map((i) => (i.id === img.id ? { ...i, uploading: false, processing: true, progress: 100 } : i))
+      );
 
+      const confirmResult = await confirmImageUpload({ imageId, r2Key });
+
+      if (!confirmResult.success) {
+        setImages((prev) =>
+          prev.map((i) => (i.id === img.id ? { ...i, processing: false, error: confirmResult.error ?? 'Processing failed' } : i))
+        );
+        return;
+      }
+
+      const processed = confirmResult.data;
       setImages((prev) =>
         prev.map((i) =>
           i.id === img.id
-            ? { ...i, uploading: false, progress: 100, uploaded: true, r2Key, imageId }
+            ? {
+                ...i,
+                uploading: false,
+                processing: false,
+                progress: 100,
+                uploaded: true,
+                r2Key,
+                imageId,
+                originalSize: processed.originalSize ?? img.file.size,
+                compressedSize: processed.compressedSize ?? null,
+                dimensions: processed.width && processed.height
+                  ? { width: processed.width, height: processed.height }
+                  : null,
+              }
             : i
         )
       );
@@ -155,7 +184,7 @@ export default function SellPage() {
       setImages((prev) =>
         prev.map((i) =>
           i.id === img.id
-            ? { ...i, uploading: false, error: err instanceof Error ? err.message : 'Upload failed' }
+            ? { ...i, uploading: false, processing: false, error: err instanceof Error ? err.message : 'Upload failed' }
             : i
         )
       );
@@ -177,9 +206,13 @@ export default function SellPage() {
         r2Key: null,
         imageId: null,
         uploading: false,
+        processing: false,
         progress: 0,
         error: null,
         uploaded: false,
+        compressedSize: null,
+        originalSize: null,
+        dimensions: null,
       }));
 
       setImages((prev) => {
@@ -220,6 +253,8 @@ export default function SellPage() {
       if (images.length === 0) errs.images = 'Add at least one photo.';
       const uploading = images.some((i) => i.uploading);
       if (uploading) errs.images = 'Please wait for uploads to finish.';
+      const processing = images.some((i) => i.processing);
+      if (processing) errs.images = 'Please wait for image optimisation to finish.';
       const failed = images.some((i) => i.error);
       if (failed) errs.images = 'Some uploads failed. Remove or retry them.';
     }
@@ -490,14 +525,34 @@ export default function SellPage() {
                           </div>
                         )}
 
-                        {/* Upload success indicator */}
-                        {img.uploaded && !img.uploading && (
-                          <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-emerald-500
-                            flex items-center justify-center">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                              <polyline points="20 6 9 17 4 12"/>
+                        {/* Processing overlay (compression + WebP conversion) */}
+                        {img.processing && (
+                          <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
+                            <svg className="animate-spin h-5 w-5 text-[#D4A843]" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                             </svg>
+                            <span className="text-white text-[10px] font-medium">Optimising photo...</span>
                           </div>
+                        )}
+
+                        {/* Upload success indicator with file info */}
+                        {img.uploaded && !img.uploading && !img.processing && (
+                          <>
+                            <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-emerald-500
+                              flex items-center justify-center">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            </div>
+                            {img.compressedSize && (
+                              <div className="absolute bottom-1 right-1 bg-black/70 text-white
+                                text-[8px] px-1.5 py-0.5 rounded-full font-medium">
+                                {(img.compressedSize / 1024).toFixed(0)}KB
+                                {img.dimensions && ` · ${img.dimensions.width}×${img.dimensions.height}`}
+                              </div>
+                            )}
+                          </>
                         )}
 
                         {/* Upload error */}

@@ -145,7 +145,7 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
         createdAt: true,
         images: {
           where: { order: 0, safe: true }, // only cover image
-          select: { r2Key: true },
+          select: { r2Key: true, thumbnailKey: true },
           take: 1,
         },
         seller: {
@@ -172,9 +172,12 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
     subcategoryName: row.subcategoryName ?? '',
     region: row.region as ListingCard['region'],
     suburb: row.suburb,
-    thumbnailUrl: row.images[0]?.r2Key
-      ? (row.images[0].r2Key.startsWith('http') ? row.images[0].r2Key : `https://r2.kiwimart.co.nz/${row.images[0].r2Key}`)
-      : 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop',
+    thumbnailUrl: (() => {
+      const img = row.images[0];
+      if (!img) return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop';
+      const key = img.thumbnailKey ?? img.r2Key;
+      return key.startsWith('http') ? key : `https://r2.kiwimart.co.nz/${key}`;
+    })(),
     sellerName: row.seller.displayName,
     sellerUsername: row.seller.username,
     sellerRating: 4.5,                    // Sprint 4: compute from reviews aggregate

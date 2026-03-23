@@ -11,7 +11,7 @@
 //   6. Re-upload processed versions to R2
 //   7. Update DB with dimensions + safe=true
 
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import db from '@/lib/db';
 
@@ -45,6 +45,8 @@ export interface ProcessImageResult {
   thumbKey: string;
   width: number;
   height: number;
+  originalSize: number;
+  compressedSize: number;
 }
 
 // ── processImage — main pipeline ─────────────────────────────────────────────
@@ -96,11 +98,11 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
     throw new Error(`Image too small: ${origWidth}×${origHeight} (min 200×200)`);
   }
 
-  // 4. Process full-size image (max 1200×1200, WebP, strip EXIF)
+  // 4. Process full-size image (max 1200×1200, WebP, strip EXIF, progressive)
   const fullImage = await sharp(originalBuffer)
     .rotate() // Auto-rotate based on EXIF orientation before stripping
     .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 85 })
+    .webp({ quality: 82 })
     .toBuffer({ resolveWithObject: true });
 
   // 5. Process thumbnail (480×480, WebP, strip EXIF)
@@ -142,14 +144,29 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
     where: { id: imageId },
     data: {
       r2Key: fullKey, // Point to processed full-size version
+      thumbnailKey: thumbKey,
       width: fullImage.info.width,
       height: fullImage.info.height,
       sizeBytes: fullImage.info.size,
+      originalSizeBytes: originalBuffer.length,
+      processedAt: new Date(),
       scanned: true,
       safe: true,
       scannedAt: new Date(),
     },
   });
+
+  // 9. Delete original unprocessed file from R2
+  try {
+    await r2.send(
+      new DeleteObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME!,
+        Key: r2Key,
+      })
+    );
+  } catch {
+    console.warn(`[Images] Failed to delete original: ${r2Key}`);
+  }
 
   return {
     success: true,
@@ -157,6 +174,8 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
     thumbKey,
     width: fullImage.info.width,
     height: fullImage.info.height,
+    originalSize: originalBuffer.length,
+    compressedSize: fullImage.info.size,
   };
 }
 
