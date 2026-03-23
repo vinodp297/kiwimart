@@ -82,7 +82,7 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
       ]);
 
       audit({
-        userId: 'SYSTEM',
+        userId: null,
         action: 'ORDER_STATUS_CHANGED',
         entityType: 'Order',
         entityId: order.id,
