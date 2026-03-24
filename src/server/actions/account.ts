@@ -9,6 +9,7 @@
 //   • All actions audit-logged with IP
 
 import { headers } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
@@ -117,5 +118,47 @@ export async function changePassword(
     ip,
   });
 
+  return { success: true, data: undefined };
+}
+
+// ── updateProfile ────────────────────────────────────────────────────────────
+
+const updateProfileSchema = z.object({
+  displayName: z.string().min(2, 'Display name must be at least 2 characters').max(60),
+  region: z.string().max(100).optional(),
+  bio: z.string().max(500, 'Bio must be under 500 characters').optional(),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+export async function updateProfile(
+  input: UpdateProfileInput
+): Promise<ActionResult<void>> {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { success: false, error: 'Authentication required.' };
+  }
+
+  const parsed = updateProfileSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? 'Invalid input.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const { displayName, region, bio } = parsed.data;
+
+  await db.user.update({
+    where: { id: session.user.id },
+    data: {
+      displayName,
+      region: region || null,
+      bio: bio || null,
+    },
+  });
+
+  revalidatePath('/account/settings');
   return { success: true, data: undefined };
 }

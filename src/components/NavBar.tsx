@@ -5,13 +5,16 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import CATEGORIES from '@/data/categories';
+
+const HIDDEN_CATEGORY_IDS = ['vehicles', 'property'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function NavBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { data: session, status } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -80,7 +83,7 @@ export default function NavBar() {
 
       {/* ── Main nav ───────────────────────────────────────────────────── */}
       <header
-        className="sticky top-0 z-[200] bg-white/95 backdrop-blur-md
+        className="sticky top-0 z-[300] bg-white/95 backdrop-blur-md
           border-b border-[#E3E0D9] shadow-sm"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -147,7 +150,7 @@ export default function NavBar() {
             </form>
 
             {/* Right side */}
-            <div className="flex items-center gap-1.5 ml-auto">
+            <div className={`flex items-center gap-1.5 ml-auto ${mobileOpen ? 'invisible' : ''}`}>
               {/* Sell CTA */}
               <Link
                 href="/sell"
@@ -219,23 +222,27 @@ export default function NavBar() {
                               text: 'Your Sony headphones order has been dispatched',
                               time: '2h ago',
                               unread: true,
+                              url: '/dashboard/buyer',
                             },
                             {
                               icon: '💬',
                               text: 'TechDealsNZ replied to your message',
                               time: '4h ago',
                               unread: true,
+                              url: '/dashboard/buyer',
                             },
                             {
                               icon: '❤️',
                               text: 'Someone is watching your MacBook listing',
                               time: '1d ago',
                               unread: false,
+                              url: '/dashboard/buyer',
                             },
                           ].map((n, i) => (
-                            <div
+                            <button
                               key={i}
-                              className={`flex items-start gap-3 px-4 py-3 text-left
+                              onClick={() => { setNotifOpen(false); router.push(n.url); }}
+                              className={`w-full flex items-start gap-3 px-4 py-3 text-left
                                 hover:bg-[#F8F7F4] cursor-pointer transition-colors
                                 ${n.unread ? 'bg-[#F5ECD4]/40' : ''}`}
                             >
@@ -249,7 +256,7 @@ export default function NavBar() {
                               {n.unread && (
                                 <div className="w-2 h-2 rounded-full bg-[#D4A843] shrink-0 mt-1.5" />
                               )}
-                            </div>
+                            </button>
                           ))}
                         </div>
                         <Link
@@ -413,11 +420,12 @@ export default function NavBar() {
                 </div>
               )}
 
-              {/* Mobile menu button */}
+              {/* Mobile menu button — always visible */}
               <button
                 onClick={() => setMobileOpen((v) => !v)}
                 aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
                 aria-expanded={mobileOpen}
+                style={{ visibility: 'visible' }}
                 className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center
                   text-[#73706A] hover:bg-[#F8F7F4] transition-colors"
               >
@@ -452,7 +460,7 @@ export default function NavBar() {
               >
                 All
               </Link>
-              {CATEGORIES.map((cat) => (
+              {CATEGORIES.filter((cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id)).map((cat) => (
                 <Link
                   key={cat.id}
                   href={`/search?category=${cat.id}`}
@@ -497,23 +505,26 @@ export default function NavBar() {
       )}
 
       {/* ── Mobile drawer ──────────────────────────────────────────────── */}
-      {mobileOpen && (
+      <div
+        className={`fixed inset-0 md:hidden ${mobileOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+        aria-modal="true"
+        role="dialog"
+        aria-hidden={!mobileOpen}
+      >
+        {/* Backdrop */}
         <div
-          className="fixed inset-0 z-[150] md:hidden"
-          aria-modal="true"
-          role="dialog"
-        >
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setMobileOpen(false)}
-          />
+          className={`absolute inset-0 bg-black/50 z-[390] transition-opacity duration-300
+            ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
+          onClick={() => setMobileOpen(false)}
+        />
 
-          {/* Drawer panel */}
-          <div
-            className="absolute top-0 right-0 h-full w-80 max-w-[90vw] bg-white
-              shadow-2xl flex flex-col overflow-y-auto"
-          >
+        {/* Drawer panel */}
+        <div
+          className={`absolute top-0 right-0 h-full w-[85%] max-w-sm bg-white z-[400]
+            shadow-2xl flex flex-col overflow-y-auto
+            transform transition-transform duration-300
+            ${mobileOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        >
             {/* Header */}
             <div
               className="flex items-center justify-between px-5 py-4 border-b
@@ -563,7 +574,7 @@ export default function NavBar() {
               <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
                 Categories
               </p>
-              {CATEGORIES.map((cat) => (
+              {CATEGORIES.filter((cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id)).map((cat) => (
                 <Link
                   key={cat.id}
                   href={`/search?category=${cat.id}`}
@@ -617,8 +628,7 @@ export default function NavBar() {
               </Link>
             </div>
           </div>
-        </div>
-      )}
+      </div>
     </>
   );
 }

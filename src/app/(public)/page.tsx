@@ -4,6 +4,8 @@ import type { Metadata } from 'next';
 import db from '@/lib/db';
 import CATEGORIES from '@/data/categories';
 import LISTINGS from '@/data/listings';
+
+const HIDDEN_CATEGORY_IDS = ['vehicles', 'property'];
 import ListingCard from '@/components/ListingCard';
 import CategoryPills from '@/components/CategoryPills';
 import TrustBadge from '@/components/TrustBadge';
@@ -84,7 +86,7 @@ const TRUST_BADGES = [
 // ── Fetch real stats + featured listings from DB ──────────────────────────────
 async function getHomePageData() {
   try {
-    const [listingCount, memberCount, featuredListings] = await Promise.all([
+    const [listingCount, memberCount, featuredListings, categoryCounts] = await Promise.all([
       db.listing.count({ where: { status: 'ACTIVE', deletedAt: null } }),
       db.user.count({ where: { deletedAt: null } }),
       db.listing.findMany({
@@ -121,12 +123,17 @@ async function getHomePageData() {
           },
         },
       }),
+      db.listing.groupBy({
+        by: ['categoryId'],
+        where: { status: 'ACTIVE', deletedAt: null },
+        _count: { id: true },
+      }),
     ]);
 
-    return { listingCount, memberCount, featuredListings };
+    return { listingCount, memberCount, featuredListings, categoryCounts };
   } catch {
     // DB unavailable — return nulls to fall back to mock data
-    return { listingCount: null, memberCount: null, featuredListings: null };
+    return { listingCount: null, memberCount: null, featuredListings: null, categoryCounts: null };
   }
 }
 
@@ -184,7 +191,20 @@ const CONDITION_MAP: Record<string, string> = {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default async function HomePage() {
-  const { listingCount, memberCount, featuredListings } = await getHomePageData();
+  const { listingCount, memberCount, featuredListings, categoryCounts } = await getHomePageData();
+
+  // Build real count map, filter hidden categories
+  const countMap = categoryCounts
+    ? Object.fromEntries(categoryCounts.map((c) => [c.categoryId, c._count.id]))
+    : {};
+
+  const visibleCategories = CATEGORIES
+    .filter((cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id))
+    .map((cat) => ({
+      ...cat,
+      listingCount: countMap[cat.id] ?? cat.listingCount,
+    }))
+    .slice(0, 8);
 
   // Format stats — use real data if available, fall back to mock
   const STATS = [
@@ -316,7 +336,7 @@ export default async function HomePage() {
                     [background-repeat:no-repeat] [background-position:right_14px_center]"
                 >
                   <option value="">All categories</option>
-                  {CATEGORIES.map((c) => (
+                  {CATEGORIES.filter((c) => !HIDDEN_CATEGORY_IDS.includes(c.id)).map((c) => (
                     <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
                   ))}
                 </select>
@@ -382,7 +402,7 @@ export default async function HomePage() {
             href="/search"
             hrefLabel="All categories"
           />
-          <CategoryPills categories={CATEGORIES.slice(0, 8)} />
+          <CategoryPills categories={visibleCategories} />
         </section>
 
         {/* TRUST BADGES */}
