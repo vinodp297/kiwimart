@@ -26,9 +26,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   typescript: true,
 });
 
-// Disable body parsing — we need the raw body for signature verification
-export const config = { api: { bodyParser: false } };
-
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.text();
   const signature = (await headers()).get('stripe-signature');
