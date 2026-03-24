@@ -5,16 +5,7 @@
 // Replaces 3 specific Unsplash photo IDs that return 404 with working
 // alternatives from the same category.
 
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { loadEnvConfig } from '@next/env';
-
-loadEnvConfig(process.cwd());
-
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL!,
-});
-const prisma = new PrismaClient({ adapter });
+import db from '../src/lib/db';
 
 // Map of broken photo ID fragment → working replacement photo ID
 const REPLACEMENTS: Record<string, string> = {
@@ -35,7 +26,7 @@ async function main() {
     const brokenUrl = `https://images.unsplash.com/${brokenId}?w=800&h=600&fit=crop`;
     const workingUrl = `https://images.unsplash.com/${workingId}?w=800&h=600&fit=crop`;
 
-    const result = await prisma.$executeRaw`
+    const result = await db.$executeRaw`
       UPDATE "ListingImage"
       SET "r2Key" = ${workingUrl}
       WHERE "r2Key" = ${brokenUrl}
@@ -52,4 +43,4 @@ async function main() {
 
 main()
   .catch((e) => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
+  .finally(() => db.$disconnect());
