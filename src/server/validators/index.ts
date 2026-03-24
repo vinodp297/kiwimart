@@ -90,9 +90,7 @@ export const registerSchema = z
     username: usernameField,
     password: passwordField,
     confirmPassword: z.string().min(1, 'Please confirm your password'),
-    agreeTerms: z.literal(true, {
-      errorMap: () => ({ message: 'You must accept the Terms of Service' }),
-    }),
+    agreeTerms: z.literal<true>(true),
     agreeMarketing: z.boolean().default(false),
     turnstileToken: z.string().default(''),
   })
@@ -160,7 +158,7 @@ export const createListingSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v ? Number(v) : 0))
-    .pipe(z.number().min(0).max(500).optional()),
+    .pipe(z.number().min(0).max(500)),
   pickupAddress: z.string().max(200).optional(),
   region: nzRegionField,
   suburb: z
