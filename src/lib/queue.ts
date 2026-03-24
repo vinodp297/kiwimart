@@ -42,7 +42,8 @@ export function getRedisConnection(): IORedis {
 // ── Queue instances ──────────────────────────────────────────────────────────
 
 const defaultOpts = {
-  connection: getRedisConnection(),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  connection: getRedisConnection() as any,
   defaultJobOptions: {
     removeOnComplete: 100,
     removeOnFail: 50,

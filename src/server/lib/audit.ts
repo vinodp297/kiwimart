@@ -7,7 +7,7 @@
 // Failures are non-fatal: audit logging should never block the main action.
 // All calls are fire-and-forget (no await) from within server actions.
 
-import type { AuditAction } from '@prisma/client';
+import type { AuditAction, Prisma } from '@prisma/client';
 import db from '@/lib/db';
 
 interface AuditParams {
@@ -43,7 +43,7 @@ export function audit(params: AuditParams): void {
         action: params.action,
         entityType: params.entityType ?? null,
         entityId: params.entityId ?? null,
-        metadata: params.metadata ?? undefined,
+        metadata: (params.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
         ip: params.ip ?? null,
         userAgent: params.userAgent ?? null,
       },
