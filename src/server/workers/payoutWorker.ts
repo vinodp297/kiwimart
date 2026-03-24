@@ -17,7 +17,8 @@ import { audit } from '@/server/lib/audit';
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  apiVersion: '2026-02-25.clover' as any,
 });
 
 export function startPayoutWorker() {
@@ -102,7 +103,8 @@ export function startPayoutWorker() {
       return { transferId: transfer.id };
     },
     {
-      connection: getRedisConnection(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      connection: getRedisConnection() as any,
       concurrency: 2,
     }
   );

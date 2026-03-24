@@ -60,7 +60,8 @@ export function startEmailWorker() {
       });
     },
     {
-      connection: getRedisConnection(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      connection: getRedisConnection() as any,
       concurrency: 5,
       limiter: { max: 10, duration: 1000 }, // Max 10 emails/sec (Postmark limit)
     }

@@ -43,7 +43,8 @@ export function startImageWorker() {
       return result;
     },
     {
-      connection: getRedisConnection(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      connection: getRedisConnection() as any,
       concurrency: 3, // Process 3 images at a time (memory-intensive)
     }
   );

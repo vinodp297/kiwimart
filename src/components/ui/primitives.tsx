@@ -505,17 +505,17 @@ export function Alert({
 // ─────────────────────────────────────────────────────────────────────────────
 // Divider
 // ─────────────────────────────────────────────────────────────────────────────
-export function Divider({ label }: { label?: string }) {
+export function Divider({ label, className }: { label?: string; className?: string }) {
   if (label) {
     return (
-      <div className="relative flex items-center gap-3 my-2">
+      <div className={`relative flex items-center gap-3 my-2${className ? ` ${className}` : ''}`}>
         <div className="flex-1 h-px bg-[#E3E0D9]" />
         <span className="text-[11.5px] text-[#9E9A91] font-medium shrink-0">{label}</span>
         <div className="flex-1 h-px bg-[#E3E0D9]" />
       </div>
     );
   }
-  return <hr className="border-[#E3E0D9] my-2" />;
+  return <hr className={`border-[#E3E0D9] my-2${className ? ` ${className}` : ''}`} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
