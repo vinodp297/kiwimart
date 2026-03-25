@@ -139,17 +139,43 @@ export async function createOrder(params: {
   });
 
   // 5d. Create Stripe PaymentIntent — FIX 7: clean up order on failure
+  // FIX A: Hard-fail if seller's Connect account is invalid.
+  // Never silently omit transfer_data — that would send money to the platform
+  // instead of the seller.
   const isRealConnectAccount =
     typeof listing.seller.stripeAccountId === 'string' &&
     /^acct_[A-Za-z0-9]{16,}$/.test(listing.seller.stripeAccountId);
+
+  if (!isRealConnectAccount) {
+    // Cancel orphan order — seller account is not valid
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'CANCELLED' },
+    });
+
+    audit({
+      userId: user.id,
+      action: 'ORDER_STATUS_CHANGED',
+      entityType: 'Order',
+      entityId: order.id,
+      metadata: {
+        trigger: 'INVALID_CONNECT_ACCOUNT',
+        sellerStripeAccountId: listing.seller.stripeAccountId,
+      },
+      ip,
+    });
+
+    return {
+      success: false,
+      error: 'Seller payment account is not properly configured. Please contact support.',
+    };
+  }
 
   try {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: totalNzd,
       currency: 'nzd',
-      ...(isRealConnectAccount
-        ? { transfer_data: { destination: listing.seller.stripeAccountId! } }
-        : {}),
+      transfer_data: { destination: listing.seller.stripeAccountId! },
       payment_method_types: ['card', 'afterpay_clearpay'],
       metadata: {
         orderId: order.id,

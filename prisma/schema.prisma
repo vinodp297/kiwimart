@@ -163,6 +163,8 @@ model User {
   sellerEnabled       Boolean @default(false)
   stripeAccountId     String? @unique  // Stripe Connect account ID
   stripeOnboarded     Boolean @default(false)
+  stripeChargesEnabled  Boolean @default(false)  // Synced from Stripe account.updated webhook
+  stripePayoutsEnabled  Boolean @default(false)  // Synced from Stripe account.updated webhook
   payoutBankAccount   String? // Encrypted — last 4 digits only stored in plain
 
   // Flags

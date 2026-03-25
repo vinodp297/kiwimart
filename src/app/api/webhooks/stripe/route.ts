@@ -46,23 +46,29 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  // ── Idempotency: skip if already processed ──────────────────────────────
-  const existingEvent = await db.stripeEvent.findUnique({
-    where: { id: event.id },
-  });
-  if (existingEvent) {
-    console.log(`[Webhook] Duplicate event ${event.id} — skipping`);
-    return NextResponse.json({ received: true });
+  // ── Idempotency: race-safe insert-or-skip ───────────────────────────────
+  // Use try/catch on create instead of find-then-create to eliminate the
+  // race window where two parallel retries both pass the findUnique check.
+  // P2002 = Prisma unique constraint violation (event already processed).
+  try {
+    await db.stripeEvent.create({
+      data: {
+        id: event.id,
+        type: event.type,
+      },
+    });
+  } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      'code' in err &&
+      (err as { code: string }).code === 'P2002'
+    ) {
+      console.log(`[Webhook] Duplicate event ${event.id} — already processed`);
+      return NextResponse.json({ received: true });
+    }
+    // Re-throw non-duplicate errors
+    throw err;
   }
-
-  // Mark as processed BEFORE handling to prevent race conditions
-  // with parallel retries from Stripe
-  await db.stripeEvent.create({
-    data: {
-      id: event.id,
-      type: event.type,
-    },
-  });
 
   try {
     switch (event.type) {
@@ -123,17 +129,25 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
 
       case 'account.updated': {
-        // Seller completed Stripe Connect onboarding
+        // Sync Stripe Connect onboarding status — BOTH true AND false.
+        // All three checks must pass for a seller to be fully onboarded:
+        //   details_submitted: seller completed the onboarding form
+        //   charges_enabled: Stripe can process charges to this account
+        //   payouts_enabled: Stripe can pay out to this account's bank
         const account = event.data.object as Stripe.Account;
-        const detailsSubmitted = account.details_submitted;
-        const chargesEnabled = account.charges_enabled;
+        const onboarded =
+          account.details_submitted === true &&
+          account.charges_enabled === true &&
+          account.payouts_enabled === true;
 
-        if (detailsSubmitted && chargesEnabled) {
-          await db.user.updateMany({
-            where: { stripeAccountId: account.id },
-            data: { stripeOnboarded: true },
-          });
-        }
+        await db.user.updateMany({
+          where: { stripeAccountId: account.id },
+          data: {
+            stripeOnboarded: onboarded,
+            stripeChargesEnabled: account.charges_enabled ?? false,
+            stripePayoutsEnabled: account.payouts_enabled ?? false,
+          },
+        });
         break;
       }
 

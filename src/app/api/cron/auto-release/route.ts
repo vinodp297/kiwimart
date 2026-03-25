@@ -1,6 +1,6 @@
 // src/app/api/cron/auto-release/route.ts
 // ─── Vercel Cron — Auto-Release Escrow ───────────────────────────────────────
-// Runs hourly (schedule: "0 * * * *" in vercel.json).
+// Runs daily at 2:00 AM UTC (schedule: "0 2 * * *" in vercel.json).
 // Sends day-2 and day-3 buyer reminders, then releases overdue escrow.
 
 import { NextRequest, NextResponse } from 'next/server';

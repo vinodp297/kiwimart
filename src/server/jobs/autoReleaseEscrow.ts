@@ -2,7 +2,8 @@
 // ─── Auto-Release Escrow Job ──────────────────────────────────────────────────
 // Captures Stripe payment and marks order COMPLETED for dispatched orders
 // that have not been confirmed by the buyer after 4 BUSINESS days.
-// Called daily by Vercel Cron via /api/cron/auto-release.
+// Called daily at 2:00 AM UTC by Vercel Cron via /api/cron/auto-release
+// (schedule: "0 2 * * *" in vercel.json).
 
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';

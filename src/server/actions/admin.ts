@@ -1,7 +1,9 @@
 'use server';
-// src/server/actions/admin.ts  (Sprint 8 — hardened admin actions)
+// src/server/actions/admin.ts  (Sprint 9 — database sessions)
 // ─── Admin Server Actions ─────────────────────────────────────────────────────
-// All actions do a FRESH DB check on every call — never trust JWT alone.
+// All actions do a FRESH DB check on every call via requireAdmin().
+// With database sessions, banning a user + deleting their session rows
+// means instant revocation — no waiting for JWT expiry.
 
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';

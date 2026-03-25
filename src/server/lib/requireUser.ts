@@ -1,7 +1,12 @@
 // src/server/lib/requireUser.ts
 // ─── Shared auth + ban check for all sensitive server actions ─────────────────
-// Always does a fresh DB lookup — never trusts JWT claims alone.
-// If the user is banned in DB, throws immediately even if their JWT is valid.
+// With database sessions (strategy: 'database'), session data is always fresh
+// from the DB via the adapter. The session() callback populates user fields
+// directly from the User row on every request.
+//
+// Defence-in-depth: we still check isBanned from the session (which IS fresh
+// with DB sessions) rather than trusting blindly. If a ban happens between
+// session reads (within updateAge window), requireUser() catches it.
 
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
@@ -21,7 +26,9 @@ export async function requireUser(): Promise<AuthenticatedUser> {
     throw new Error('Unauthorised — please sign in');
   }
 
-  // ALWAYS do a fresh DB check on sensitive actions
+  // With DB sessions, session.user.isBanned is fresh from the DB.
+  // But as defence-in-depth, also do a direct DB check on mutations
+  // to catch bans that happened within the updateAge window.
   const user = await db.user.findUnique({
     where: { id: session.user.id },
     select: {
@@ -39,6 +46,8 @@ export async function requireUser(): Promise<AuthenticatedUser> {
   }
 
   if (user.isBanned) {
+    // Delete their sessions to force logout on next request
+    await db.session.deleteMany({ where: { userId: user.id } }).catch(() => {});
     throw new Error(
       'Your account has been suspended. Contact support@kiwimart.co.nz for help.'
     );
