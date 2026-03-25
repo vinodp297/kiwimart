@@ -103,6 +103,9 @@ export default function SellPage() {
   const [price, setPrice] = useState('');
   const [offersEnabled, setOffersEnabled] = useState(true);
   const [gstIncluded, setGstIncluded] = useState(false);
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [isNegotiable, setIsNegotiable] = useState(false);
+  const [shipsNationwide, setShipsNationwide] = useState(false);
 
   // Step 4 — Shipping
   const [shippingOption, setShippingOption] = useState<ShippingOption | ''>('');
@@ -344,6 +347,9 @@ export default function SellPage() {
       price: parseFloat(price),
       offersEnabled,
       gstIncluded,
+      isUrgent,
+      isNegotiable,
+      shipsNationwide,
       shippingOption: shippingOption.toUpperCase(),
       shippingPrice: shippingPrice ? parseFloat(shippingPrice) : undefined,
       region,
@@ -393,7 +399,9 @@ export default function SellPage() {
                 setSubmitted(false); setStep(1);
                 setImages([]); setTitle(''); setDescription('');
                 setCategoryId(''); setSubcategory(''); setCondition('');
-                setPrice(''); setShippingOption(''); setShippingPrice('');
+                setPrice(''); setOffersEnabled(true); setGstIncluded(false);
+                setIsUrgent(false); setIsNegotiable(false); setShipsNationwide(false);
+                setShippingOption(''); setShippingPrice('');
                 setRegion(''); setSuburb('');
               }}>
                 List another item
@@ -875,6 +883,54 @@ export default function SellPage() {
                       <p className="text-[13px] font-semibold text-[#141414]">GST included in price</p>
                       <p className="text-[12px] text-[#9E9A91] mt-0.5">
                         Only if you&apos;re a GST-registered NZ business (IRD number required).
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-red-300 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isUrgent}
+                      onChange={(e) => setIsUrgent(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-red-500 cursor-pointer"
+                    />
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#141414]">🔥 Urgent sale</p>
+                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
+                        Highlights your listing to buyers looking for quick deals.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-blue-300 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={isNegotiable}
+                      onChange={(e) => setIsNegotiable(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-blue-500 cursor-pointer"
+                    />
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#141414]">💬 Price is negotiable</p>
+                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
+                        Signals to buyers that you&apos;re open to a lower price discussion.
+                      </p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-emerald-300 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={shipsNationwide}
+                      onChange={(e) => setShipsNationwide(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-emerald-500 cursor-pointer"
+                    />
+                    <div>
+                      <p className="text-[13px] font-semibold text-[#141414]">📦 Ships anywhere in NZ</p>
+                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
+                        Your listing will appear in the &quot;Ships NZ wide&quot; filter.
                       </p>
                     </div>
                   </label>

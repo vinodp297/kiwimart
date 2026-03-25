@@ -5,6 +5,22 @@
 // in the session() callback — these types reflect that.
 
 import type { DefaultSession, DefaultUser } from 'next-auth';
+import type { JWT as DefaultJWT } from 'next-auth/jwt';
+
+declare module 'next-auth/jwt' {
+  interface JWT extends DefaultJWT {
+    id?: string;
+    isAdmin?: boolean;
+    isBanned?: boolean;
+    sellerEnabled?: boolean;
+    stripeOnboarded?: boolean;
+    displayName?: string;
+    username?: string;
+    avatarUrl?: string | null;
+    emailVerified?: string | null;
+    idVerified?: boolean;
+  }
+}
 
 declare module 'next-auth' {
   interface Session {

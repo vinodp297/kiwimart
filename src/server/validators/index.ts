@@ -152,6 +152,9 @@ export const createListingSchema = z.object({
     ),
   offersEnabled: z.boolean().default(true),
   gstIncluded: z.boolean().default(false),
+  isUrgent: z.boolean().default(false),
+  isNegotiable: z.boolean().default(false),
+  shipsNationwide: z.boolean().default(false),
   shippingOption: shippingEnum,
   // Shipping price in NZD dollars (0 = free, null = not applicable)
   shippingPrice: z

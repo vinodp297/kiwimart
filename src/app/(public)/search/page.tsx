@@ -29,12 +29,21 @@ export default async function SearchPage({
   const priceMax = typeof sp.priceMax === 'string' && sp.priceMax ? Number(sp.priceMax) : undefined;
   const sort = (typeof sp.sort === 'string' ? sp.sort : 'newest') as SortOption;
   const page = typeof sp.page === 'string' ? Math.max(1, parseInt(sp.page, 10) || 1) : 1;
+  // Quick-filter chips
+  const isUrgent        = sp.isUrgent === 'true';
+  const isNegotiable    = sp.isNegotiable === 'true';
+  const shipsNationwide = sp.shipsNationwide === 'true';
+  const verifiedOnly    = sp.verifiedOnly === 'true';
 
   let initialResults;
   try {
     initialResults = await searchListings({
       query: q, category, subcategory, condition, region,
       priceMin, priceMax, sort, page, pageSize: 24,
+      isUrgent: isUrgent || undefined,
+      isNegotiable: isNegotiable || undefined,
+      shipsNationwide: shipsNationwide || undefined,
+      verifiedOnly: verifiedOnly || undefined,
     });
   } catch {
     initialResults = { listings: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 0, hasNextPage: false };

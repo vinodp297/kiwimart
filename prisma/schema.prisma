@@ -317,7 +317,16 @@ model Listing {
   
   // Commerce
   offersEnabled Boolean @default(true)
-  
+
+  // Quick-filter flags (Feature: Quick Filter Chips)
+  isUrgent        Boolean  @default(false)  // Seller needs to sell fast
+  isNegotiable    Boolean  @default(false)  // Price is negotiable
+  shipsNationwide Boolean  @default(false)  // Ships anywhere in NZ
+
+  // Price-drop tracking (Feature: Price Dropped badge)
+  previousPriceNzd Int?      // Last price before a drop (cents)
+  priceDroppedAt   DateTime? // When the last price drop occurred
+
   // Engagement counters (denormalised for query performance)
   viewCount    Int @default(0)
   watcherCount Int @default(0)

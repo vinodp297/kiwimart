@@ -12,6 +12,11 @@ export interface SearchParams {
   sort?: 'newest' | 'oldest' | 'price-asc' | 'price-desc' | 'most-watched'
   page?: number
   pageSize?: number
+  // Quick-filter chips
+  isUrgent?: boolean
+  isNegotiable?: boolean
+  shipsNationwide?: boolean
+  verifiedOnly?: boolean
 }
 
 export interface SearchResult {

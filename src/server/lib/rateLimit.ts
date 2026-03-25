@@ -96,8 +96,11 @@ export async function rateLimit(
   type: RateLimitKey,
   identifier: string
 ): Promise<RateLimitResult> {
-  // In development / test — skip rate limiting so tests don't need Redis
-  if (process.env.NODE_ENV === 'development' && !process.env.UPSTASH_REDIS_REST_URL) {
+  // In development / test — skip rate limiting when Redis isn't configured.
+  // Also skip when URL is a placeholder (same pattern as PostHog guard).
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? '';
+  const redisConfigured = redisUrl.length > 0 && !redisUrl.includes('placeholder');
+  if (process.env.NODE_ENV === 'development' && !redisConfigured) {
     return { success: true, remaining: 999, reset: Date.now() + 60_000, retryAfter: 0 };
   }
 
