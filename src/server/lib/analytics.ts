@@ -60,7 +60,7 @@ export function trackEvent(
     });
   } catch {
     // Analytics failures are non-fatal — log and continue
-    console.warn('[Analytics] Failed to track event:', event);
+    // Analytics failures are non-fatal — swallowed silently
   }
 }
 
@@ -84,7 +84,7 @@ export function identifyUser(
       properties,
     });
   } catch {
-    console.warn('[Analytics] Failed to identify user');
+    // Analytics identify failed — non-fatal
   }
 }
 

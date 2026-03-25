@@ -8,6 +8,7 @@ import {
   sendDeliveryReminderEmail,
   sendFinalDeliveryReminderEmail,
 } from '@/server/email';
+import { logger } from '@/shared/logger';
 
 export async function sendDeliveryReminders(): Promise<void> {
   const now = new Date();
@@ -52,7 +53,7 @@ export async function sendDeliveryReminders(): Promise<void> {
     }),
   ]);
 
-  console.log(`[REMINDERS] Day-2: ${day2Orders.length}, Day-3: ${day3Orders.length}`);
+  logger.info('reminders.started', { day2: day2Orders.length, day3: day3Orders.length });
 
   for (const order of day2Orders) {
     try {
@@ -66,7 +67,7 @@ export async function sendDeliveryReminders(): Promise<void> {
         confirmUrl: `${appUrl}/dashboard/buyer`,
       });
     } catch (err) {
-      console.error(`[REMINDERS] Day-2 failed for order ${order.id}:`, err);
+      logger.error('reminders.day2.failed', { orderId: order.id, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -82,7 +83,7 @@ export async function sendDeliveryReminders(): Promise<void> {
         confirmUrl: `${appUrl}/dashboard/buyer`,
       });
     } catch (err) {
-      console.error(`[REMINDERS] Day-3 failed for order ${order.id}:`, err);
+      logger.error('reminders.day3.failed', { orderId: order.id, error: err instanceof Error ? err.message : String(err) });
     }
   }
 }

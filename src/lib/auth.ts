@@ -60,7 +60,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (process.env.NODE_ENV === 'production') {
           const turnstileOk = await verifyTurnstile(turnstileToken);
           if (!turnstileOk) {
-            console.warn('[Auth] Turnstile verification failed for:', email);
+            // Turnstile verification failed — silent return null
             return null;
           }
         }
