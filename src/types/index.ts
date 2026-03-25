@@ -85,6 +85,13 @@ export interface ListingCard {
   shippingOption: ShippingOption;
   shippingPrice: number | null; // null = free / pickup only
   offersEnabled: boolean;
+  // Quick-filter flags (default false when absent)
+  isUrgent?: boolean;
+  isNegotiable?: boolean;
+  shipsNationwide?: boolean;
+  // Price-drop tracking (null/absent = no drop recorded)
+  previousPrice?: number | null;
+  priceDroppedAt?: string | null;
 }
 
 /** Full detail shape — used on listing detail page */
@@ -294,7 +301,7 @@ export interface Review {
   sellerReply: string | null;
 }
 
-// ─────────────────────────────── Filters (Search page, unchanged) ────────────
+// ─────────────────────────────── Filters (Search page) ──────────────────────
 
 export interface SearchFilters {
   query: string;
@@ -305,6 +312,11 @@ export interface SearchFilters {
   priceMin: string;
   priceMax: string;
   sort: SortOption;
+  // Quick filter chips
+  isUrgent: boolean;
+  isNegotiable: boolean;
+  shipsNationwide: boolean;
+  verifiedOnly: boolean;
 }
 
 // ─────────────────────────────── Shared UI ───────────────────────────────────

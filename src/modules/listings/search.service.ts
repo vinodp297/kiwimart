@@ -20,6 +20,11 @@ const SearchParamsSchema = z.object({
   sort: z.enum(['newest', 'oldest', 'price-asc', 'price-desc', 'most-watched']).optional(),
   page: z.coerce.number().int().min(1).max(1000).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
+  // Quick-filter chips
+  isUrgent: z.boolean().optional(),
+  isNegotiable: z.boolean().optional(),
+  shipsNationwide: z.boolean().optional(),
+  verifiedOnly: z.boolean().optional(),
 })
 
 function mapCondition(c: string): ListingCard['condition'] {
@@ -49,6 +54,10 @@ export class SearchService {
       sort = 'newest',
       page = 1,
       pageSize = 24,
+      isUrgent,
+      isNegotiable,
+      shipsNationwide,
+      verifiedOnly,
     } = params
 
     const trimmedQuery = query?.trim() || ''
@@ -69,6 +78,12 @@ export class SearchService {
             },
           }
         : {}),
+      // Quick-filter chips
+      ...(isUrgent ? { isUrgent: true } : {}),
+      ...(isNegotiable ? { isNegotiable: true } : {}),
+      ...(shipsNationwide ? { shipsNationwide: true } : {}),
+      // Verified seller filter
+      ...(verifiedOnly ? { seller: { idVerified: true } } : {}),
     }
 
     if (useFts) {
@@ -124,6 +139,11 @@ export class SearchService {
           shippingOption: true,
           shippingNzd: true,
           offersEnabled: true,
+          isUrgent: true,
+          isNegotiable: true,
+          shipsNationwide: true,
+          previousPriceNzd: true,
+          priceDroppedAt: true,
           status: true,
           viewCount: true,
           watcherCount: true,
@@ -179,6 +199,11 @@ export class SearchService {
       shippingOption: row.shippingOption.toLowerCase() as ListingCard['shippingOption'],
       shippingPrice: row.shippingNzd != null ? row.shippingNzd / 100 : null,
       offersEnabled: row.offersEnabled,
+      isUrgent: row.isUrgent,
+      isNegotiable: row.isNegotiable,
+      shipsNationwide: row.shipsNationwide,
+      previousPrice: row.previousPriceNzd != null ? row.previousPriceNzd / 100 : null,
+      priceDroppedAt: row.priceDroppedAt ? row.priceDroppedAt.toISOString() : null,
     }))
 
     const totalPages = Math.ceil(totalCount / pageSize)

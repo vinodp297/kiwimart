@@ -113,6 +113,27 @@ export default function ListingActions({ listing }: Props) {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
+            {/* Buyer Protection Badge */}
+            <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200
+              rounded-xl px-4 py-2.5">
+              <svg
+                className="shrink-0 text-emerald-600"
+                width="18" height="18" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2"
+              >
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <path d="m9 12 2 2 4-4"/>
+              </svg>
+              <div>
+                <p className="text-[12.5px] font-bold text-emerald-800 leading-tight">
+                  $3,000 Buyer Protection
+                </p>
+                <p className="text-[11px] text-emerald-700 leading-tight">
+                  Payment held securely until you confirm delivery
+                </p>
+              </div>
+            </div>
+
             {/* Buy Now */}
             <Link href={`/checkout/${listing.id}`}>
               <button
@@ -188,23 +209,6 @@ export default function ListingActions({ listing }: Props) {
           </div>
         )}
 
-        {/* Escrow trust strip */}
-        <div className="mt-4 pt-4 border-t border-[#F0EDE8]">
-          <div className="flex items-start gap-2.5">
-            <svg
-              className="shrink-0 mt-0.5 text-[#D4A843]"
-              width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2"
-            >
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              <path d="m9 12 2 2 4-4"/>
-            </svg>
-            <p className="text-[11.5px] text-[#73706A] leading-relaxed">
-              Protected by KiwiMart&apos;s <strong className="text-[#141414]">$3,000 Buyer Protection</strong>.
-              Payment held securely until you confirm delivery.
-            </p>
-          </div>
-        </div>
       </div>
 
       {/* ── Make Offer Modal ───────────────────────────────────────────────── */}

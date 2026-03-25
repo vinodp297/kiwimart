@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import CATEGORIES from '@/data/categories';
 import ListingCard from '@/components/ListingCard';
 import EmptyState from '@/components/EmptyState';
+import QuickFilterChips from '@/components/QuickFilterChips';
 import type { Condition, NZRegion, SortOption, SearchFilters, ListingCard as ListingCardType } from '@/types';
 import { CONDITION_LABELS } from '@/lib/utils';
 import Link from 'next/link';
@@ -148,6 +149,11 @@ export default function SearchPageClient({
     priceMin: searchParams.get('priceMin') ?? '',
     priceMax: searchParams.get('priceMax') ?? '',
     sort: (searchParams.get('sort') as SortOption) ?? 'newest',
+    // Quick-filter chips (boolean URL params)
+    isUrgent:        searchParams.get('isUrgent') === 'true',
+    isNegotiable:    searchParams.get('isNegotiable') === 'true',
+    shipsNationwide: searchParams.get('shipsNationwide') === 'true',
+    verifiedOnly:    searchParams.get('verifiedOnly') === 'true',
   };
 
   const currentPage = initialResults.page;
@@ -165,6 +171,23 @@ export default function SearchPageClient({
         // Reset subcategory when category changes
         if (key === 'category') params.delete('subcategory');
         // Reset page when filters change
+        params.delete('page');
+        router.replace(`/search?${params.toString()}`, { scroll: false });
+      });
+    },
+    [searchParams, router, startTransition]
+  );
+
+  // Toggle a boolean URL param (sets 'true' or removes the key)
+  const setBoolParam = useCallback(
+    (key: string, value: boolean) => {
+      startTransition(() => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (value) {
+          params.set(key, 'true');
+        } else {
+          params.delete(key);
+        }
         params.delete('page');
         router.replace(`/search?${params.toString()}`, { scroll: false });
       });
@@ -207,6 +230,10 @@ export default function SearchPageClient({
     filters.region,
     filters.priceMin,
     filters.priceMax,
+    filters.isUrgent,
+    filters.isNegotiable,
+    filters.shipsNationwide,
+    filters.verifiedOnly,
   ].filter(Boolean).length;
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -347,6 +374,19 @@ export default function SearchPageClient({
         </FilterSelect>
       </div>
 
+      {/* ── Quick filter chips ───────────────────────────────────── */}
+      <div className="mb-3">
+        <QuickFilterChips
+          active={{
+            isUrgent:        filters.isUrgent,
+            isNegotiable:    filters.isNegotiable,
+            shipsNationwide: filters.shipsNationwide,
+            verifiedOnly:    filters.verifiedOnly,
+          }}
+          onToggle={(key, value) => setBoolParam(key, value)}
+        />
+      </div>
+
       {/* ── Subcategory pills (below filter shelf) ───────────────── */}
       {activeCat && (
         <div
@@ -422,6 +462,18 @@ export default function SearchPageClient({
                 setParam('priceMax', '');
               }}
             />
+          )}
+          {filters.isUrgent && (
+            <FilterPill label="🔥 Urgent sale" onRemove={() => setBoolParam('isUrgent', false)} />
+          )}
+          {filters.isNegotiable && (
+            <FilterPill label="💬 Negotiable" onRemove={() => setBoolParam('isNegotiable', false)} />
+          )}
+          {filters.shipsNationwide && (
+            <FilterPill label="📦 Ships NZ wide" onRemove={() => setBoolParam('shipsNationwide', false)} />
+          )}
+          {filters.verifiedOnly && (
+            <FilterPill label="✅ Verified sellers" onRemove={() => setBoolParam('verifiedOnly', false)} />
           )}
 
           <button

@@ -14,6 +14,7 @@ import SellerPanel from './SellerPanel';
 import ShippingEstimate from './ShippingEstimate';
 import { getListingById } from '@/server/actions/listings';
 import { searchListings } from '@/server/actions/search';
+import { getSellerResponseTime } from '@/modules/listings/seller-response.service';
 import SafetyBanner from '@/components/SafetyBanner';
 import type { ListingDetail, SellerPublic, ListingImage, ListingAttribute, Condition, NZRegion, SellerBadge } from '@/types';
 
@@ -91,6 +92,9 @@ export default async function ListingDetailPage({
     attributes.unshift({ label: 'Condition', value: CONDITION_LABELS[condition] });
   }
 
+  const responseTimeLabel =
+    (await getSellerResponseTime(listing.seller.id)) ?? 'Response time unknown';
+
   const seller: SellerPublic = {
     id: listing.seller.id,
     username: listing.seller.username,
@@ -105,7 +109,7 @@ export default async function ListingDetailPage({
     memberSince: listing.seller.createdAt.toISOString(),
     activeListingCount: listing.seller._count.listings,
     soldCount: listing.seller._count.sellerOrders,
-    responseTimeLabel: 'Response time unknown',
+    responseTimeLabel,
     badges: (listing.seller.idVerified ? ['verified_id'] : []) as SellerBadge[],
   };
 
