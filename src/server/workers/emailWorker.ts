@@ -16,6 +16,7 @@ import {
   sendOrderDispatchedEmail,
 } from '@/server/email';
 import { audit } from '@/server/lib/audit';
+import { logger } from '@/shared/logger';
 
 export function startEmailWorker() {
   const worker = new Worker<EmailJobData>(
@@ -46,11 +47,11 @@ export function startEmailWorker() {
 
         case 'orderComplete':
           // Sprint 5: sendOrderCompleteEmail
-          console.log('[EmailWorker] orderComplete email — not yet implemented', payload);
+          logger.info('email.worker.order_complete_stub', { payload });
           break;
 
         default:
-          console.warn(`[EmailWorker] Unknown email type: ${type}`);
+          logger.warn('email.worker.unknown_type', { type });
       }
 
       // Audit successful send
@@ -68,7 +69,11 @@ export function startEmailWorker() {
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`[EmailWorker] Job ${job?.id} failed:`, err.message);
+    logger.error('email.worker.job_failed', {
+      jobId: job?.id,
+      jobType: job?.data?.type,
+      error: err.message,
+    });
     audit({
       action: 'ADMIN_ACTION',
       metadata: {
@@ -82,7 +87,7 @@ export function startEmailWorker() {
   });
 
   worker.on('completed', (job) => {
-    console.log(`[EmailWorker] Job ${job.id} completed (${job.data.type})`);
+    logger.info('email.worker.job_completed', { jobId: job.id, type: job.data.type });
   });
 
   return worker;

@@ -1,11 +1,12 @@
 // src/app/api/cron/auto-release/route.ts
 // ─── Vercel Cron — Auto-Release Escrow ───────────────────────────────────────
-// Runs hourly (schedule: "0 * * * *" in vercel.json).
+// Runs daily at 2:00 AM UTC (schedule: "0 2 * * *" in vercel.json).
 // Sends day-2 and day-3 buyer reminders, then releases overdue escrow.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processAutoReleases } from '@/server/jobs/autoReleaseEscrow';
 import { sendDeliveryReminders } from '@/server/jobs/buyerReminders';
+import { logger } from '@/shared/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,9 @@ export async function GET(request: NextRequest) {
       autoReleases: result,
     });
   } catch (error) {
-    console.error('[CRON] Auto-release job failed:', error);
+    logger.error('cron.auto_release.failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ success: false, error: 'Job failed' }, { status: 500 });
   }
 }

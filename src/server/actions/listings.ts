@@ -4,10 +4,10 @@
 
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { audit } from '@/server/lib/audit';
+import { requireUser } from '@/server/lib/requireUser';
 import {
   createListingSchema,
   updateListingSchema,
@@ -23,27 +23,26 @@ export async function createListing(
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders);
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'You must be signed in to create a listing.' };
+  // 1. Authenticate + ban check (fresh DB lookup every call)
+  let authedUser;
+  try {
+    authedUser = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
   }
 
-  // 2. Authorise — check account is not banned and email is verified
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { isBanned: true, emailVerified: true, sellerEnabled: true, stripeOnboarded: true },
+  // 2. Authorise — check email is verified and stripe onboarded
+  const userDetails = await db.user.findUnique({
+    where: { id: authedUser.id },
+    select: { emailVerified: true, sellerEnabled: true },
   });
-  if (!user || user.isBanned) {
-    return { success: false, error: 'Your account is not permitted to create listings.' };
-  }
-  if (!user.emailVerified) {
+  if (!userDetails?.emailVerified) {
     return {
       success: false,
       error: 'Please verify your email address before creating a listing.',
     };
   }
-  if (!user.stripeOnboarded) {
+  if (!authedUser.stripeOnboarded) {
     return {
       success: false,
       error: 'Please set up your payment account before listing items.',
@@ -62,7 +61,7 @@ export async function createListing(
   const data = parsed.data;
 
   // 4. Rate limit — 10 listings per hour per user
-  const limit = await rateLimit('listing', session.user.id);
+  const limit = await rateLimit('listing', authedUser.id);
   if (!limit.success) {
     return {
       success: false,
@@ -99,7 +98,7 @@ export async function createListing(
   const listing = await db.$transaction(async (tx) => {
     const created = await tx.listing.create({
       data: {
-        sellerId: session.user.id,
+        sellerId: authedUser.id,
         title: data.title,
         description: data.description,
         priceNzd: Math.round(data.price * 100), // Convert dollars → cents
@@ -137,9 +136,9 @@ export async function createListing(
     });
 
     // Enable seller if this is their first listing
-    if (!user.sellerEnabled) {
+    if (!userDetails.sellerEnabled) {
       await tx.user.update({
-        where: { id: session.user.id },
+        where: { id: authedUser.id },
         data: { sellerEnabled: true },
       });
     }
@@ -149,7 +148,7 @@ export async function createListing(
 
   // 6. Audit (fire-and-forget)
   audit({
-    userId: session.user.id,
+    userId: authedUser.id,
     action: 'LISTING_CREATED',
     entityType: 'Listing',
     entityId: listing.id,
@@ -160,7 +159,6 @@ export async function createListing(
   // 7. Revalidate affected cache paths
   revalidatePath('/');
   revalidatePath('/search');
-  revalidatePath(`/sellers/${session.user.username}`);
 
   return {
     success: true,
@@ -173,10 +171,12 @@ export async function createListing(
 export async function deleteListing(
   listingId: string
 ): Promise<ActionResult<void>> {
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
   }
 
   // 3. Validate
@@ -192,7 +192,7 @@ export async function deleteListing(
   if (!listing) {
     return { success: false, error: 'Listing not found.' };
   }
-  if (listing.sellerId !== session.user.id && !session.user.isAdmin) {
+  if (listing.sellerId !== user.id && !user.isAdmin) {
     return { success: false, error: 'You do not have permission to delete this listing.' };
   }
   if (listing.status === 'SOLD') {
@@ -207,7 +207,7 @@ export async function deleteListing(
 
   // 6. Audit
   audit({
-    userId: session.user.id,
+    userId: user.id,
     action: 'LISTING_DELETED',
     entityType: 'Listing',
     entityId: listingId,
@@ -226,10 +226,12 @@ export async function deleteListing(
 export async function toggleWatch(
   raw: unknown
 ): Promise<ActionResult<{ watching: boolean }>> {
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Sign in to save listings to your watchlist.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Sign in to save listings to your watchlist.' };
   }
 
   // 3. Validate
@@ -242,7 +244,7 @@ export async function toggleWatch(
   // 5. Toggle watchlist
   const existing = await db.watchlistItem.findUnique({
     where: {
-      userId_listingId: { userId: session.user.id, listingId },
+      userId_listingId: { userId: user.id, listingId },
     },
   });
 
@@ -250,7 +252,7 @@ export async function toggleWatch(
     // Unwatch
     await db.$transaction([
       db.watchlistItem.delete({
-        where: { userId_listingId: { userId: session.user.id, listingId } },
+        where: { userId_listingId: { userId: user.id, listingId } },
       }),
       db.listing.update({
         where: { id: listingId },
@@ -268,7 +270,7 @@ export async function toggleWatch(
 
     await db.$transaction([
       db.watchlistItem.create({
-        data: { userId: session.user.id, listingId },
+        data: { userId: user.id, listingId },
       }),
       db.listing.update({
         where: { id: listingId },

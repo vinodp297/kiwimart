@@ -3,9 +3,10 @@
 // ─── Message Server Actions ───────────────────────────────────────────────────
 
 import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
+import { requireUser } from '@/server/lib/requireUser';
+import { moderateText } from '@/server/lib/moderation';
 import { sendMessageSchema } from '@/server/validators';
 import type { ActionResult } from '@/types';
 
@@ -17,10 +18,12 @@ export async function sendMessage(
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders);
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Sign in to send messages.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Sign in to send messages.' };
   }
 
   // 3. Validate
@@ -35,7 +38,7 @@ export async function sendMessage(
   const { threadId, recipientId, listingId, body } = parsed.data;
 
   // 4. Rate limit — 20 messages per minute
-  const limit = await rateLimit('message', session.user.id);
+  const limit = await rateLimit('message', user.id);
   if (!limit.success) {
     return {
       success: false,
@@ -44,7 +47,7 @@ export async function sendMessage(
   }
 
   // 2. Authorise — cannot message yourself
-  if (recipientId === session.user.id) {
+  if (recipientId === user.id) {
     return { success: false, error: 'Cannot send a message to yourself.' };
   }
 
@@ -58,7 +61,7 @@ export async function sendMessage(
   }
 
   // 5b. Find or create thread
-  const [p1, p2] = [session.user.id, recipientId].sort();
+  const [p1, p2] = [user.id, recipientId].sort();
 
   let thread = threadId
     ? await db.messageThread.findUnique({ where: { id: threadId } })
@@ -80,15 +83,19 @@ export async function sendMessage(
     });
   }
 
-  // 5c. Content moderation hook (Sprint 5: plug in OpenAI moderation API)
-  const flagged = false;
-  const flagReason: string | null = null;
+  // 5c. Content moderation
+  const modResult = await moderateText(body, 'message');
+  if (!modResult.allowed) {
+    return { success: false, error: modResult.reason ?? 'Message contains prohibited content.' };
+  }
+  const flagged = modResult.flagged;
+  const flagReason: string | null = modResult.flagReason ?? null;
 
   // 5d. Create message
   const message = await db.message.create({
     data: {
       threadId: thread.id,
-      senderId: session.user.id,
+      senderId: user.id,
       body,
       flagged,
       flagReason,
@@ -112,8 +119,8 @@ export async function sendMessage(
       {
         threadId: thread.id,
         messageId: message.id,
-        senderId: session.user.id,
-        senderName: session.user.name ?? 'Someone',
+        senderId: user.id,
+        senderName: user.email.split('@')[0],
         preview: body.slice(0, 100),
         createdAt: message.createdAt.toISOString(),
       }
@@ -129,14 +136,18 @@ export async function sendMessage(
 // ── getThreads — used in buyer dashboard ─────────────────────────────────────
 
 export async function getMyThreads() {
-  const session = await auth();
-  if (!session?.user?.id) return [];
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return [];
+  }
 
   const threads = await db.messageThread.findMany({
     where: {
       OR: [
-        { participant1Id: session.user.id },
-        { participant2Id: session.user.id },
+        { participant1Id: user.id },
+        { participant2Id: user.id },
       ],
     },
     include: {
@@ -162,8 +173,12 @@ export async function getMyThreads() {
 // ── getThreadMessages — fetch all messages for a specific thread ─────────────
 
 export async function getThreadMessages(threadId: string) {
-  const session = await auth();
-  if (!session?.user?.id) return [];
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return [];
+  }
 
   // Verify user is a participant
   const thread = await db.messageThread.findUnique({
@@ -172,7 +187,7 @@ export async function getThreadMessages(threadId: string) {
   });
 
   if (!thread) return [];
-  if (thread.participant1Id !== session.user.id && thread.participant2Id !== session.user.id) {
+  if (thread.participant1Id !== user.id && thread.participant2Id !== user.id) {
     return [];
   }
 
@@ -180,7 +195,7 @@ export async function getThreadMessages(threadId: string) {
   await db.message.updateMany({
     where: {
       threadId,
-      senderId: { not: session.user.id },
+      senderId: { not: user.id },
       read: false,
     },
     data: { read: true, readAt: new Date() },

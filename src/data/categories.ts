@@ -59,7 +59,7 @@ export const CATEGORIES: Category[] = [
   },
   {
     id: 'business',
-    name: 'Business & Industrial',
+    name: 'Tools & Equipment',
     icon: '🔧',
     subcategories: ['Power Tools', 'Office Furniture', 'Machinery', 'Safety Equipment', 'Catering'],
     listingCount: 9_840,

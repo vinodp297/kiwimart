@@ -12,6 +12,9 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:run": "vitest run",
     "postinstall": "prisma generate"
   },
   "prisma": {
@@ -53,9 +56,12 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/sharp": "^0.31.1",
+    "@vitest/coverage-v8": "^4.1.1",
     "prisma": "^7.5.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.1",
+    "vitest-mock-extended": "^3.1.0"
   }
 }

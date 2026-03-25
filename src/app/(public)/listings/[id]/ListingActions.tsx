@@ -59,7 +59,7 @@ export default function ListingActions({ listing }: Props) {
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 sticky top-[76px]">
+      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 md:p-6 sticky top-[76px]">
         {/* Price row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
@@ -112,70 +112,77 @@ export default function ListingActions({ listing }: Props) {
             </Link>
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="flex flex-col gap-3">
             {/* Buy Now */}
             <Link href={`/checkout/${listing.id}`}>
-              <Button variant="gold" fullWidth size="lg">
+              <button
+                className="w-full min-h-[52px] bg-[#D4A843] hover:bg-[#B8912E]
+                  text-[#141414] font-semibold text-[15px] rounded-xl flex items-center
+                  justify-center gap-2 transition-colors"
+              >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+                  <line x1="3" y1="6" x2="21" y2="6"/>
+                  <path d="M16 10a4 4 0 0 1-8 0"/>
                 </svg>
                 Buy now — {formatPrice(listing.price)}
-              </Button>
+              </button>
             </Link>
 
             {/* Make Offer */}
             {listing.offersEnabled && (
-              <Button
-                variant="secondary"
-                fullWidth
-                size="md"
+              <button
                 onClick={() => setOfferOpen(true)}
+                className="w-full min-h-[52px] border-2 border-[#C9C5BC]
+                  hover:border-[#141414] text-[#141414] font-semibold text-[15px]
+                  rounded-xl flex items-center justify-center transition-colors bg-white"
               >
                 Make an offer
-              </Button>
+              </button>
             )}
 
-            {/* Watchlist + Share row */}
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="flex-1"
-                onClick={() => setWatched((w) => !w)}
-                aria-pressed={watched}
-              >
-                <svg
-                  width="14" height="14" viewBox="0 0 24 24"
-                  fill={watched ? '#D4A843' : 'none'}
-                  stroke={watched ? '#D4A843' : 'currentColor'}
-                  strokeWidth="2"
+            {/* Watch + Share row */}
+            <div className="border-t border-[#E3E0D9] pt-4 mt-1">
+              <div className="flex items-center justify-around">
+                <button
+                  onClick={() => setWatched((w) => !w)}
+                  aria-pressed={watched}
+                  className="flex items-center gap-2 px-6 py-3 text-[#73706A]
+                    hover:text-[#141414] transition-colors text-[14px] font-medium"
                 >
-                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                </svg>
-                {watched ? 'Watching' : 'Watch'}
-              </Button>
-
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex-1"
-                  onClick={handleShare}
-                  aria-label="Share listing"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                  <svg
+                    width="16" height="16" viewBox="0 0 24 24"
+                    fill={watched ? '#D4A843' : 'none'}
+                    stroke={watched ? '#D4A843' : 'currentColor'}
+                    strokeWidth="2"
+                  >
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
                   </svg>
-                  Share
-                </Button>
-                {shareTooltip && (
-                  <div className="absolute -top-9 left-1/2 -translate-x-1/2
-                    bg-[#141414] text-white text-[11px] px-2.5 py-1.5 rounded-lg
-                    whitespace-nowrap shadow-lg">
-                    Link copied!
-                  </div>
-                )}
+                  {watched ? 'Watching' : 'Watch'}
+                </button>
+
+                <div className="relative">
+                  <button
+                    onClick={handleShare}
+                    aria-label="Share listing"
+                    className="flex items-center gap-2 px-6 py-3 text-[#73706A]
+                      hover:text-[#141414] transition-colors text-[14px] font-medium"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                    Share
+                  </button>
+                  {shareTooltip && (
+                    <div className="absolute -top-9 left-1/2 -translate-x-1/2
+                      bg-[#141414] text-white text-[11px] px-2.5 py-1.5 rounded-lg
+                      whitespace-nowrap shadow-lg">
+                      Link copied!
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

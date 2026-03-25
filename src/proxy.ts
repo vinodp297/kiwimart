@@ -1,15 +1,16 @@
-// src/proxy.ts  (Sprint 3 — real auth guard)
+// src/proxy.ts  (Sprint 9 — database sessions)
 // ─── Next.js 16 Proxy (replaces middleware.ts) ────────────────────────────────
 // Runs on Node.js runtime before every request (edge runtime not supported here).
 //
-// Sprint 3 additions:
-//   • Real Auth.js JWT/session token verification (getToken from next-auth/jwt)
-//   • Protected path redirects with ?from= parameter
-//   • Auth page redirects for already-authenticated users
+// With database sessions (not JWT), we read the session token from the cookie
+// and look up the session + user directly in the DB. This means:
+//   * Ban checks happen at the proxy level — banned users are blocked immediately
+//   * Admin/seller status is always fresh from DB — no stale JWT claims
+//   * Only routes that need auth decisions trigger a DB lookup
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getToken } from 'next-auth/jwt';
+import db from '@/lib/db';
 
 // Paths that require a session. Matched with exact-segment logic so that
 // /sell blocks /sell and /sell/* but NOT /sellers/* (public seller profiles).
@@ -32,6 +33,42 @@ function matchesProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + '/')
   );
+}
+
+// Session cookie name varies by environment (Auth.js convention)
+function getSessionCookieName(): string {
+  return process.env.NODE_ENV === 'production'
+    ? '__Secure-authjs.session-token'
+    : 'authjs.session-token';
+}
+
+// Look up session + user from DB. Only called on routes that need auth decisions.
+async function getSessionUser(sessionToken: string) {
+  try {
+    const session = await db.session.findUnique({
+      where: { sessionToken },
+      select: {
+        expires: true,
+        user: {
+          select: {
+            id: true,
+            sellerEnabled: true,
+            isAdmin: true,
+            isBanned: true,
+          },
+        },
+      },
+    });
+
+    // Validate session is not expired and user is not banned
+    if (!session || session.expires <= new Date()) return null;
+    if (session.user.isBanned) return null;
+
+    return session.user;
+  } catch {
+    // DB error — fail open for public pages, closed for protected
+    return null;
+  }
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
@@ -71,26 +108,27 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── Auth.js JWT verification ──────────────────────────────────────────────
-  // Now using JWT sessions (strategy: 'jwt'), so getToken() works correctly.
-  // We read sellerEnabled from the token to make smart redirects.
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET!,
-    cookieName:
-      process.env.NODE_ENV === 'production'
-        ? '__Secure-authjs.session-token'
-        : 'authjs.session-token',
-  });
-
-  const isAuthenticated = !!token;
-  const tokenAny = token as { sellerEnabled?: boolean; isAdmin?: boolean } | null;
-  const sellerEnabled = !!tokenAny?.sellerEnabled;
-  const isAdmin = !!tokenAny?.isAdmin;
-  const defaultDashboard = sellerEnabled ? '/dashboard/seller' : '/dashboard/buyer';
+  // ── Database session verification ──────────────────────────────────────────
+  // With database sessions, the cookie contains a session token (not a JWT).
+  // We only do a DB lookup on routes that actually need auth decisions.
+  const sessionToken = request.cookies.get(getSessionCookieName())?.value;
 
   const isProtected = matchesProtected(pathname);
-  const isAuthPath  = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
+  const isAuthPath = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
+  const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
+
+  // Only do DB lookup when the route needs an auth decision
+  const needsAuthCheck = isProtected || isAuthPath;
+  let sessionUser: { id: string; sellerEnabled: boolean; isAdmin: boolean; isBanned: boolean } | null = null;
+
+  if (sessionToken && needsAuthCheck) {
+    sessionUser = await getSessionUser(sessionToken);
+  }
+
+  const isAuthenticated = !!sessionUser;
+  const sellerEnabled = sessionUser?.sellerEnabled ?? false;
+  const isAdmin = sessionUser?.isAdmin ?? false;
+  const defaultDashboard = sellerEnabled ? '/dashboard/seller' : '/dashboard/buyer';
 
   if (isProtected && !isAuthenticated) {
     const loginUrl = new URL('/login', request.url);
@@ -99,7 +137,6 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   // Admin-only routes: redirect non-admins to buyer dashboard
-  const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
   if (isAdminPath && isAuthenticated && !isAdmin) {
     return NextResponse.redirect(new URL('/dashboard/buyer', request.url));
   }

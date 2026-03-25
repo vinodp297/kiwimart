@@ -1,12 +1,13 @@
 // src/lib/auth.ts
 // ─── Auth.js v5 Configuration ────────────────────────────────────────────────
 // Providers: Credentials (email + Argon2id) + Google OAuth
-// Session strategy: database sessions (not JWT) for instant revocation
+// Session strategy: database sessions for instant revocation
 // Security extras:
-//   • Session tokens stored as secure, httpOnly, sameSite=lax cookies
-//   • CSRF protection: Auth.js built-in double-submit cookie
-//   • Cloudflare Turnstile verified inside credentials authorize()
-//   • Failed login attempts audit-logged (without the password)
+//   * Session tokens stored as secure, httpOnly, sameSite=lax cookies
+//   * CSRF protection: Auth.js built-in double-submit cookie
+//   * Cloudflare Turnstile verified inside credentials authorize()
+//   * Failed login attempts audit-logged (without the password)
+//   * Banning a user deletes their session rows → instant revocation
 //
 // References:
 //   https://authjs.dev/getting-started/installation?framework=next.js
@@ -24,10 +25,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
 
   session: {
-    strategy: 'jwt',
+    // DATABASE strategy — sessions stored in DB, not JWT
+    // Enables instant revocation: delete session row → user is logged out
+    strategy: 'database',
     // Sessions expire after 30 days of inactivity
     maxAge: 30 * 24 * 60 * 60,
-    // Sliding: extend session on each request
+    // Refresh session data from DB every 24h
     updateAge: 24 * 60 * 60,
   },
 
@@ -138,42 +141,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
-    // Persist extra user fields into the JWT on initial sign-in
-    async jwt({ token, user }) {
-      if (user) {
-        const dbUser = await db.user.findUnique({
-          where: { id: user.id },
-          select: {
-            id: true,
-            username: true,
-            sellerEnabled: true,
-            isAdmin: true,
-            idVerified: true,
-          },
-        });
-        if (dbUser) {
-          token.sub = dbUser.id;
-          token.username = dbUser.username;
-          token.sellerEnabled = dbUser.sellerEnabled;
-          token.isAdmin = dbUser.isAdmin;
-          token.idVerified = dbUser.idVerified;
-        }
-      }
-      return token;
-    },
+    // With database sessions, the session callback receives { session, user }
+    // where `user` is the full User row from the database (always fresh).
+    // No JWT involved — no stale claims.
+    async session({ session, user }) {
+      if (session.user && user) {
+        // user is the DB row — always fresh, never stale
+        const dbUser = user as typeof user & {
+          isAdmin: boolean;
+          isBanned: boolean;
+          sellerEnabled: boolean;
+          stripeOnboarded: boolean;
+          displayName: string;
+          username: string;
+          avatarUrl?: string | null;
+          idVerified: boolean;
+        };
 
-    // Expose JWT fields on the session object read by client/server components
-    async session({ session, token }) {
-      if (session.user && token.sub) {
-        session.user.id = token.sub;
-        // @ts-expect-error — extend session type in next-auth.d.ts
-        session.user.username = token.username;
-        // @ts-expect-error
-        session.user.sellerEnabled = token.sellerEnabled;
-        // @ts-expect-error
-        session.user.isAdmin = token.isAdmin;
-        // @ts-expect-error
-        session.user.idVerified = token.idVerified;
+        session.user.id = dbUser.id;
+        session.user.isAdmin = dbUser.isAdmin;
+        session.user.isBanned = dbUser.isBanned;
+        session.user.sellerEnabled = dbUser.sellerEnabled;
+        session.user.stripeOnboarded = dbUser.stripeOnboarded;
+        session.user.displayName = dbUser.displayName;
+        session.user.username = dbUser.username;
+        session.user.avatarUrl = dbUser.avatarUrl ?? null;
+        session.user.emailVerified = dbUser.emailVerified ?? null;
+        session.user.idVerified = dbUser.idVerified;
       }
       return session;
     },
@@ -193,12 +187,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   events: {
-    // Emit audit events for session lifecycle
+    // Audit logout events
+    // With database sessions, signOut receives the session object
     async signOut(params) {
-      const token = ('token' in params ? params.token : null);
-      if (token?.sub) {
+      const session = ('session' in params ? params.session : null) as
+        | { userId?: string }
+        | null;
+      if (session?.userId) {
         audit({
-          userId: token.sub,
+          userId: session.userId,
           action: 'USER_LOGOUT',
         });
       }
@@ -230,4 +227,3 @@ async function verifyTurnstile(token: string): Promise<boolean> {
     return process.env.NODE_ENV !== 'production';
   }
 }
-
