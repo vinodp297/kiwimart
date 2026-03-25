@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  quality:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Lint check
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run unit tests
+        run: npx vitest run --coverage
+        env:
+          NODE_ENV: test
+          NEXTAUTH_SECRET: test-secret-32-chars-minimum-x
+          NEXTAUTH_URL: http://localhost:3000
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_x
+          STRIPE_SECRET_KEY: sk_test_x
+          STRIPE_WEBHOOK_SECRET: whsec_test_x
+          PUSHER_APP_ID: test
+          PUSHER_KEY: test
+          PUSHER_SECRET: test
+          PUSHER_CLUSTER: us2
+          NEXT_PUBLIC_PUSHER_KEY: test
+          NEXT_PUBLIC_PUSHER_CLUSTER: us2
+          CLOUDFLARE_ACCOUNT_ID: test
+          R2_BUCKET_NAME: test
+          R2_ACCESS_KEY_ID: test
+          R2_SECRET_ACCESS_KEY: test
+          NEXT_PUBLIC_R2_PUBLIC_URL: https://test.r2.dev
+          UPSTASH_REDIS_REST_URL: https://test.upstash.io
+          UPSTASH_REDIS_REST_TOKEN: test
+          REDIS_URL: redis://localhost:6379
+          RESEND_API_KEY: re_placeholder
+          EMAIL_FROM: test@test.com
+          CRON_SECRET: test-cron-secret-32-chars-minx
+          WORKER_SECRET: test-worker-secret-32-chars-xx
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      - name: Build check
+        run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_APP_URL: https://kiwimart.vercel.app
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          PUSHER_APP_ID: ${{ secrets.PUSHER_APP_ID }}
+          PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
+          PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
+          PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
+          NEXT_PUBLIC_PUSHER_KEY: ${{ secrets.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ secrets.NEXT_PUBLIC_PUSHER_CLUSTER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          NEXT_PUBLIC_R2_PUBLIC_URL: ${{ secrets.NEXT_PUBLIC_R2_PUBLIC_URL }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}

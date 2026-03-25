@@ -47,6 +47,26 @@ function log(level: LogLevel, event: string, context?: LogContext): void {
   } else {
     // Production: structured JSON — one line per log entry
     console.log(JSON.stringify(entry))
+
+    // Forward error/fatal events to Sentry (fire-and-forget)
+    if (level === 'error' || level === 'fatal') {
+      import('@sentry/nextjs')
+        .then((Sentry) => {
+          if (context?.error instanceof Error) {
+            Sentry.captureException(context.error, {
+              extra: { event, ...context },
+            })
+          } else {
+            Sentry.captureMessage(event, {
+              level: level === 'fatal' ? 'fatal' : 'error',
+              extra: { event, ...context },
+            })
+          }
+        })
+        .catch(() => {
+          // Sentry not available — ignore silently
+        })
+    }
   }
 }
 

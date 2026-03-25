@@ -1,10 +1,11 @@
-// src/app/(protected)/admin/page.tsx  (Sprint 7)
+// src/app/(protected)/admin/page.tsx  (Sprint 12 — Observability)
 // ─── Admin KPI Dashboard ───────────────────────────────────────────────────────
 
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
+import SystemHealthWidget from '@/components/admin/SystemHealthWidget';
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { formatPrice } from '@/lib/utils';
@@ -18,26 +19,45 @@ export default async function AdminPage() {
   const isAdmin = (session?.user as { isAdmin?: boolean } | undefined)?.isAdmin;
   if (!isAdmin) redirect('/dashboard/buyer');
 
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - 7);
+  weekStart.setHours(0, 0, 0, 0);
+
   const [
     totalUsers,
     totalListings,
     totalOrders,
+    ordersToday,
     pendingDisputes,
     pendingReports,
+    completedOrders,
     revenueAgg,
+    revenueThisWeekAgg,
   ] = await Promise.all([
     db.user.count(),
     db.listing.count({ where: { status: 'ACTIVE' } }),
     db.order.count(),
+    db.order.count({ where: { createdAt: { gte: todayStart } } }),
     db.order.count({ where: { status: 'DISPUTED' } }),
     db.report.count({ where: { status: 'OPEN' } }),
+    db.order.count({ where: { status: 'COMPLETED' } }),
     db.order.aggregate({
       _sum: { totalNzd: true },
       where: { status: 'COMPLETED' },
     }),
+    db.order.aggregate({
+      _sum: { totalNzd: true },
+      where: { status: 'COMPLETED', completedAt: { gte: weekStart } },
+    }),
   ]);
 
   const totalRevenueCents = revenueAgg._sum.totalNzd ?? 0;
+  const revenueThisWeekCents = revenueThisWeekAgg._sum.totalNzd ?? 0;
+  const completionRate =
+    totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
 
   const kpis = [
     {
@@ -65,12 +85,24 @@ export default async function AdminPage() {
     {
       label: 'Total Orders',
       value: totalOrders.toLocaleString('en-NZ'),
+      subValue: `${ordersToday} today`,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M16.5 9.4 7.55 4.24" />
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
           <polyline points="3.29 7 12 12 20.71 7" />
           <line x1="12" y1="22" x2="12" y2="12" />
+        </svg>
+      ),
+      alert: false,
+    },
+    {
+      label: 'Completion Rate',
+      value: `${completionRate}%`,
+      subValue: `${completedOrders.toLocaleString('en-NZ')} completed`,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <polyline points="20 6 9 17 4 12" />
         </svg>
       ),
       alert: false,
@@ -111,6 +143,16 @@ export default async function AdminPage() {
       ),
       alert: false,
     },
+    {
+      label: 'Revenue This Week',
+      value: formatPrice(revenueThisWeekCents / 100),
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
+      ),
+      alert: false,
+    },
   ];
 
   const quickActions = [
@@ -138,14 +180,12 @@ export default async function AdminPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            {kpis.map(({ label, value, icon, alert, alertColour }) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {kpis.map(({ label, value, subValue, icon, alert, alertColour }) => (
               <div
                 key={label}
                 className={`bg-white rounded-2xl border p-5 ${
-                  alert
-                    ? (alertColour ?? 'border-[#E3E0D9]')
-                    : 'border-[#E3E0D9]'
+                  alert ? (alertColour ?? 'border-[#E3E0D9]') : 'border-[#E3E0D9]'
                 }`}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -157,31 +197,40 @@ export default async function AdminPage() {
                 <p className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] leading-none">
                   {value}
                 </p>
+                {subValue && (
+                  <p className="text-[11px] text-[#9E9A91] mt-1">{subValue}</p>
+                )}
               </div>
             ))}
           </div>
 
-          {/* Quick Actions */}
-          <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
-            <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">
-              Quick Actions
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {quickActions.map(({ label, href, icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className="flex items-center gap-3 p-4 rounded-xl border border-[#E3E0D9]
-                    hover:border-[#D4A843] hover:bg-[#F5ECD4]/30 transition-all duration-150"
-                >
-                  <span className="text-xl">{icon}</span>
-                  <span className="text-[13.5px] font-semibold text-[#141414]">{label}</span>
-                  <svg className="ml-auto text-[#C9C5BC]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
-                </Link>
-              ))}
+          {/* Quick Actions + System Health side by side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* Quick Actions */}
+            <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+              <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">
+                Quick Actions
+              </h2>
+              <div className="flex flex-col gap-3">
+                {quickActions.map(({ label, href, icon }) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="flex items-center gap-3 p-4 rounded-xl border border-[#E3E0D9]
+                      hover:border-[#D4A843] hover:bg-[#F5ECD4]/30 transition-all duration-150"
+                  >
+                    <span className="text-xl">{icon}</span>
+                    <span className="text-[13.5px] font-semibold text-[#141414]">{label}</span>
+                    <svg className="ml-auto text-[#C9C5BC]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  </Link>
+                ))}
+              </div>
             </div>
+
+            {/* System Health — auto-refreshes every 60s */}
+            <SystemHealthWidget />
           </div>
         </div>
       </main>

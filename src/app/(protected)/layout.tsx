@@ -1,20 +1,15 @@
 // src/app/(protected)/layout.tsx
 // ─── Protected Route Group Layout ────────────────────────────────────────────
-// Applies to: /dashboard/buyer, /dashboard/seller, /account/*
+// Applies to: /dashboard/buyer, /dashboard/seller, /account/*, /orders/*, etc.
 //
-// Sprint 3: Replace the mock session check with Auth.js server session:
-//
-//   import { getServerSession } from 'next-auth';
-//   import { authOptions } from '@/lib/auth';
-//   import { redirect } from 'next/navigation';
-//
-//   const session = await getServerSession(authOptions);
-//   if (!session?.user) redirect('/login?from=' + encodeURIComponent(/* request path */));
-//
-// The middleware.ts file provides an additional edge-level guard. This layout
-// adds a second server-side check as defence-in-depth.
+// Defence-in-depth: middleware.ts provides the first edge-level guard; this
+// layout adds a second server-side check so that even if middleware is somehow
+// bypassed, unauthenticated users are always redirected to /login.
 
 import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
+import { auth } from '@/lib/auth';
 
 export const metadata: Metadata = {
   title: {
@@ -25,12 +20,19 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function ProtectedLayout({
+export default async function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Sprint 3: session guard goes here (see comment above)
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    // Preserve the current path so the user lands back here after login
+    const reqHeaders = await headers();
+    const pathname = reqHeaders.get('x-invoke-path') ?? '/dashboard/buyer';
+    redirect(`/login?from=${encodeURIComponent(pathname)}`);
+  }
+
   return <>{children}</>;
 }
-
