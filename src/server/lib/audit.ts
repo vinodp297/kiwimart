@@ -9,6 +9,7 @@
 
 import type { AuditAction, Prisma } from '@prisma/client';
 import db from '@/lib/db';
+import { logger } from '@/shared/logger';
 
 interface AuditParams {
   userId?: string | null;
@@ -49,8 +50,20 @@ export function audit(params: AuditParams): void {
       },
     })
     .catch((err) => {
-      // Log to stderr but never throw — audit failures are non-fatal
-      // Audit log write failed — non-fatal, swallowed silently
+      logger.error('audit.write.failed', {
+        error: err instanceof Error ? err.message : String(err),
+        action: params.action,
+        entityType: params.entityType,
+        entityId: params.entityId,
+      });
     });
+
+  // Also emit a structured log line for observability (fire-and-forget DB above)
+  logger.info('audit.event', {
+    userId: params.userId ?? undefined,
+    action: params.action,
+    entityType: params.entityType,
+    entityId: params.entityId,
+  });
 }
 

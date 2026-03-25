@@ -46,6 +46,9 @@ Sentry.init({
     /ChunkLoadError/,
   ],
 
-  // Only enable in environments with a DSN
-  enabled: !!process.env.NEXT_PUBLIC_SENTRY_DSN,
+  // Only enable in production with a real DSN (not a placeholder)
+  enabled:
+    process.env.NODE_ENV === 'production' &&
+    !!process.env.NEXT_PUBLIC_SENTRY_DSN &&
+    !process.env.NEXT_PUBLIC_SENTRY_DSN.includes('placeholder'),
 });

@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import db from '@/lib/db';
+import { logger } from '@/shared/logger';
 
 // Paths that require a session. Matched with exact-segment logic so that
 // /sell blocks /sell and /sell/* but NOT /sellers/* (public seller profiles).
@@ -72,6 +73,8 @@ async function getSessionUser(sessionToken: string) {
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const requestStart = Date.now();
+  const requestId = crypto.randomUUID();
   const { pathname } = request.nextUrl;
 
   // ── Security headers (applied to all responses) ───────────────────────────
@@ -144,6 +147,18 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (isAuthPath && isAuthenticated) {
     return NextResponse.redirect(new URL(defaultDashboard, request.url));
   }
+
+  // ── Request ID + structured logging ──────────────────────────────────────
+  response.headers.set('x-request-id', requestId);
+
+  logger.info('http.request', {
+    requestId,
+    method: request.method,
+    path: pathname,
+    status: response.status,
+    latencyMs: Date.now() - requestStart,
+    userAgent: request.headers.get('user-agent')?.slice(0, 100) ?? undefined,
+  });
 
   return response;
 }
