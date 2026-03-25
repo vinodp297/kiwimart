@@ -22,6 +22,8 @@ import { requireUser } from '@/server/lib/requireUser';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
 import { stripe } from '@/infrastructure/stripe/client';
+import { paymentService } from '@/modules/payments/payment.service';
+import { orderService } from '@/modules/orders/order.service';
 import { z } from 'zod';
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
@@ -248,118 +250,17 @@ export async function createOrder(params: {
 export async function confirmDelivery(
   orderId: string
 ): Promise<ActionResult<void>> {
-  // 1. Authenticate + ban check
-  let user;
   try {
-    user = await requireUser();
+    const user = await requireUser();
+    const parsed = ConfirmDeliverySchema.safeParse({ orderId });
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0].message };
+    }
+    await orderService.confirmDelivery(parsed.data.orderId, user.id);
+    return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
-
-  // 3. Validate
-  const parsed = ConfirmDeliverySchema.safeParse({ orderId });
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.issues[0].message };
-  }
-
-  // 5a. Load order
-  const order = await db.order.findUnique({
-    where: { id: parsed.data.orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      listingId: true,
-      status: true,
-      stripePaymentIntentId: true,
-      totalNzd: true,
-      listing: { select: { title: true } },
-    },
-  });
-
-  if (!order) return { success: false, error: 'Order not found.' };
-
-  // 2. Authorise — only the buyer can confirm delivery
-  if (order.buyerId !== user.id) {
-    return { success: false, error: 'Only the buyer can confirm delivery.' };
-  }
-  if (order.status !== 'DISPATCHED' && order.status !== 'DELIVERED') {
-    return { success: false, error: 'Order is not in a deliverable state.' };
-  }
-
-  // 5b. Hard-fail guard — never complete an order with no payment reference
-  if (!order.stripePaymentIntentId) {
-    return {
-      success: false,
-      error: 'Cannot confirm delivery — payment reference missing. Please contact support@kiwimart.co.nz',
-    };
-  }
-
-  // Capture the PaymentIntent (releases escrow → seller gets paid)
-  try {
-    await stripe.paymentIntents.capture(order.stripePaymentIntentId);
-  } catch (stripeErr: unknown) {
-    const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
-    if (!msg.includes('already_captured') && !msg.includes('amount_capturable')) {
-      return { success: false, error: 'Payment capture failed. Please try again.' };
-    }
-    // Already captured — safe to continue
-  }
-
-  // 5c. Mark order as completed and update payout (ONLY after Stripe success)
-  await db.$transaction([
-    db.order.update({
-      where: { id: parsed.data.orderId },
-      data: { status: 'COMPLETED', completedAt: new Date() },
-    }),
-    db.payout.updateMany({
-      where: { orderId: parsed.data.orderId },
-      data: { status: 'PROCESSING', initiatedAt: new Date() },
-    }),
-    // Mark listing as sold
-    db.listing.update({
-      where: { id: order.listingId },
-      data: { status: 'SOLD', soldAt: new Date() },
-    }),
-  ]);
-
-  // 5d. Queue payout processing (3 business days delay)
-  try {
-    const seller = await db.user.findUnique({
-      where: { id: order.sellerId },
-      select: { stripeAccountId: true },
-    });
-    if (seller?.stripeAccountId) {
-      const { payoutQueue } = await import('@/lib/queue');
-      await payoutQueue.add(
-        'process-payout',
-        {
-          orderId: parsed.data.orderId,
-          sellerId: order.sellerId,
-          amountNzd: order.totalNzd,
-          stripeAccountId: seller.stripeAccountId,
-        },
-        {
-          delay: 3 * 24 * 60 * 60 * 1000, // 3 days
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5000 },
-        }
-      );
-    }
-  } catch {
-    console.warn('[Orders] Failed to queue payout — will need manual processing');
-  }
-
-  // 6. Audit
-  audit({
-    userId: user.id,
-    action: 'ORDER_STATUS_CHANGED',
-    entityType: 'Order',
-    entityId: parsed.data.orderId,
-    metadata: { newStatus: 'COMPLETED', previousStatus: order.status },
-  });
-
-  return { success: true, data: undefined };
 }
 
 // ── markDispatched — seller marks order dispatched ───────────────────────────
@@ -369,82 +270,15 @@ export async function markDispatched(params: {
   trackingNumber?: string;
   trackingUrl?: string;
 }): Promise<ActionResult<void>> {
-  // 1. Authenticate + ban check
-  let user;
   try {
-    user = await requireUser();
+    const user = await requireUser();
+    const parsed = MarkDispatchedSchema.safeParse(params);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0].message };
+    }
+    await orderService.markDispatched(parsed.data, user.id);
+    return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
-
-  // 3. Validate
-  const parsed = MarkDispatchedSchema.safeParse(params);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.issues[0].message };
-  }
-
-  const order = await db.order.findUnique({
-    where: { id: parsed.data.orderId },
-    select: {
-      id: true,
-      sellerId: true,
-      status: true,
-      buyerId: true,
-      listing: { select: { title: true } },
-      buyer: { select: { email: true, displayName: true } },
-    },
-  });
-
-  if (!order) return { success: false, error: 'Order not found.' };
-
-  // 2. Authorise
-  if (order.sellerId !== user.id) {
-    return { success: false, error: 'Only the seller can mark an order as dispatched.' };
-  }
-  if (order.status !== 'PAYMENT_HELD') {
-    return { success: false, error: 'Order must be in PAYMENT_HELD status to dispatch.' };
-  }
-
-  // 5. Update order
-  await db.order.update({
-    where: { id: parsed.data.orderId },
-    data: {
-      status: 'DISPATCHED',
-      dispatchedAt: new Date(),
-      trackingNumber: parsed.data.trackingNumber ?? null,
-      trackingUrl: parsed.data.trackingUrl ?? null,
-    },
-  });
-
-  // Notify buyer via email queue
-  try {
-    const { emailQueue } = await import('@/lib/queue');
-    await emailQueue.add('orderDispatched', {
-      type: 'orderDispatched' as const,
-      payload: {
-        to: order.buyer.email, buyerName: order.buyer.displayName,
-        listingTitle: order.listing.title, trackingNumber: parsed.data.trackingNumber,
-        trackingUrl: parsed.data.trackingUrl,
-        orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer`,
-      },
-    }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
-  } catch {
-    const { sendOrderDispatchedEmail } = await import('@/server/email');
-    sendOrderDispatchedEmail({
-      to: order.buyer.email, buyerName: order.buyer.displayName,
-      listingTitle: order.listing.title, trackingNumber: parsed.data.trackingNumber,
-      trackingUrl: parsed.data.trackingUrl, orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer`,
-    }).catch(() => {});
-  }
-
-  // 6. Audit
-  audit({
-    userId: user.id,
-    action: 'ORDER_STATUS_CHANGED',
-    entityType: 'Order',
-    entityId: parsed.data.orderId,
-    metadata: { newStatus: 'DISPATCHED', trackingNumber: parsed.data.trackingNumber },
-  });
-
-  return { success: true, data: undefined };
 }

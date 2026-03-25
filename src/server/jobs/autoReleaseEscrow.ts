@@ -7,7 +7,7 @@
 
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
-import { stripe } from '@/infrastructure/stripe/client';
+import { paymentService } from '@/modules/payments/payment.service';
 import { logger } from '@/shared/logger';
 
 /**
@@ -84,34 +84,31 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
         continue;
       }
 
-      // STEP C — Stripe capture FIRST, then DB update
+      // STEP C — Stripe capture FIRST via PaymentService, then DB update
       try {
-        await stripe.paymentIntents.capture(order.stripePaymentIntentId);
-      } catch (stripeErr: unknown) {
-        const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
-        // Skip if already captured — still safe to mark COMPLETED
-        if (!msg.includes('already captured') && !msg.includes('amount_capturable')) {
-          // Stripe capture failed — leave order as DISPATCHED
-          logger.error('escrow.auto_release.capture_failed', {
-            orderId: order.id,
-            error: msg,
+        await paymentService.capturePayment({
+          paymentIntentId: order.stripePaymentIntentId,
+          orderId: order.id,
+        });
+      } catch (captureErr) {
+        logger.error('escrow.auto_release.capture_failed', {
+          orderId: order.id,
+          error: captureErr instanceof Error ? captureErr.message : String(captureErr),
+          requiresManualReview: true,
+        });
+        audit({
+          userId: null,
+          action: 'ORDER_STATUS_CHANGED',
+          entityType: 'Order',
+          entityId: order.id,
+          metadata: {
+            trigger: 'AUTO_RELEASE_CAPTURE_FAILED',
+            error: captureErr instanceof Error ? captureErr.message : String(captureErr),
             requiresManualReview: true,
-          });
-          audit({
-            userId: null,
-            action: 'ORDER_STATUS_CHANGED',
-            entityType: 'Order',
-            entityId: order.id,
-            metadata: {
-              trigger: 'AUTO_RELEASE_CAPTURE_FAILED',
-              error: msg,
-              requiresManualReview: true,
-            },
-          });
-          errors++;
-          continue;
-        }
-        logger.info('escrow.auto_release.already_captured', { orderId: order.id });
+          },
+        });
+        errors++;
+        continue;
       }
 
       // DB update ONLY AFTER Stripe capture succeeds

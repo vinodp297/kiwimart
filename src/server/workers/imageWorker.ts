@@ -16,6 +16,7 @@ import { getRedisConnection } from '@/lib/queue';
 import type { ImageJobData } from '@/lib/queue';
 import { processImage } from '@/server/actions/imageProcessor';
 import { audit } from '@/server/lib/audit';
+import { logger } from '@/shared/logger';
 
 export function startImageWorker() {
   const worker = new Worker<ImageJobData>(
@@ -50,7 +51,7 @@ export function startImageWorker() {
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`[ImageWorker] Job ${job?.id} failed:`, err.message);
+    logger.error('image.worker.job_failed', { jobId: job?.id, imageId: job?.data?.imageId, error: err.message });
     audit({
       action: 'ADMIN_ACTION',
       metadata: {
@@ -64,7 +65,7 @@ export function startImageWorker() {
   });
 
   worker.on('completed', (job) => {
-    console.log(`[ImageWorker] Job ${job.id} completed — image ${job.data.imageId}`);
+    logger.info('image.worker.job_completed', { jobId: job.id, imageId: job.data.imageId });
   });
 
   return worker;

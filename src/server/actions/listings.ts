@@ -8,6 +8,7 @@ import db from '@/lib/db';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { audit } from '@/server/lib/audit';
 import { requireUser } from '@/server/lib/requireUser';
+import { listingService } from '@/modules/listings/listing.service';
 import {
   createListingSchema,
   updateListingSchema,
@@ -171,54 +172,15 @@ export async function createListing(
 export async function deleteListing(
   listingId: string
 ): Promise<ActionResult<void>> {
-  // 1. Authenticate + ban check
-  let user;
   try {
-    user = await requireUser();
+    const user = await requireUser();
+    await listingService.deleteListing(listingId, user.id, user.isAdmin);
+    revalidatePath('/dashboard/seller');
+    revalidatePath('/search');
+    return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
-
-  // 3. Validate
-  if (!listingId || typeof listingId !== 'string') {
-    return { success: false, error: 'Invalid listing ID.' };
-  }
-
-  // 2. Authorise — must own the listing (admins can also delete)
-  const listing = await db.listing.findUnique({
-    where: { id: listingId },
-    select: { id: true, sellerId: true, status: true, title: true },
-  });
-  if (!listing) {
-    return { success: false, error: 'Listing not found.' };
-  }
-  if (listing.sellerId !== user.id && !user.isAdmin) {
-    return { success: false, error: 'You do not have permission to delete this listing.' };
-  }
-  if (listing.status === 'SOLD') {
-    return { success: false, error: 'Sold listings cannot be deleted.' };
-  }
-
-  // 5. Soft delete
-  await db.listing.update({
-    where: { id: listingId },
-    data: { deletedAt: new Date(), status: 'REMOVED' },
-  });
-
-  // 6. Audit
-  audit({
-    userId: user.id,
-    action: 'LISTING_DELETED',
-    entityType: 'Listing',
-    entityId: listingId,
-    metadata: { title: listing.title },
-  });
-
-  // 7. Revalidate
-  revalidatePath('/dashboard/seller');
-  revalidatePath('/search');
-
-  return { success: true, data: undefined };
 }
 
 // ── toggleWatch ───────────────────────────────────────────────────────────────
@@ -226,103 +188,23 @@ export async function deleteListing(
 export async function toggleWatch(
   raw: unknown
 ): Promise<ActionResult<{ watching: boolean }>> {
-  // 1. Authenticate + ban check
-  let user;
   try {
-    user = await requireUser();
+    const user = await requireUser();
+    const parsed = toggleWatchSchema.safeParse(raw);
+    if (!parsed.success) {
+      return { success: false, error: 'Invalid listing ID.' };
+    }
+    const result = await listingService.toggleWatch(parsed.data.listingId, user.id);
+    return { success: true, data: result };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Sign in to save listings to your watchlist.' };
-  }
-
-  // 3. Validate
-  const parsed = toggleWatchSchema.safeParse(raw);
-  if (!parsed.success) {
-    return { success: false, error: 'Invalid listing ID.' };
-  }
-  const { listingId } = parsed.data;
-
-  // 5. Toggle watchlist
-  const existing = await db.watchlistItem.findUnique({
-    where: {
-      userId_listingId: { userId: user.id, listingId },
-    },
-  });
-
-  if (existing) {
-    // Unwatch
-    await db.$transaction([
-      db.watchlistItem.delete({
-        where: { userId_listingId: { userId: user.id, listingId } },
-      }),
-      db.listing.update({
-        where: { id: listingId },
-        data: { watcherCount: { decrement: 1 } },
-      }),
-    ]);
-    return { success: true, data: { watching: false } };
-  } else {
-    // Watch — verify listing exists first
-    const listing = await db.listing.findUnique({
-      where: { id: listingId, status: 'ACTIVE', deletedAt: null },
-      select: { id: true },
-    });
-    if (!listing) return { success: false, error: 'Listing not available.' };
-
-    await db.$transaction([
-      db.watchlistItem.create({
-        data: { userId: user.id, listingId },
-      }),
-      db.listing.update({
-        where: { id: listingId },
-        data: { watcherCount: { increment: 1 } },
-      }),
-    ]);
-    return { success: true, data: { watching: true } };
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
 }
 
 // ── getListingById ────────────────────────────────────────────────────────────
-// Public server function — used in listing detail page (not a server action)
+// Public server function — delegated to ListingService
 
 export async function getListingById(id: string) {
-  const listing = await db.listing.findUnique({
-    where: {
-      id,
-      status: { in: ['ACTIVE', 'RESERVED', 'SOLD'] },
-      deletedAt: null,
-    },
-    include: {
-      seller: {
-        select: {
-          id: true,
-          username: true,
-          displayName: true,
-          avatarKey: true,
-          bio: true,
-          region: true,
-          suburb: true,
-          idVerified: true,
-          createdAt: true,
-          _count: {
-            select: {
-              sellerOrders: { where: { status: 'COMPLETED' } },
-              listings: { where: { status: 'ACTIVE' } },
-            },
-          },
-        },
-      },
-      images: { orderBy: { order: 'asc' } },
-      attrs: { orderBy: { order: 'asc' } },
-    },
-  });
-
-  if (!listing) return null;
-
-  // Increment view count (fire-and-forget — don't await)
-  db.listing
-    .update({ where: { id }, data: { viewCount: { increment: 1 } } })
-    .catch(() => {});
-
-  return listing;
+  return listingService.getListingById(id);
 }
 

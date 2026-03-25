@@ -44,7 +44,7 @@ export function getQueueConnection(): IORedis {
   })
 
   _connection.on('error', (err) => {
-    console.error('[Queue] Redis connection error:', err.message)
+    // Redis connection error — non-fatal, BullMQ reconnects automatically
   })
 
   return _connection

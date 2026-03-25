@@ -1,0 +1,143 @@
+// src/modules/payments/webhook.service.ts
+// ─── Webhook Event Processing Service ────────────────────────────────────────
+// Handles Stripe webhook events. Framework-free — no Next.js imports.
+// Idempotency: race-safe insert-or-skip via P2002 unique constraint.
+
+import type { Stripe } from '@/infrastructure/stripe/client'
+import { logger } from '@/shared/logger'
+import { audit } from '@/server/lib/audit'
+import db from '@/lib/db'
+
+export class WebhookService {
+  /**
+   * Race-safe idempotency: try to insert, catch unique constraint violation.
+   * Returns true if this is a new event, false if already processed.
+   */
+  async markEventProcessed(eventId: string, type: string): Promise<boolean> {
+    try {
+      await db.stripeEvent.create({
+        data: { id: eventId, type },
+      })
+      return true
+    } catch (err: unknown) {
+      if (
+        err instanceof Error &&
+        'code' in err &&
+        (err as { code: string }).code === 'P2002'
+      ) {
+        logger.info('stripe.webhook.duplicate', { eventId, type })
+        return false
+      }
+      throw err
+    }
+  }
+
+  async processEvent(event: Stripe.Event): Promise<void> {
+    // Race-safe idempotency check
+    const isNew = await this.markEventProcessed(event.id, event.type)
+    if (!isNew) return
+
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        await this.handlePaymentIntentSucceeded(event)
+        break
+
+      case 'payment_intent.payment_failed':
+        await this.handlePaymentIntentFailed(event)
+        break
+
+      case 'account.updated':
+        await this.handleAccountUpdated(event)
+        break
+
+      case 'transfer.created':
+        await this.handleTransferCreated(event)
+        break
+
+      default:
+        break
+    }
+  }
+
+  private async handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> {
+    const pi = event.data.object as Stripe.PaymentIntent
+    const orderId = pi.metadata?.orderId
+    if (!orderId) return
+
+    await db.$transaction([
+      db.order.update({
+        where: { id: orderId, stripePaymentIntentId: pi.id },
+        data: { status: 'PAYMENT_HELD', updatedAt: new Date() },
+      }),
+      db.payout.upsert({
+        where: { orderId },
+        create: {
+          orderId,
+          userId: pi.metadata!.sellerId,
+          amountNzd: Math.round(
+            (pi.amount - (pi.application_fee_amount ?? 0)) * 1
+          ),
+          platformFeeNzd: pi.application_fee_amount ?? 0,
+          stripeFeeNzd: 0,
+          status: 'PENDING',
+        },
+        update: {},
+      }),
+    ])
+
+    audit({
+      action: 'PAYMENT_COMPLETED',
+      entityType: 'Order',
+      entityId: orderId,
+      metadata: { stripePaymentIntentId: pi.id, amountNzd: pi.amount },
+    })
+  }
+
+  private async handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
+    const pi = event.data.object as Stripe.PaymentIntent
+    const orderId = pi.metadata?.orderId
+    if (!orderId) return
+
+    await db.order.update({
+      where: { id: orderId, stripePaymentIntentId: pi.id },
+      data: { status: 'CANCELLED', updatedAt: new Date() },
+    })
+
+    audit({
+      action: 'PAYMENT_FAILED',
+      entityType: 'Order',
+      entityId: orderId,
+      metadata: {
+        stripePaymentIntentId: pi.id,
+        failureCode: pi.last_payment_error?.code,
+      },
+    })
+  }
+
+  private async handleAccountUpdated(event: Stripe.Event): Promise<void> {
+    const account = event.data.object as Stripe.Account
+    const onboarded =
+      account.details_submitted === true &&
+      account.charges_enabled === true &&
+      account.payouts_enabled === true
+
+    await db.user.updateMany({
+      where: { stripeAccountId: account.id },
+      data: {
+        stripeOnboarded: onboarded,
+        stripeChargesEnabled: account.charges_enabled ?? false,
+        stripePayoutsEnabled: account.payouts_enabled ?? false,
+      },
+    })
+  }
+
+  private async handleTransferCreated(event: Stripe.Event): Promise<void> {
+    const transfer = event.data.object as Stripe.Transfer
+    await db.payout.updateMany({
+      where: { stripeTransferId: transfer.id },
+      data: { status: 'PROCESSING' },
+    })
+  }
+}
+
+export const webhookService = new WebhookService()

@@ -50,7 +50,7 @@ export function audit(params: AuditParams): void {
     })
     .catch((err) => {
       // Log to stderr but never throw — audit failures are non-fatal
-      console.error('[AuditLog] Failed to write entry:', err);
+      // Audit log write failed — non-fatal, swallowed silently
     });
 }
 

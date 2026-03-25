@@ -1,9 +1,9 @@
 // src/server/email/transport.ts
 // ─── Email Transport Layer ────────────────────────────────────────────────────
-// Sends via Resend when RESEND_API_KEY is set; logs to console otherwise.
-// Swap this file to change email provider without touching any template code.
+// Sends via Resend when RESEND_API_KEY is set; logs via logger otherwise.
 
 import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client';
+import { logger } from '@/shared/logger';
 
 export async function sendTransactionalEmail({
   to,
@@ -17,12 +17,8 @@ export async function sendTransactionalEmail({
   const client = getEmailClient();
 
   if (!client) {
-    // Dev mode — print to console so email content is visible during development
-    console.log('\n📧 ─────────────────────────────────────────');
-    console.log(`📧 TO:      ${to}`);
-    console.log(`📧 SUBJECT: ${subject}`);
-    console.log('📧 [Email logged — add RESEND_API_KEY to .env.local to send]');
-    console.log('📧 ─────────────────────────────────────────\n');
+    // Dev mode — log email info so content is visible during development
+    logger.info('email.dev.logged', { to, subject });
     return { success: true, dev: true };
   }
 
@@ -30,13 +26,13 @@ export async function sendTransactionalEmail({
     const fromAddress = EMAIL_FROM;
     const { error } = await client.emails.send({ from: fromAddress, to, subject, html });
     if (error) {
-      console.error('[EMAIL] Resend error:', error);
+      logger.error('email.send.failed', { to, subject, error: String(error) });
       return { success: false };
     }
-    console.log(`[EMAIL] ✓ Sent "${subject}" → ${to}`);
+    logger.info('email.sent', { to, subject });
     return { success: true };
   } catch (err) {
-    console.error('[EMAIL] Transport failed:', err);
+    logger.error('email.transport.failed', { to, subject, error: err instanceof Error ? err.message : String(err) });
     return { success: false };
   }
 }

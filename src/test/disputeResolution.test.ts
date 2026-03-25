@@ -41,7 +41,7 @@ describe('Dispute resolution atomicity', () => {
 
     const result = await resolveDispute('order-no-pi', 'buyer')
     expect(result.success).toBe(false)
-    expect(getError(result)).toContain('no payment intent')
+    expect(getError(result)).toContain('Payment reference missing')
 
     // DB should never be updated
     expect(db.order.update).not.toHaveBeenCalled()
@@ -80,7 +80,7 @@ describe('Dispute resolution atomicity', () => {
 
     const result = await resolveDispute('order-dispute-1', 'buyer')
     expect(result.success).toBe(false)
-    expect(getError(result)).toContain('Stripe refund failed')
+    expect(getError(result)).toContain('Refund failed')
 
     // DB should NOT be updated
     expect(db.order.update).not.toHaveBeenCalled()
@@ -98,7 +98,7 @@ describe('Dispute resolution atomicity', () => {
 
     const result = await resolveDispute('order-dispute-2', 'seller')
     expect(result.success).toBe(false)
-    expect(getError(result)).toContain('Stripe capture failed')
+    expect(getError(result)).toContain('Payment capture failed')
 
     expect(db.$transaction).not.toHaveBeenCalled()
   })

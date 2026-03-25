@@ -148,7 +148,7 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
       })
     );
   } catch {
-    console.warn(`[Images] Failed to delete original: ${r2Key}`);
+    // Failed to delete original — non-critical
   }
 
   return {
