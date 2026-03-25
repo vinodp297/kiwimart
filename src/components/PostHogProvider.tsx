@@ -2,21 +2,28 @@
 // src/components/PostHogProvider.tsx
 // ─── PostHog Analytics Provider ──────────────────────────────────────────────
 // Wraps the app with PostHog analytics. Only sends userId — no PII.
-// Disabled when NEXT_PUBLIC_POSTHOG_KEY is not set.
+// Disabled when NEXT_PUBLIC_POSTHOG_KEY is missing or is a placeholder value.
 
 import posthog from 'posthog-js';
 import { PostHogProvider as PHProvider } from 'posthog-js/react';
 import { useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
-// Initialize PostHog only once, only in browser, only with a key
-if (
-  typeof window !== 'undefined' &&
-  process.env.NEXT_PUBLIC_POSTHOG_KEY &&
-  !posthog.__loaded
-) {
-  posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
+const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
+
+// A real PostHog project key always starts with 'phc_' and is never a placeholder.
+// Checking this at module scope prevents posthog.init() from firing with a fake key
+// (which causes 401/404 network errors that can crash the page JS).
+const isConfigured =
+  typeof POSTHOG_KEY === 'string' &&
+  POSTHOG_KEY.startsWith('phc_') &&
+  !POSTHOG_KEY.toLowerCase().includes('placeholder');
+
+// Initialize PostHog only once, only in browser, only with a real key
+if (typeof window !== 'undefined' && isConfigured && !posthog.__loaded) {
+  posthog.init(POSTHOG_KEY!, {
+    api_host: POSTHOG_HOST,
     // Privacy: don't capture PII
     autocapture: true,
     capture_pageview: true,
@@ -35,10 +42,11 @@ function PostHogIdentifier() {
   const { data: session } = useSession();
 
   useEffect(() => {
-    if (session?.user?.id && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+    if (!isConfigured) return;
+    if (session?.user?.id) {
       // Only identify with userId — no email, name, or other PII
       posthog.identify(session.user.id);
-    } else if (!session?.user && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+    } else if (!session?.user) {
       posthog.reset();
     }
   }, [session?.user?.id, session?.user]);
@@ -47,8 +55,8 @@ function PostHogIdentifier() {
 }
 
 export default function PostHogProvider({ children }: { children: React.ReactNode }) {
-  // If no PostHog key, just render children without the provider
-  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+  // Not configured (missing key or placeholder) — render children without PostHog
+  if (!isConfigured) {
     return <>{children}</>;
   }
 
