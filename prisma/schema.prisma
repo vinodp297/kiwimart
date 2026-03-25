@@ -637,6 +637,18 @@ model AuditLog {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Stripe Event Idempotency — prevents duplicate webhook processing
+// ─────────────────────────────────────────────────────────────────────────────
+
+model StripeEvent {
+  id          String   @id // Stripe event ID e.g. evt_xxx
+  type        String
+  processedAt DateTime @default(now())
+
+  @@map("stripe_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Categories (managed in code — this table is seeded, not user-editable)
 // ─────────────────────────────────────────────────────────────────────────────
 

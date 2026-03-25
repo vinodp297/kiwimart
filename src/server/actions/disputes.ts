@@ -7,9 +7,9 @@
 //   • Order must be in DISPATCHED or DELIVERED status
 
 import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
+import { requireUser } from '@/server/lib/requireUser';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
 
@@ -33,10 +33,12 @@ export async function openDispute(
   const reqHeaders = await headers();
   const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
   }
 
   // 3. Validate
@@ -68,7 +70,7 @@ export async function openDispute(
   if (!order) return { success: false, error: 'Order not found.' };
 
   // 2. Authorise — buyer only
-  if (order.buyerId !== session.user.id) {
+  if (order.buyerId !== user.id) {
     return { success: false, error: 'Only the buyer can open a dispute.' };
   }
 
@@ -129,7 +131,7 @@ export async function openDispute(
 
   // 6. Audit
   audit({
-    userId: session.user.id,
+    userId: user.id,
     action: 'DISPUTE_OPENED',
     entityType: 'Order',
     entityId: orderId,

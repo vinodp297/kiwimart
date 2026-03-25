@@ -11,7 +11,8 @@
 //
 // Security:
 //   • Signature verified with STRIPE_WEBHOOK_SECRET (Stripe-Signature header)
-//   • Idempotency: events are ignored if already processed (check event ID)
+//   • Idempotency: duplicate events rejected via StripeEvent DB table
+//   • Payout creation uses upsert to prevent duplicates
 //   • All DB writes wrapped in transactions
 
 import { headers } from 'next/headers';
@@ -19,7 +20,6 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
-import { sendOrderDispatchedEmail } from '@/server/email';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-02-25.clover',
@@ -46,9 +46,23 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  // Idempotency: skip if already processed
-  // Sprint 4: store processed event IDs in a Redis set or DB table
-  // For now, rely on Stripe's at-least-once delivery + our own DB constraints
+  // ── Idempotency: skip if already processed ──────────────────────────────
+  const existingEvent = await db.stripeEvent.findUnique({
+    where: { id: event.id },
+  });
+  if (existingEvent) {
+    console.log(`[Webhook] Duplicate event ${event.id} — skipping`);
+    return NextResponse.json({ received: true });
+  }
+
+  // Mark as processed BEFORE handling to prevent race conditions
+  // with parallel retries from Stripe
+  await db.stripeEvent.create({
+    data: {
+      id: event.id,
+      type: event.type,
+    },
+  });
 
   try {
     switch (event.type) {
@@ -62,16 +76,18 @@ export async function POST(request: Request): Promise<NextResponse> {
             where: { id: orderId, stripePaymentIntentId: pi.id },
             data: { status: 'PAYMENT_HELD', updatedAt: new Date() },
           }),
-          // Create payout record (released when buyer confirms delivery)
-          db.payout.create({
-            data: {
+          // Idempotent payout creation — upsert prevents duplicates
+          db.payout.upsert({
+            where: { orderId },
+            create: {
               orderId,
               userId: pi.metadata!.sellerId,
-              amountNzd: Math.round((pi.amount - (pi.application_fee_amount ?? 0)) * 1), // already in cents
+              amountNzd: Math.round((pi.amount - (pi.application_fee_amount ?? 0)) * 1),
               platformFeeNzd: pi.application_fee_amount ?? 0,
-              stripeFeeNzd: 0, // Sprint 5: calculate actual Stripe fee from fee object
+              stripeFeeNzd: 0,
               status: 'PENDING',
             },
+            update: {}, // no-op if already exists
           }),
         ]);
 
@@ -145,4 +161,3 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   return NextResponse.json({ received: true });
 }
-
