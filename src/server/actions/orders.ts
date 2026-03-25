@@ -19,6 +19,7 @@ import { headers } from 'next/headers';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
 import { requireUser } from '@/server/lib/requireUser';
+import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
 import Stripe from 'stripe';
 import { z } from 'zod';
@@ -65,7 +66,7 @@ export async function createOrder(params: {
   };
 }): Promise<ActionResult<{ orderId: string; clientSecret: string }>> {
   const reqHeaders = await headers();
-  const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+  const ip = getClientIp(reqHeaders as unknown as Headers);
 
   // 1. Authenticate + ban check
   let user;
@@ -73,6 +74,12 @@ export async function createOrder(params: {
     user = await requireUser();
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+  }
+
+  // 2. Rate limit — 5 orders per hour per user
+  const limit = await rateLimit('order', user.id);
+  if (!limit.success) {
+    return { success: false, error: 'Too many orders placed. Please wait before trying again.' };
   }
 
   // 3. Validate input
@@ -284,12 +291,26 @@ export async function confirmDelivery(
     return { success: false, error: 'Order is not in a deliverable state.' };
   }
 
-  // 5b. Capture the PaymentIntent (releases escrow → seller gets paid)
-  if (order.stripePaymentIntentId) {
-    await stripe.paymentIntents.capture(order.stripePaymentIntentId);
+  // 5b. Hard-fail guard — never complete an order with no payment reference
+  if (!order.stripePaymentIntentId) {
+    return {
+      success: false,
+      error: 'Cannot confirm delivery — payment reference missing. Please contact support@kiwimart.co.nz',
+    };
   }
 
-  // 5c. Mark order as completed and update payout
+  // Capture the PaymentIntent (releases escrow → seller gets paid)
+  try {
+    await stripe.paymentIntents.capture(order.stripePaymentIntentId);
+  } catch (stripeErr: unknown) {
+    const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
+    if (!msg.includes('already_captured') && !msg.includes('amount_capturable')) {
+      return { success: false, error: 'Payment capture failed. Please try again.' };
+    }
+    // Already captured — safe to continue
+  }
+
+  // 5c. Mark order as completed and update payout (ONLY after Stripe success)
   await db.$transaction([
     db.order.update({
       where: { id: parsed.data.orderId },

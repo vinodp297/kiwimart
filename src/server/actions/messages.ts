@@ -3,10 +3,10 @@
 // ─── Message Server Actions ───────────────────────────────────────────────────
 
 import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { requireUser } from '@/server/lib/requireUser';
+import { moderateText } from '@/server/lib/moderation';
 import { sendMessageSchema } from '@/server/validators';
 import type { ActionResult } from '@/types';
 
@@ -83,9 +83,13 @@ export async function sendMessage(
     });
   }
 
-  // 5c. Content moderation hook (Sprint 5: plug in OpenAI moderation API)
-  const flagged = false;
-  const flagReason: string | null = null;
+  // 5c. Content moderation
+  const modResult = await moderateText(body, 'message');
+  if (!modResult.allowed) {
+    return { success: false, error: modResult.reason ?? 'Message contains prohibited content.' };
+  }
+  const flagged = modResult.flagged;
+  const flagReason: string | null = modResult.flagReason ?? null;
 
   // 5d. Create message
   const message = await db.message.create({
@@ -132,14 +136,18 @@ export async function sendMessage(
 // ── getThreads — used in buyer dashboard ─────────────────────────────────────
 
 export async function getMyThreads() {
-  const session = await auth();
-  if (!session?.user?.id) return [];
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return [];
+  }
 
   const threads = await db.messageThread.findMany({
     where: {
       OR: [
-        { participant1Id: session.user.id },
-        { participant2Id: session.user.id },
+        { participant1Id: user.id },
+        { participant2Id: user.id },
       ],
     },
     include: {
@@ -165,8 +173,12 @@ export async function getMyThreads() {
 // ── getThreadMessages — fetch all messages for a specific thread ─────────────
 
 export async function getThreadMessages(threadId: string) {
-  const session = await auth();
-  if (!session?.user?.id) return [];
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return [];
+  }
 
   // Verify user is a participant
   const thread = await db.messageThread.findUnique({
@@ -175,7 +187,7 @@ export async function getThreadMessages(threadId: string) {
   });
 
   if (!thread) return [];
-  if (thread.participant1Id !== session.user.id && thread.participant2Id !== session.user.id) {
+  if (thread.participant1Id !== user.id && thread.participant2Id !== user.id) {
     return [];
   }
 
@@ -183,7 +195,7 @@ export async function getThreadMessages(threadId: string) {
   await db.message.updateMany({
     where: {
       threadId,
-      senderId: { not: session.user.id },
+      senderId: { not: user.id },
       read: false,
     },
     data: { read: true, readAt: new Date() },

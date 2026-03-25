@@ -236,6 +236,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expires])
 }
 
 model VerificationToken {
@@ -442,6 +443,8 @@ model Order {
   @@index([listingId])
   @@index([status])
   @@index([createdAt])
+  @@index([status, dispatchedAt])
+  @@index([buyerId, status])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -477,6 +480,8 @@ model Offer {
   @@index([sellerId])
   @@index([status])
   @@index([expiresAt])
+  @@index([listingId, status])
+  @@index([buyerId, status])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -636,6 +641,7 @@ model AuditLog {
   @@index([action])
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([action, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

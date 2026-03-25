@@ -78,9 +78,18 @@ const offerLimiter = () =>
     analytics: true,
   });
 
+/** 5 orders per hour per user — prevent checkout abuse */
+const orderLimiter = () =>
+  new Ratelimit({
+    redis: getRedis(),
+    limiter: Ratelimit.slidingWindow(5, '1 h'),
+    prefix: 'km:rl:order',
+    analytics: true,
+  });
+
 // ── Rate limit types ──────────────────────────────────────────────────────────
 
-export type RateLimitKey = 'auth' | 'register' | 'message' | 'listing' | 'offer';
+export type RateLimitKey = 'auth' | 'register' | 'message' | 'listing' | 'offer' | 'order';
 
 export interface RateLimitResult {
   success: boolean;
@@ -117,6 +126,7 @@ export async function rateLimit(
     message:  messageLimiter,
     listing:  listingLimiter,
     offer:    offerLimiter,
+    order:    orderLimiter,
   };
 
   const limiter = limiterFactories[type]();
