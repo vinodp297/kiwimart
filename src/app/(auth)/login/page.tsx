@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { signIn, getSession } from 'next-auth/react';
+import { signIn } from 'next-auth/react';
 import { Button, Input, Alert, Divider } from '@/components/ui/primitives';
 
 declare global {
@@ -100,17 +100,13 @@ export default function LoginPage() {
         return;
       }
 
-      // Smart redirect: honour explicit ?from= param; otherwise route by role.
-      // Use window.location for a hard navigation so the new page gets a fresh
-      // server render with the session cookie — avoids router.push / router.refresh races.
+      // Hard-navigate to the destination so the new page gets a fresh server
+      // render with the session cookie already present.
+      // We do NOT call getSession() here — it races with the cookie being
+      // committed and can throw, swallowing the redirect entirely.
+      // The dashboard pages themselves handle seller ↔ buyer routing server-side.
       const fromParam = searchParams.get('from');
-      if (fromParam) {
-        window.location.href = fromParam;
-      } else {
-        const sess = await getSession();
-        const sellerEnabled = (sess?.user as { sellerEnabled?: boolean } | undefined)?.sellerEnabled;
-        window.location.href = sellerEnabled ? '/dashboard/seller' : '/dashboard/buyer';
-      }
+      window.location.href = fromParam || '/dashboard/buyer';
     } catch {
       // signIn can throw on network error or unexpected Auth.js exception.
       setError('Something went wrong. Please try again.');
