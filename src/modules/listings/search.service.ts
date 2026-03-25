@@ -1,0 +1,197 @@
+// src/modules/listings/search.service.ts
+// ─── Search Service ──────────────────────────────────────────────────────────
+// Full-text search using Postgres tsvector. Framework-free.
+
+import db from '@/lib/db'
+import { Prisma } from '@prisma/client'
+import { z } from 'zod'
+import { logger } from '@/shared/logger'
+import type { ListingCard } from '@/types'
+import type { SearchParams, SearchResult } from './listing.types'
+
+const SearchParamsSchema = z.object({
+  query: z.string().max(200).optional(),
+  category: z.string().max(100).optional(),
+  subcategory: z.string().max(100).optional(),
+  condition: z.string().max(50).optional(),
+  region: z.string().max(100).optional(),
+  priceMin: z.number().min(0).optional(),
+  priceMax: z.number().min(0).optional(),
+  sort: z.enum(['newest', 'oldest', 'price-asc', 'price-desc', 'most-watched']).optional(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+})
+
+function mapCondition(c: string): ListingCard['condition'] {
+  const map: Record<string, ListingCard['condition']> = {
+    NEW: 'new',
+    LIKE_NEW: 'like-new',
+    GOOD: 'good',
+    FAIR: 'fair',
+    PARTS: 'parts',
+  }
+  return map[c] ?? 'good'
+}
+
+export class SearchService {
+  async searchListings(rawParams: SearchParams): Promise<SearchResult> {
+    const parseResult = SearchParamsSchema.safeParse(rawParams)
+    const params = parseResult.success ? parseResult.data : {}
+
+    const {
+      query,
+      category,
+      subcategory,
+      condition,
+      region,
+      priceMin,
+      priceMax,
+      sort = 'newest',
+      page = 1,
+      pageSize = 24,
+    } = params
+
+    const trimmedQuery = query?.trim() || ''
+    const useFts = trimmedQuery.length > 0
+
+    const where: Prisma.ListingWhereInput = {
+      status: 'ACTIVE',
+      deletedAt: null,
+      ...(category ? { categoryId: category } : {}),
+      ...(subcategory ? { subcategoryName: { equals: subcategory, mode: 'insensitive' as const } } : {}),
+      ...(condition ? { condition: condition.toUpperCase() as Prisma.EnumListingConditionFilter } : {}),
+      ...(region ? { region: { equals: region, mode: 'insensitive' as const } } : {}),
+      ...(priceMin != null || priceMax != null
+        ? {
+            priceNzd: {
+              ...(priceMin != null ? { gte: Math.round(priceMin * 100) } : {}),
+              ...(priceMax != null ? { lte: Math.round(priceMax * 100) } : {}),
+            },
+          }
+        : {}),
+    }
+
+    if (useFts) {
+      try {
+        const ftsIds = await db.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "Listing"
+          WHERE "searchVector" @@ plainto_tsquery('english', ${trimmedQuery})
+            AND status = 'ACTIVE'
+            AND "deletedAt" IS NULL
+          LIMIT 500
+        `
+        const idList = ftsIds.map((r) => r.id)
+        if (idList.length === 0) {
+          return { listings: [], totalCount: 0, page, pageSize, totalPages: 0, hasNextPage: false }
+        }
+        where.id = { in: idList }
+      } catch {
+        where.OR = [
+          { title: { contains: trimmedQuery, mode: 'insensitive' as const } },
+          { description: { contains: trimmedQuery, mode: 'insensitive' as const } },
+        ]
+      }
+    }
+
+    const orderBy: Prisma.ListingOrderByWithRelationInput = (() => {
+      switch (sort) {
+        case 'oldest':     return { createdAt: 'asc' as const }
+        case 'price-asc':  return { priceNzd: 'asc' as const }
+        case 'price-desc': return { priceNzd: 'desc' as const }
+        case 'most-watched': return { watcherCount: 'desc' as const }
+        default:           return { createdAt: 'desc' as const }
+      }
+    })()
+
+    const skip = (page - 1) * pageSize
+
+    const [totalCount, rows] = await Promise.all([
+      db.listing.count({ where }),
+      db.listing.findMany({
+        where,
+        orderBy,
+        skip,
+        take: pageSize,
+        select: {
+          id: true,
+          title: true,
+          priceNzd: true,
+          condition: true,
+          categoryId: true,
+          subcategoryName: true,
+          region: true,
+          suburb: true,
+          shippingOption: true,
+          shippingNzd: true,
+          offersEnabled: true,
+          status: true,
+          viewCount: true,
+          watcherCount: true,
+          createdAt: true,
+          images: {
+            where: { order: 0, safe: true },
+            select: { r2Key: true, thumbnailKey: true },
+            take: 1,
+          },
+          seller: {
+            select: {
+              username: true,
+              displayName: true,
+              idVerified: true,
+              _count: { select: { reviews: true } },
+              reviews: {
+                where: { approved: true },
+                select: { rating: true },
+              },
+            },
+          },
+        },
+      }),
+    ])
+
+    const listings: ListingCard[] = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      price: row.priceNzd / 100,
+      condition: mapCondition(row.condition),
+      categoryName: row.categoryId,
+      subcategoryName: row.subcategoryName ?? '',
+      region: row.region as ListingCard['region'],
+      suburb: row.suburb,
+      thumbnailUrl: (() => {
+        const img = row.images[0]
+        if (!img) return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop'
+        const key = img.thumbnailKey ?? img.r2Key
+        return key.startsWith('http') ? key : `https://r2.kiwimart.co.nz/${key}`
+      })(),
+      sellerName: row.seller.displayName,
+      sellerUsername: row.seller.username,
+      sellerRating: (() => {
+        const r = row.seller.reviews
+        if (!r.length) return 0
+        return Math.round((r.reduce((sum, rv) => sum + rv.rating, 0) / r.length) * 10) / 10
+      })(),
+      sellerVerified: row.seller.idVerified,
+      viewCount: row.viewCount,
+      watcherCount: row.watcherCount,
+      createdAt: row.createdAt.toISOString(),
+      status: row.status.toLowerCase() as ListingCard['status'],
+      shippingOption: row.shippingOption.toLowerCase() as ListingCard['shippingOption'],
+      shippingPrice: row.shippingNzd != null ? row.shippingNzd / 100 : null,
+      offersEnabled: row.offersEnabled,
+    }))
+
+    const totalPages = Math.ceil(totalCount / pageSize)
+
+    return {
+      listings,
+      totalCount,
+      page,
+      pageSize,
+      totalPages,
+      hasNextPage: page < totalPages,
+    }
+  }
+}
+
+export const searchService = new SearchService()

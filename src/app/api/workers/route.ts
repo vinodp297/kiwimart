@@ -7,6 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { logger } from '@/shared/logger';
 
 export const runtime = 'nodejs';
 
@@ -46,13 +47,13 @@ export async function POST(request: NextRequest) {
 
     workersStarted = true;
 
-    console.log('[Workers] All workers started successfully');
+    logger.info('workers.started', { workers: ['email', 'image', 'payout'] });
     return NextResponse.json({
       status: 'started',
       workers: ['email', 'image', 'payout'],
     });
   } catch (err) {
-    console.error('[Workers] Failed to start workers:', err);
+    logger.error('workers.start_failed', { error: err instanceof Error ? err.message : String(err) });
     return NextResponse.json(
       { error: 'Failed to start workers', details: String(err) },
       { status: 500 }

@@ -182,7 +182,7 @@ export async function confirmImageUpload(params: {
     return { success: true, data: { safe: true } };
   } catch {
     // Queue unavailable (dev without Redis) — process directly with sharp
-    console.warn('[Images] Queue unavailable — processing image directly');
+    // Queue unavailable (dev without Redis) — process directly
   }
 
   // 4. Direct processing fallback (dev mode / no Redis)
@@ -209,7 +209,7 @@ export async function confirmImageUpload(params: {
     // If R2 is not configured (dev with placeholders), mark safe directly
     const msg = err instanceof Error ? err.message : 'Processing failed';
     if (msg.includes('Failed to download') || msg.includes('getaddrinfo') || msg.includes('ENOTFOUND')) {
-      console.warn('[Images] R2 unavailable — marking image as safe directly');
+      // R2 unavailable — marking image as safe directly
       await db.listingImage.update({
         where: { id: params.imageId, r2Key: params.r2Key },
         data: {
