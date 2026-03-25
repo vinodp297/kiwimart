@@ -141,33 +141,88 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
-    // With database sessions, the session callback receives { session, user }
-    // where `user` is the full User row from the database (always fresh).
-    // No JWT involved — no stale claims.
-    async session({ session, user }) {
-      if (session.user && user) {
-        // user is the DB row — always fresh, never stale
-        const dbUser = user as typeof user & {
-          isAdmin: boolean;
-          isBanned: boolean;
-          sellerEnabled: boolean;
-          stripeOnboarded: boolean;
-          displayName: string;
-          username: string;
-          avatarUrl?: string | null;
-          idVerified: boolean;
-        };
+    // JWT callback: fires for credentials logins (beta.30 always uses JWT for
+    // credentials regardless of strategy:'database').  Embeds custom DB fields
+    // into the token on first sign-in so the session callback can read them.
+    // Does NOT fire for OAuth (DB sessions) — only credentials.
+    async jwt({ token, user }) {
+      if (user?.id) {
+        // Initial sign-in: fetch fresh DB fields and embed in token
+        const dbUser = await db.user.findUnique({
+          where: { id: user.id },
+          select: {
+            id: true,
+            isAdmin: true,
+            isBanned: true,
+            sellerEnabled: true,
+            stripeOnboarded: true,
+            displayName: true,
+            username: true,
+            avatarKey: true,
+            emailVerified: true,
+            idVerified: true,
+          },
+        });
+        if (dbUser) {
+          token.id = dbUser.id;
+          token.isAdmin = dbUser.isAdmin;
+          token.isBanned = dbUser.isBanned;
+          token.sellerEnabled = dbUser.sellerEnabled;
+          token.stripeOnboarded = dbUser.stripeOnboarded;
+          token.displayName = dbUser.displayName;
+          token.username = dbUser.username;
+          token.avatarUrl = dbUser.avatarKey ?? null;
+          token.emailVerified = dbUser.emailVerified?.toISOString() ?? null;
+          token.idVerified = dbUser.idVerified;
+        }
+      }
+      return token;
+    },
 
-        session.user.id = dbUser.id;
-        session.user.isAdmin = dbUser.isAdmin;
-        session.user.isBanned = dbUser.isBanned;
-        session.user.sellerEnabled = dbUser.sellerEnabled;
-        session.user.stripeOnboarded = dbUser.stripeOnboarded;
-        session.user.displayName = dbUser.displayName;
-        session.user.username = dbUser.username;
-        session.user.avatarUrl = dbUser.avatarUrl ?? null;
-        session.user.emailVerified = dbUser.emailVerified ?? null;
-        session.user.idVerified = dbUser.idVerified;
+    // Session callback: handles both JWT (credentials) and DB (OAuth) sessions.
+    // JWT mode:  token is populated, user is undefined
+    // DB mode:   user is the fresh DB row, token is undefined
+    async session({ session, user, token }) {
+      if (session.user) {
+        if (token?.id) {
+          // Credentials login — JWT session (Auth.js v5 beta.30 always uses JWT
+          // for credentials even when strategy:'database' is configured)
+          session.user.id = token.id as string;
+          session.user.isAdmin = (token.isAdmin as boolean) ?? false;
+          session.user.isBanned = (token.isBanned as boolean) ?? false;
+          session.user.sellerEnabled = (token.sellerEnabled as boolean) ?? false;
+          session.user.stripeOnboarded = (token.stripeOnboarded as boolean) ?? false;
+          session.user.displayName = (token.displayName as string) ?? '';
+          session.user.username = (token.username as string) ?? '';
+          session.user.avatarUrl = (token.avatarUrl as string | null) ?? null;
+          session.user.emailVerified = token.emailVerified
+            ? new Date(token.emailVerified as string)
+            : null;
+          session.user.idVerified = (token.idVerified as boolean) ?? false;
+        } else if (user) {
+          // OAuth login — DB session, user is the fresh DB row
+          const dbUser = user as typeof user & {
+            isAdmin: boolean;
+            isBanned: boolean;
+            sellerEnabled: boolean;
+            stripeOnboarded: boolean;
+            displayName: string;
+            username: string;
+            avatarUrl?: string | null;
+            idVerified: boolean;
+          };
+
+          session.user.id = dbUser.id;
+          session.user.isAdmin = dbUser.isAdmin;
+          session.user.isBanned = dbUser.isBanned;
+          session.user.sellerEnabled = dbUser.sellerEnabled;
+          session.user.stripeOnboarded = dbUser.stripeOnboarded;
+          session.user.displayName = dbUser.displayName;
+          session.user.username = dbUser.username;
+          session.user.avatarUrl = dbUser.avatarUrl ?? null;
+          session.user.emailVerified = dbUser.emailVerified ?? null;
+          session.user.idVerified = dbUser.idVerified;
+        }
       }
       return session;
     },
