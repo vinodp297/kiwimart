@@ -80,16 +80,16 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // ── Security headers (applied to all responses) ───────────────────────────
   const response = NextResponse.next();
 
-  // PostHog host can be customised via env (defaults to US cloud).
-  const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
-
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://js.stripe.com ${posthogHost} ${process.env.NODE_ENV === 'development' ? "'unsafe-eval'" : ''}`,
+    // PostHog loads its main bundle from us-assets.i.posthog.com and app.posthog.com;
+    // Stripe and Cloudflare Turnstile also need script access.
+    `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://r2.kiwimart.co.nz https://*.stripe.com",
     "font-src 'self' https://fonts.gstatic.com",
-    `connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://*.stripe.com ${posthogHost}`,
+    // PostHog sends analytics to us.i.posthog.com & us-assets; Pusher needs both WS and HTTPS.
+    "connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://*.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com wss://*.pusher.com https://*.pusher.com",
     "frame-src https://challenges.cloudflare.com https://js.stripe.com https://hooks.stripe.com",
     "object-src 'none'",
     "base-uri 'self'",
