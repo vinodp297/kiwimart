@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processAutoReleases } from '@/server/jobs/autoReleaseEscrow';
 import { sendDeliveryReminders } from '@/server/jobs/buyerReminders';
+import { logger } from '@/shared/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,9 @@ export async function GET(request: NextRequest) {
       autoReleases: result,
     });
   } catch (error) {
-    console.error('[CRON] Auto-release job failed:', error);
+    logger.error('cron.auto_release.failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ success: false, error: 'Job failed' }, { status: 500 });
   }
 }

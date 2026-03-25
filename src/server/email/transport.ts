@@ -3,16 +3,7 @@
 // Sends via Resend when RESEND_API_KEY is set; logs to console otherwise.
 // Swap this file to change email provider without touching any template code.
 
-import { Resend } from 'resend';
-
-let resendClient: Resend | null = null;
-
-function getResendClient(): Resend | null {
-  const key = process.env.RESEND_API_KEY;
-  if (!key || key === 'PLACEHOLDER' || key === 're_placeholder') return null;
-  if (!resendClient) resendClient = new Resend(key);
-  return resendClient;
-}
+import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client';
 
 export async function sendTransactionalEmail({
   to,
@@ -23,7 +14,7 @@ export async function sendTransactionalEmail({
   subject: string;
   html: string;
 }): Promise<{ success: boolean; dev?: boolean }> {
-  const client = getResendClient();
+  const client = getEmailClient();
 
   if (!client) {
     // Dev mode — print to console so email content is visible during development
@@ -36,7 +27,7 @@ export async function sendTransactionalEmail({
   }
 
   try {
-    const fromAddress = process.env.EMAIL_FROM ?? 'KiwiMart <onboarding@resend.dev>';
+    const fromAddress = EMAIL_FROM;
     const { error } = await client.emails.send({ from: fromAddress, to, subject, html });
     if (error) {
       console.error('[EMAIL] Resend error:', error);

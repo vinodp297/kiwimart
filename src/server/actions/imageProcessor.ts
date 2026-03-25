@@ -11,27 +11,10 @@
 //   6. Re-upload processed versions to R2
 //   7. Update DB with dimensions + safe=true
 
-import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import db from '@/lib/db';
-
-// ── R2 client ────────────────────────────────────────────────────────────────
-
-let _r2: S3Client | null = null;
-
-function getR2(): S3Client {
-  if (!_r2) {
-    _r2 = new S3Client({
-      region: 'auto',
-      endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
-    });
-  }
-  return _r2;
-}
+import { r2, R2_BUCKET } from '@/infrastructure/storage/r2';
 
 export interface ProcessImageParams {
   imageId: string;
@@ -53,11 +36,11 @@ export interface ProcessImageResult {
 
 export async function processImage(params: ProcessImageParams): Promise<ProcessImageResult> {
   const { imageId, r2Key, userId } = params;
-  const r2 = getR2();
+  
 
   // 1. Download original from R2
   const getCmd = new GetObjectCommand({
-    Bucket: process.env.R2_BUCKET_NAME!,
+    Bucket: R2_BUCKET,
     Key: r2Key,
   });
   const response = await r2.send(getCmd);
@@ -121,7 +104,7 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
   await Promise.all([
     r2.send(
       new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME!,
+        Bucket: R2_BUCKET,
         Key: fullKey,
         Body: fullImage.data,
         ContentType: 'image/webp',
@@ -130,7 +113,7 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
     ),
     r2.send(
       new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME!,
+        Bucket: R2_BUCKET,
         Key: thumbKey,
         Body: thumbImage.data,
         ContentType: 'image/webp',
@@ -160,7 +143,7 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
   try {
     await r2.send(
       new DeleteObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME!,
+        Bucket: R2_BUCKET,
         Key: r2Key,
       })
     );

@@ -10,33 +10,14 @@
 // In Sprint 4 — authenticated endpoints will additionally key by userId.
 
 import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
-
-// ── Redis instance (shared across all limiters) ───────────────────────────────
-// Lazily initialised to avoid errors in environments without UPSTASH_REDIS_URL
-let redis: Redis | null = null;
-
-function getRedis(): Redis {
-  if (!redis) {
-    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-      throw new Error(
-        'Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN environment variables.'
-      );
-    }
-    redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-  }
-  return redis;
-}
+import { getRedisClient } from '@/infrastructure/redis/client';
 
 // ── Rate limit configurations ─────────────────────────────────────────────────
 
 /** 5 attempts per 15 minutes — login, password reset request */
 const authLimiter = () =>
   new Ratelimit({
-    redis: getRedis(),
+    redis: getRedisClient(),
     limiter: Ratelimit.slidingWindow(5, '15 m'),
     prefix: 'km:rl:auth',
     analytics: true,
@@ -45,7 +26,7 @@ const authLimiter = () =>
 /** 3 registrations per hour per IP */
 const registerLimiter = () =>
   new Ratelimit({
-    redis: getRedis(),
+    redis: getRedisClient(),
     limiter: Ratelimit.slidingWindow(3, '1 h'),
     prefix: 'km:rl:register',
     analytics: true,
@@ -54,7 +35,7 @@ const registerLimiter = () =>
 /** 20 messages per minute — prevent spam */
 const messageLimiter = () =>
   new Ratelimit({
-    redis: getRedis(),
+    redis: getRedisClient(),
     limiter: Ratelimit.slidingWindow(20, '1 m'),
     prefix: 'km:rl:message',
     analytics: true,
@@ -63,7 +44,7 @@ const messageLimiter = () =>
 /** 10 listings per hour per user */
 const listingLimiter = () =>
   new Ratelimit({
-    redis: getRedis(),
+    redis: getRedisClient(),
     limiter: Ratelimit.slidingWindow(10, '1 h'),
     prefix: 'km:rl:listing',
     analytics: true,
@@ -72,7 +53,7 @@ const listingLimiter = () =>
 /** 5 offers per 10 minutes */
 const offerLimiter = () =>
   new Ratelimit({
-    redis: getRedis(),
+    redis: getRedisClient(),
     limiter: Ratelimit.slidingWindow(5, '10 m'),
     prefix: 'km:rl:offer',
     analytics: true,
@@ -81,7 +62,7 @@ const offerLimiter = () =>
 /** 5 orders per hour per user — prevent checkout abuse */
 const orderLimiter = () =>
   new Ratelimit({
-    redis: getRedis(),
+    redis: getRedisClient(),
     limiter: Ratelimit.slidingWindow(5, '1 h'),
     prefix: 'km:rl:order',
     analytics: true,

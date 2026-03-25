@@ -17,14 +17,11 @@
 
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-02-25.clover',
-  typescript: true,
-});
+import { stripe } from '@/infrastructure/stripe/client';
+import type { Stripe } from '@/infrastructure/stripe/client';
+import { logger } from '@/shared/logger';
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.text();
@@ -42,7 +39,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    console.error('[Stripe Webhook] Signature verification failed:', err);
+    logger.error('stripe.webhook.signature_failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
@@ -63,7 +62,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       'code' in err &&
       (err as { code: string }).code === 'P2002'
     ) {
-      console.log(`[Webhook] Duplicate event ${event.id} — already processed`);
+      logger.info('stripe.webhook.duplicate', { eventId: event.id, type: event.type });
       return NextResponse.json({ received: true });
     }
     // Re-throw non-duplicate errors
@@ -165,7 +164,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         break;
     }
   } catch (err) {
-    console.error(`[Stripe Webhook] Error processing ${event.type}:`, err);
+    logger.error('stripe.webhook.failed', {
+      eventId: event.id,
+      type: event.type,
+      error: err instanceof Error ? err.message : String(err),
+    });
     // Return 500 to trigger Stripe's retry mechanism
     return NextResponse.json(
       { error: 'Webhook processing failed' },

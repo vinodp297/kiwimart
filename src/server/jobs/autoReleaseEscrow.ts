@@ -7,10 +7,8 @@
 
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
-import Stripe from 'stripe';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' as any });
+import { stripe } from '@/infrastructure/stripe/client';
+import { logger } from '@/shared/logger';
 
 /**
  * Add N business days (Mon–Fri) to a date.
@@ -57,15 +55,20 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
     return releaseDate <= now;
   });
 
-  console.log(`[AUTO-RELEASE] Found ${eligibleOrders.length} eligible orders (of ${dispatchedOrders.length} dispatched)`);
+  logger.info('escrow.auto_release.started', {
+    eligible: eligibleOrders.length,
+    dispatched: dispatchedOrders.length,
+  });
 
   for (const order of eligibleOrders) {
     try {
       // STEP B — Hard fail on missing payment intent
       if (!order.stripePaymentIntentId) {
-        console.error(
-          `[AUTO-RELEASE] SKIPPED order ${order.id} — no stripePaymentIntentId. Manual review required.`
-        );
+        logger.error('escrow.auto_release.skipped', {
+          orderId: order.id,
+          reason: 'missing_payment_intent',
+          requiresManualReview: true,
+        });
         audit({
           userId: null,
           action: 'ORDER_STATUS_CHANGED',
@@ -89,7 +92,11 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
         // Skip if already captured — still safe to mark COMPLETED
         if (!msg.includes('already captured') && !msg.includes('amount_capturable')) {
           // Stripe capture failed — leave order as DISPATCHED
-          console.error(`[AUTO-RELEASE] Stripe capture failed for order ${order.id}:`, msg);
+          logger.error('escrow.auto_release.capture_failed', {
+            orderId: order.id,
+            error: msg,
+            requiresManualReview: true,
+          });
           audit({
             userId: null,
             action: 'ORDER_STATUS_CHANGED',
@@ -104,7 +111,7 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
           errors++;
           continue;
         }
-        console.log(`[AUTO-RELEASE] Stripe already settled for order ${order.id} — continuing`);
+        logger.info('escrow.auto_release.already_captured', { orderId: order.id });
       }
 
       // DB update ONLY AFTER Stripe capture succeeds
@@ -137,15 +144,21 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
         },
       });
 
-      console.log(`[AUTO-RELEASE] Order ${order.id} released -> ${order.seller.displayName}`);
+      logger.info('escrow.auto_release.order_released', {
+        orderId: order.id,
+        sellerName: order.seller.displayName,
+      });
       processed++;
     } catch (err) {
-      console.error(`[AUTO-RELEASE] Failed for order ${order.id}:`, err);
+      logger.error('escrow.auto_release.failed', {
+        orderId: order.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
       errors++;
     }
   }
 
-  console.log(`[AUTO-RELEASE] Done: ${processed} released, ${errors} errors`);
+  logger.info('escrow.auto_release.completed', { processed, errors });
   return { processed, errors };
 }
 

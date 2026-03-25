@@ -10,40 +10,15 @@
 // All jobs are idempotent — safe to run twice without side effects.
 
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import { getQueueConnection } from '@/infrastructure/queue/client';
 
-// ── Redis connection (lazy singleton) ────────────────────────────────────────
-
-let _redis: IORedis | null = null;
-
-export function getRedisConnection(): IORedis {
-  if (!_redis) {
-    const redisUrl = process.env.REDIS_URL;
-    if (!redisUrl || redisUrl.includes('PLACEHOLDER')) {
-      console.warn('[Queue] No REDIS_URL configured — queues will be unavailable');
-      // Return a dummy connection that will fail gracefully
-      _redis = new IORedis({
-        host: 'localhost',
-        port: 6379,
-        maxRetriesPerRequest: null,
-        lazyConnect: true,
-      });
-    } else {
-      _redis = new IORedis(redisUrl, {
-        maxRetriesPerRequest: null,
-        enableReadyCheck: false,
-        tls: redisUrl.startsWith('rediss://') ? {} : undefined,
-      });
-    }
-  }
-  return _redis;
-}
+export { getQueueConnection as getRedisConnection };
 
 // ── Queue instances ──────────────────────────────────────────────────────────
 
 const defaultOpts = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  connection: getRedisConnection() as any,
+  connection: getQueueConnection() as any,
   defaultJobOptions: {
     removeOnComplete: 100,
     removeOnFail: 50,

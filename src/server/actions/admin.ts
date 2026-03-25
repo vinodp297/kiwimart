@@ -5,15 +5,12 @@
 // With database sessions, banning a user + deleting their session rows
 // means instant revocation — no waiting for JWT expiry.
 
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
+import { requireAdmin } from '@/server/lib/requireAdmin';
 import type { ActionResult } from '@/types';
-import Stripe from 'stripe';
+import { stripe } from '@/infrastructure/stripe/client';
 import { z } from 'zod';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' as any });
 
 // ── Zod schemas for admin actions ────────────────────────────────────────────
 
@@ -31,45 +28,6 @@ const ResolveDisputeSchema = z.object({
   orderId: z.string().min(1, 'Order ID is required'),
   favour: z.enum(['buyer', 'seller']),
 });
-
-// ── Guard helper — DB-backed, never trusts token alone ──────────────────────
-
-async function requireAdmin(): Promise<{ userId: string } | { error: string }> {
-  const session = await auth();
-  if (!session?.user?.id) return { error: 'Authentication required.' };
-
-  // ALWAYS check DB — never trust JWT isAdmin claim
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      isAdmin: true,
-      isBanned: true,
-    },
-  });
-
-  if (!user) return { error: 'User not found.' };
-
-  if (user.isBanned) return { error: 'Account suspended.' };
-
-  if (!user.isAdmin) {
-    // Audit attempted admin access with stale/invalid token
-    audit({
-      userId: session.user.id,
-      action: 'ADMIN_ACTION',
-      entityType: 'User',
-      entityId: session.user.id,
-      metadata: {
-        denied: true,
-        reason: 'not_admin_in_db',
-        tokenClaim: (session.user as { isAdmin?: boolean }).isAdmin,
-      },
-    });
-    return { error: 'Unauthorised.' };
-  }
-
-  return { userId: user.id };
-}
 
 // ── banUser ────────────────────────────────────────────────────────────────────
 

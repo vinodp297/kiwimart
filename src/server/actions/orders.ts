@@ -21,12 +21,8 @@ import { audit } from '@/server/lib/audit';
 import { requireUser } from '@/server/lib/requireUser';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
-import Stripe from 'stripe';
+import { stripe } from '@/infrastructure/stripe/client';
 import { z } from 'zod';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-02-25.clover',
-});
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
 
