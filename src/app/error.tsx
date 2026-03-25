@@ -15,7 +15,9 @@ interface Props {
 
 export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
-    Sentry.captureException(error);
+    if (process.env.NODE_ENV === 'production') {
+      Sentry.captureException(error);
+    }
     console.error('[KiwiMart] Unhandled error:', error);
   }, [error]);
 

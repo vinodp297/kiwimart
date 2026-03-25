@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { signIn, getSession } from 'next-auth/react';
 import { Button, Input, Alert, Divider } from '@/components/ui/primitives';
 
@@ -22,7 +22,6 @@ declare global {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('from') ?? '/dashboard/buyer';
   const errorParam = searchParams.get('error');
@@ -82,32 +81,42 @@ export default function LoginPage() {
       ? window.turnstile?.getResponse(widgetId.current) ?? ''
       : '';
 
-    const result = await signIn('credentials', {
-      email: email.toLowerCase().trim(),
-      password,
-      turnstileToken,
-      rememberMe: String(rememberMe),
-      redirect: false,
-    });
+    try {
+      const result = await signIn('credentials', {
+        email: email.toLowerCase().trim(),
+        password,
+        turnstileToken,
+        rememberMe: String(rememberMe),
+        redirect: false,
+      });
 
-    setLoading(false);
+      // Auth.js v5 returns HTTP 200 even on failure — error info lives in
+      // result.error (e.g. "CredentialsSignin"), not in result.ok.
+      // Check both: ok=false (network/server error) and error set (auth failure).
+      if (!result?.ok || result?.error) {
+        setError('Incorrect email or password. Please try again.');
+        if (widgetId.current) window.turnstile?.reset(widgetId.current);
+        setLoading(false);
+        return;
+      }
 
-    if (!result?.ok) {
-      setError('Incorrect email or password. Please try again.');
+      // Smart redirect: honour explicit ?from= param; otherwise route by role.
+      // Use window.location for a hard navigation so the new page gets a fresh
+      // server render with the session cookie — avoids router.push / router.refresh races.
+      const fromParam = searchParams.get('from');
+      if (fromParam) {
+        window.location.href = fromParam;
+      } else {
+        const sess = await getSession();
+        const sellerEnabled = (sess?.user as { sellerEnabled?: boolean } | undefined)?.sellerEnabled;
+        window.location.href = sellerEnabled ? '/dashboard/seller' : '/dashboard/buyer';
+      }
+    } catch {
+      // signIn can throw on network error or unexpected Auth.js exception.
+      setError('Something went wrong. Please try again.');
       if (widgetId.current) window.turnstile?.reset(widgetId.current);
-      return;
+      setLoading(false);
     }
-
-    // Smart redirect: honour explicit ?from= param; otherwise route by role.
-    const fromParam = searchParams.get('from');
-    if (fromParam) {
-      router.push(fromParam);
-    } else {
-      const sess = await getSession();
-      const sellerEnabled = (sess?.user as { sellerEnabled?: boolean } | undefined)?.sellerEnabled;
-      router.push(sellerEnabled ? '/dashboard/seller' : '/dashboard/buyer');
-    }
-    router.refresh();
   }
 
   return (

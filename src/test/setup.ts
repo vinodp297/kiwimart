@@ -35,9 +35,12 @@ vi.mock('@/lib/db', () => ({
   default: {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      count: vi.fn(),
+      create: vi.fn(),
     },
     session: {
       findUnique: vi.fn(),
@@ -46,13 +49,20 @@ vi.mock('@/lib/db', () => ({
     },
     order: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
       create: vi.fn(),
+      count: vi.fn(),
+      aggregate: vi.fn(),
     },
     listing: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
+      create: vi.fn(),
+      count: vi.fn(),
     },
     stripeEvent: {
       create: vi.fn(),
@@ -61,12 +71,48 @@ vi.mock('@/lib/db', () => ({
     payout: {
       upsert: vi.fn(),
       updateMany: vi.fn(),
+      count: vi.fn(),
     },
     report: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      count: vi.fn(),
+    },
+    offer: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    review: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    message: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    messageThread: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    watchlistItem: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
     },
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
   },
 }))
 
@@ -80,6 +126,11 @@ vi.mock('@/lib/auth', () => ({
 // ── Mock audit ───────────────────────────────────────────────────────────────
 vi.mock('@/server/lib/audit', () => ({
   audit: vi.fn(),
+}))
+
+// ── Mock moderation ──────────────────────────────────────────────────────────
+vi.mock('@/server/lib/moderation', () => ({
+  moderateText: vi.fn().mockResolvedValue({ allowed: true, flagged: false }),
 }))
 
 // ── Mock next/headers ────────────────────────────────────────────────────────
@@ -99,4 +150,35 @@ vi.mock('next/cache', () => ({
 vi.mock('@/lib/queue', () => ({
   payoutQueue: { add: vi.fn() },
   emailQueue: { add: vi.fn() },
+}))
+
+// ── Mock shared logger ───────────────────────────────────────────────────────
+vi.mock('@/shared/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+  },
+}))
+
+// ── Mock Pusher ──────────────────────────────────────────────────────────────
+vi.mock('@/lib/pusher', () => ({
+  getPusherServer: vi.fn().mockReturnValue({
+    trigger: vi.fn().mockResolvedValue({}),
+  }),
+}))
+
+// ── Mock server email ────────────────────────────────────────────────────────
+vi.mock('@/server/email', () => ({
+  sendOrderDispatchedEmail: vi.fn().mockResolvedValue(undefined),
+  sendOfferReceivedEmail: vi.fn().mockResolvedValue(undefined),
+  sendOfferResponseEmail: vi.fn().mockResolvedValue(undefined),
+}))
+
+// ── Mock password ────────────────────────────────────────────────────────────
+vi.mock('@/server/lib/password', () => ({
+  hashPassword: vi.fn().mockResolvedValue('$argon2id$hashed'),
+  verifyPassword: vi.fn().mockResolvedValue(true),
 }))
