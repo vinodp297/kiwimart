@@ -19,6 +19,21 @@ interface Props {
   priority?: boolean;
 }
 
+// ── Badge helpers ──────────────────────────────────────────────────────────────
+function isJustListed(createdAt: string): boolean {
+  return Date.now() - new Date(createdAt).getTime() < 24 * 60 * 60 * 1000;
+}
+
+function isPriceDropped(priceDroppedAt: string | null): boolean {
+  if (!priceDroppedAt) return false;
+  return Date.now() - new Date(priceDroppedAt).getTime() < 72 * 60 * 60 * 1000;
+}
+
+function priceDrop(current: number, previous: number | null): number {
+  if (!previous || previous <= current) return 0;
+  return Math.round(((previous - current) / previous) * 100);
+}
+
 export default function ListingCard({ listing, priority = false }: Props) {
   const [watched, setWatched] = useState(false);
 
@@ -27,6 +42,11 @@ export default function ListingCard({ listing, priority = false }: Props) {
   const sellerHref = listing.sellerUsername
     ? `/sellers/${listing.sellerUsername}`
     : undefined;
+
+  const justListed = !isSold && isJustListed(listing.createdAt);
+  const dropped    = !isSold && isPriceDropped(listing.priceDroppedAt ?? null);
+  const dropPct    = dropped ? priceDrop(listing.price, listing.previousPrice ?? null) : 0;
+  const urgent     = !isSold && listing.isUrgent;
 
   return (
     <article
@@ -55,6 +75,25 @@ export default function ListingCard({ listing, priority = false }: Props) {
               </span>
             </div>
           )}
+
+          {/* Status badges — top-left stack */}
+          <div className="absolute top-2 left-2 flex flex-col gap-1">
+            {urgent && (
+              <span className="bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full leading-tight">
+                🔥 URGENT
+              </span>
+            )}
+            {justListed && !urgent && (
+              <span className="bg-[#141414] text-white text-[9px] font-bold px-2 py-0.5 rounded-full leading-tight">
+                🆕 JUST LISTED
+              </span>
+            )}
+            {dropped && dropPct > 0 && (
+              <span className="bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full leading-tight">
+                ↓ {dropPct}% DROP
+              </span>
+            )}
+          </div>
 
           {/* Free shipping badge */}
           {isFree && !isSold && (
@@ -110,6 +149,18 @@ export default function ListingCard({ listing, priority = false }: Props) {
               Offers
             </span>
           )}
+          {listing.isNegotiable && !isSold && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full
+              text-[9.5px] font-semibold bg-blue-50 text-blue-700 ring-1 ring-blue-200">
+              Negotiable
+            </span>
+          )}
+          {listing.shipsNationwide && !isSold && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full
+              text-[9.5px] font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200">
+              Ships NZ
+            </span>
+          )}
         </div>
 
         {/* Title */}
@@ -148,6 +199,21 @@ export default function ListingCard({ listing, priority = false }: Props) {
             {listing.suburb}, {listing.region}
           </span>
         </div>
+
+        {/* Buyer Protection micro-badge */}
+        {!isSold && (
+          <div className="flex items-center gap-1 mb-1.5">
+            <svg
+              className="text-emerald-600 shrink-0"
+              width="9" height="9" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2"
+            >
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+            <span className="text-[10px] text-emerald-700 font-medium">Protected</span>
+          </div>
+        )}
 
         {/* Seller + stats row */}
         <div className="flex items-center justify-between gap-2">

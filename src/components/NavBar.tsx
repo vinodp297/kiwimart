@@ -19,6 +19,7 @@ export default function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifSeen, setNotifSeen] = useState(false);
   const [showSellBanner, setShowSellBanner] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -175,6 +176,7 @@ export default function NavBar() {
                     <button
                       onClick={() => {
                         setNotifOpen((v) => !v);
+                        setNotifSeen(true);
                         setAccountOpen(false);
                       }}
                       aria-label="Notifications"
@@ -190,12 +192,14 @@ export default function NavBar() {
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                       </svg>
-                      {/* Unread dot */}
-                      <span
-                        className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full
-                          bg-[#D4A843] ring-2 ring-white"
-                        aria-label="Unread notifications"
-                      />
+                      {/* Unread dot — clears once user opens the dropdown */}
+                      {!notifSeen && (
+                        <span
+                          className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full
+                            bg-[#D4A843] ring-2 ring-white"
+                          aria-label="Unread notifications"
+                        />
+                      )}
                     </button>
 
                     {notifOpen && (

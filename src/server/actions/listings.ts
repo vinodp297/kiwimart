@@ -116,6 +116,9 @@ export async function createListing(
           : null,
         pickupAddress: data.pickupAddress ?? null,
         offersEnabled: data.offersEnabled,
+        isUrgent: data.isUrgent,
+        isNegotiable: data.isNegotiable,
+        shipsNationwide: data.shipsNationwide,
         publishedAt: new Date(),
         // Expire after 30 days
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
@@ -165,6 +168,78 @@ export async function createListing(
     success: true,
     data: { listingId: listing.id, slug: listing.id },
   };
+}
+
+// ── updateListing ─────────────────────────────────────────────────────────────
+// Updates a listing. If the price decreases, records previousPriceNzd and
+// priceDroppedAt for the Price Dropped badge in ListingCard.
+
+export async function updateListing(
+  raw: unknown
+): Promise<ActionResult<{ listingId: string }>> {
+  const user = await requireUser();
+  const parsed = updateListingSchema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: 'Validation failed.',
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  const data = parsed.data;
+  const { listingId } = data;
+
+  // Load current listing to check ownership + existing price
+  const existing = await db.listing.findUnique({
+    where: { id: listingId },
+    select: { sellerId: true, priceNzd: true, deletedAt: true },
+  });
+
+  if (!existing || existing.deletedAt) {
+    return { success: false, error: 'Listing not found.' };
+  }
+  if (existing.sellerId !== user.id && !user.isAdmin) {
+    return { success: false, error: 'Not authorised.' };
+  }
+
+  const newPriceNzd = data.price != null ? Math.round(data.price * 100) : undefined;
+  const priceDropData =
+    newPriceNzd != null && newPriceNzd < existing.priceNzd
+      ? {
+          previousPriceNzd: existing.priceNzd,
+          priceDroppedAt: new Date(),
+        }
+      : {};
+
+  await db.listing.update({
+    where: { id: listingId },
+    data: {
+      ...(data.title != null ? { title: data.title } : {}),
+      ...(data.description != null ? { description: data.description } : {}),
+      ...(newPriceNzd != null ? { priceNzd: newPriceNzd } : {}),
+      ...(data.gstIncluded != null ? { gstIncluded: data.gstIncluded } : {}),
+      ...(data.condition != null ? { condition: data.condition } : {}),
+      ...(data.categoryId != null ? { categoryId: data.categoryId } : {}),
+      ...(data.subcategoryName !== undefined ? { subcategoryName: data.subcategoryName ?? null } : {}),
+      ...(data.region != null ? { region: data.region } : {}),
+      ...(data.suburb != null ? { suburb: data.suburb } : {}),
+      ...(data.shippingOption != null ? { shippingOption: data.shippingOption } : {}),
+      ...(data.shippingPrice != null ? { shippingNzd: Math.round(data.shippingPrice * 100) } : {}),
+      ...(data.pickupAddress !== undefined ? { pickupAddress: data.pickupAddress ?? null } : {}),
+      ...(data.offersEnabled != null ? { offersEnabled: data.offersEnabled } : {}),
+      ...(data.isUrgent != null ? { isUrgent: data.isUrgent } : {}),
+      ...(data.isNegotiable != null ? { isNegotiable: data.isNegotiable } : {}),
+      ...(data.shipsNationwide != null ? { shipsNationwide: data.shipsNationwide } : {}),
+      ...priceDropData,
+    },
+  });
+
+  revalidatePath(`/listings/${listingId}`);
+  revalidatePath('/dashboard/seller');
+  revalidatePath('/search');
+
+  return { success: true, data: { listingId } };
 }
 
 // ── deleteListing ─────────────────────────────────────────────────────────────

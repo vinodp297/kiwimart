@@ -1,16 +1,20 @@
-// src/proxy.ts  (Sprint 9 — database sessions)
+// src/proxy.ts  (Sprint 9 — fixed for Auth.js v5 beta JWT/DB session duality)
 // ─── Next.js 16 Proxy (replaces middleware.ts) ────────────────────────────────
 // Runs on Node.js runtime before every request (edge runtime not supported here).
 //
-// With database sessions (not JWT), we read the session token from the cookie
-// and look up the session + user directly in the DB. This means:
-//   * Ban checks happen at the proxy level — banned users are blocked immediately
-//   * Admin/seller status is always fresh from DB — no stale JWT claims
-//   * Only routes that need auth decisions trigger a DB lookup
+// Auth.js v5 beta.30 uses JWT cookies for credentials sign-in regardless of
+// strategy: 'database' in auth.ts.  The previous implementation read the raw
+// session token and looked it up in the DB — which only worked for OAuth
+// (database sessions), not for credentials (JWT cookies).
+//
+// Fix: use auth() as the proxy wrapper so Auth.js handles decoding the cookie
+// itself (JWT decode for credentials, DB lookup for OAuth).  The decoded
+// session is available as request.auth, so we no longer need a manual DB query
+// for the auth check (though we still use DB for ban checks on DB sessions).
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import db from '@/lib/db';
+import { auth } from '@/lib/auth';
 import { logger } from '@/shared/logger';
 
 // Paths that require a session. Matched with exact-segment logic so that
@@ -36,43 +40,11 @@ function matchesProtected(pathname: string): boolean {
   );
 }
 
-// Session cookie name varies by environment (Auth.js convention)
-function getSessionCookieName(): string {
-  return process.env.NODE_ENV === 'production'
-    ? '__Secure-authjs.session-token'
-    : 'authjs.session-token';
-}
-
-// Look up session + user from DB. Only called on routes that need auth decisions.
-async function getSessionUser(sessionToken: string) {
-  try {
-    const session = await db.session.findUnique({
-      where: { sessionToken },
-      select: {
-        expires: true,
-        user: {
-          select: {
-            id: true,
-            sellerEnabled: true,
-            isAdmin: true,
-            isBanned: true,
-          },
-        },
-      },
-    });
-
-    // Validate session is not expired and user is not banned
-    if (!session || session.expires <= new Date()) return null;
-    if (session.user.isBanned) return null;
-
-    return session.user;
-  } catch {
-    // DB error — fail open for public pages, closed for protected
-    return null;
-  }
-}
-
-export async function proxy(request: NextRequest): Promise<NextResponse> {
+// auth() as a callback wrapper — request.auth is the decoded session
+// (JWT for credentials, DB row for OAuth).  Auth.js handles both transparently.
+export const proxy = auth(async function proxyHandler(
+  request: NextRequest & { auth: { user?: { id?: string; sellerEnabled?: boolean; isAdmin?: boolean; isBanned?: boolean } } | null }
+) {
   const requestStart = Date.now();
   const requestId = crypto.randomUUID();
   const { pathname } = request.nextUrl;
@@ -114,24 +86,16 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── Database session verification ──────────────────────────────────────────
-  // With database sessions, the cookie contains a session token (not a JWT).
-  // We only do a DB lookup on routes that actually need auth decisions.
-  const sessionToken = request.cookies.get(getSessionCookieName())?.value;
+  // ── Auth decision ─────────────────────────────────────────────────────────
+  // request.auth is populated by auth() — works for JWT (credentials) and
+  // database sessions (OAuth) transparently.
+  const sessionUser = request.auth?.user ?? null;
+  const isAuthenticated = !!(sessionUser?.id) && !(sessionUser?.isBanned);
 
   const isProtected = matchesProtected(pathname);
   const isAuthPath = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
   const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
 
-  // Only do DB lookup when the route needs an auth decision
-  const needsAuthCheck = isProtected || isAuthPath;
-  let sessionUser: { id: string; sellerEnabled: boolean; isAdmin: boolean; isBanned: boolean } | null = null;
-
-  if (sessionToken && needsAuthCheck) {
-    sessionUser = await getSessionUser(sessionToken);
-  }
-
-  const isAuthenticated = !!sessionUser;
   const sellerEnabled = sessionUser?.sellerEnabled ?? false;
   const isAdmin = sessionUser?.isAdmin ?? false;
   const defaultDashboard = sellerEnabled ? '/dashboard/seller' : '/dashboard/buyer';
@@ -164,7 +128,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   });
 
   return response;
-}
+});
 
 export const config = {
   matcher: [
