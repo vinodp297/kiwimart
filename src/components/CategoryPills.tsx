@@ -77,7 +77,7 @@ export default function CategoryPills({ categories, activeId, compact = false, c
                 {cat.name}
               </p>
               <p className={`text-[10px] mt-0.5 ${isActive ? 'text-white/60' : 'text-[#9E9A91]'}`}>
-                {(cat.listingCount / 1000).toFixed(0)}k+
+                {cat.listingCount > 0 ? `${cat.listingCount}+` : 'New'}
               </p>
             </div>
           </Link>

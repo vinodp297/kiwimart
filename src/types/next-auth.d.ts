@@ -1,7 +1,8 @@
 // src/types/next-auth.d.ts
 // ─── Auth.js Type Augmentation ────────────────────────────────────────────────
 // Adds KiwiMart-specific fields to the Auth.js Session and User types.
-// Without this, TypeScript won't know about username, sellerEnabled, etc.
+// With database sessions, session.user is populated from the DB User row
+// in the session() callback — these types reflect that.
 
 import type { DefaultSession, DefaultUser } from 'next-auth';
 
@@ -9,18 +10,32 @@ declare module 'next-auth' {
   interface Session {
     user: {
       id: string;
-      username: string;
-      sellerEnabled: boolean;
+      email: string;
+      name?: string | null;
+      image?: string | null;
       isAdmin: boolean;
+      isBanned: boolean;
+      sellerEnabled: boolean;
+      stripeOnboarded: boolean;
+      displayName: string;
+      username: string;
+      avatarUrl?: string | null;
+      // emailVerified kept as Date | null to match Auth.js native type
+      // Check truthiness in components: !!session.user.emailVerified
+      emailVerified: Date | null;
       idVerified: boolean;
-    } & DefaultSession['user'];
+    };
   }
 
   interface User extends DefaultUser {
-    username?: string;
-    sellerEnabled?: boolean;
     isAdmin?: boolean;
+    isBanned?: boolean;
+    sellerEnabled?: boolean;
+    stripeOnboarded?: boolean;
+    displayName?: string;
+    username?: string;
+    avatarUrl?: string | null;
+    emailVerified?: Date | null;
     idVerified?: boolean;
   }
 }
-

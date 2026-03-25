@@ -4,10 +4,10 @@
 
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { audit } from '@/server/lib/audit';
+import { requireUser } from '@/server/lib/requireUser';
 import { createOfferSchema, respondOfferSchema } from '@/server/validators';
 import type { ActionResult } from '@/types';
 
@@ -19,10 +19,12 @@ export async function createOffer(
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders);
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Sign in to make an offer.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Sign in to make an offer.' };
   }
 
   // 3. Validate
@@ -37,7 +39,7 @@ export async function createOffer(
   const { listingId, amount, note } = parsed.data;
 
   // 4. Rate limit
-  const limit = await rateLimit('offer', session.user.id);
+  const limit = await rateLimit('offer', user.id);
   if (!limit.success) {
     return {
       success: false,
@@ -62,7 +64,7 @@ export async function createOffer(
   if (!listing.offersEnabled) {
     return { success: false, error: 'This seller is not accepting offers.' };
   }
-  if (listing.sellerId === session.user.id) {
+  if (listing.sellerId === user.id) {
     return { success: false, error: 'You cannot make an offer on your own listing.' };
   }
 
@@ -85,7 +87,7 @@ export async function createOffer(
   const existingOffer = await db.offer.findFirst({
     where: {
       listingId,
-      buyerId: session.user.id,
+      buyerId: user.id,
       status: 'PENDING',
     },
   });
@@ -100,7 +102,7 @@ export async function createOffer(
   const offer = await db.offer.create({
     data: {
       listingId,
-      buyerId: session.user.id,
+      buyerId: user.id,
       sellerId: listing.sellerId,
       amountNzd: amountCents,
       note: note ?? null,
@@ -111,7 +113,7 @@ export async function createOffer(
 
   // 5e. Notify seller (fire-and-forget)
   const buyer = await db.user.findUnique({
-    where: { id: session.user.id },
+    where: { id: user.id },
     select: { displayName: true },
   });
   try {
@@ -138,7 +140,7 @@ export async function createOffer(
 
   // 6. Audit
   audit({
-    userId: session.user.id,
+    userId: user.id,
     action: 'OFFER_CREATED',
     entityType: 'Offer',
     entityId: offer.id,
@@ -159,10 +161,12 @@ export async function respondOffer(
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders);
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
+  // 1. Authenticate + ban check
+  let respondUser;
+  try {
+    respondUser = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
   }
 
   // 3. Validate
@@ -184,7 +188,7 @@ export async function respondOffer(
   if (!offer) return { success: false, error: 'Offer not found.' };
 
   // 2. Authorise — only the seller can respond
-  if (offer.sellerId !== session.user.id) {
+  if (offer.sellerId !== respondUser.id) {
     return { success: false, error: 'You do not have permission to respond to this offer.' };
   }
   if (offer.status !== 'PENDING') {
@@ -244,7 +248,7 @@ export async function respondOffer(
 
   // 6. Audit
   audit({
-    userId: session.user.id,
+    userId: respondUser.id,
     action: action === 'ACCEPT' ? 'OFFER_ACCEPTED' : 'OFFER_DECLINED',
     entityType: 'Offer',
     entityId: offerId,

@@ -11,20 +11,17 @@
 //
 // Security:
 //   • Signature verified with STRIPE_WEBHOOK_SECRET (Stripe-Signature header)
-//   • Idempotency: events are ignored if already processed (check event ID)
+//   • Idempotency: duplicate events rejected via StripeEvent DB table
+//   • Payout creation uses upsert to prevent duplicates
 //   • All DB writes wrapped in transactions
 
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
-import { sendOrderDispatchedEmail } from '@/server/email';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-02-25.clover',
-  typescript: true,
-});
+import { stripe } from '@/infrastructure/stripe/client';
+import type { Stripe } from '@/infrastructure/stripe/client';
+import { logger } from '@/shared/logger';
 
 export async function POST(request: Request): Promise<NextResponse> {
   const body = await request.text();
@@ -42,13 +39,35 @@ export async function POST(request: Request): Promise<NextResponse> {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    console.error('[Stripe Webhook] Signature verification failed:', err);
+    logger.error('stripe.webhook.signature_failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  // Idempotency: skip if already processed
-  // Sprint 4: store processed event IDs in a Redis set or DB table
-  // For now, rely on Stripe's at-least-once delivery + our own DB constraints
+  // ── Idempotency: race-safe insert-or-skip ───────────────────────────────
+  // Use try/catch on create instead of find-then-create to eliminate the
+  // race window where two parallel retries both pass the findUnique check.
+  // P2002 = Prisma unique constraint violation (event already processed).
+  try {
+    await db.stripeEvent.create({
+      data: {
+        id: event.id,
+        type: event.type,
+      },
+    });
+  } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      'code' in err &&
+      (err as { code: string }).code === 'P2002'
+    ) {
+      logger.info('stripe.webhook.duplicate', { eventId: event.id, type: event.type });
+      return NextResponse.json({ received: true });
+    }
+    // Re-throw non-duplicate errors
+    throw err;
+  }
 
   try {
     switch (event.type) {
@@ -62,16 +81,18 @@ export async function POST(request: Request): Promise<NextResponse> {
             where: { id: orderId, stripePaymentIntentId: pi.id },
             data: { status: 'PAYMENT_HELD', updatedAt: new Date() },
           }),
-          // Create payout record (released when buyer confirms delivery)
-          db.payout.create({
-            data: {
+          // Idempotent payout creation — upsert prevents duplicates
+          db.payout.upsert({
+            where: { orderId },
+            create: {
               orderId,
               userId: pi.metadata!.sellerId,
-              amountNzd: Math.round((pi.amount - (pi.application_fee_amount ?? 0)) * 1), // already in cents
+              amountNzd: Math.round((pi.amount - (pi.application_fee_amount ?? 0)) * 1),
               platformFeeNzd: pi.application_fee_amount ?? 0,
-              stripeFeeNzd: 0, // Sprint 5: calculate actual Stripe fee from fee object
+              stripeFeeNzd: 0,
               status: 'PENDING',
             },
+            update: {}, // no-op if already exists
           }),
         ]);
 
@@ -107,17 +128,25 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
 
       case 'account.updated': {
-        // Seller completed Stripe Connect onboarding
+        // Sync Stripe Connect onboarding status — BOTH true AND false.
+        // All three checks must pass for a seller to be fully onboarded:
+        //   details_submitted: seller completed the onboarding form
+        //   charges_enabled: Stripe can process charges to this account
+        //   payouts_enabled: Stripe can pay out to this account's bank
         const account = event.data.object as Stripe.Account;
-        const detailsSubmitted = account.details_submitted;
-        const chargesEnabled = account.charges_enabled;
+        const onboarded =
+          account.details_submitted === true &&
+          account.charges_enabled === true &&
+          account.payouts_enabled === true;
 
-        if (detailsSubmitted && chargesEnabled) {
-          await db.user.updateMany({
-            where: { stripeAccountId: account.id },
-            data: { stripeOnboarded: true },
-          });
-        }
+        await db.user.updateMany({
+          where: { stripeAccountId: account.id },
+          data: {
+            stripeOnboarded: onboarded,
+            stripeChargesEnabled: account.charges_enabled ?? false,
+            stripePayoutsEnabled: account.payouts_enabled ?? false,
+          },
+        });
         break;
       }
 
@@ -135,7 +164,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         break;
     }
   } catch (err) {
-    console.error(`[Stripe Webhook] Error processing ${event.type}:`, err);
+    logger.error('stripe.webhook.failed', {
+      eventId: event.id,
+      type: event.type,
+      error: err instanceof Error ? err.message : String(err),
+    });
     // Return 500 to trigger Stripe's retry mechanism
     return NextResponse.json(
       { error: 'Webhook processing failed' },
@@ -145,4 +178,3 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   return NextResponse.json({ received: true });
 }
-

@@ -13,6 +13,7 @@
 
 import db from '@/lib/db';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import type { ListingCard } from '@/types';
 
 export interface SearchParams {
@@ -37,7 +38,23 @@ export interface SearchResult {
   hasNextPage: boolean;
 }
 
-export async function searchListings(params: SearchParams): Promise<SearchResult> {
+const SearchParamsSchema = z.object({
+  query: z.string().max(200).optional(),
+  category: z.string().max(100).optional(),
+  subcategory: z.string().max(100).optional(),
+  condition: z.string().max(50).optional(),
+  region: z.string().max(100).optional(),
+  priceMin: z.number().min(0).optional(),
+  priceMax: z.number().min(0).optional(),
+  sort: z.enum(['newest', 'oldest', 'price-asc', 'price-desc', 'most-watched']).optional(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export async function searchListings(rawParams: SearchParams): Promise<SearchResult> {
+  const parseResult = SearchParamsSchema.safeParse(rawParams);
+  const params = parseResult.success ? parseResult.data : {};
+
   const {
     query,
     category,
@@ -156,6 +173,10 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
             _count: {
               select: { reviews: true },
             },
+            reviews: {
+              where: { approved: true },
+              select: { rating: true },
+            },
           },
         },
       },
@@ -180,7 +201,11 @@ export async function searchListings(params: SearchParams): Promise<SearchResult
     })(),
     sellerName: row.seller.displayName,
     sellerUsername: row.seller.username,
-    sellerRating: 4.5,                    // Sprint 4: compute from reviews aggregate
+    sellerRating: (() => {
+      const r = row.seller.reviews;
+      if (!r.length) return 0;
+      return Math.round((r.reduce((sum, rv) => sum + rv.rating, 0) / r.length) * 10) / 10;
+    })(),
     sellerVerified: row.seller.idVerified,
     viewCount: row.viewCount,
     watcherCount: row.watcherCount,

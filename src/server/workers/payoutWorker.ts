@@ -14,12 +14,8 @@ import { emailQueue } from '@/lib/queue';
 import type { PayoutJobData } from '@/lib/queue';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
-import Stripe from 'stripe';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiVersion: '2026-02-25.clover' as any,
-});
+import { stripe } from '@/infrastructure/stripe/client';
+import { logger } from '@/shared/logger';
 
 export function startPayoutWorker() {
   const worker = new Worker<PayoutJobData>(
@@ -38,7 +34,7 @@ export function startPayoutWorker() {
       }
 
       if (payout.status !== 'PENDING') {
-        console.log(`[PayoutWorker] Payout ${payout.id} already ${payout.status} — skipping`);
+        logger.info('payout.worker.skipped', { payoutId: payout.id, status: payout.status });
         return { skipped: true, reason: `Already ${payout.status}` };
       }
 
@@ -110,7 +106,11 @@ export function startPayoutWorker() {
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`[PayoutWorker] Job ${job?.id} failed:`, err.message);
+    logger.error('payout.worker.job_failed', {
+      jobId: job?.id,
+      orderId: job?.data?.orderId,
+      error: err.message,
+    });
     audit({
       action: 'ADMIN_ACTION',
       metadata: {
@@ -124,7 +124,7 @@ export function startPayoutWorker() {
   });
 
   worker.on('completed', (job) => {
-    console.log(`[PayoutWorker] Job ${job.id} completed — order ${job.data.orderId}`);
+    logger.info('payout.worker.job_completed', { jobId: job.id, orderId: job.data.orderId });
   });
 
   return worker;

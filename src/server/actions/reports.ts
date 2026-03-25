@@ -11,9 +11,9 @@
 //   • Rate limited to prevent abuse
 
 import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
+import { requireUser } from '@/server/lib/requireUser';
 import { moderateText } from '@/server/lib/moderation';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
@@ -41,10 +41,12 @@ export async function createReport(
   const reqHeaders = await headers();
   const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Sign in to report content.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Sign in to report content.' };
   }
 
   // 3. Validate
@@ -65,7 +67,7 @@ export async function createReport(
   }
 
   // 2. Authorise — cannot report yourself
-  if (targetUserId && targetUserId === session.user.id) {
+  if (targetUserId && targetUserId === user.id) {
     return { success: false, error: 'You cannot report yourself.' };
   }
 
@@ -79,7 +81,7 @@ export async function createReport(
     if (!listing) {
       return { success: false, error: 'Listing not found.' };
     }
-    if (listing.sellerId === session.user.id) {
+    if (listing.sellerId === user.id) {
       return { success: false, error: 'You cannot report your own listing.' };
     }
     resolvedTargetUserId = listing.sellerId;
@@ -93,7 +95,7 @@ export async function createReport(
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const existingReport = await db.report.findFirst({
     where: {
-      reporterId: session.user.id,
+      reporterId: user.id,
       ...(listingId ? { listingId } : { targetUserId: resolvedTargetUserId }),
       createdAt: { gte: oneDayAgo },
     },
@@ -106,7 +108,7 @@ export async function createReport(
   // 5c. Create report
   const report = await db.report.create({
     data: {
-      reporterId: session.user.id,
+      reporterId: user.id,
       targetUserId: resolvedTargetUserId,
       listingId,
       reason,
@@ -118,7 +120,7 @@ export async function createReport(
 
   // 6. Audit
   audit({
-    userId: session.user.id,
+    userId: user.id,
     action: 'REPORT_CREATED',
     entityType: 'Report',
     entityId: report.id,

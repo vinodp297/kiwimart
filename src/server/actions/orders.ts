@@ -8,20 +8,44 @@
 //   4. confirmDelivery → releases escrow, triggers payout to seller
 //
 // Security:
-//   • Only authenticated buyers can create orders
+//   • requireUser() — fresh DB check on every call, rejects banned users
 //   • Buyers cannot order their own listings
 //   • Price is read from DB at order creation — never trusted from client
 //   • Stripe PaymentIntent captures on confirmation (not immediately)
+//   • Zod validation on all inputs
+//   • Orphan order cleanup on Stripe failure (FIX 7)
 
 import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
+import { requireUser } from '@/server/lib/requireUser';
+import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
-import Stripe from 'stripe';
+import { stripe } from '@/infrastructure/stripe/client';
+import { z } from 'zod';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-02-25.clover',
+// ── Zod Schemas ──────────────────────────────────────────────────────────────
+
+const CreateOrderSchema = z.object({
+  listingId: z.string().min(1, 'Listing ID is required'),
+  shippingAddress: z.object({
+    name: z.string().min(2, 'Name is required').max(100),
+    line1: z.string().min(5, 'Street address is required').max(200),
+    line2: z.string().max(200).optional(),
+    city: z.string().min(2, 'City is required').max(100),
+    region: z.string().min(2, 'Region is required').max(100),
+    postcode: z.string().regex(/^\d{4}$/, 'Invalid NZ postcode'),
+  }).optional(),
+});
+
+const ConfirmDeliverySchema = z.object({
+  orderId: z.string().min(1, 'Order ID is required'),
+});
+
+const MarkDispatchedSchema = z.object({
+  orderId: z.string().min(1, 'Order ID is required'),
+  trackingNumber: z.string().max(100).optional(),
+  trackingUrl: z.string().max(500).optional(),
 });
 
 // ── createOrder ───────────────────────────────────────────────────────────────
@@ -38,17 +62,31 @@ export async function createOrder(params: {
   };
 }): Promise<ActionResult<{ orderId: string; clientSecret: string }>> {
   const reqHeaders = await headers();
-  const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+  const ip = getClientIp(reqHeaders as unknown as Headers);
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Sign in to purchase items.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+  }
+
+  // 2. Rate limit — 5 orders per hour per user
+  const limit = await rateLimit('order', user.id);
+  if (!limit.success) {
+    return { success: false, error: 'Too many orders placed. Please wait before trying again.' };
+  }
+
+  // 3. Validate input
+  const parsed = CreateOrderSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
   }
 
   // 5a. Load listing — prices ALWAYS read from DB
   const listing = await db.listing.findUnique({
-    where: { id: params.listingId, status: 'ACTIVE', deletedAt: null },
+    where: { id: parsed.data.listingId, status: 'ACTIVE', deletedAt: null },
     select: {
       id: true,
       title: true,
@@ -63,7 +101,7 @@ export async function createOrder(params: {
   if (!listing) return { success: false, error: 'Listing not available.' };
 
   // 2. Authorise — cannot buy own listing
-  if (listing.sellerId === session.user.id) {
+  if (listing.sellerId === user.id) {
     return { success: false, error: 'You cannot purchase your own listing.' };
   }
 
@@ -82,75 +120,127 @@ export async function createOrder(params: {
   // 5c. Create order row (status: AWAITING_PAYMENT until Stripe confirms)
   const order = await db.order.create({
     data: {
-      buyerId: session.user.id,
+      buyerId: user.id,
       sellerId: listing.sellerId,
       listingId: listing.id,
       itemNzd: listing.priceNzd,
       shippingNzd,
       totalNzd,
       status: 'AWAITING_PAYMENT',
-      ...(params.shippingAddress
+      ...(parsed.data.shippingAddress
         ? {
-            shippingName: params.shippingAddress.name,
-            shippingLine1: params.shippingAddress.line1,
-            shippingLine2: params.shippingAddress.line2,
-            shippingCity: params.shippingAddress.city,
-            shippingRegion: params.shippingAddress.region,
-            shippingPostcode: params.shippingAddress.postcode,
+            shippingName: parsed.data.shippingAddress.name,
+            shippingLine1: parsed.data.shippingAddress.line1,
+            shippingLine2: parsed.data.shippingAddress.line2,
+            shippingCity: parsed.data.shippingAddress.city,
+            shippingRegion: parsed.data.shippingAddress.region,
+            shippingPostcode: parsed.data.shippingAddress.postcode,
           }
         : {}),
     },
     select: { id: true },
   });
 
-  // 5d. Create Stripe PaymentIntent with Connect transfer
-  // Platform fee = 0% during beta (KiwiMart's $0 fee promise)
-  // Only include transfer_data for real Connect accounts (not seed/placeholder IDs)
+  // 5d. Create Stripe PaymentIntent — FIX 7: clean up order on failure
+  // FIX A: Hard-fail if seller's Connect account is invalid.
+  // Never silently omit transfer_data — that would send money to the platform
+  // instead of the seller.
   const isRealConnectAccount =
     typeof listing.seller.stripeAccountId === 'string' &&
     /^acct_[A-Za-z0-9]{16,}$/.test(listing.seller.stripeAccountId);
 
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: totalNzd, // NZD cents
-    currency: 'nzd',
-    // Transfer to seller's Connect account after capture (skipped for seed/test accounts)
-    ...(isRealConnectAccount
-      ? { transfer_data: { destination: listing.seller.stripeAccountId! } }
-      : {}),
-    // Afterpay (BNPL) — enabled for eligible NZ orders
-    payment_method_types: ['card', 'afterpay_clearpay'],
-    metadata: {
-      orderId: order.id,
-      listingId: listing.id,
-      buyerId: session.user.id,
-      sellerId: listing.sellerId,
-    },
-    description: `KiwiMart: ${listing.title}`,
-    statement_descriptor_suffix: 'KIWIMART',
-    // Capture manually after buyer confirms receipt (escrow model)
-    capture_method: 'manual',
-  });
+  if (!isRealConnectAccount) {
+    // Cancel orphan order — seller account is not valid
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'CANCELLED' },
+    });
 
-  // 5e. Store PaymentIntent ID on order
-  await db.order.update({
-    where: { id: order.id },
-    data: { stripePaymentIntentId: paymentIntent.id },
-  });
+    audit({
+      userId: user.id,
+      action: 'ORDER_STATUS_CHANGED',
+      entityType: 'Order',
+      entityId: order.id,
+      metadata: {
+        trigger: 'INVALID_CONNECT_ACCOUNT',
+        sellerStripeAccountId: listing.seller.stripeAccountId,
+      },
+      ip,
+    });
 
-  // 6. Audit
-  audit({
-    userId: session.user.id,
-    action: 'ORDER_CREATED',
-    entityType: 'Order',
-    entityId: order.id,
-    metadata: { listingId: listing.id, totalNzd },
-    ip,
-  });
+    return {
+      success: false,
+      error: 'Seller payment account is not properly configured. Please contact support.',
+    };
+  }
 
-  return {
-    success: true,
-    data: { orderId: order.id, clientSecret: paymentIntent.client_secret! },
-  };
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: totalNzd,
+      currency: 'nzd',
+      transfer_data: { destination: listing.seller.stripeAccountId! },
+      payment_method_types: ['card', 'afterpay_clearpay'],
+      metadata: {
+        orderId: order.id,
+        listingId: listing.id,
+        buyerId: user.id,
+        sellerId: listing.sellerId,
+      },
+      description: `KiwiMart: ${listing.title}`,
+      statement_descriptor_suffix: 'KIWIMART',
+      capture_method: 'manual',
+    });
+
+    // SUCCESS: update order with payment intent ID
+    await db.order.update({
+      where: { id: order.id },
+      data: { stripePaymentIntentId: paymentIntent.id },
+    });
+
+    // 6. Audit
+    audit({
+      userId: user.id,
+      action: 'ORDER_CREATED',
+      entityType: 'Order',
+      entityId: order.id,
+      metadata: { listingId: listing.id, totalNzd },
+      ip,
+    });
+
+    return {
+      success: true,
+      data: { orderId: order.id, clientSecret: paymentIntent.client_secret! },
+    };
+  } catch (stripeErr) {
+    // FIX 7: Stripe failed — cancel the orphan order immediately
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'CANCELLED' },
+    });
+
+    // Re-make listing available (it may have been reserved)
+    await db.listing.update({
+      where: { id: parsed.data.listingId },
+      data: { status: 'ACTIVE' },
+    }).catch(() => {}); // listing may already be ACTIVE
+
+    audit({
+      userId: user.id,
+      action: 'ORDER_STATUS_CHANGED',
+      entityType: 'Order',
+      entityId: order.id,
+      metadata: {
+        trigger: 'STRIPE_CREATION_FAILED',
+        error: stripeErr instanceof Error ? stripeErr.message : String(stripeErr),
+      },
+      ip,
+    });
+
+    return {
+      success: false,
+      error: 'Payment setup failed. Please try again.',
+    };
+  }
 }
 
 // ── confirmDelivery — releases escrow ────────────────────────────────────────
@@ -158,15 +248,23 @@ export async function createOrder(params: {
 export async function confirmDelivery(
   orderId: string
 ): Promise<ActionResult<void>> {
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+  }
+
+  // 3. Validate
+  const parsed = ConfirmDeliverySchema.safeParse({ orderId });
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
   }
 
   // 5a. Load order
   const order = await db.order.findUnique({
-    where: { id: orderId },
+    where: { id: parsed.data.orderId },
     select: {
       id: true,
       buyerId: true,
@@ -182,26 +280,40 @@ export async function confirmDelivery(
   if (!order) return { success: false, error: 'Order not found.' };
 
   // 2. Authorise — only the buyer can confirm delivery
-  if (order.buyerId !== session.user.id) {
+  if (order.buyerId !== user.id) {
     return { success: false, error: 'Only the buyer can confirm delivery.' };
   }
   if (order.status !== 'DISPATCHED' && order.status !== 'DELIVERED') {
     return { success: false, error: 'Order is not in a deliverable state.' };
   }
 
-  // 5b. Capture the PaymentIntent (releases escrow → seller gets paid)
-  if (order.stripePaymentIntentId) {
-    await stripe.paymentIntents.capture(order.stripePaymentIntentId);
+  // 5b. Hard-fail guard — never complete an order with no payment reference
+  if (!order.stripePaymentIntentId) {
+    return {
+      success: false,
+      error: 'Cannot confirm delivery — payment reference missing. Please contact support@kiwimart.co.nz',
+    };
   }
 
-  // 5c. Mark order as completed and update payout
+  // Capture the PaymentIntent (releases escrow → seller gets paid)
+  try {
+    await stripe.paymentIntents.capture(order.stripePaymentIntentId);
+  } catch (stripeErr: unknown) {
+    const msg = stripeErr instanceof Error ? stripeErr.message : String(stripeErr);
+    if (!msg.includes('already_captured') && !msg.includes('amount_capturable')) {
+      return { success: false, error: 'Payment capture failed. Please try again.' };
+    }
+    // Already captured — safe to continue
+  }
+
+  // 5c. Mark order as completed and update payout (ONLY after Stripe success)
   await db.$transaction([
     db.order.update({
-      where: { id: orderId },
+      where: { id: parsed.data.orderId },
       data: { status: 'COMPLETED', completedAt: new Date() },
     }),
     db.payout.updateMany({
-      where: { orderId },
+      where: { orderId: parsed.data.orderId },
       data: { status: 'PROCESSING', initiatedAt: new Date() },
     }),
     // Mark listing as sold
@@ -222,7 +334,7 @@ export async function confirmDelivery(
       await payoutQueue.add(
         'process-payout',
         {
-          orderId,
+          orderId: parsed.data.orderId,
           sellerId: order.sellerId,
           amountNzd: order.totalNzd,
           stripeAccountId: seller.stripeAccountId,
@@ -240,10 +352,10 @@ export async function confirmDelivery(
 
   // 6. Audit
   audit({
-    userId: session.user.id,
+    userId: user.id,
     action: 'ORDER_STATUS_CHANGED',
     entityType: 'Order',
-    entityId: orderId,
+    entityId: parsed.data.orderId,
     metadata: { newStatus: 'COMPLETED', previousStatus: order.status },
   });
 
@@ -257,14 +369,22 @@ export async function markDispatched(params: {
   trackingNumber?: string;
   trackingUrl?: string;
 }): Promise<ActionResult<void>> {
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
+  // 1. Authenticate + ban check
+  let user;
+  try {
+    user = await requireUser();
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+  }
+
+  // 3. Validate
+  const parsed = MarkDispatchedSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0].message };
   }
 
   const order = await db.order.findUnique({
-    where: { id: params.orderId },
+    where: { id: parsed.data.orderId },
     select: {
       id: true,
       sellerId: true,
@@ -278,7 +398,7 @@ export async function markDispatched(params: {
   if (!order) return { success: false, error: 'Order not found.' };
 
   // 2. Authorise
-  if (order.sellerId !== session.user.id) {
+  if (order.sellerId !== user.id) {
     return { success: false, error: 'Only the seller can mark an order as dispatched.' };
   }
   if (order.status !== 'PAYMENT_HELD') {
@@ -287,12 +407,12 @@ export async function markDispatched(params: {
 
   // 5. Update order
   await db.order.update({
-    where: { id: params.orderId },
+    where: { id: parsed.data.orderId },
     data: {
       status: 'DISPATCHED',
       dispatchedAt: new Date(),
-      trackingNumber: params.trackingNumber ?? null,
-      trackingUrl: params.trackingUrl ?? null,
+      trackingNumber: parsed.data.trackingNumber ?? null,
+      trackingUrl: parsed.data.trackingUrl ?? null,
     },
   });
 
@@ -303,8 +423,8 @@ export async function markDispatched(params: {
       type: 'orderDispatched' as const,
       payload: {
         to: order.buyer.email, buyerName: order.buyer.displayName,
-        listingTitle: order.listing.title, trackingNumber: params.trackingNumber,
-        trackingUrl: params.trackingUrl,
+        listingTitle: order.listing.title, trackingNumber: parsed.data.trackingNumber,
+        trackingUrl: parsed.data.trackingUrl,
         orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer`,
       },
     }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
@@ -312,20 +432,19 @@ export async function markDispatched(params: {
     const { sendOrderDispatchedEmail } = await import('@/server/email');
     sendOrderDispatchedEmail({
       to: order.buyer.email, buyerName: order.buyer.displayName,
-      listingTitle: order.listing.title, trackingNumber: params.trackingNumber,
-      trackingUrl: params.trackingUrl, orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer`,
+      listingTitle: order.listing.title, trackingNumber: parsed.data.trackingNumber,
+      trackingUrl: parsed.data.trackingUrl, orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer`,
     }).catch(() => {});
   }
 
   // 6. Audit
   audit({
-    userId: session.user.id,
+    userId: user.id,
     action: 'ORDER_STATUS_CHANGED',
     entityType: 'Order',
-    entityId: params.orderId,
-    metadata: { newStatus: 'DISPATCHED', trackingNumber: params.trackingNumber },
+    entityId: parsed.data.orderId,
+    metadata: { newStatus: 'DISPATCHED', trackingNumber: parsed.data.trackingNumber },
   });
 
   return { success: true, data: undefined };
 }
-

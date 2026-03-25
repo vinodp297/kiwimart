@@ -163,6 +163,8 @@ model User {
   sellerEnabled       Boolean @default(false)
   stripeAccountId     String? @unique  // Stripe Connect account ID
   stripeOnboarded     Boolean @default(false)
+  stripeChargesEnabled  Boolean @default(false)  // Synced from Stripe account.updated webhook
+  stripePayoutsEnabled  Boolean @default(false)  // Synced from Stripe account.updated webhook
   payoutBankAccount   String? // Encrypted — last 4 digits only stored in plain
 
   // Flags
@@ -234,6 +236,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expires])
 }
 
 model VerificationToken {
@@ -440,6 +443,8 @@ model Order {
   @@index([listingId])
   @@index([status])
   @@index([createdAt])
+  @@index([status, dispatchedAt])
+  @@index([buyerId, status])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -475,6 +480,8 @@ model Offer {
   @@index([sellerId])
   @@index([status])
   @@index([expiresAt])
+  @@index([listingId, status])
+  @@index([buyerId, status])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -634,6 +641,19 @@ model AuditLog {
   @@index([action])
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([action, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stripe Event Idempotency — prevents duplicate webhook processing
+// ─────────────────────────────────────────────────────────────────────────────
+
+model StripeEvent {
+  id          String   @id // Stripe event ID e.g. evt_xxx
+  type        String
+  processedAt DateTime @default(now())
+
+  @@map("stripe_events")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

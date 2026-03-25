@@ -23,26 +23,9 @@ import db from '@/lib/db';
 import { rateLimit } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
 import crypto from 'crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-
-// ── R2 client (lazy singleton) ───────────────────────────────────────────────
-
-let _r2: S3Client | null = null;
-
-function getR2Client(): S3Client {
-  if (!_r2) {
-    _r2 = new S3Client({
-      region: 'auto',
-      endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
-    });
-  }
-  return _r2;
-}
+import { r2, R2_BUCKET } from '@/infrastructure/storage/r2';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB
@@ -146,9 +129,8 @@ export async function requestImageUpload(params: {
   });
 
   // 8. Generate real presigned upload URL via R2
-  const r2 = getR2Client();
   const command = new PutObjectCommand({
-    Bucket: process.env.R2_BUCKET_NAME!,
+    Bucket: R2_BUCKET,
     Key: r2Key,
     ContentType: params.contentType,
     ContentLength: params.sizeBytes,
@@ -254,9 +236,8 @@ export async function getSignedImageUrl(r2Key: string): Promise<string> {
     return `https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=800&h=800&fit=crop`;
   }
 
-  const r2 = getR2Client();
   const command = new GetObjectCommand({
-    Bucket: process.env.R2_BUCKET_NAME!,
+    Bucket: R2_BUCKET,
     Key: r2Key,
   });
   return getSignedUrl(r2, command, { expiresIn: 3600 }); // 1 hour
