@@ -25,12 +25,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
 
   session: {
-    // DATABASE strategy — sessions stored in DB, not JWT
-    // Enables instant revocation: delete session row → user is logged out
-    strategy: 'database',
+    // JWT strategy — sessions encoded in signed cookies, not stored in DB.
+    // Auth.js v5 beta.30 forces JWT for credentials regardless of strategy;
+    // switching to jwt makes credentials + OAuth consistent and fixes the
+    // proxy DB-lookup miss that caused the post-login redirect loop.
+    // The PrismaAdapter is still used to persist users/accounts for OAuth.
+    strategy: 'jwt',
     // Sessions expire after 30 days of inactivity
     maxAge: 30 * 24 * 60 * 60,
-    // Refresh session data from DB every 24h
+    // JWT sessions don't have an updateAge — they refresh on every request
     updateAge: 24 * 60 * 60,
   },
 
@@ -243,16 +246,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
   events: {
     // Audit logout events
-    // With database sessions, signOut receives the session object
+    // JWT strategy: signOut receives { token }; database strategy: { session }
     async signOut(params) {
-      const session = ('session' in params ? params.session : null) as
-        | { userId?: string }
-        | null;
-      if (session?.userId) {
-        audit({
-          userId: session.userId,
-          action: 'USER_LOGOUT',
-        });
+      const userId =
+        'token' in params && params.token
+          ? (params.token as { sub?: string }).sub ?? null
+          : 'session' in params && params.session
+          ? (params.session as { userId?: string }).userId ?? null
+          : null;
+      if (userId) {
+        audit({ userId, action: 'USER_LOGOUT' });
       }
     },
   },
