@@ -19,8 +19,51 @@ export default function NavBar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifSeen, setNotifSeen] = useState(false);
   const [showSellBanner, setShowSellBanner] = useState(false);
+
+  // ── Real notifications ─────────────────────────────────────────────────────
+  interface NotifItem {
+    id: string;
+    type: string;
+    title: string;
+    body: string;
+    read: boolean;
+    link: string | null;
+    createdAt: string;
+  }
+  const [notifications, setNotifications] = useState<NotifItem[]>([]);
+
+  function getNotifIcon(type: string): string {
+    const icons: Record<string, string> = {
+      ORDER_PLACED:     '🛍️',
+      ORDER_DISPATCHED: '📦',
+      ORDER_COMPLETED:  '✅',
+      ORDER_DISPUTED:   '⚠️',
+      MESSAGE_RECEIVED: '💬',
+      OFFER_RECEIVED:   '💰',
+      OFFER_ACCEPTED:   '🎉',
+      OFFER_DECLINED:   '❌',
+      PRICE_DROP:       '📉',
+      WATCHLIST_SOLD:   '🔔',
+      ID_VERIFIED:      '✅',
+      SYSTEM:           'ℹ️',
+    };
+    return icons[type] ?? '🔔';
+  }
+
+  function formatRelativeTime(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins  = Math.floor(diff / 60_000);
+    const hours = Math.floor(diff / 3_600_000);
+    const days  = Math.floor(diff / 86_400_000);
+    if (mins  <  1) return 'Just now';
+    if (mins  < 60) return `${mins}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    if (days  <  7) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString('en-NZ');
+  }
+
+  const hasUnread = notifications.some((n) => !n.read);
   const accountRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +97,20 @@ export default function NavBar() {
     setMobileOpen(false);
     setAccountOpen(false);
   }, [pathname]);
+
+  // Fetch real notifications when user is logged in
+  useEffect(() => {
+    if (!user) return;
+    fetch('/api/notifications')
+      .then((r) => r.json())
+      .then((data) => setNotifications(data.notifications ?? []))
+      .catch(() => {});
+  }, [user]);
+
+  async function markAllRead() {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    await fetch('/api/notifications', { method: 'PATCH' }).catch(() => {});
+  }
 
   // Show sell banner for logged-in users who haven't set up selling
   useEffect(() => {
@@ -175,9 +232,17 @@ export default function NavBar() {
                   <div ref={notifRef} className="relative">
                     <button
                       onClick={() => {
-                        setNotifOpen((v) => !v);
-                        setNotifSeen(true);
+                        const opening = !notifOpen;
+                        setNotifOpen(opening);
                         setAccountOpen(false);
+                        if (opening) {
+                          // Refresh list and mark all read when dropdown opens
+                          fetch('/api/notifications')
+                            .then((r) => r.json())
+                            .then((data) => setNotifications(data.notifications ?? []))
+                            .catch(() => {});
+                          markAllRead();
+                        }
                       }}
                       aria-label="Notifications"
                       aria-expanded={notifOpen}
@@ -192,8 +257,8 @@ export default function NavBar() {
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                       </svg>
-                      {/* Unread dot — clears once user opens the dropdown */}
-                      {!notifSeen && (
+                      {/* Unread dot — shows when there are unread notifications */}
+                      {hasUnread && (
                         <span
                           className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full
                             bg-[#D4A843] ring-2 ring-white"
@@ -215,50 +280,40 @@ export default function NavBar() {
                           <p className="text-[13px] font-semibold text-[#141414]">
                             Notifications
                           </p>
-                          <button className="text-[11.5px] text-[#D4A843] font-semibold hover:text-[#B8912E]">
+                          <button
+                            className="text-[11.5px] text-[#D4A843] font-semibold hover:text-[#B8912E]"
+                            onClick={markAllRead}
+                          >
                             Mark all read
                           </button>
                         </div>
                         <div className="divide-y divide-[#F8F7F4]">
-                          {[
-                            {
-                              icon: '📦',
-                              text: 'Your Sony headphones order has been dispatched',
-                              time: '2h ago',
-                              unread: true,
-                              url: '/dashboard/buyer',
-                            },
-                            {
-                              icon: '💬',
-                              text: 'TechDealsNZ replied to your message',
-                              time: '4h ago',
-                              unread: true,
-                              url: '/dashboard/buyer?tab=messages',
-                            },
-                            {
-                              icon: '❤️',
-                              text: 'Someone is watching your MacBook listing',
-                              time: '1d ago',
-                              unread: false,
-                              url: '/dashboard/buyer?tab=watchlist',
-                            },
-                          ].map((n, i) => (
+                          {notifications.length === 0 ? (
+                            <div className="px-4 py-8 text-center">
+                              <p className="text-[13px] text-[#9E9A91]">No notifications yet</p>
+                            </div>
+                          ) : notifications.slice(0, 5).map((n) => (
                             <Link
-                              key={i}
-                              href={n.url}
+                              key={n.id}
+                              href={n.link ?? '/notifications'}
                               onClick={() => setNotifOpen(false)}
                               className={`flex items-start gap-3 px-4 py-3
                                 hover:bg-[#F8F7F4] cursor-pointer transition-colors
-                                ${n.unread ? 'bg-[#F5ECD4]/40' : ''}`}
+                                ${!n.read ? 'bg-[#F5ECD4]/40' : ''}`}
                             >
-                              <span className="text-lg shrink-0 mt-0.5">{n.icon}</span>
+                              <span className="text-lg shrink-0 mt-0.5">{getNotifIcon(n.type)}</span>
                               <div className="flex-1 min-w-0">
-                                <p className="text-[12px] text-[#141414] leading-relaxed">
-                                  {n.text}
+                                <p className={`text-[12px] text-[#141414] leading-snug ${!n.read ? 'font-semibold' : ''}`}>
+                                  {n.title}
                                 </p>
-                                <p className="text-[11px] text-[#9E9A91] mt-0.5">{n.time}</p>
+                                <p className="text-[11px] text-[#73706A] mt-0.5 line-clamp-2">
+                                  {n.body}
+                                </p>
+                                <p className="text-[10px] text-[#C9C5BC] mt-1">
+                                  {formatRelativeTime(n.createdAt)}
+                                </p>
                               </div>
-                              {n.unread && (
+                              {!n.read && (
                                 <div className="w-2 h-2 rounded-full bg-[#D4A843] shrink-0 mt-1.5" />
                               )}
                             </Link>

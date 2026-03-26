@@ -6,6 +6,7 @@ import db from '@/lib/db'
 import { audit } from '@/server/lib/audit'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
+import { createNotification } from '@/modules/notifications/notification.service'
 import type { CreateOfferInput, RespondOfferInput } from './offer.types'
 
 export class OfferService {
@@ -96,6 +97,16 @@ export class OfferService {
       ip,
     })
 
+    // Notify seller of new offer
+    createNotification({
+      userId:    listing.sellerId,
+      type:      'OFFER_RECEIVED',
+      title:     'New offer received 💬',
+      body:      `${buyer?.displayName ?? 'A buyer'} offered $${input.amount.toFixed(2)} for "${listing.title}"`,
+      listingId: input.listingId,
+      link:      `/listings/${input.listingId}`,
+    }).catch(() => {})
+
     logger.info('offer.created', { offerId: offer.id, listingId: input.listingId, userId })
 
     return { offerId: offer.id }
@@ -181,6 +192,27 @@ export class OfferService {
       entityId: input.offerId,
       ip,
     })
+
+    // Notify buyer of offer response
+    if (input.action === 'ACCEPT') {
+      createNotification({
+        userId:    offer.buyerId,
+        type:      'OFFER_ACCEPTED',
+        title:     'Your offer was accepted! 🎉',
+        body:      `"${offer.listing.title}" — complete your purchase within 24 hours.`,
+        listingId: offer.listingId,
+        link:      `/listings/${offer.listingId}`,
+      }).catch(() => {})
+    } else {
+      createNotification({
+        userId:    offer.buyerId,
+        type:      'OFFER_DECLINED',
+        title:     'Offer not accepted',
+        body:      `Your offer on "${offer.listing.title}" was declined. The listing is still available.`,
+        listingId: offer.listingId,
+        link:      `/listings/${offer.listingId}`,
+      }).catch(() => {})
+    }
 
     logger.info('offer.responded', {
       offerId: input.offerId,

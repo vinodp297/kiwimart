@@ -225,6 +225,7 @@ model User {
   reportsFiled   Report[]   @relation("ReportFiler")
   reportsReceived Report[]  @relation("ReportTarget")
   invitationsSent AdminInvitation[] @relation("InvitedBy")
+  notifications   Notification[]
 
   @@index([email])
   @@index([username])
@@ -681,6 +682,27 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@index([action, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notifications — in-app bell notifications for users
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // NotificationType — see notification.service.ts
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  link      String?  // Deep-link to relevant page
+  listingId String?  // Optional reference for context
+  orderId   String?  // Optional reference for context
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
