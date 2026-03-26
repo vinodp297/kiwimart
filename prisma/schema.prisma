@@ -125,6 +125,16 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum AdminRole {
+  SUPER_ADMIN
+  FINANCE_ADMIN
+  DISPUTES_ADMIN
+  TRUST_SAFETY_ADMIN
+  SUPPORT_ADMIN
+  SELLER_MANAGER
+  READ_ONLY_ADMIN
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // User
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,6 +190,7 @@ model User {
   bannedAt      DateTime?
   bannedReason  String?
   isAdmin       Boolean  @default(false)
+  adminRole     AdminRole?  // null = not admin; set alongside isAdmin
   
   // Privacy
   agreeMarketing Boolean @default(false)
@@ -207,6 +218,7 @@ model User {
   phoneTokens    PhoneVerificationToken[]
   reportsFiled   Report[]   @relation("ReportFiler")
   reportsReceived Report[]  @relation("ReportTarget")
+  invitationsSent AdminInvitation[] @relation("InvitedBy")
 
   @@index([email])
   @@index([username])
@@ -704,6 +716,25 @@ model Subcategory {
 
   @@unique([categoryId, slug])
   @@index([categoryId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin Invitations — token-based invite system for onboarding new admin team
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AdminInvitation {
+  id          String     @id @default(cuid())
+  email       String     @unique
+  adminRole   AdminRole
+  invitedBy   String
+  inviter     User       @relation("InvitedBy", fields: [invitedBy], references: [id])
+  token       String     @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@index([token])
+  @@index([email])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

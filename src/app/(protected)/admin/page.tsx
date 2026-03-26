@@ -4,8 +4,6 @@
 import type React from 'react';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
 import SystemHealthWidget from '@/components/admin/SystemHealthWidget';
 import ApproveIdButton from './ApproveIdButton';
 import { auth } from '@/lib/auth';
@@ -182,9 +180,7 @@ export default async function AdminPage() {
   ];
 
   return (
-    <>
-      <NavBar />
-      <main className="bg-[#FAFAF8] min-h-screen">
+    <div className="bg-[#FAFAF8] min-h-screen">
         {/* Header band */}
         <div className="bg-[#141414] text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
@@ -297,8 +293,6 @@ export default async function AdminPage() {
             <SystemHealthWidget />
           </div>
         </div>
-      </main>
-      <Footer />
-    </>
+    </div>
   );
 }

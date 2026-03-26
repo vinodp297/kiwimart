@@ -27,7 +27,10 @@ describe('Dispute resolution atomicity', () => {
 
     vi.mocked(db.user.findUnique).mockResolvedValue({
       id: 'admin-1',
+      email: 'admin@kiwimart.test',
+      displayName: 'Admin',
       isAdmin: true,
+      adminRole: 'SUPER_ADMIN',
       isBanned: false,
     } as never)
   })
@@ -156,7 +159,10 @@ describe('Dispute resolution atomicity', () => {
 
     vi.mocked(db.user.findUnique).mockResolvedValue({
       id: 'non-admin',
+      email: 'user@test.com',
+      displayName: 'User',
       isAdmin: false,
+      adminRole: null,
       isBanned: false,
     } as never)
 

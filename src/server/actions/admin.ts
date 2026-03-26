@@ -2,7 +2,7 @@
 // src/server/actions/admin.ts — thin wrapper
 // Business logic delegated to AdminService.
 
-import { requireAdmin } from '@/server/lib/requireAdmin';
+import { requirePermission } from '@/shared/auth/requirePermission';
 import { adminService } from '@/modules/admin/admin.service';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
@@ -26,12 +26,11 @@ export async function banUser(
   userId: string,
   reason: string
 ): Promise<ActionResult<void>> {
-  const guard = await requireAdmin();
-  if ('error' in guard) return { success: false, error: guard.error };
   const parsed = BanUserSchema.safeParse({ userId, reason });
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
   try {
-    await adminService.banUser(parsed.data.userId, parsed.data.reason, guard.userId);
+    const admin = await requirePermission('BAN_USERS');
+    await adminService.banUser(parsed.data.userId, parsed.data.reason, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
@@ -39,11 +38,10 @@ export async function banUser(
 }
 
 export async function unbanUser(userId: string): Promise<ActionResult<void>> {
-  const guard = await requireAdmin();
-  if ('error' in guard) return { success: false, error: guard.error };
   if (!userId || typeof userId !== 'string') return { success: false, error: 'Invalid user ID.' };
   try {
-    await adminService.unbanUser(userId, guard.userId);
+    const admin = await requirePermission('UNBAN_USERS');
+    await adminService.unbanUser(userId, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
@@ -53,10 +51,9 @@ export async function unbanUser(userId: string): Promise<ActionResult<void>> {
 export async function toggleSellerEnabled(
   userId: string
 ): Promise<ActionResult<void>> {
-  const guard = await requireAdmin();
-  if ('error' in guard) return { success: false, error: guard.error };
   try {
-    await adminService.toggleSellerEnabled(userId, guard.userId);
+    const admin = await requirePermission('APPROVE_SELLERS');
+    await adminService.toggleSellerEnabled(userId, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
@@ -67,12 +64,11 @@ export async function resolveReport(
   reportId: string,
   action: 'dismiss' | 'remove' | 'ban'
 ): Promise<ActionResult<void>> {
-  const guard = await requireAdmin();
-  if ('error' in guard) return { success: false, error: guard.error };
   const parsed = ResolveReportSchema.safeParse({ reportId, action });
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
   try {
-    await adminService.resolveReport(parsed.data.reportId, parsed.data.action, guard.userId);
+    const admin = await requirePermission('MODERATE_CONTENT');
+    await adminService.resolveReport(parsed.data.reportId, parsed.data.action, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
@@ -83,12 +79,11 @@ export async function resolveDispute(
   orderId: string,
   favour: 'buyer' | 'seller'
 ): Promise<ActionResult<void>> {
-  const guard = await requireAdmin();
-  if ('error' in guard) return { success: false, error: guard.error };
   const parsed = ResolveDisputeSchema.safeParse({ orderId, favour });
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message };
   try {
-    await adminService.resolveDispute(parsed.data.orderId, parsed.data.favour, guard.userId);
+    const admin = await requirePermission('RESOLVE_DISPUTES');
+    await adminService.resolveDispute(parsed.data.orderId, parsed.data.favour, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };

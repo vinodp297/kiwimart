@@ -6,8 +6,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
 import { banUser, unbanUser, toggleSellerEnabled } from '@/server/actions/admin';
 
 interface AdminUser {
@@ -84,9 +82,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <>
-      <NavBar />
-      <main className="bg-[#FAFAF8] min-h-screen">
+    <div className="bg-[#FAFAF8] min-h-screen">
         <div className="bg-[#141414] text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
             <div className="flex items-center gap-2 text-[12px] text-white/40 mb-2">
@@ -227,8 +223,6 @@ export default function AdminUsersPage() {
             </button>
           </div>
         </div>
-      </main>
-      <Footer />
-    </>
+    </div>
   );
 }
