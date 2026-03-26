@@ -68,3 +68,26 @@ For searchable/alertable structured logs, integrate **Axiom** (free tier: 500 MB
 | Expire listings + offer reservations | 3:00 AM UTC daily | `/api/cron/expire-listings` |
 
 All cron routes require `Authorization: Bearer $CRON_SECRET`.
+
+---
+
+## Worker Monitoring
+
+| Check | URL | Expected |
+|-------|-----|----------|
+| Queue health | `GET /api/workers/health` | `{ "status": "ok" }` |
+| Failed jobs | `npm run workers:check` | 0 failed jobs |
+
+### Alerts to configure
+
+- Alert if `/api/workers/health` returns `error` (queue unreachable)
+- Alert if payout queue has > 5 failed jobs
+- Alert if email queue has > 10 failed jobs
+
+### Checking failed jobs manually
+
+```bash
+npm run workers:check
+```
+
+Exits with code 1 and prints details if any failed jobs exist.

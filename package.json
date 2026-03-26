@@ -21,6 +21,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report",
+    "workers:start": "tsx src/worker.ts",
+    "workers:check": "tsx scripts/check-failed-jobs.ts",
     "check-env": "tsx scripts/check-env.ts",
     "postinstall": "prisma generate"
   },
