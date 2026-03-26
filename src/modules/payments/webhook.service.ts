@@ -103,6 +103,16 @@ export class WebhookService {
       data: { status: 'CANCELLED', updatedAt: new Date() },
     })
 
+    // Release listing reservation so other buyers can purchase it.
+    // Guard: only release if still RESERVED — never overwrite SOLD/ACTIVE.
+    const listingId = pi.metadata?.listingId
+    if (listingId) {
+      await db.listing.updateMany({
+        where: { id: listingId, status: 'RESERVED' },
+        data: { status: 'ACTIVE' },
+      })
+    }
+
     audit({
       action: 'PAYMENT_FAILED',
       entityType: 'Order',
