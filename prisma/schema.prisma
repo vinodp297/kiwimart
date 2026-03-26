@@ -142,8 +142,10 @@ enum AdminRole {
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
-  emailVerified DateTime?
-  username      String   @unique
+  emailVerified      DateTime?
+  emailVerifyToken   String?   @unique  // Single-use token for email verification
+  emailVerifyExpires DateTime?
+  username           String    @unique
   displayName   String
 
   // Auth — password stored as Argon2id hash, never plaintext

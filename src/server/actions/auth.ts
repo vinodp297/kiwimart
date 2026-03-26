@@ -89,7 +89,11 @@ export async function registerUser(
   // 5d. Hash password with Argon2id
   const passwordHash = await hashPassword(data.password);
 
-  // 5e. Create user
+  // 5e. Generate email verification token (24-hour expiry)
+  const verifyToken = crypto.randomBytes(32).toString('hex');
+  const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  // 5f. Create user with verification token
   const user = await db.user.create({
     data: {
       email: data.email,
@@ -98,22 +102,21 @@ export async function registerUser(
       passwordHash,
       agreeMarketing: data.agreeMarketing,
       agreedTermsAt: new Date(),
+      emailVerifyToken: verifyToken,
+      emailVerifyExpires: verifyExpires,
     },
     select: { id: true, email: true, displayName: true },
   });
 
-  // 5f. Queue welcome email (non-blocking via BullMQ)
+  // 5g. Send verification email (non-blocking; welcome email sent after verification)
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  const verifyUrl = `${appUrl}/api/verify-email?token=${verifyToken}`;
   try {
-    const { emailQueue } = await import('@/lib/queue');
-    await emailQueue.add(
-      'welcome',
-      { type: 'welcome' as const, payload: { to: user.email, displayName: user.displayName } },
-      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
-    );
+    const { sendVerificationEmail } = await import('@/server/email');
+    sendVerificationEmail({ to: user.email, displayName: user.displayName, verifyUrl }).catch(() => {});
   } catch {
-    // Queue unavailable — send directly as fallback
-    const { sendWelcomeEmail } = await import('@/server/email');
-    sendWelcomeEmail({ to: user.email, displayName: user.displayName }).catch(() => {});
+    // Non-fatal — user can request resend later
+    console.error('[AUTH] Failed to send verification email for', user.email);
   }
 
   // 6. Audit

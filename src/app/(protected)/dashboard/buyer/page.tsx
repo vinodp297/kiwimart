@@ -30,6 +30,7 @@ export default function BuyerDashboardPage() {
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [activeThread, setActiveThread] = useState<ThreadRow | null>(null);
   const [newMessage, setNewMessage] = useState('');
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -157,6 +158,39 @@ export default function BuyerDashboardPage() {
       <NavBar />
       <main className="bg-[#FAFAF8] min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+
+          {/* ── Welcome banner (new users with no orders yet) ─────────── */}
+          {!welcomeDismissed && user && orders.length === 0 && watchlist.length === 0 &&
+            new Date(user.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) && (
+            <div className="bg-[#FFF9EC] border border-[#D4A843]/30 rounded-2xl p-5 mb-6 flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h2 className="font-semibold text-[#141414] text-[16px] mb-1">
+                  Welcome to KiwiMart, {user.displayName}! 🥝
+                </h2>
+                <p className="text-[#73706A] text-[13px] mb-4">
+                  You&apos;re all set up. Here&apos;s how to get started:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Link href="/search" className="inline-flex items-center gap-1.5 bg-[#141414] text-white px-4 py-2 rounded-xl text-[13px] font-medium hover:bg-[#2A2A2A] transition-colors">
+                    🛍️ Browse listings
+                  </Link>
+                  <Link href="/sell" className="inline-flex items-center gap-1.5 border border-[#E3E0D9] bg-white text-[#141414] px-4 py-2 rounded-xl text-[13px] font-medium hover:bg-[#F2EFE8] transition-colors">
+                    💰 Start selling
+                  </Link>
+                  <Link href="/account/settings" className="inline-flex items-center gap-1.5 border border-[#E3E0D9] bg-white text-[#141414] px-4 py-2 rounded-xl text-[13px] font-medium hover:bg-[#F2EFE8] transition-colors">
+                    👤 Complete profile
+                  </Link>
+                </div>
+              </div>
+              <button
+                onClick={() => setWelcomeDismissed(true)}
+                className="text-[#C9C5BC] hover:text-[#73706A] transition-colors text-lg flex-shrink-0 leading-none mt-0.5"
+                aria-label="Dismiss welcome banner"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* ── Profile header ─────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6 mb-6 flex
