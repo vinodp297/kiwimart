@@ -324,9 +324,15 @@ export default function SearchPageClient({
           className="min-w-[130px]"
         >
           <option value="">Any condition</option>
-          {CONDITIONS.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
+          <optgroup label="New">
+            <option value="new">Brand New</option>
+          </optgroup>
+          <optgroup label="Used">
+            <option value="like-new">Like New</option>
+            <option value="good">Good</option>
+            <option value="fair">Fair</option>
+            <option value="parts">Parts Only</option>
+          </optgroup>
         </FilterSelect>
 
         {/* Region */}

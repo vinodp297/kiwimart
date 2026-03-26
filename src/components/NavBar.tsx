@@ -233,20 +233,21 @@ export default function NavBar() {
                               text: 'TechDealsNZ replied to your message',
                               time: '4h ago',
                               unread: true,
-                              url: '/dashboard/buyer',
+                              url: '/dashboard/buyer?tab=messages',
                             },
                             {
                               icon: '❤️',
                               text: 'Someone is watching your MacBook listing',
                               time: '1d ago',
                               unread: false,
-                              url: '/dashboard/buyer',
+                              url: '/dashboard/buyer?tab=watchlist',
                             },
                           ].map((n, i) => (
-                            <button
+                            <Link
                               key={i}
-                              onClick={() => { setNotifOpen(false); router.push(n.url); }}
-                              className={`w-full flex items-start gap-3 px-4 py-3 text-left
+                              href={n.url}
+                              onClick={() => setNotifOpen(false)}
+                              className={`flex items-start gap-3 px-4 py-3
                                 hover:bg-[#F8F7F4] cursor-pointer transition-colors
                                 ${n.unread ? 'bg-[#F5ECD4]/40' : ''}`}
                             >
@@ -260,7 +261,7 @@ export default function NavBar() {
                               {n.unread && (
                                 <div className="w-2 h-2 rounded-full bg-[#D4A843] shrink-0 mt-1.5" />
                               )}
-                            </button>
+                            </Link>
                           ))}
                         </div>
                         <Link

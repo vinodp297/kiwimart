@@ -46,39 +46,50 @@ export default function RegisterPage() {
     setFieldErrors({});
     setServerError('');
 
+    // Client-side: confirm password must match before hitting the server
+    if (password !== confirm) {
+      setFieldErrors({ confirmPassword: ['Passwords do not match'] });
+      return;
+    }
+
     const turnstileToken = widgetId.current
       ? window.turnstile?.getResponse(widgetId.current) ?? ''
       : '';
 
     setLoading(true);
-    const result = await registerUser({
-      firstName,
-      lastName,
-      email,
-      username: `${firstName}${lastName}`.toLowerCase().replace(/[^a-z0-9]/g, ''),
-      password,
-      confirmPassword: confirm,
-      agreeTerms: agreeTerms as true,
-      agreeMarketing,
-      turnstileToken,
-    });
-    setLoading(false);
+    try {
+      const result = await registerUser({
+        firstName,
+        lastName,
+        email,
+        username: `${firstName}${lastName}`.toLowerCase().replace(/[^a-z0-9]/g, ''),
+        password,
+        confirmPassword: confirm,
+        agreeTerms: agreeTerms as true,
+        agreeMarketing,
+        turnstileToken,
+      });
 
-    if (!result.success) {
-      if (result.fieldErrors) setFieldErrors(result.fieldErrors);
-      else setServerError(result.error);
-      if (widgetId.current) window.turnstile?.reset(widgetId.current);
-      return;
+      if (!result.success) {
+        if (result.fieldErrors) setFieldErrors(result.fieldErrors);
+        else setServerError(result.error);
+        if (widgetId.current) window.turnstile?.reset(widgetId.current);
+        setLoading(false);
+        return;
+      }
+
+      // Auto sign in after registration
+      await signIn('credentials', {
+        email: email.toLowerCase().trim(),
+        password,
+        turnstileToken: '',
+        redirect: false,
+      });
+      router.push('/dashboard/buyer?welcome=1');
+    } catch {
+      setServerError('Something went wrong. Please try again.');
+      setLoading(false);
     }
-
-    // Auto sign in after registration
-    await signIn('credentials', {
-      email: email.toLowerCase().trim(),
-      password,
-      turnstileToken: '',
-      redirect: false,
-    });
-    router.push('/dashboard/buyer?welcome=1');
   }
 
   const fe = (f: string) => fieldErrors[f]?.[0];
@@ -132,7 +143,7 @@ export default function RegisterPage() {
               <PasswordStrength password={password} />
             </div>
 
-            <Input label="Confirm password" type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); clear('confirmPassword'); }} placeholder="Re-enter your password" autoComplete="new-password" required error={fe('confirmPassword')} />
+            <Input label="Confirm password" type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); clear('confirmPassword'); }} placeholder="Re-enter your password" autoComplete="new-password" required error={fe('confirmPassword') ?? (confirm.length > 0 && confirm !== password ? 'Passwords do not match' : undefined)} />
 
             <div className="space-y-3 pt-1">
               <div>
