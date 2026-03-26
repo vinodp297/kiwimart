@@ -38,6 +38,7 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().min(1),
   CRON_SECRET: z.string().min(16),
   WORKER_SECRET: z.string().min(16),
+  ADMIN_EMAIL: z.string().email().optional(),
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
   CLOUDFLARE_TURNSTILE_SECRET_KEY: z.string().optional(),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),

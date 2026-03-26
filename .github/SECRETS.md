@@ -32,6 +32,7 @@ Add these secrets in GitHub repository settings:
 | `REDIS_URL` | IORedis TCP URL for BullMQ e.g. `redis://...` |
 | `RESEND_API_KEY` | Resend API key e.g. `re_...` |
 | `EMAIL_FROM` | Sender address e.g. `KiwiMart <noreply@kiwimart.co.nz>` |
+| `ADMIN_EMAIL` | Admin notification recipient e.g. `admin@kiwimart.co.nz` |
 | `CRON_SECRET` | Secret for `/api/cron/*` endpoints (32+ chars) |
 | `WORKER_SECRET` | Secret for `/api/workers` endpoint (32+ chars) |
 

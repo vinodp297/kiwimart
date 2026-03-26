@@ -361,6 +361,7 @@ export default function NavBar() {
                               {[
                                 { href: '/dashboard/seller', label: 'Seller dashboard', icon: '📊' },
                                 { href: '/sell', label: 'Create listing', icon: '➕' },
+                                { href: '/seller/onboarding', label: 'Seller Hub', icon: '🌿' },
                               ].map(({ href, label, icon }) => (
                                 <Link
                                   key={href}
@@ -602,6 +603,9 @@ export default function NavBar() {
                     </Link>
                     <Link href="/dashboard/seller" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
                       📊 Seller dashboard
+                    </Link>
+                    <Link href="/seller/onboarding" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
+                      🌿 Seller Hub
                     </Link>
                     <button onClick={() => signOut({ callbackUrl: '/login' })} className="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors">
                       🚪 Sign out
