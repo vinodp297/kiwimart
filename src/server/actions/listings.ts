@@ -9,6 +9,7 @@ import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { audit } from '@/server/lib/audit';
 import { requireUser } from '@/server/lib/requireUser';
 import { listingService } from '@/modules/listings/listing.service';
+import { createNotification } from '@/modules/notifications/notification.service';
 import {
   createListingSchema,
   updateListingSchema,
@@ -193,7 +194,7 @@ export async function updateListing(
   // Load current listing to check ownership + existing price
   const existing = await db.listing.findUnique({
     where: { id: listingId },
-    select: { sellerId: true, priceNzd: true, deletedAt: true },
+    select: { sellerId: true, priceNzd: true, deletedAt: true, title: true },
   });
 
   if (!existing || existing.deletedAt) {
@@ -234,6 +235,31 @@ export async function updateListing(
       ...priceDropData,
     },
   });
+
+  // Notify watchlist users of price drop (fire-and-forget)
+  if (newPriceNzd != null && newPriceNzd < existing.priceNzd) {
+    const listingTitle = data.title ?? existing.title;
+    const priceDrop = Math.round(((existing.priceNzd - newPriceNzd) / existing.priceNzd) * 100);
+    const newPriceFormatted = `$${(newPriceNzd / 100).toFixed(2)}`;
+    const oldPriceFormatted = `$${(existing.priceNzd / 100).toFixed(2)}`;
+
+    db.watchlistItem.findMany({
+      where: { listingId },
+      select: { userId: true },
+    }).then((watchers) => {
+      for (const watcher of watchers) {
+        if (watcher.userId === existing.sellerId) continue;
+        createNotification({
+          userId:    watcher.userId,
+          type:      'PRICE_DROP',
+          title:     `Price dropped ${priceDrop}%! 📉`,
+          body:      `"${listingTitle}" dropped from ${oldPriceFormatted} to ${newPriceFormatted}`,
+          listingId,
+          link:      `/listings/${listingId}`,
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+  }
 
   revalidatePath(`/listings/${listingId}`);
   revalidatePath('/dashboard/seller');

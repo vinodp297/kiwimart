@@ -28,7 +28,7 @@ export const SELLER_TIERS: Record<SellerTierName, SellerTier> = {
   phone_verified: {
     name: 'phone_verified',
     label: 'Verified Seller',
-    description: 'Phone-verified sellers get more listings and faster payouts.',
+    description: 'Phone verification coming soon — use ID verification for unlimited access now.',
     perks: [
       'Create up to 50 listings',
       'Accept payments via Stripe',
