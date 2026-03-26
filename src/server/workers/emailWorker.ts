@@ -14,6 +14,7 @@ import {
   sendOfferReceivedEmail,
   sendOfferResponseEmail,
   sendOrderDispatchedEmail,
+  sendDisputeOpenedEmail,
 } from '@/server/email';
 import { audit } from '@/server/lib/audit';
 import { logger } from '@/shared/logger';
@@ -48,6 +49,10 @@ export function startEmailWorker() {
         case 'orderComplete':
           // Sprint 5: sendOrderCompleteEmail
           logger.info('email.worker.order_complete_stub', { payload });
+          break;
+
+        case 'disputeOpened':
+          await sendDisputeOpenedEmail(payload as Parameters<typeof sendDisputeOpenedEmail>[0]);
           break;
 
         default:

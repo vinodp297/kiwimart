@@ -9,6 +9,7 @@ import { paymentService } from '@/modules/payments/payment.service'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
 import { createNotification } from '@/modules/notifications/notification.service'
+import { sendDisputeOpenedEmail } from '@/server/email'
 import type { DispatchOrderInput, OpenDisputeInput } from './order.types'
 
 export class OrderService {
@@ -214,6 +215,7 @@ export class OrderService {
         disputeOpenedAt: true,
         listing: { select: { title: true } },
         seller: { select: { email: true, displayName: true } },
+        buyer:  { select: { displayName: true } },
       },
     })
 
@@ -261,22 +263,32 @@ export class OrderService {
       },
     })
 
-    // Notify seller via email queue
+    // Notify seller via email queue (with direct fallback if queue unavailable)
     try {
       const { emailQueue } = await import('@/lib/queue')
       await emailQueue.add('disputeOpened', {
         type: 'disputeOpened' as const,
         payload: {
-          to: order.seller.email,
-          sellerName: order.seller.displayName,
+          to:           order.seller.email,
+          sellerName:   order.seller.displayName,
+          buyerName:    order.buyer?.displayName ?? 'A buyer',
           listingTitle: order.listing.title,
-          reason: input.reason,
-          description: input.description,
-          orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/orders/${input.orderId}`,
+          orderId:      input.orderId,
+          reason:       input.reason,
+          description:  input.description,
         },
       }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } })
     } catch {
       logger.warn('order.dispute.email_queue_failed', { orderId: input.orderId })
+      sendDisputeOpenedEmail({
+        to:           order.seller.email,
+        sellerName:   order.seller.displayName,
+        buyerName:    order.buyer?.displayName ?? 'A buyer',
+        listingTitle: order.listing.title,
+        orderId:      input.orderId,
+        reason:       input.reason,
+        description:  input.description,
+      }).catch(() => {})
     }
 
     audit({
