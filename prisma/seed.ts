@@ -328,7 +328,7 @@ async function main() {
     expiresAt: new Date(Date.now() + 28 * 86400000),
   }});
   await addImages(l4.id, [
-    'https://images.unsplash.com/photo-1593640408182-31c228b03e70?w=800',
+    'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800',
     'https://images.unsplash.com/photo-1587202372775-e229f172b9d7?w=800',
     'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800',
   ], l4.title);

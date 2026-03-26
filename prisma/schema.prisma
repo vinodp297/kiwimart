@@ -473,7 +473,11 @@ model Offer {
   
   // Expiry — offers expire after 48 hours by default
   expiresAt DateTime
-  
+
+  // Payment deadline — set 24 hours after seller accepts
+  // If buyer has not paid by this time the listing is released back to ACTIVE
+  paymentDeadline DateTime?
+
   respondedAt DateTime?
   declineNote String?   @db.VarChar(300)
   

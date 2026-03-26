@@ -128,6 +128,10 @@ export class OfferService {
         status: newStatus,
         respondedAt: new Date(),
         declineNote: input.declineNote ?? null,
+        // Give buyer 24 hours to complete payment after acceptance
+        ...(input.action === 'ACCEPT' && {
+          paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        }),
       },
     })
 
