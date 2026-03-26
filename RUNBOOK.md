@@ -38,6 +38,54 @@ Expected:
 
 ---
 
+## Background Workers (BullMQ)
+
+### Current state
+
+Workers are started via `POST /api/workers` on Vercel. This is adequate for low traffic but Vercel serverless functions have a 60-second execution limit — long-running workers can be killed between job batches.
+
+### Production setup (Railway — recommended)
+
+Deploy the standalone worker process to Railway so it runs continuously:
+
+1. Create a Railway account at [railway.app](https://railway.app)
+2. Create a new project → **Deploy from GitHub repo** → `vinodp297/kiwimart`
+3. Set the **Start Command**: `npx tsx src/worker.ts`
+4. Add environment variables:
+   - `DATABASE_URL`
+   - `DATABASE_DIRECT_URL`
+   - `REDIS_URL`
+   - `STRIPE_SECRET_KEY`
+   - `RESEND_API_KEY`
+   - `EMAIL_FROM`
+   - `NODE_ENV=production`
+   - `NEXT_PUBLIC_APP_URL`
+5. Deploy. Railway will restart the process automatically on failure (`restartPolicyType: ON_FAILURE`).
+
+### Worker health check
+
+```bash
+curl https://kiwimart.vercel.app/api/workers/health
+# Expected: { "status": "ok", "queues": ["payout","email","image"] }
+```
+
+### Check failed jobs (dead letter queue)
+
+```bash
+npm run workers:check
+# Prints failed jobs per queue; exits 1 if any exist
+```
+
+### Queues
+
+| Queue | Worker | Concurrency |
+|-------|--------|-------------|
+| `payout` | payoutWorker | 2 |
+| `email` | emailWorker | 5 (max 10/sec) |
+| `image` | imageWorker | 3 |
+
+---
+
 ## Rollback Procedure
 
 ### Instant rollback via Vercel dashboard (< 2 minutes)
