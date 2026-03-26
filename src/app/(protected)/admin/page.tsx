@@ -1,6 +1,7 @@
 // src/app/(protected)/admin/page.tsx  (Sprint 12 — Observability)
 // ─── Admin KPI Dashboard ───────────────────────────────────────────────────────
 
+import type React from 'react';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import NavBar from '@/components/NavBar';
@@ -66,7 +67,17 @@ export default async function AdminPage() {
   const completionRate =
     totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
 
-  const kpis = [
+  type Kpi = {
+    label: string;
+    value: string;
+    subValue?: string;
+    icon: React.ReactNode;
+    alert: boolean;
+    alertColour?: string;
+    href?: string;
+    badge?: string;
+  };
+  const kpis: Kpi[] = [
     {
       label: 'Total Users',
       value: totalUsers.toLocaleString('en-NZ'),
@@ -117,6 +128,7 @@ export default async function AdminPage() {
     {
       label: 'Pending Disputes',
       value: pendingDisputes.toLocaleString('en-NZ'),
+      href: '/admin/disputes',
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -126,6 +138,7 @@ export default async function AdminPage() {
       ),
       alert: pendingDisputes > 0,
       alertColour: 'text-red-600 bg-red-50 border-red-200',
+      badge: pendingDisputes > 0 ? 'Needs attention' : undefined,
     },
     {
       label: 'Pending Reports',
@@ -188,27 +201,40 @@ export default async function AdminPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           {/* KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {kpis.map(({ label, value, subValue, icon, alert, alertColour }) => (
-              <div
-                key={label}
-                className={`bg-white rounded-2xl border p-5 ${
-                  alert ? (alertColour ?? 'border-[#E3E0D9]') : 'border-[#E3E0D9]'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className={`p-2 rounded-xl ${alert ? '' : 'bg-[#F8F7F4]'} text-[#73706A]`}>
-                    {icon}
+            {kpis.map(({ label, value, subValue, icon, alert, alertColour, href, badge }) => {
+              const card = (
+                <div
+                  className={`bg-white rounded-2xl border p-5 h-full ${
+                    alert ? (alertColour ?? 'border-[#E3E0D9]') : 'border-[#E3E0D9]'
+                  } ${href ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className={`p-2 rounded-xl ${alert ? '' : 'bg-[#F8F7F4]'} text-[#73706A]`}>
+                      {icon}
+                    </div>
+                    {badge && (
+                      <span className="text-[10px] font-semibold bg-red-600 text-white px-2 py-0.5 rounded-full">
+                        {badge}
+                      </span>
+                    )}
                   </div>
+                  <p className="text-[12px] text-[#9E9A91] font-medium mb-1">{label}</p>
+                  <p className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] leading-none">
+                    {value}
+                  </p>
+                  {subValue && (
+                    <p className="text-[11px] text-[#9E9A91] mt-1">{subValue}</p>
+                  )}
                 </div>
-                <p className="text-[12px] text-[#9E9A91] font-medium mb-1">{label}</p>
-                <p className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] leading-none">
-                  {value}
-                </p>
-                {subValue && (
-                  <p className="text-[11px] text-[#9E9A91] mt-1">{subValue}</p>
-                )}
-              </div>
-            ))}
+              );
+              return href ? (
+                <Link key={label} href={href} className="block">
+                  {card}
+                </Link>
+              ) : (
+                <div key={label}>{card}</div>
+              );
+            })}
           </div>
 
           {/* Pending ID Verifications */}
