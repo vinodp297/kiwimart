@@ -18,13 +18,21 @@ interface ServiceCheck {
   error?: string;
 }
 
+// Caps each service check at timeoutMs — prevents a slow dependency from
+// hanging the entire health endpoint (uptime monitors have short timeouts).
 async function checkService(
   name: string,
-  fn: () => Promise<void>
+  fn: () => Promise<void>,
+  timeoutMs = 2000
 ): Promise<ServiceCheck> {
   const start = Date.now();
   try {
-    await fn();
+    await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), timeoutMs)
+      ),
+    ]);
     return {
       name,
       status: 'ok',
