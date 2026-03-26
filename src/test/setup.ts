@@ -109,8 +109,15 @@ vi.mock('@/lib/db', () => ({
     },
     watchlistItem: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       delete: vi.fn(),
+    },
+    blockedUser: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+      deleteMany: vi.fn(),
     },
     passwordResetToken: {
       findUnique: vi.fn(),

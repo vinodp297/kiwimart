@@ -23,6 +23,20 @@ export class MessageService {
     })
     if (!recipient) throw AppError.notFound('Recipient')
 
+    // Check if either party has blocked the other
+    const block = await db.blockedUser.findFirst({
+      where: {
+        OR: [
+          { blockerId: userId,           blockedId: input.recipientId },
+          { blockerId: input.recipientId, blockedId: userId },
+        ],
+      },
+      select: { id: true },
+    })
+    if (block) {
+      throw new AppError('UNAUTHORISED', 'You cannot message this user.', 403)
+    }
+
     // Find or create thread
     const [p1, p2] = [userId, input.recipientId].sort()
 

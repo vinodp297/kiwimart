@@ -12,6 +12,8 @@ import { relativeTime } from '@/lib/utils';
 import type { SellerBadge, NZRegion, Review, ListingCard as ListingCardType } from '@/types';
 import db from '@/lib/db';
 import { getImageUrl } from '@/lib/image';
+import { auth } from '@/lib/auth';
+import { BlockButton } from '@/components/seller/BlockButton';
 
 const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
   top_seller:     { label: '🏆 Top Seller',      colour: 'bg-amber-50 text-amber-700 ring-amber-200' },
@@ -80,8 +82,23 @@ export default async function SellerProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const user = await getSellerByUsername(username);
+  const [user, session] = await Promise.all([
+    getSellerByUsername(username),
+    auth(),
+  ]);
   if (!user) notFound();
+
+  const currentUserId = session?.user?.id ?? null;
+
+  // Check if logged-in viewer has blocked this seller
+  let isBlocked = false;
+  if (currentUserId && currentUserId !== user.id) {
+    const block = await db.blockedUser.findFirst({
+      where: { blockerId: currentUserId, blockedId: user.id },
+      select: { id: true },
+    });
+    isBlocked = !!block;
+  }
 
   // Compute avg rating from reviews
   const avgRating = user.reviews.length > 0
@@ -276,6 +293,9 @@ export default async function SellerProfilePage({
                   </svg>
                   Report
                 </Link>
+                {currentUserId && currentUserId !== seller.id && (
+                  <BlockButton targetUserId={seller.id} initialBlocked={isBlocked} />
+                )}
               </div>
             </div>
 

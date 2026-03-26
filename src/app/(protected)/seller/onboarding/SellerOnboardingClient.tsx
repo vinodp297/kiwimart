@@ -174,13 +174,17 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
                     {isNext && (
                       <div className="mt-3 space-y-2">
                         {tier.name === 'phone_verified' && (
-                          <p className="text-[12.5px] text-[#73706A]">
-                            Verify your phone number in{' '}
-                            <Link href="/settings/account" className="text-[#D4A843] underline underline-offset-2">
-                              Account Settings
-                            </Link>{' '}
-                            to unlock this tier.
-                          </p>
+                          <div>
+                            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] cursor-not-allowed">
+                              <span className="text-[13px] text-[#73706A]">📱 Phone verification</span>
+                              <span className="ml-auto text-[11px] font-semibold text-[#D4A843] bg-[#FFF9EC] px-2 py-0.5 rounded-full">
+                                Coming soon
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#C9C5BC] mt-2">
+                              SMS verification will be available shortly. ID verification gives you all the same benefits now.
+                            </p>
+                          </div>
                         )}
                         {tier.name === 'id_verified' && (
                           <div>
