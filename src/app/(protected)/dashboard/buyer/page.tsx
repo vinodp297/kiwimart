@@ -11,6 +11,7 @@ import { formatPrice, relativeTime } from '@/lib/utils';
 import type { OrderStatus, Condition } from '@/types';
 import { fetchBuyerDashboard } from '@/server/actions/dashboard';
 import type { DashboardUser, BuyerOrderRow, WatchlistRow, ThreadRow, MessageRow } from '@/server/actions/dashboard';
+import ProfileCompletion from '@/components/onboarding/ProfileCompletion';
 import { sendMessage as sendMessageAction } from '@/server/actions/messages';
 import { toggleWatch } from '@/server/actions/listings';
 import { confirmDelivery } from '@/server/actions/orders';
@@ -227,6 +228,37 @@ export default function BuyerDashboardPage() {
               <Button variant="secondary" size="sm">Account settings</Button>
             </Link>
           </div>
+
+          {/* ── Profile completion widget ──────────────────────────────── */}
+          <div className="mb-6">
+            <ProfileCompletion
+              displayName={user.displayName}
+              emailVerified={user.emailVerified ? new Date(user.emailVerified) : null}
+              region={user.region}
+              bio={user.bio}
+            />
+          </div>
+
+          {/* ── Seller setup prompt (Task 7) ───────────────────────────── */}
+          {(user.onboardingIntent === 'SELL' || user.onboardingIntent === 'BOTH') &&
+            !user.stripeOnboarded && (
+            <div className="bg-[#FFF9EC] border border-[#D4A843]/40 rounded-2xl p-5 mb-6 flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h3 className="font-semibold text-[#141414] text-[15px] mb-1">
+                  📦 Finish setting up your seller account
+                </h3>
+                <p className="text-[#73706A] text-[13px] mb-3">
+                  Connect your bank account to start receiving payments when your items sell.
+                </p>
+                <Link
+                  href="/dashboard/seller/onboarding"
+                  className="inline-flex items-center gap-1.5 bg-[#D4A843] text-[#141414] px-4 py-2 rounded-xl text-[13px] font-semibold hover:bg-[#B8912E] hover:text-white transition-colors"
+                >
+                  Complete seller setup →
+                </Link>
+              </div>
+            </div>
+          )}
 
           {/* ── Tab bar ────────────────────────────────────────────────── */}
           <div

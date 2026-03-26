@@ -107,9 +107,11 @@ export default function LoginPage() {
       // render with the session cookie already present.
       // We do NOT call getSession() here — it races with the cookie being
       // committed and can throw, swallowing the redirect entirely.
-      // The dashboard pages themselves handle seller ↔ buyer routing server-side.
+      // First-time users (verified=true or registered=true) go to /welcome.
+      // Returning users go to the intended destination or buyer dashboard.
       const fromParam = searchParams.get('from');
-      window.location.href = fromParam || '/dashboard/buyer';
+      const isFirstLogin = !!verifiedParam || !!registeredParam;
+      window.location.href = fromParam || (isFirstLogin ? '/welcome' : '/dashboard/buyer');
     } catch {
       // signIn can throw on network error or unexpected Auth.js exception.
       setError('Something went wrong. Please try again.');

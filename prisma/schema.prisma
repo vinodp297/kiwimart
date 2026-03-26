@@ -194,6 +194,10 @@ model User {
   isAdmin       Boolean  @default(false)
   adminRole     AdminRole?  // null = not admin; set alongside isAdmin
   
+  // Onboarding
+  onboardingCompleted Boolean @default(false)
+  onboardingIntent    String?  // 'BUY' | 'SELL' | 'BOTH'
+
   // Privacy
   agreeMarketing Boolean @default(false)
   agreedTermsAt  DateTime?
