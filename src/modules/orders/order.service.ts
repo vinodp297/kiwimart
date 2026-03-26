@@ -8,6 +8,7 @@ import { audit } from '@/server/lib/audit'
 import { paymentService } from '@/modules/payments/payment.service'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
+import { createNotification } from '@/modules/notifications/notification.service'
 import type { DispatchOrderInput, OpenDisputeInput } from './order.types'
 
 export class OrderService {
@@ -99,6 +100,21 @@ export class OrderService {
       metadata: { newStatus: 'COMPLETED', previousStatus: order.status },
     })
 
+    // Notify seller that payment has been released
+    const listing = await db.listing.findUnique({
+      where: { id: order.listingId },
+      select: { title: true },
+    })
+    createNotification({
+      userId:   order.sellerId,
+      type:     'ORDER_COMPLETED',
+      title:    'Payment released! 💰',
+      body:     `Buyer confirmed delivery${listing ? ` of "${listing.title}"` : ''}. Your payout is being processed.`,
+      listingId: order.listingId,
+      orderId,
+      link:     '/dashboard/seller?tab=orders',
+    }).catch(() => {})
+
     logger.info('order.delivery_confirmed', { orderId, buyerId, sellerId: order.sellerId })
   }
 
@@ -170,6 +186,16 @@ export class OrderService {
       entityId: input.orderId,
       metadata: { newStatus: 'DISPATCHED', trackingNumber: input.trackingNumber },
     })
+
+    // Notify buyer that their item has been dispatched
+    createNotification({
+      userId:   order.buyerId,
+      type:     'ORDER_DISPATCHED',
+      title:    'Your item has been dispatched 📦',
+      body:     `"${order.listing.title}" is on its way!${input.trackingNumber ? ` Tracking: ${input.trackingNumber}` : ''}`,
+      orderId:  input.orderId,
+      link:     '/dashboard/buyer?tab=orders',
+    }).catch(() => {})
 
     logger.info('order.dispatched', { orderId: input.orderId, sellerId })
   }
@@ -261,6 +287,16 @@ export class OrderService {
       metadata: { reason: input.reason, description: input.description.slice(0, 100) },
       ip,
     })
+
+    // Notify seller that a dispute has been opened
+    createNotification({
+      userId:  order.sellerId,
+      type:    'ORDER_DISPUTED',
+      title:   '⚠️ A dispute has been opened',
+      body:    `A buyer opened a dispute on "${order.listing.title}". Please check your dashboard.`,
+      orderId: input.orderId,
+      link:    '/dashboard/seller?tab=orders',
+    }).catch(() => {})
 
     logger.info('order.dispute.opened', { orderId: input.orderId, buyerId })
   }

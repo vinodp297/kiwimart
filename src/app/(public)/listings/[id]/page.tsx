@@ -17,15 +17,9 @@ import { searchListings } from '@/server/actions/search';
 import { getSellerResponseTime } from '@/modules/listings/seller-response.service';
 import SafetyBanner from '@/components/SafetyBanner';
 import type { ListingDetail, SellerPublic, ListingImage, ListingAttribute, Condition, NZRegion, SellerBadge } from '@/types';
+import { getImageUrl as r2Url } from '@/lib/image';
 
 export const revalidate = 60;
-
-// ── Helper: build R2 image URL ────────────────────────────────────────────────
-function r2Url(r2Key: string | null): string {
-  if (!r2Key) return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop';
-  if (r2Key.startsWith('http')) return r2Key;
-  return `https://r2.kiwimart.co.nz/${r2Key}`;
-}
 
 function mapCondition(c: string): Condition {
   const map: Record<string, Condition> = {

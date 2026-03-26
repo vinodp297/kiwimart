@@ -6,6 +6,7 @@ import db from '@/lib/db'
 import { moderateText } from '@/server/lib/moderation'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
+import { createNotification } from '@/modules/notifications/notification.service'
 import type { SendMessageInput, SendMessageResult } from './message.types'
 
 export class MessageService {
@@ -89,6 +90,20 @@ export class MessageService {
     } catch {
       logger.warn('message.pusher.failed', { threadId: thread.id, messageId: message.id })
     }
+
+    // Notify the recipient of new message (fire-and-forget, don't block send)
+    const sender = await db.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    })
+    createNotification({
+      userId:    input.recipientId,
+      type:      'MESSAGE_RECEIVED',
+      title:     `New message from ${sender?.displayName ?? 'Someone'}`,
+      body:      input.body.length > 80 ? `${input.body.slice(0, 77)}…` : input.body,
+      listingId: input.listingId ?? undefined,
+      link:      '/dashboard/buyer?tab=messages',
+    }).catch(() => {})
 
     return { messageId: message.id, threadId: thread.id }
   }

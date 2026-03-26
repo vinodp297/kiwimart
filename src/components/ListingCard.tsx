@@ -58,13 +58,17 @@ export default function ListingCard({ listing, priority = false }: Props) {
       <Link href={`/listings/${listing.id}`} className="block relative" tabIndex={-1}>
         <div className="relative aspect-square bg-[#F8F7F4] overflow-hidden">
           <Image
-            src={listing.thumbnailUrl}
+            src={listing.thumbnailUrl || 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop'}
             alt={listing.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className={`object-cover transition-transform duration-300
               ${isSold ? 'opacity-60' : 'group-hover:scale-105'}`}
             priority={priority}
+            onError={(e) => {
+              e.currentTarget.src =
+                'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop';
+            }}
           />
 
           {/* Sold overlay */}
