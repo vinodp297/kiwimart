@@ -25,6 +25,7 @@ import { stripe } from '@/infrastructure/stripe/client';
 import { paymentService } from '@/modules/payments/payment.service';
 import { orderService } from '@/modules/orders/order.service';
 import { createNotification } from '@/modules/notifications/notification.service';
+import { sendOrderConfirmationEmail } from '@/server/email';
 import { z } from 'zod';
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ export async function createOrder(params: {
       shippingNzd: true,
       shippingOption: true,
       sellerId: true,
-      seller: { select: { stripeAccountId: true, stripeOnboarded: true } },
+      seller: { select: { stripeAccountId: true, stripeOnboarded: true, displayName: true, email: true } },
     },
   });
 
@@ -221,19 +222,29 @@ export async function createOrder(params: {
       ip,
     });
 
-    // Notify seller of new order (fire-and-forget — fetch buyer name then notify)
+    // Notify seller of new order + send buyer confirmation (fire-and-forget)
     db.user.findUnique({ where: { id: user.id }, select: { displayName: true } })
-      .then((buyer) =>
+      .then((buyer) => {
+        const buyerName = buyer?.displayName ?? user.email.split('@')[0];
         createNotification({
           userId:    listing.sellerId,
           type:      'ORDER_PLACED',
           title:     'New order received! 🎉',
-          body:      `${buyer?.displayName ?? user.email.split('@')[0]} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
+          body:      `${buyerName} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
           listingId: listing.id,
           orderId:   order.id,
           link:      '/dashboard/seller?tab=orders',
-        })
-      )
+        }).catch(() => {});
+        sendOrderConfirmationEmail({
+          to:           user.email,
+          buyerName,
+          sellerName:   listing.seller.displayName ?? 'the seller',
+          listingTitle: listing.title,
+          totalNzd,
+          orderId:      order.id,
+          listingId:    listing.id,
+        }).catch(() => {});
+      })
       .catch(() => {});
 
     return {

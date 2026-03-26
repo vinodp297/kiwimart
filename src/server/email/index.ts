@@ -249,6 +249,130 @@ export async function sendDeliveryReminderEmail(params: {
   });
 }
 
+export async function sendOrderConfirmationEmail(params: {
+  to: string;
+  buyerName: string;
+  sellerName: string;
+  listingTitle: string;
+  totalNzd: number;
+  orderId: string;
+  listingId: string;
+}): Promise<void> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
+  const html = baseTemplate(
+    `<h1>Your order is confirmed! 🎉</h1>
+    <p>Hi ${esc(params.buyerName)}, your payment has been received and is held securely in escrow until you confirm delivery.</p>
+    <table style="width:100%;font-size:14px;border-collapse:collapse;margin-bottom:16px">
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Item</td>
+        <td style="color:#141414;font-weight:500;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.listingTitle)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Seller</td>
+        <td style="color:#141414;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.sellerName)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Order ID</td>
+        <td style="color:#141414;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8;font-family:monospace;font-size:12px">${esc(params.orderId)}</td>
+      </tr>
+      <tr>
+        <td style="color:#141414;font-weight:700;padding:8px 0 0">Total paid</td>
+        <td style="color:#141414;font-weight:700;text-align:right;padding:8px 0 0;font-size:16px">${esc(amount)}</td>
+      </tr>
+    </table>
+    <div class="trust">
+      🛡️ Your ${esc(amount)} is held in escrow. The seller cannot access it until you confirm delivery.
+    </div>
+    <p><strong>What happens next:</strong><br>
+    1. The seller will dispatch your item<br>
+    2. You'll receive a shipping notification with tracking details<br>
+    3. Once you receive the item, confirm delivery to release payment</p>
+    <a href="${appUrl}/dashboard/buyer?tab=orders" class="btn">View your order →</a>`,
+    `Order confirmed — ${params.listingTitle}`
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Order confirmed — ${params.listingTitle}`,
+    html,
+  });
+}
+
+export async function sendNewMessageEmail(params: {
+  to: string;
+  recipientName: string;
+  senderName: string;
+  messagePreview: string;
+  listingTitle?: string;
+  listingId?: string;
+}): Promise<void> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  const preview = params.messagePreview.length > 120
+    ? `${params.messagePreview.slice(0, 117)}...`
+    : params.messagePreview;
+  const html = baseTemplate(
+    `<h1>💬 New message from ${esc(params.senderName)}</h1>
+    <p>Hi ${esc(params.recipientName)},</p>
+    ${params.listingTitle ? `<p style="font-size:12px;color:#9E9A91;margin-bottom:8px">Re: ${esc(params.listingTitle)}</p>` : ''}
+    <div style="background:#F8F7F4;border-radius:12px;padding:16px;border-left:4px solid #D4A843;margin-bottom:16px">
+      <p style="margin:0;font-size:14px;font-style:italic;color:#141414">"${esc(preview)}"</p>
+      <p style="margin:8px 0 0;font-size:12px;color:#9E9A91">— ${esc(params.senderName)}</p>
+    </div>
+    <a href="${appUrl}/dashboard/buyer?tab=messages" class="btn">Reply to ${esc(params.senderName)} →</a>
+    <p style="font-size:12px;color:#C9C5BC;text-align:center">You are receiving this because someone messaged you on KiwiMart.</p>`,
+    `New message from ${params.senderName}`
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `New message from ${params.senderName}`,
+    html,
+  });
+}
+
+export async function sendDisputeOpenedEmail(params: {
+  to: string;
+  sellerName: string;
+  buyerName: string;
+  listingTitle: string;
+  orderId: string;
+  reason: string;
+  description: string;
+}): Promise<void> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  const formattedReason = params.reason
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/^\w/, (c) => c.toUpperCase());
+  const html = baseTemplate(
+    `<div class="warning">
+      ⚠️ <strong>A dispute has been opened by ${esc(params.buyerName)}</strong><br>
+      Payment remains in escrow while this is under review.
+    </div>
+    <table style="width:100%;font-size:14px;border-collapse:collapse;margin-bottom:16px">
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8;width:30%">Item</td>
+        <td style="color:#141414;font-weight:500;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.listingTitle)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Reason</td>
+        <td style="color:#141414;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(formattedReason)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0;vertical-align:top">Description</td>
+        <td style="color:#141414;padding:6px 0;line-height:1.6">${esc(params.description)}</td>
+      </tr>
+    </table>
+    <p>Our team will review this dispute. <strong>Do not contact the buyer outside of KiwiMart.</strong></p>
+    <a href="${appUrl}/dashboard/seller" class="btn">View dispute →</a>`,
+    `⚠️ Dispute opened — ${params.listingTitle}`
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `⚠️ Dispute opened — ${params.listingTitle}`,
+    html,
+  });
+}
+
 export async function sendFinalDeliveryReminderEmail(params: {
   to: string;
   buyerName: string;

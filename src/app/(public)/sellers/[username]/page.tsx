@@ -11,6 +11,7 @@ import { Avatar, StarRating, Breadcrumb } from '@/components/ui/primitives';
 import { relativeTime } from '@/lib/utils';
 import type { SellerBadge, NZRegion, Review, ListingCard as ListingCardType } from '@/types';
 import db from '@/lib/db';
+import { getImageUrl } from '@/lib/image';
 
 const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
   top_seller:     { label: '🏆 Top Seller',      colour: 'bg-amber-50 text-amber-700 ring-amber-200' },
@@ -19,12 +20,6 @@ const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
   trusted_seller: { label: '🛡 Trusted Seller',   colour: 'bg-violet-50 text-violet-700 ring-violet-200' },
   nz_business:    { label: '🥝 NZ Business',      colour: 'bg-[#F5ECD4] text-[#8B6914] ring-[#D4A843]/40' },
 };
-
-function r2Url(r2Key: string | null): string | null {
-  if (!r2Key) return null;
-  if (r2Key.startsWith('http')) return r2Key;
-  return `https://r2.kiwimart.co.nz/${r2Key}`;
-}
 
 async function getSellerByUsername(username: string) {
   return db.user.findUnique({
@@ -98,7 +93,7 @@ export default async function SellerProfilePage({
     id: r.id,
     buyerName: r.author.displayName,
     buyerUsername: r.author.username,
-    buyerAvatarUrl: r2Url(r.author.avatarKey),
+    buyerAvatarUrl: getImageUrl(r.author.avatarKey),
     rating: r.rating / 10, // DB stores 1-50, display as 0.1-5.0
     comment: r.comment ?? '',
     listingTitle: r.order?.listing?.title ?? 'Unknown listing',
@@ -111,7 +106,7 @@ export default async function SellerProfilePage({
     id: user.id,
     username: user.username,
     displayName: user.displayName,
-    avatarUrl: r2Url(user.avatarKey),
+    avatarUrl: getImageUrl(user.avatarKey),
     bio: user.bio,
     region: (user.region ?? 'Auckland') as NZRegion,
     suburb: user.suburb ?? '',
@@ -155,9 +150,7 @@ export default async function SellerProfilePage({
       subcategoryName: row.subcategoryName ?? '',
       region: row.region as NZRegion,
       suburb: row.suburb,
-      thumbnailUrl: row.images[0]?.r2Key
-        ? (row.images[0].r2Key.startsWith('http') ? row.images[0].r2Key : `https://r2.kiwimart.co.nz/${row.images[0].r2Key}`)
-        : 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop',
+      thumbnailUrl: getImageUrl(row.images[0]?.r2Key ?? null),
       sellerName: user.displayName,
       sellerUsername: user.username,
       sellerRating: seller.rating,

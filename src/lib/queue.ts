@@ -33,7 +33,7 @@ export const notificationQueue = new Queue('notification', defaultOpts);
 // ── Job type definitions ─────────────────────────────────────────────────────
 
 export interface EmailJobData {
-  type: 'welcome' | 'passwordReset' | 'offerReceived' | 'offerResponse' | 'orderDispatched' | 'orderComplete';
+  type: 'welcome' | 'passwordReset' | 'offerReceived' | 'offerResponse' | 'orderDispatched' | 'orderComplete' | 'disputeOpened';
   payload: Record<string, unknown>;
 }
 

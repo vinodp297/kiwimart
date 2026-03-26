@@ -7,6 +7,7 @@ import { moderateText } from '@/server/lib/moderation'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
 import { createNotification } from '@/modules/notifications/notification.service'
+import { sendNewMessageEmail } from '@/server/email'
 import type { SendMessageInput, SendMessageResult } from './message.types'
 
 export class MessageService {
@@ -18,7 +19,7 @@ export class MessageService {
     // Verify recipient exists and is not banned
     const recipient = await db.user.findUnique({
       where: { id: input.recipientId, isBanned: false, deletedAt: null },
-      select: { id: true },
+      select: { id: true, email: true, displayName: true },
     })
     if (!recipient) throw AppError.notFound('Recipient')
 
@@ -104,6 +105,16 @@ export class MessageService {
       listingId: input.listingId ?? undefined,
       link:      '/dashboard/buyer?tab=messages',
     }).catch(() => {})
+
+    // Send email notification to recipient (fire-and-forget)
+    if (recipient.email) {
+      sendNewMessageEmail({
+        to:             recipient.email,
+        recipientName:  recipient.displayName ?? 'there',
+        senderName:     sender?.displayName ?? 'Someone',
+        messagePreview: input.body,
+      }).catch(() => {})
+    }
 
     return { messageId: message.id, threadId: thread.id }
   }
