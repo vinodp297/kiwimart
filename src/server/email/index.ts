@@ -69,6 +69,33 @@ function baseTemplate(content: string, previewText: string): string {
 
 // ── Email functions ───────────────────────────────────────────────────────────
 
+export async function sendVerificationEmail(params: {
+  to: string;
+  displayName: string;
+  verifyUrl: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Verify your email address</h1>
+    <p>Hi ${esc(params.displayName)}, thanks for joining KiwiMart!</p>
+    <p>Click the button below to verify your email and activate your account. This link expires in <strong>24 hours</strong>.</p>
+    <a href="${esc(params.verifyUrl)}" class="btn">Verify my email →</a>
+    <hr class="divider">
+    <div class="trust">
+      ✓ Check your spam folder if not received<br>
+      ✓ You can still browse KiwiMart while waiting
+    </div>
+    <p style="font-size:12px; color:#C9C5BC; margin-top:16px;">
+      If you didn't create a KiwiMart account, you can safely ignore this email.
+    </p>`,
+    `Verify your KiwiMart email address`
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: 'Verify your KiwiMart email address',
+    html,
+  });
+}
+
 export async function sendWelcomeEmail(params: {
   to: string;
   displayName: string;

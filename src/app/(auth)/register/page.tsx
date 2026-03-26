@@ -1,15 +1,17 @@
 'use client';
-// src/app/(auth)/register/page.tsx  (Sprint 3 — wired to registerUser server action)
+// src/app/(auth)/register/page.tsx
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn, signOut, useSession } from 'next-auth/react';
 import { registerUser } from '@/server/actions/auth';
 import { Button, Input, Alert, Divider, PasswordStrength } from '@/components/ui/primitives';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
+  const [sessionCleared, setSessionCleared] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName]   = useState('');
   const [email, setEmail]         = useState('');
@@ -23,6 +25,16 @@ export default function RegisterPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
+
+  // Fix 1 — Sign out any existing session so a fresh account can be created
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (session) {
+      signOut({ redirect: false }).then(() => setSessionCleared(true));
+    } else {
+      setSessionCleared(true);
+    }
+  }, [session, status]);
 
   useEffect(() => {
     if (!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) return;
@@ -78,14 +90,21 @@ export default function RegisterPage() {
         return;
       }
 
-      // Auto sign in after registration
-      await signIn('credentials', {
+      // Fix 2 — Sign in as the newly-created user (not any previous session)
+      const signInResult = await signIn('credentials', {
         email: email.toLowerCase().trim(),
         password,
         turnstileToken: '',
         redirect: false,
       });
-      router.push('/dashboard/buyer?welcome=1');
+
+      const encodedEmail = encodeURIComponent(email.trim().toLowerCase());
+      if (signInResult?.ok) {
+        router.push(`/verify-email?email=${encodedEmail}`);
+      } else {
+        // Registration succeeded but auto-login failed (e.g. Turnstile in prod)
+        router.push(`/login?registered=true&email=${encodedEmail}`);
+      }
     } catch {
       setServerError('Something went wrong. Please try again.');
       setLoading(false);
@@ -94,6 +113,15 @@ export default function RegisterPage() {
 
   const fe = (f: string) => fieldErrors[f]?.[0];
   const clear = (f: string) => setFieldErrors((prev) => { const n = { ...prev }; delete n[f]; return n; });
+
+  // Show spinner while signing out existing session
+  if (!sessionCleared) {
+    return (
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-[#D4A843] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[#FAFAF8] flex items-center justify-center px-4 py-12">

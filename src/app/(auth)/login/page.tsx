@@ -25,8 +25,11 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('from') ?? '/dashboard/buyer';
   const errorParam = searchParams.get('error');
+  const registeredParam = searchParams.get('registered');
+  const verifiedParam = searchParams.get('verified');
+  const prefillEmail = searchParams.get('email') ?? '';
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(prefillEmail);
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -130,6 +133,20 @@ export default function LoginPage() {
             Welcome back
           </h1>
           <p className="text-[13.5px] text-[#73706A] mb-6">Sign in to your KiwiMart account</p>
+
+          {registeredParam && !verifiedParam && (
+            <div className="bg-[#FFF9EC] border border-[#D4A843]/40 rounded-xl p-3 text-[13px] text-[#141414] mb-4 flex items-start gap-2">
+              <span>📧</span>
+              <span>Account created! Check your email to verify your address, then sign in.</span>
+            </div>
+          )}
+
+          {verifiedParam && (
+            <div className="bg-[#F0FDF4] border border-[#16a34a]/30 rounded-xl p-3 text-[13px] text-[#141414] mb-4 flex items-start gap-2">
+              <span>✅</span>
+              <span>Email verified! You can now sign in.</span>
+            </div>
+          )}
 
           {error && <Alert variant="error" className="mb-5">{error}</Alert>}
 
