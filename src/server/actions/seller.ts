@@ -10,6 +10,7 @@ import { requireAdmin } from '@/server/lib/requireAdmin'
 import { audit } from '@/server/lib/audit'
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit'
 import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client'
+import { createNotification } from '@/modules/notifications/notification.service'
 import type { ActionResult } from '@/types'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -194,7 +195,7 @@ export async function approveIdVerification(userId: string): Promise<ActionResul
     metadata: { approvedBy: guard.userId },
   })
 
-  // 6. Notify the seller (non-blocking)
+  // 6. Notify the seller via email (non-blocking)
   const emailClient = getEmailClient()
   if (emailClient) {
     emailClient.emails
@@ -218,6 +219,15 @@ export async function approveIdVerification(userId: string): Promise<ActionResul
       .catch(() => {}) // non-fatal
   }
 
-  // 7. Return
+  // 7. In-app notification (fire-and-forget)
+  createNotification({
+    userId: target.id,
+    type:   'ID_VERIFIED',
+    title:  'ID verification approved! ✅',
+    body:   'You are now an ID Verified seller. Unlimited listings and next-day payouts are now enabled.',
+    link:   '/seller/onboarding',
+  }).catch(() => {})
+
+  // 8. Return
   return { success: true, data: undefined }
 }
