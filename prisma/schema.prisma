@@ -104,6 +104,9 @@ enum AuditAction {
   PHONE_VERIFIED
   REPORT_CREATED
   PASSWORD_CHANGED
+  SELLER_TERMS_ACCEPTED
+  ID_VERIFICATION_SUBMITTED
+  ID_VERIFICATION_APPROVED
 }
 
 enum ReportReason {
@@ -156,11 +159,13 @@ model User {
   // Verification
   idVerified    Boolean  @default(false)
   idVerifiedAt  DateTime?
+  idSubmittedAt DateTime?           // When user requested ID verification (pending admin review)
   nzbn          String?  @unique  // NZ Business Number (GST-registered sellers)
   gstRegistered Boolean  @default(false)
 
   // Seller settings
-  sellerEnabled       Boolean @default(false)
+  sellerTermsAcceptedAt DateTime?          // Accepted seller T&Cs
+  sellerEnabled       Boolean @default(true)
   stripeAccountId     String? @unique  // Stripe Connect account ID
   stripeOnboarded     Boolean @default(false)
   stripeChargesEnabled  Boolean @default(false)  // Synced from Stripe account.updated webhook

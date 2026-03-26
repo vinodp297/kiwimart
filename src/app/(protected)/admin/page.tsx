@@ -6,6 +6,7 @@ import Link from 'next/link';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 import SystemHealthWidget from '@/components/admin/SystemHealthWidget';
+import ApproveIdButton from './ApproveIdButton';
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
 import { formatPrice } from '@/lib/utils';
@@ -36,6 +37,7 @@ export default async function AdminPage() {
     completedOrders,
     revenueAgg,
     revenueThisWeekAgg,
+    pendingIdVerifications,
   ] = await Promise.all([
     db.user.count(),
     db.listing.count({ where: { status: 'ACTIVE' } }),
@@ -51,6 +53,11 @@ export default async function AdminPage() {
     db.order.aggregate({
       _sum: { totalNzd: true },
       where: { status: 'COMPLETED', completedAt: { gte: weekStart } },
+    }),
+    db.user.findMany({
+      where: { idSubmittedAt: { not: null }, idVerified: false },
+      select: { id: true, displayName: true, email: true, idSubmittedAt: true },
+      orderBy: { idSubmittedAt: 'asc' },
     }),
   ]);
 
@@ -203,6 +210,37 @@ export default async function AdminPage() {
               </div>
             ))}
           </div>
+
+          {/* Pending ID Verifications */}
+          {pendingIdVerifications.length > 0 && (
+            <div className="bg-white rounded-2xl border border-amber-200 p-6 mb-6">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="text-lg">🪪</span>
+                <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">
+                  Pending ID Verifications
+                </h2>
+                <span className="ml-auto text-[11.5px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                  {pendingIdVerifications.length} pending
+                </span>
+              </div>
+              <div className="divide-y divide-[#E3E0D9]">
+                {pendingIdVerifications.map(u => (
+                  <div key={u.id} className="flex items-center gap-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13.5px] font-semibold text-[#141414] truncate">
+                        {u.displayName ?? '(no name)'}
+                      </p>
+                      <p className="text-[12px] text-[#9E9A91] truncate">{u.email}</p>
+                      <p className="text-[11.5px] text-[#C9C5BC]">
+                        Submitted {u.idSubmittedAt ? new Date(u.idSubmittedAt).toLocaleDateString('en-NZ') : '—'}
+                      </p>
+                    </div>
+                    <ApproveIdButton userId={u.id} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Quick Actions + System Health side by side */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
