@@ -34,7 +34,7 @@ export default async function DisputesPage() {
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
 
-  const [disputes, resolvedToday, resolvedThisMonth] = await Promise.all([
+  const [disputes, resolvedToday, resolvedThisMonth, totalOrders, disputedCount, resolvedDisputeCount] = await Promise.all([
     db.order.findMany({
       where: { status: 'DISPUTED' },
       select: {
@@ -53,8 +53,20 @@ export default async function DisputesPage() {
     }),
     db.order.count({ where: { disputeResolvedAt: { gte: todayStart } } }),
     db.order.count({ where: { disputeResolvedAt: { gte: monthStart } } }),
-
+    db.order.count(),
+    db.order.count({ where: { status: 'DISPUTED' } }),
+    db.order.count({ where: { status: 'REFUNDED' } }),
   ]);
+
+  // Dispute rate
+  const disputeRate = totalOrders > 0 ? ((disputedCount + resolvedDisputeCount) / totalOrders) * 100 : 0;
+  const rateStatus = disputeRate > 5 ? 'critical' : disputeRate >= 2 ? 'warning' : 'healthy';
+  const rateLabel = rateStatus === 'critical' ? 'Requires attention' : rateStatus === 'warning' ? 'Monitor closely' : 'Healthy';
+  const rateBanner = {
+    critical: 'bg-red-50 border-red-200 text-red-800',
+    warning: 'bg-amber-50 border-amber-200 text-amber-800',
+    healthy: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+  }[rateStatus];
 
   // Average days open
   const avgDaysOpen = disputes.length > 0
@@ -101,6 +113,14 @@ export default async function DisputesPage() {
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+        {/* Dispute rate banner */}
+        <div className={`border rounded-2xl px-5 py-4 text-[13.5px] font-medium ${rateBanner}`}>
+          Dispute rate: {disputeRate.toFixed(1)}% — {rateLabel}
+          <span className="ml-3 text-[12px] font-normal opacity-70">
+            ({disputedCount + resolvedDisputeCount} disputed of {totalOrders} total orders)
+          </span>
+        </div>
+
         {/* KPIs */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {kpis.map(({ label, value, alert }) => (

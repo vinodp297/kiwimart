@@ -5,29 +5,51 @@ import { requireSuperAdmin } from '@/shared/auth/requirePermission';
 import db from '@/lib/db';
 import type { Metadata } from 'next';
 import AuditExport from './AuditExport';
+import AuditLogTable from './AuditLogTable';
 
 export const metadata: Metadata = { title: 'Audit Log — KiwiMart Admin' };
 export const dynamic = 'force-dynamic';
 
-const ACTION_COLORS: Record<string, string> = {
-  ADMIN_ACTION: 'bg-violet-50 text-violet-700',
-  USER_REGISTER: 'bg-emerald-50 text-emerald-700',
-  USER_LOGIN: 'bg-sky-50 text-sky-700',
-  DISPUTE_RESOLVED: 'bg-red-50 text-red-700',
-  PAYMENT_COMPLETED: 'bg-emerald-50 text-emerald-700',
-  PAYMENT_FAILED: 'bg-red-50 text-red-700',
-};
-
 export default async function AuditPage() {
   await requireSuperAdmin();
 
-  const auditLogs = await db.auditLog.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 100,
-    include: {
-      user: { select: { displayName: true, email: true, adminRole: true } },
-    },
-  });
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [
+    auditLogs,
+    actionsToday,
+    bannedToday,
+    disputesResolvedToday,
+    sellersApprovedToday,
+    actionTypesRaw,
+  ] = await Promise.all([
+    db.auditLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        user: { select: { displayName: true, email: true, adminRole: true } },
+      },
+    }),
+    db.auditLog.count({ where: { createdAt: { gte: today } } }),
+    db.auditLog.count({ where: { action: 'ADMIN_ACTION', createdAt: { gte: today } } }),
+    db.auditLog.count({ where: { action: 'DISPUTE_RESOLVED', createdAt: { gte: today } } }),
+    db.auditLog.count({ where: { action: 'ADMIN_ACTION', entityType: 'ID_VERIFICATION', createdAt: { gte: today } } }),
+    db.auditLog.groupBy({
+      by: ['action'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    }),
+  ]);
+
+  const actionTypes = actionTypesRaw.map(a => ({ action: a.action, count: a._count.id }));
+
+  const kpis = [
+    { label: 'Actions Today', value: actionsToday },
+    { label: 'Bans Today', value: bannedToday },
+    { label: 'Disputes Resolved', value: disputesResolvedToday },
+    { label: 'Sellers Approved', value: sellersApprovedToday },
+  ];
 
   return (
     <div className="bg-[#FAFAF8] min-h-screen">
@@ -46,59 +68,31 @@ export default async function AuditPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="bg-white rounded-2xl border border-[#E3E0D9]">
-          <div className="flex items-center justify-between p-5 border-b border-[#F0EDE8]">
-            <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">
-              Activity Log
-            </h2>
-            <AuditExport entries={auditLogs.map(l => ({
-              id: l.id,
-              createdAt: l.createdAt,
-              action: l.action,
-              entityType: l.entityType ?? '',
-              entityId: l.entityId ?? '',
-              userEmail: l.user?.email ?? 'system',
-              ip: l.ip ?? '',
-            }))} />
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="border-b border-[#F0EDE8] bg-[#FAFAF8]">
-                  {['Timestamp', 'Actor', 'Role', 'Action', 'Entity Type', 'Entity ID', 'IP'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-[#9E9A91] uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F8F7F4]">
-                {auditLogs.map(log => (
-                  <tr key={log.id} className="hover:bg-[#FAFAF8]">
-                    <td className="px-4 py-3 text-[#9E9A91] whitespace-nowrap text-[11px]">
-                      {new Date(log.createdAt).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-[#141414]">{log.user?.displayName ?? 'System'}</p>
-                      <p className="text-[#9E9A91] text-[11px]">{log.user?.email ?? ''}</p>
-                    </td>
-                    <td className="px-4 py-3 text-[#9E9A91] text-[11px]">{log.user?.adminRole ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${ACTION_COLORS[log.action] ?? 'bg-[#F8F7F4] text-[#73706A]'}`}>
-                        {log.action.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[#73706A]">{log.entityType ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono text-[11px] text-[#9E9A91] max-w-[100px] truncate">{log.entityId ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono text-[11px] text-[#9E9A91]">{log.ip ?? '—'}</td>
-                  </tr>
-                ))}
-                {auditLogs.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-[#9E9A91]">No audit logs yet</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        {/* Activity KPIs */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {kpis.map(({ label, value }) => (
+            <div key={label} className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
+              <p className="text-[12px] text-[#9E9A91] font-medium mb-1">{label}</p>
+              <p className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] leading-none">{value}</p>
+            </div>
+          ))}
         </div>
+
+        {/* Export + filtered log table */}
+        <div className="flex justify-end">
+          <AuditExport entries={auditLogs.map(l => ({
+            id: l.id,
+            createdAt: l.createdAt,
+            action: l.action,
+            entityType: l.entityType ?? '',
+            entityId: l.entityId ?? '',
+            userEmail: l.user?.email ?? 'system',
+            ip: l.ip ?? '',
+          }))} />
+        </div>
+
+        <AuditLogTable entries={auditLogs} actionTypes={actionTypes} />
       </div>
     </div>
   );
