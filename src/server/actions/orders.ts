@@ -24,6 +24,7 @@ import type { ActionResult } from '@/types';
 import { stripe } from '@/infrastructure/stripe/client';
 import { paymentService } from '@/modules/payments/payment.service';
 import { orderService } from '@/modules/orders/order.service';
+import { createNotification } from '@/modules/notifications/notification.service';
 import { z } from 'zod';
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
@@ -219,6 +220,21 @@ export async function createOrder(params: {
       metadata: { listingId: listing.id, totalNzd },
       ip,
     });
+
+    // Notify seller of new order (fire-and-forget — fetch buyer name then notify)
+    db.user.findUnique({ where: { id: user.id }, select: { displayName: true } })
+      .then((buyer) =>
+        createNotification({
+          userId:    listing.sellerId,
+          type:      'ORDER_PLACED',
+          title:     'New order received! 🎉',
+          body:      `${buyer?.displayName ?? user.email.split('@')[0]} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
+          listingId: listing.id,
+          orderId:   order.id,
+          link:      '/dashboard/seller?tab=orders',
+        })
+      )
+      .catch(() => {});
 
     return {
       success: true,
