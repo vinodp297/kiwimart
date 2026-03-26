@@ -114,6 +114,17 @@ export async function createOrder(params: {
     };
   }
 
+  // 5b-pre. Atomically reserve the listing — prevents double-buy race condition.
+  // Two buyers both seeing status=ACTIVE will race here; only one updateMany wins
+  // (count === 1). The loser gets count === 0 and bails out before touching the DB.
+  const reservation = await db.listing.updateMany({
+    where: { id: parsed.data.listingId, status: 'ACTIVE' },
+    data: { status: 'RESERVED' },
+  });
+  if (reservation.count === 0) {
+    return { success: false, error: 'This listing is no longer available.' };
+  }
+
   // 5b. Calculate totals (server-side — never trust client prices)
   const shippingNzd =
     listing.shippingOption === 'PICKUP' ? 0 : (listing.shippingNzd ?? 0);
@@ -220,11 +231,11 @@ export async function createOrder(params: {
       data: { status: 'CANCELLED' },
     });
 
-    // Re-make listing available (it may have been reserved)
-    await db.listing.update({
-      where: { id: parsed.data.listingId },
+    // Release reservation — only if still RESERVED (guard against races)
+    await db.listing.updateMany({
+      where: { id: parsed.data.listingId, status: 'RESERVED' },
       data: { status: 'ACTIVE' },
-    }).catch(() => {}); // listing may already be ACTIVE
+    }).catch(() => {});
 
     audit({
       userId: user.id,

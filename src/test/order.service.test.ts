@@ -1,10 +1,22 @@
 // src/test/order.service.test.ts
-// ─── Tests for OrderService ──────────────────────────────────────────────────
+// ─── Tests for OrderService + createOrder server action ──────────────────────
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockStripeCapture } from './setup'
+import { mockStripeCapture, mockStripeCreate } from './setup'
 import { orderService } from '@/modules/orders/order.service'
+import { createOrder } from '@/server/actions/orders'
 import db from '@/lib/db'
+
+vi.mock('@/server/lib/requireUser', () => ({
+  requireUser: vi.fn().mockResolvedValue({
+    id: 'buyer-1',
+    email: 'buyer@test.com',
+    isAdmin: false,
+    isBanned: false,
+    sellerEnabled: false,
+    stripeOnboarded: false,
+  }),
+}))
 
 describe('OrderService', () => {
   beforeEach(() => {
@@ -170,6 +182,59 @@ describe('OrderService', () => {
       await expect(
         orderService.markDispatched({ orderId: 'order-1' }, 'seller-1')
       ).rejects.toThrow('PAYMENT_HELD')
+    })
+  })
+
+  describe('createOrder — race condition', () => {
+    const validListing = {
+      id: 'listing-1',
+      title: 'Test Item',
+      priceNzd: 5000,
+      shippingNzd: 500,
+      shippingOption: 'COURIER',
+      sellerId: 'seller-1',
+      seller: {
+        stripeAccountId: 'acct_1234567890123456',
+        stripeOnboarded: true,
+      },
+    }
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('prevents double-buy: rejects when listing is already reserved', async () => {
+      vi.mocked(db.listing.findUnique).mockResolvedValue(validListing as never)
+      // Simulate losing the reservation race — another buyer got there first
+      vi.mocked(db.listing.updateMany).mockResolvedValue({ count: 0 } as never)
+
+      const result = await createOrder({ listingId: 'listing-1' })
+
+      expect(result).toEqual({ success: false, error: 'This listing is no longer available.' })
+      // Must never create an order or touch Stripe when reservation fails
+      expect(db.order.create).not.toHaveBeenCalled()
+      expect(mockStripeCreate).not.toHaveBeenCalled()
+    })
+
+    it('releases listing reservation if Stripe PaymentIntent creation fails', async () => {
+      vi.mocked(db.listing.findUnique).mockResolvedValue(validListing as never)
+      // Reservation succeeds
+      vi.mocked(db.listing.updateMany).mockResolvedValue({ count: 1 } as never)
+      vi.mocked(db.order.create).mockResolvedValue({ id: 'order-1' } as never)
+      // Stripe fails
+      mockStripeCreate.mockRejectedValueOnce(new Error('stripe_error'))
+      vi.mocked(db.order.update).mockResolvedValue({} as never)
+
+      const result = await createOrder({ listingId: 'listing-1' })
+
+      expect(result).toEqual({ success: false, error: 'Payment setup failed. Please try again.' })
+      // Reservation was acquired
+      expect(db.listing.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'RESERVED' }),
+          data: { status: 'ACTIVE' },
+        })
+      )
     })
   })
 })

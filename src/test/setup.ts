@@ -61,6 +61,7 @@ vi.mock('@/lib/db', () => ({
       findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       create: vi.fn(),
       count: vi.fn(),
     },
@@ -150,6 +151,12 @@ vi.mock('next/cache', () => ({
 vi.mock('@/lib/queue', () => ({
   payoutQueue: { add: vi.fn() },
   emailQueue: { add: vi.fn() },
+}))
+
+// ── Mock rate limiter ────────────────────────────────────────────────────────
+vi.mock('@/server/lib/rateLimit', () => ({
+  rateLimit: vi.fn().mockResolvedValue({ success: true, remaining: 999, reset: Date.now() + 60_000, retryAfter: 0 }),
+  getClientIp: vi.fn().mockReturnValue('127.0.0.1'),
 }))
 
 // ── Mock shared logger ───────────────────────────────────────────────────────
