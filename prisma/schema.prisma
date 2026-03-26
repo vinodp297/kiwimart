@@ -165,7 +165,10 @@ model User {
   stripeOnboarded     Boolean @default(false)
   stripeChargesEnabled  Boolean @default(false)  // Synced from Stripe account.updated webhook
   stripePayoutsEnabled  Boolean @default(false)  // Synced from Stripe account.updated webhook
-  payoutBankAccount   String? // Encrypted — last 4 digits only stored in plain
+  /// Stores masked display string only (e.g. "ANZ ****1234").
+  /// Full banking details are stored in Stripe Connect — never in our DB.
+  /// Populated from Stripe external_account data via account.updated webhook.
+  payoutBankAccount   String?
 
   // Flags
   isBanned      Boolean  @default(false)
