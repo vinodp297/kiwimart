@@ -5,6 +5,7 @@ import { requirePermission } from '@/shared/auth/requirePermission';
 import db from '@/lib/db';
 import { formatPrice } from '@/lib/utils';
 import ExportCSV from './ExportCSV';
+import { RevenueChart } from '@/components/admin/RevenueChart';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'Finance — KiwiMart Admin' };
@@ -17,12 +18,13 @@ export default async function FinancePage() {
   const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
   const yearStart = new Date(new Date().getFullYear(), 0, 1);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const [
     gmvToday, gmvWeek, gmvMonth, gmvYear,
     completedOrders, gmvAll, pendingPayoutsCount, pendingPayoutsAgg,
     refundsMonthCount, refundsMonthAgg, totalOrdersMonth, failedPayouts,
-    transactions, pendingPayouts,
+    transactions, pendingPayouts, refundedOrders, dailyOrdersRaw,
   ] = await Promise.all([
     db.order.aggregate({ _sum: { totalNzd: true }, where: { status: 'COMPLETED', completedAt: { gte: todayStart } } }),
     db.order.aggregate({ _sum: { totalNzd: true }, where: { status: 'COMPLETED', completedAt: { gte: weekStart } } }),
@@ -59,7 +61,53 @@ export default async function FinancePage() {
       },
       orderBy: { createdAt: 'asc' },
     }),
+    db.order.findMany({
+      where: { status: 'REFUNDED' },
+      include: {
+        listing: { select: { title: true } },
+        buyer: { select: { displayName: true } },
+        seller: { select: { displayName: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    }),
+    db.order.findMany({
+      where: { status: 'COMPLETED', completedAt: { gte: thirtyDaysAgo } },
+      select: { completedAt: true, totalNzd: true },
+      orderBy: { completedAt: 'asc' },
+    }),
   ]);
+
+  // Build 30-day revenue chart data
+  const dailyRevenueMap = dailyOrdersRaw.reduce((acc, order) => {
+    const day = order.completedAt?.toISOString().slice(0, 10) ?? 'unknown';
+    acc[day] = (acc[day] ?? 0) + order.totalNzd;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const revenueChartDays: { date: string; revenue: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().slice(0, 10);
+    revenueChartDays.push({ date: key, revenue: dailyRevenueMap[key] ?? 0 });
+  }
+
+  // Top 10 sellers by revenue
+  const topSellersGrouped = await db.order.groupBy({
+    by: ['sellerId'],
+    where: { status: 'COMPLETED' },
+    _sum: { totalNzd: true },
+    _count: { id: true },
+    orderBy: { _sum: { totalNzd: 'desc' } },
+    take: 10,
+  });
+
+  const sellerIds = topSellersGrouped.map(s => s.sellerId);
+  const sellerUsers = await db.user.findMany({
+    where: { id: { in: sellerIds } },
+    select: { id: true, displayName: true, email: true, idVerified: true },
+  });
+  const sellerMap = Object.fromEntries(sellerUsers.map(s => [s.id, s]));
 
   const avgOrderValue = completedOrders > 0 ? (gmvAll._sum.totalNzd ?? 0) / completedOrders : 0;
   const refundRate = totalOrdersMonth > 0 ? ((refundsMonthCount / totalOrdersMonth) * 100).toFixed(1) : '0.0';
@@ -115,20 +163,87 @@ export default async function FinancePage() {
           </div>
         ))}
 
+        {/* Revenue chart */}
+        <RevenueChart data={revenueChartDays} />
+
+        {/* Top sellers */}
+        {topSellersGrouped.length > 0 && (
+          <div className="bg-white rounded-2xl border border-[#E3E0D9]">
+            <div className="p-5 border-b border-[#F0EDE8]">
+              <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">Top 10 Sellers by Revenue</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-[#F0EDE8] bg-[#FAFAF8]">
+                    {['Rank', 'Seller', 'Verified', 'Orders', 'Revenue'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-[#9E9A91] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F8F7F4]">
+                  {topSellersGrouped.map((s, idx) => {
+                    const seller = sellerMap[s.sellerId];
+                    return (
+                      <tr key={s.sellerId} className="hover:bg-[#FAFAF8]">
+                        <td className="px-4 py-3 font-semibold text-[#9E9A91]">#{idx + 1}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-[#141414]">{seller?.displayName ?? 'Unknown'}</p>
+                          <p className="text-[11px] text-[#9E9A91]">{seller?.email ?? ''}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          {seller?.idVerified ? (
+                            <span className="text-[11px] font-semibold text-emerald-600">✓ Verified</span>
+                          ) : (
+                            <span className="text-[11px] text-[#9E9A91]">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-[#141414] font-medium">{s._count.id}</td>
+                        <td className="px-4 py-3 font-semibold text-[#141414]">{formatPrice((s._sum.totalNzd ?? 0) / 100)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Transactions table */}
         <div className="bg-white rounded-2xl border border-[#E3E0D9]">
           <div className="flex items-center justify-between p-5 border-b border-[#F0EDE8]">
             <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">
               Recent Transactions
             </h2>
-            <ExportCSV data={transactions.map(t => ({
-              id: t.id,
-              completedAt: t.completedAt,
-              listingTitle: t.listing.title,
-              buyerName: t.buyer.displayName,
-              sellerName: t.seller.displayName,
-              totalNzd: t.totalNzd,
-            }))} />
+            <ExportCSV
+              transactions={transactions.map(t => ({
+                id: t.id,
+                completedAt: t.completedAt,
+                listingTitle: t.listing.title,
+                buyerName: t.buyer.displayName,
+                sellerName: t.seller.displayName,
+                totalNzd: t.totalNzd,
+                payoutStatus: t.payout?.status,
+              }))}
+              payouts={pendingPayouts.map(p => ({
+                id: p.id,
+                amountNzd: p.amountNzd,
+                status: p.status,
+                initiatedAt: p.initiatedAt,
+                stripeTransferId: p.stripeTransferId,
+                sellerName: p.order.seller.displayName,
+                sellerEmail: p.order.seller.email,
+                listingTitle: p.order.listing.title,
+              }))}
+              refunds={refundedOrders.map(r => ({
+                id: r.id,
+                updatedAt: r.updatedAt,
+                listingTitle: r.listing.title,
+                buyerName: r.buyer.displayName,
+                sellerName: r.seller.displayName,
+                totalNzd: r.totalNzd,
+              }))}
+            />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-[12.5px]">

@@ -7,6 +7,7 @@ import ApproveIdButton from './ApproveIdButton';
 import { requireAnyAdmin } from '@/shared/auth/requirePermission';
 import db from '@/lib/db';
 import { formatPrice } from '@/lib/utils';
+import { OrderVolumeChart } from '@/components/admin/OrderVolumeChart';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'Admin Dashboard — KiwiMart' };
@@ -16,14 +17,16 @@ export default async function AdminPage() {
   const admin = await requireAnyAdmin();
 
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0);
+  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0, 0);
   const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
   const [
     totalUsers, newUsersToday, activeSellers, newSellersThisWeek,
     gmvAllTime, gmvThisMonth, completedOrders, pendingPayoutsCount,
     openDisputes, pendingReports, bannedUsers, pendingVerifications,
     activeListings, ordersToday, totalOrders, refundedOrders,
+    last7DaysOrders, recentOrdersForChart, categoryStats, categories,
   ] = await Promise.all([
     db.user.count({ where: { isBanned: false } }),
     db.user.count({ where: { createdAt: { gte: todayStart } } }),
@@ -45,6 +48,23 @@ export default async function AdminPage() {
     db.order.count({ where: { createdAt: { gte: todayStart } } }),
     db.order.count(),
     db.order.count({ where: { status: 'REFUNDED' } }),
+    db.order.findMany({
+      where: { status: 'COMPLETED', completedAt: { gte: weekStart } },
+      select: { completedAt: true, totalNzd: true },
+      orderBy: { completedAt: 'asc' },
+    }),
+    db.order.findMany({
+      where: { createdAt: { gte: thirtyDaysAgo } },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    db.listing.groupBy({
+      by: ['categoryId'],
+      where: { status: 'ACTIVE', deletedAt: null },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    }),
+    db.category.findMany({ select: { id: true, name: true } }),
   ]);
 
   const completionRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
@@ -52,16 +72,7 @@ export default async function AdminPage() {
   const gmvThisMonthCents = gmvThisMonth._sum.totalNzd ?? 0;
   const avgOrderValue = completedOrders > 0 ? gmvAllTimeCents / completedOrders : 0;
 
-  // Last 7 days revenue by day
-  const last7DaysOrders = await db.order.findMany({
-    where: {
-      status: 'COMPLETED',
-      completedAt: { gte: weekStart },
-    },
-    select: { completedAt: true, totalNzd: true },
-    orderBy: { completedAt: 'asc' },
-  });
-  // Group by date
+  // Last 7 days revenue table
   const revenueByDay = new Map<string, { orders: number; gmv: number }>();
   for (let i = 6; i >= 0; i--) {
     const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
@@ -74,6 +85,23 @@ export default async function AdminPage() {
     if (existing) { existing.orders++; existing.gmv += o.totalNzd; }
   }
   const revenueRows = [...revenueByDay.entries()];
+
+  // 30-day order volume chart
+  const orderCountByDay: Record<string, number> = {};
+  for (const o of recentOrdersForChart) {
+    const key = o.createdAt.toISOString().slice(0, 10);
+    orderCountByDay[key] = (orderCountByDay[key] ?? 0) + 1;
+  }
+  const orderChartDays: { date: string; count: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().slice(0, 10);
+    orderChartDays.push({ date: key, count: orderCountByDay[key] ?? 0 });
+  }
+
+  // Category breakdown
+  const categoryMap = Object.fromEntries(categories.map(c => [c.id, c.name]));
+  const totalActiveListings = categoryStats.reduce((s, c) => s + c._count.id, 0);
 
   type KpiSection = { title: string; items: { label: string; value: string; sub?: string; href?: string; alert?: boolean }[] };
   const sections: KpiSection[] = [
@@ -151,6 +179,9 @@ export default async function AdminPage() {
           </div>
         ))}
 
+        {/* Order volume chart */}
+        <OrderVolumeChart data={orderChartDays} />
+
         {/* Revenue last 7 days */}
         <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
           <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">Revenue — Last 7 Days</h2>
@@ -175,6 +206,43 @@ export default async function AdminPage() {
             </table>
           </div>
         </div>
+
+        {/* Category breakdown */}
+        {categoryStats.length > 0 && (
+          <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+            <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">Category Performance</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="border-b border-[#F0EDE8]">
+                    {['Category', 'Active Listings', '% of Total'].map(h => (
+                      <th key={h} className="pb-2 text-left text-[11px] font-semibold text-[#9E9A91] uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F8F7F4]">
+                  {categoryStats.slice(0, 10).map(cat => {
+                    const pct = totalActiveListings > 0 ? (cat._count.id / totalActiveListings) * 100 : 0;
+                    return (
+                      <tr key={cat.categoryId} className="hover:bg-[#FAFAF8]">
+                        <td className="py-3 font-medium text-[#141414]">{categoryMap[cat.categoryId] ?? cat.categoryId}</td>
+                        <td className="py-3 text-[#73706A]">{cat._count.id.toLocaleString('en-NZ')}</td>
+                        <td className="py-3 w-48">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-[#F2EFE8] rounded-full">
+                              <div className="h-1.5 bg-[#D4A843] rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="text-[11px] text-[#9E9A91] w-10 text-right">{pct.toFixed(1)}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Pending ID Verifications */}
         {pendingVerifications.length > 0 && (
