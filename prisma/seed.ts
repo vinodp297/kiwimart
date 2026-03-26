@@ -241,6 +241,7 @@ async function main() {
       passwordHash: adminHash,
       emailVerified: new Date(),
       isAdmin: true,
+      adminRole: 'SUPER_ADMIN',
       sellerEnabled: false,
       region: 'Auckland',
       suburb: 'Auckland CBD',
@@ -248,7 +249,35 @@ async function main() {
     },
   });
 
-  console.log('✅ 6 users created (3 sellers, 2 buyers, 1 admin)');
+  // ── Role-specific admin accounts ────────────────────────────────────────────
+  const adminAccounts = [
+    { email: 'finance@kiwimart.test',  role: 'FINANCE_ADMIN',      name: 'Finance Admin',  username: 'finance_admin'  },
+    { email: 'disputes@kiwimart.test', role: 'DISPUTES_ADMIN',     name: 'Disputes Admin', username: 'disputes_admin' },
+    { email: 'safety@kiwimart.test',   role: 'TRUST_SAFETY_ADMIN', name: 'Safety Admin',   username: 'safety_admin'   },
+    { email: 'support@kiwimart.test',  role: 'SUPPORT_ADMIN',      name: 'Support Admin',  username: 'support_admin'  },
+    { email: 'sellers@kiwimart.test',  role: 'SELLER_MANAGER',     name: 'Seller Manager', username: 'sellers_admin'  },
+    { email: 'readonly@kiwimart.test', role: 'READ_ONLY_ADMIN',    name: 'Read Only Admin', username: 'readonly_admin' },
+  ] as const;
+
+  for (const acc of adminAccounts) {
+    await db.user.create({
+      data: {
+        email: acc.email,
+        username: acc.username,
+        displayName: acc.name,
+        passwordHash: adminHash,
+        emailVerified: new Date(),
+        isAdmin: true,
+        adminRole: acc.role,
+        sellerEnabled: false,
+        region: 'Auckland',
+        suburb: 'Auckland CBD',
+        agreedTermsAt: new Date(),
+      },
+    });
+  }
+
+  console.log('✅ 13 users created (3 sellers, 2 buyers, 7 admins)');
 
   // ── STEP 5: Listings ─────────────────────────────────────────────────────────
   console.log('\n🛍️  Creating listings...');
@@ -749,8 +778,14 @@ async function main() {
 ║  outdoorgear@kiwimart.test                 ║
 ║  Password: SellerPassword123!              ║
 ╠════════════════════════════════════════════╣
-║ ADMIN                                      ║
-║  admin@kiwimart.test / AdminPassword123!   ║
+║ ADMIN  (password: AdminPassword123!)       ║
+║  admin@kiwimart.test    (SUPER_ADMIN)      ║
+║  finance@kiwimart.test  (FINANCE_ADMIN)    ║
+║  disputes@kiwimart.test (DISPUTES_ADMIN)   ║
+║  safety@kiwimart.test   (TRUST_SAFETY)     ║
+║  support@kiwimart.test  (SUPPORT_ADMIN)    ║
+║  sellers@kiwimart.test  (SELLER_MANAGER)   ║
+║  readonly@kiwimart.test (READ_ONLY_ADMIN)  ║
 ╚════════════════════════════════════════════╝
 `);
 }
