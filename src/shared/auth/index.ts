@@ -5,3 +5,9 @@
 
 export { requireUser } from '@/server/lib/requireUser'
 export { requireAdmin } from '@/server/lib/requireAdmin'
+export {
+  requireAnyAdmin,
+  requirePermission,
+  requireAnyPermission,
+  requireSuperAdmin,
+} from '@/shared/auth/requirePermission'
