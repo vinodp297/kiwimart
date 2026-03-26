@@ -5,6 +5,7 @@ import db from '@/lib/db';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 import SettingsForm from './SettingsForm';
+import ProfileCompletion from '@/components/onboarding/ProfileCompletion';
 
 export default async function AccountSettingsPage() {
   const session = await auth();
@@ -42,6 +43,14 @@ export default async function AccountSettingsPage() {
             Manage your profile, notifications and account preferences.
           </p>
 
+          <div className="mb-6">
+            <ProfileCompletion
+              displayName={user.displayName}
+              emailVerified={user.emailVerified}
+              region={user.region}
+              bio={user.bio}
+            />
+          </div>
           <SettingsForm user={user} />
         </div>
       </main>

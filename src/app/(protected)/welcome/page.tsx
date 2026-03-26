@@ -1,0 +1,38 @@
+// src/app/(protected)/welcome/page.tsx
+// ─── Onboarding Welcome Page ──────────────────────────────────────────────────
+// Server component: checks if user already completed onboarding.
+// If yes, redirect straight to buyer dashboard.
+// If no, render the client-side WelcomeWizard.
+
+import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
+import db from '@/lib/db';
+import WelcomeWizard from '@/components/onboarding/WelcomeWizard';
+
+export const dynamic = 'force-dynamic';
+
+export default async function WelcomePage() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    redirect('/login?from=/welcome');
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      onboardingCompleted: true,
+      displayName: true,
+    },
+  });
+
+  if (!user) {
+    redirect('/login');
+  }
+
+  // Already completed onboarding — skip straight to dashboard
+  if (user.onboardingCompleted) {
+    redirect('/dashboard/buyer');
+  }
+
+  return <WelcomeWizard displayName={user.displayName} />;
+}

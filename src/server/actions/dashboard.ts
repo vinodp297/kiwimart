@@ -19,6 +19,12 @@ export interface DashboardUser {
   createdAt: string;
   sellerEnabled: boolean;
   idVerified: boolean;
+  emailVerified: string | null;
+  region: string | null;
+  bio: string | null;
+  onboardingIntent: string | null;
+  onboardingCompleted: boolean;
+  stripeOnboarded: boolean;
 }
 
 export interface BuyerOrderRow {
@@ -127,6 +133,8 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
       select: {
         id: true, displayName: true, email: true, username: true,
         avatarKey: true, createdAt: true, sellerEnabled: true, idVerified: true,
+        emailVerified: true, region: true, bio: true,
+        onboardingIntent: true, onboardingCompleted: true, stripeOnboarded: true,
       },
     }),
     // Orders as buyer
@@ -298,6 +306,12 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
         createdAt: dbUser.createdAt.toISOString(),
         sellerEnabled: dbUser.sellerEnabled,
         idVerified: dbUser.idVerified,
+        emailVerified: dbUser.emailVerified?.toISOString() ?? null,
+        region: dbUser.region ?? null,
+        bio: dbUser.bio ?? null,
+        onboardingIntent: dbUser.onboardingIntent ?? null,
+        onboardingCompleted: dbUser.onboardingCompleted,
+        stripeOnboarded: dbUser.stripeOnboarded,
       },
       orders: mappedOrders,
       watchlist: mappedWatchlist,
@@ -386,6 +400,8 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
       select: {
         id: true, displayName: true, email: true, username: true,
         avatarKey: true, createdAt: true, sellerEnabled: true, idVerified: true,
+        emailVerified: true, region: true, bio: true,
+        onboardingIntent: true, onboardingCompleted: true, stripeOnboarded: true,
       },
     }),
     db.order.aggregate({
@@ -530,6 +546,12 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
         createdAt: dbUser.createdAt.toISOString(),
         sellerEnabled: dbUser.sellerEnabled,
         idVerified: dbUser.idVerified,
+        emailVerified: dbUser.emailVerified?.toISOString() ?? null,
+        region: dbUser.region ?? null,
+        bio: dbUser.bio ?? null,
+        onboardingIntent: dbUser.onboardingIntent ?? null,
+        onboardingCompleted: dbUser.onboardingCompleted,
+        stripeOnboarded: dbUser.stripeOnboarded,
       },
       stats,
       listings: mappedListings,
