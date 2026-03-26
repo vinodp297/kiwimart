@@ -23,8 +23,11 @@ async function hash(password: string): Promise<string> {
 // ── Wipe database (reverse dependency order) ─────────────────────────────────
 async function wipeDatabase() {
   console.log('🗑️  Wiping database...');
+  await db.notification.deleteMany();
   await db.auditLog.deleteMany();
   await db.report.deleteMany();
+  await db.blockedUser.deleteMany();
+  await db.adminInvitation.deleteMany();
   await db.phoneVerificationToken.deleteMany();
   await db.stripeEvent.deleteMany();
   await db.message.deleteMany();
@@ -151,6 +154,9 @@ async function main() {
       stripeAccountId: 'acct_1RTestTechDealsNZ01',
       stripeChargesEnabled: true,
       stripePayoutsEnabled: true,
+      sellerTermsAcceptedAt: new Date(Date.now() - 90 * 86400000),
+      onboardingCompleted: true,
+      onboardingIntent: 'SELL',
       region: 'Auckland',
       suburb: 'Newmarket',
       agreedTermsAt: new Date(Date.now() - 90 * 86400000),
@@ -173,6 +179,9 @@ async function main() {
       stripeAccountId: 'acct_1RTestHomeStyleNZ02',
       stripeChargesEnabled: true,
       stripePayoutsEnabled: true,
+      sellerTermsAcceptedAt: new Date(Date.now() - 60 * 86400000),
+      onboardingCompleted: true,
+      onboardingIntent: 'BOTH',
       region: 'Wellington',
       suburb: 'Kelburn',
       agreedTermsAt: new Date(Date.now() - 60 * 86400000),
@@ -195,6 +204,9 @@ async function main() {
       stripeAccountId: 'acct_1RTestOutdoorGearNZ3',
       stripeChargesEnabled: true,
       stripePayoutsEnabled: true,
+      sellerTermsAcceptedAt: new Date(Date.now() - 30 * 86400000),
+      onboardingCompleted: true,
+      onboardingIntent: 'SELL',
       region: 'Canterbury',
       suburb: 'Christchurch City',
       agreedTermsAt: new Date(Date.now() - 30 * 86400000),
@@ -212,6 +224,8 @@ async function main() {
       phoneVerifiedAt: new Date(Date.now() - 10 * 86400000),
       idVerified: false,
       sellerEnabled: false,
+      onboardingCompleted: true,
+      onboardingIntent: 'BUY',
       region: 'Auckland',
       suburb: 'Ponsonby',
       agreedTermsAt: new Date(Date.now() - 45 * 86400000),
@@ -227,6 +241,8 @@ async function main() {
       emailVerified: new Date(),
       phoneVerified: false,
       sellerEnabled: false,
+      onboardingCompleted: true,
+      onboardingIntent: 'BUY',
       region: 'Wellington',
       suburb: 'Te Aro',
       agreedTermsAt: new Date(Date.now() - 20 * 86400000),
@@ -243,6 +259,7 @@ async function main() {
       isAdmin: true,
       adminRole: 'SUPER_ADMIN',
       sellerEnabled: false,
+      onboardingCompleted: true,
       region: 'Auckland',
       suburb: 'Auckland CBD',
       agreedTermsAt: new Date(),
@@ -270,6 +287,7 @@ async function main() {
         isAdmin: true,
         adminRole: acc.role,
         sellerEnabled: false,
+        onboardingCompleted: true,
         region: 'Auckland',
         suburb: 'Auckland CBD',
         agreedTermsAt: new Date(),

@@ -8,4 +8,7 @@ export default defineConfig({
   datasource: {
     url: directUrl,
   },
+  migrations: {
+    seed: 'npx tsx prisma/seed.ts',
+  },
 });

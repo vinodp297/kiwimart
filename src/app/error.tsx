@@ -2,7 +2,7 @@
 // src/app/error.tsx
 // ─── Global Error Boundary ────────────────────────────────────────────────────
 // Next.js App Router convention: must be 'use client', receives error + reset.
-// Sprint 3: wire error.digest to Sentry.captureException(error) before render.
+// Reports to Sentry in production, shows friendly reset UI to the user.
 
 import { useEffect } from 'react';
 import * as Sentry from '@sentry/nextjs';
