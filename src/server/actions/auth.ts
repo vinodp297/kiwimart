@@ -18,6 +18,7 @@ import db from '@/lib/db';
 import { hashPassword } from '@/server/lib/password';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { audit } from '@/server/lib/audit';
+import { logger } from '@/shared/logger';
 import {
   registerSchema,
   forgotPasswordSchema,
@@ -116,7 +117,7 @@ export async function registerUser(
     sendVerificationEmail({ to: user.email, displayName: user.displayName, verifyUrl }).catch(() => {});
   } catch {
     // Non-fatal — user can request resend later
-    console.error('[AUTH] Failed to send verification email for', user.email);
+    logger.error('auth.verification_email.failed', { email: user.email });
   }
 
   // 6. Audit

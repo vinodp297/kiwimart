@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client';
+import { logger } from '@/shared/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
         subject: `Welcome to KiwiMart, ${user.displayName}! 🥝`,
         html: buildWelcomeEmail({ name: user.displayName ?? 'there', appUrl }),
       })
-      .catch((err) => console.error('[EMAIL] Welcome send failed:', err));
+      .catch((err) => logger.error('email.welcome.failed', { error: err }));
   }
 
   return NextResponse.redirect(new URL('/login?verified=true', request.url));
