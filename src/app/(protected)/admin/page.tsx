@@ -1,12 +1,10 @@
-// src/app/(protected)/admin/page.tsx  (Sprint 12 — Observability)
-// ─── Admin KPI Dashboard ───────────────────────────────────────────────────────
-
+// src/app/(protected)/admin/page.tsx
+// ─── Super Admin Master Dashboard ─────────────────────────────────────────────
 import type React from 'react';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import SystemHealthWidget from '@/components/admin/SystemHealthWidget';
 import ApproveIdButton from './ApproveIdButton';
-import { auth } from '@/lib/auth';
+import { requireAnyAdmin } from '@/shared/auth/requirePermission';
 import db from '@/lib/db';
 import { formatPrice } from '@/lib/utils';
 import type { Metadata } from 'next';
@@ -15,284 +13,219 @@ export const metadata: Metadata = { title: 'Admin Dashboard — KiwiMart' };
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
-  const session = await auth();
-  const isAdmin = (session?.user as { isAdmin?: boolean } | undefined)?.isAdmin;
-  if (!isAdmin) redirect('/dashboard/buyer');
+  const admin = await requireAnyAdmin();
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - 7);
-  weekStart.setHours(0, 0, 0, 0);
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 7); weekStart.setHours(0, 0, 0);
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
 
   const [
-    totalUsers,
-    totalListings,
-    totalOrders,
-    ordersToday,
-    pendingDisputes,
-    pendingReports,
-    completedOrders,
-    revenueAgg,
-    revenueThisWeekAgg,
-    pendingIdVerifications,
+    totalUsers, newUsersToday, activeSellers, newSellersThisWeek,
+    gmvAllTime, gmvThisMonth, completedOrders, pendingPayoutsCount,
+    openDisputes, pendingReports, bannedUsers, pendingVerifications,
+    activeListings, ordersToday, totalOrders, refundedOrders,
   ] = await Promise.all([
-    db.user.count(),
-    db.listing.count({ where: { status: 'ACTIVE' } }),
-    db.order.count(),
-    db.order.count({ where: { createdAt: { gte: todayStart } } }),
+    db.user.count({ where: { isBanned: false } }),
+    db.user.count({ where: { createdAt: { gte: todayStart } } }),
+    db.user.count({ where: { sellerEnabled: true, isBanned: false } }),
+    db.user.count({ where: { sellerEnabled: true, createdAt: { gte: weekStart } } }),
+    db.order.aggregate({ _sum: { totalNzd: true }, where: { status: 'COMPLETED' } }),
+    db.order.aggregate({ _sum: { totalNzd: true }, where: { status: 'COMPLETED', completedAt: { gte: monthStart } } }),
+    db.order.count({ where: { status: 'COMPLETED' } }),
+    db.payout.count({ where: { status: 'PROCESSING' } }),
     db.order.count({ where: { status: 'DISPUTED' } }),
     db.report.count({ where: { status: 'OPEN' } }),
-    db.order.count({ where: { status: 'COMPLETED' } }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: 'COMPLETED' },
-    }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: 'COMPLETED', completedAt: { gte: weekStart } },
-    }),
+    db.user.count({ where: { isBanned: true } }),
     db.user.findMany({
       where: { idSubmittedAt: { not: null }, idVerified: false },
       select: { id: true, displayName: true, email: true, idSubmittedAt: true },
       orderBy: { idSubmittedAt: 'asc' },
     }),
+    db.listing.count({ where: { status: 'ACTIVE' } }),
+    db.order.count({ where: { createdAt: { gte: todayStart } } }),
+    db.order.count(),
+    db.order.count({ where: { status: 'REFUNDED' } }),
   ]);
 
-  const totalRevenueCents = revenueAgg._sum.totalNzd ?? 0;
-  const revenueThisWeekCents = revenueThisWeekAgg._sum.totalNzd ?? 0;
-  const completionRate =
-    totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
+  const completionRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
+  const gmvAllTimeCents = gmvAllTime._sum.totalNzd ?? 0;
+  const gmvThisMonthCents = gmvThisMonth._sum.totalNzd ?? 0;
+  const avgOrderValue = completedOrders > 0 ? gmvAllTimeCents / completedOrders : 0;
 
-  type Kpi = {
-    label: string;
-    value: string;
-    subValue?: string;
-    icon: React.ReactNode;
-    alert: boolean;
-    alertColour?: string;
-    href?: string;
-    badge?: string;
-  };
-  const kpis: Kpi[] = [
-    {
-      label: 'Total Users',
-      value: totalUsers.toLocaleString('en-NZ'),
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-          <circle cx="12" cy="7" r="4" />
-        </svg>
-      ),
-      alert: false,
+  // Last 7 days revenue by day
+  const last7DaysOrders = await db.order.findMany({
+    where: {
+      status: 'COMPLETED',
+      completedAt: { gte: weekStart },
     },
-    {
-      label: 'Active Listings',
-      value: totalListings.toLocaleString('en-NZ'),
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-          <line x1="7" y1="7" x2="7.01" y2="7" />
-        </svg>
-      ),
-      alert: false,
-    },
-    {
-      label: 'Total Orders',
-      value: totalOrders.toLocaleString('en-NZ'),
-      subValue: `${ordersToday} today`,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M16.5 9.4 7.55 4.24" />
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-          <polyline points="3.29 7 12 12 20.71 7" />
-          <line x1="12" y1="22" x2="12" y2="12" />
-        </svg>
-      ),
-      alert: false,
-    },
-    {
-      label: 'Completion Rate',
-      value: `${completionRate}%`,
-      subValue: `${completedOrders.toLocaleString('en-NZ')} completed`,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      ),
-      alert: false,
-    },
-    {
-      label: 'Pending Disputes',
-      value: pendingDisputes.toLocaleString('en-NZ'),
-      href: '/admin/disputes',
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-          <line x1="12" y1="9" x2="12" y2="13" />
-          <line x1="12" y1="17" x2="12.01" y2="17" />
-        </svg>
-      ),
-      alert: pendingDisputes > 0,
-      alertColour: 'text-red-600 bg-red-50 border-red-200',
-      badge: pendingDisputes > 0 ? 'Needs attention' : undefined,
-    },
-    {
-      label: 'Pending Reports',
-      value: pendingReports.toLocaleString('en-NZ'),
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-          <line x1="4" y1="22" x2="4" y2="15" />
-        </svg>
-      ),
-      alert: pendingReports > 0,
-      alertColour: 'text-amber-700 bg-amber-50 border-amber-200',
-    },
-    {
-      label: 'Total Revenue',
-      value: formatPrice(totalRevenueCents / 100),
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <line x1="12" y1="1" x2="12" y2="23" />
-          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-        </svg>
-      ),
-      alert: false,
-    },
-    {
-      label: 'Revenue This Week',
-      value: formatPrice(revenueThisWeekCents / 100),
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-        </svg>
-      ),
-      alert: false,
-    },
-  ];
+    select: { completedAt: true, totalNzd: true },
+    orderBy: { completedAt: 'asc' },
+  });
+  // Group by date
+  const revenueByDay = new Map<string, { orders: number; gmv: number }>();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+    revenueByDay.set(d.toISOString().slice(0, 10), { orders: 0, gmv: 0 });
+  }
+  for (const o of last7DaysOrders) {
+    if (!o.completedAt) continue;
+    const key = o.completedAt.toISOString().slice(0, 10);
+    const existing = revenueByDay.get(key);
+    if (existing) { existing.orders++; existing.gmv += o.totalNzd; }
+  }
+  const revenueRows = [...revenueByDay.entries()];
 
-  const quickActions = [
-    { label: 'Manage Users', href: '/admin/users', icon: '👤' },
-    { label: 'Review Reports', href: '/admin/reports', icon: '🚩' },
-    { label: 'Resolve Disputes', href: '/admin/disputes', icon: '⚖️' },
+  type KpiSection = { title: string; items: { label: string; value: string; sub?: string; href?: string; alert?: boolean }[] };
+  const sections: KpiSection[] = [
+    {
+      title: 'Users',
+      items: [
+        { label: 'Total Users', value: totalUsers.toLocaleString('en-NZ'), sub: `+${newUsersToday} today` },
+        { label: 'Active Sellers', value: activeSellers.toLocaleString('en-NZ'), sub: `+${newSellersThisWeek} this week` },
+        { label: 'Banned Users', value: bannedUsers.toLocaleString('en-NZ'), alert: bannedUsers > 0 },
+        { label: 'Pending Verifications', value: pendingVerifications.length.toLocaleString('en-NZ'), href: '/admin/sellers', alert: pendingVerifications.length > 0 },
+      ],
+    },
+    {
+      title: 'Transactions',
+      items: [
+        { label: 'GMV All Time', value: formatPrice(gmvAllTimeCents / 100) },
+        { label: 'GMV This Month', value: formatPrice(gmvThisMonthCents / 100) },
+        { label: 'Completed Orders', value: completedOrders.toLocaleString('en-NZ') },
+        { label: 'Pending Payouts', value: pendingPayoutsCount.toLocaleString('en-NZ'), alert: pendingPayoutsCount > 0 },
+      ],
+    },
+    {
+      title: 'Trust & Safety',
+      items: [
+        { label: 'Open Disputes', value: openDisputes.toLocaleString('en-NZ'), href: '/admin/disputes', alert: openDisputes > 0 },
+        { label: 'Pending Reports', value: pendingReports.toLocaleString('en-NZ'), href: '/admin/moderation', alert: pendingReports > 0 },
+        { label: 'Refunded Orders', value: refundedOrders.toLocaleString('en-NZ') },
+        { label: 'Banned Users', value: bannedUsers.toLocaleString('en-NZ') },
+      ],
+    },
+    {
+      title: 'Platform',
+      items: [
+        { label: 'Active Listings', value: activeListings.toLocaleString('en-NZ') },
+        { label: 'Orders Today', value: ordersToday.toLocaleString('en-NZ') },
+        { label: 'Completion Rate', value: `${completionRate}%` },
+        { label: 'Avg Order Value', value: formatPrice(avgOrderValue / 100) },
+      ],
+    },
   ];
 
   return (
     <div className="bg-[#FAFAF8] min-h-screen">
-        {/* Header band */}
-        <div className="bg-[#141414] text-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-            <div className="flex items-center gap-3 mb-1">
-              <span className="text-[#D4A843] text-xl">⚡</span>
-              <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold">
-                Admin Dashboard
-              </h1>
+      <div className="bg-[#141414] text-white">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="text-[#D4A843] text-xl">⚡</span>
+            <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold">Admin Dashboard</h1>
+          </div>
+          <p className="text-white/50 text-[13.5px]">Welcome back, {admin.displayName}</p>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+        {/* 4 KPI sections */}
+        {sections.map(section => (
+          <div key={section.title}>
+            <h2 className="text-[11px] font-bold text-[#9E9A91] uppercase tracking-widest mb-3">{section.title}</h2>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {section.items.map(item => {
+                const card = (
+                  <div className={`bg-white rounded-2xl border p-5 h-full ${item.alert ? 'border-red-200 bg-red-50' : 'border-[#E3E0D9]'} ${item.href ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}>
+                    <p className="text-[12px] text-[#9E9A91] font-medium mb-1">{item.label}</p>
+                    <p className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] leading-none">{item.value}</p>
+                    {item.sub && <p className="text-[11px] text-[#9E9A91] mt-1">{item.sub}</p>}
+                  </div>
+                );
+                return item.href ? (
+                  <Link key={item.label} href={item.href} className="block">{card}</Link>
+                ) : (
+                  <div key={item.label}>{card}</div>
+                );
+              })}
             </div>
-            <p className="text-white/50 text-[13.5px]">KiwiMart platform management</p>
+          </div>
+        ))}
+
+        {/* Revenue last 7 days */}
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+          <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">Revenue — Last 7 Days</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="border-b border-[#F0EDE8]">
+                  {['Date', 'Orders', 'GMV (NZD)'].map(h => (
+                    <th key={h} className="pb-2 text-left text-[11px] font-semibold text-[#9E9A91] uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F8F7F4]">
+                {revenueRows.map(([date, data]) => (
+                  <tr key={date} className="hover:bg-[#FAFAF8]">
+                    <td className="py-2.5 text-[#73706A]">{new Date(date + 'T00:00:00').toLocaleDateString('en-NZ', { weekday: 'short', day: 'numeric', month: 'short' })}</td>
+                    <td className="py-2.5 text-[#141414] font-medium">{data.orders}</td>
+                    <td className="py-2.5 font-semibold text-[#141414]">{formatPrice(data.gmv / 100)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {kpis.map(({ label, value, subValue, icon, alert, alertColour, href, badge }) => {
-              const card = (
-                <div
-                  className={`bg-white rounded-2xl border p-5 h-full ${
-                    alert ? (alertColour ?? 'border-[#E3E0D9]') : 'border-[#E3E0D9]'
-                  } ${href ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`p-2 rounded-xl ${alert ? '' : 'bg-[#F8F7F4]'} text-[#73706A]`}>
-                      {icon}
-                    </div>
-                    {badge && (
-                      <span className="text-[10px] font-semibold bg-red-600 text-white px-2 py-0.5 rounded-full">
-                        {badge}
-                      </span>
-                    )}
+        {/* Pending ID Verifications */}
+        {pendingVerifications.length > 0 && (
+          <div className="bg-white rounded-2xl border border-amber-200 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-lg">🪪</span>
+              <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">Pending ID Verifications</h2>
+              <span className="ml-auto text-[11.5px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                {pendingVerifications.length} pending
+              </span>
+            </div>
+            <div className="divide-y divide-[#E3E0D9]">
+              {pendingVerifications.map(u => (
+                <div key={u.id} className="flex items-center gap-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13.5px] font-semibold text-[#141414] truncate">{u.displayName ?? '(no name)'}</p>
+                    <p className="text-[12px] text-[#9E9A91] truncate">{u.email}</p>
+                    <p className="text-[11.5px] text-[#C9C5BC]">
+                      Submitted {u.idSubmittedAt ? new Date(u.idSubmittedAt).toLocaleDateString('en-NZ') : '—'}
+                    </p>
                   </div>
-                  <p className="text-[12px] text-[#9E9A91] font-medium mb-1">{label}</p>
-                  <p className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] leading-none">
-                    {value}
-                  </p>
-                  {subValue && (
-                    <p className="text-[11px] text-[#9E9A91] mt-1">{subValue}</p>
-                  )}
+                  <ApproveIdButton userId={u.id} />
                 </div>
-              );
-              return href ? (
-                <Link key={label} href={href} className="block">
-                  {card}
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Quick Actions + System Health */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+            <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">Quick Actions</h2>
+            <div className="flex flex-col gap-3">
+              {[
+                { label: 'Open Disputes', href: '/admin/disputes', icon: '⚖️', badge: openDisputes },
+                { label: 'Pending Reports', href: '/admin/moderation', icon: '🚩', badge: pendingReports },
+                { label: 'Pending Verifications', href: '/admin/sellers', icon: '🪪', badge: pendingVerifications.length },
+                { label: 'Finance Overview', href: '/admin/finance', icon: '💰', badge: 0 },
+              ].map(({ label, href, icon, badge }) => (
+                <Link key={href} href={href} className="flex items-center gap-3 p-4 rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] hover:bg-[#F5ECD4]/30 transition-all duration-150">
+                  <span className="text-xl">{icon}</span>
+                  <span className="text-[13.5px] font-semibold text-[#141414]">{label}</span>
+                  {badge > 0 && <span className="ml-auto bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{badge}</span>}
+                  {!badge && <svg className="ml-auto text-[#C9C5BC]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>}
                 </Link>
-              ) : (
-                <div key={label}>{card}</div>
-              );
-            })}
-          </div>
-
-          {/* Pending ID Verifications */}
-          {pendingIdVerifications.length > 0 && (
-            <div className="bg-white rounded-2xl border border-amber-200 p-6 mb-6">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-lg">🪪</span>
-                <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">
-                  Pending ID Verifications
-                </h2>
-                <span className="ml-auto text-[11.5px] bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
-                  {pendingIdVerifications.length} pending
-                </span>
-              </div>
-              <div className="divide-y divide-[#E3E0D9]">
-                {pendingIdVerifications.map(u => (
-                  <div key={u.id} className="flex items-center gap-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13.5px] font-semibold text-[#141414] truncate">
-                        {u.displayName ?? '(no name)'}
-                      </p>
-                      <p className="text-[12px] text-[#9E9A91] truncate">{u.email}</p>
-                      <p className="text-[11.5px] text-[#C9C5BC]">
-                        Submitted {u.idSubmittedAt ? new Date(u.idSubmittedAt).toLocaleDateString('en-NZ') : '—'}
-                      </p>
-                    </div>
-                    <ApproveIdButton userId={u.id} />
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
-          )}
-
-          {/* Quick Actions + System Health side by side */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Quick Actions */}
-            <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
-              <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">
-                Quick Actions
-              </h2>
-              <div className="flex flex-col gap-3">
-                {quickActions.map(({ label, href, icon }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className="flex items-center gap-3 p-4 rounded-xl border border-[#E3E0D9]
-                      hover:border-[#D4A843] hover:bg-[#F5ECD4]/30 transition-all duration-150"
-                  >
-                    <span className="text-xl">{icon}</span>
-                    <span className="text-[13.5px] font-semibold text-[#141414]">{label}</span>
-                    <svg className="ml-auto text-[#C9C5BC]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="m9 18 6-6-6-6" />
-                    </svg>
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            {/* System Health — auto-refreshes every 60s */}
-            <SystemHealthWidget />
           </div>
+          <SystemHealthWidget />
         </div>
+      </div>
     </div>
   );
 }
