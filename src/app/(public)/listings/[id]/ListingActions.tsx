@@ -59,7 +59,7 @@ export default function ListingActions({ listing }: Props) {
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 md:p-6 sticky top-[76px]">
+      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 md:p-6 sticky top-[88px]">
         {/* Price row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
