@@ -10,7 +10,6 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import { auth } from '@/lib/auth';
-import { BfcacheGuard } from '@/components/BfcacheGuard';
 
 // Force every protected page to be dynamically rendered — never statically
 // cached.  This works with the Cache-Control: no-store headers set in
@@ -41,11 +40,5 @@ export default async function ProtectedLayout({
     redirect(`/login?from=${encodeURIComponent(pathname)}`);
   }
 
-  return (
-    <>
-      {/* Reload on bfcache restore so the server can re-check the session */}
-      <BfcacheGuard />
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
