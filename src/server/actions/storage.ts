@@ -2,7 +2,7 @@
 // src/server/actions/storage.ts  (Sprint 6 — storage monitoring)
 // ─── Storage Monitoring ─────────────────────────────────────────────────────
 
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/server/lib/requireUser';
 import db from '@/lib/db';
 import type { ActionResult } from '@/types';
 
@@ -19,19 +19,11 @@ export interface StorageStats {
 }
 
 export async function getStorageStats(): Promise<ActionResult<StorageStats>> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
-  }
-
-  // Check admin status
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { isAdmin: true },
-  });
-  if (!user?.isAdmin) {
-    return { success: false, error: 'Admin access required.' };
-  }
+  try {
+    const user = await requireUser();
+    if (!user.isAdmin) {
+      return { success: false, error: 'Admin access required.' };
+    }
 
   const [totalImages, processedImages, pendingImages, thumbnailCount] = await Promise.all([
     db.listingImage.count(),
@@ -61,18 +53,21 @@ export async function getStorageStats(): Promise<ActionResult<StorageStats>> {
     : 0;
   const averageSizeBytes = Math.round(sizeAgg._avg.sizeBytes ?? 0);
 
-  return {
-    success: true,
-    data: {
-      totalImages,
-      processedImages,
-      pendingImages,
-      totalSizeBytes,
-      totalOriginalSizeBytes,
-      compressionSavingsBytes,
-      compressionRatio,
-      thumbnailCount,
-      averageSizeBytes,
-    },
-  };
+    return {
+      success: true,
+      data: {
+        totalImages,
+        processedImages,
+        pendingImages,
+        totalSizeBytes,
+        totalOriginalSizeBytes,
+        compressionSavingsBytes,
+        compressionRatio,
+        thumbnailCount,
+        averageSizeBytes,
+      },
+    };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+  }
 }

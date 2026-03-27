@@ -2,7 +2,7 @@
 // src/server/actions/onboarding.ts
 // ─── Onboarding Server Actions ────────────────────────────────────────────────
 
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/server/lib/requireUser';
 import db from '@/lib/db';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
@@ -25,30 +25,31 @@ export type CompleteOnboardingInput = z.infer<typeof completeOnboardingSchema>;
 export async function completeOnboarding(
   input: CompleteOnboardingInput
 ): Promise<ActionResult<void>> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
+  try {
+    const user = await requireUser();
+
+    const parsed = completeOnboardingSchema.safeParse(input);
+    if (!parsed.success) {
+      return { success: false, error: 'Invalid input.' };
+    }
+
+    const { intent, region } = parsed.data;
+
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        onboardingCompleted: true,
+        onboardingIntent: intent,
+        ...(region && NZ_REGIONS.includes(region as typeof NZ_REGIONS[number])
+          ? { region }
+          : {}),
+      },
+    });
+
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
-
-  const parsed = completeOnboardingSchema.safeParse(input);
-  if (!parsed.success) {
-    return { success: false, error: 'Invalid input.' };
-  }
-
-  const { intent, region } = parsed.data;
-
-  await db.user.update({
-    where: { id: session.user.id },
-    data: {
-      onboardingCompleted: true,
-      onboardingIntent: intent,
-      ...(region && NZ_REGIONS.includes(region as typeof NZ_REGIONS[number])
-        ? { region }
-        : {}),
-    },
-  });
-
-  return { success: true, data: undefined };
 }
 
 // ── getOnboardingStatus ───────────────────────────────────────────────────────
@@ -64,13 +65,11 @@ export interface OnboardingStatus {
 }
 
 export async function getOnboardingStatus(): Promise<ActionResult<OnboardingStatus>> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
-  }
+  try {
+    const authedUser = await requireUser();
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
+    const user = await db.user.findUnique({
+      where: { id: authedUser.id },
     select: {
       onboardingCompleted: true,
       onboardingIntent: true,
@@ -82,9 +81,12 @@ export async function getOnboardingStatus(): Promise<ActionResult<OnboardingStat
     },
   });
 
-  if (!user) {
-    return { success: false, error: 'User not found.' };
-  }
+    if (!user) {
+      return { success: false, error: 'User not found.' };
+    }
 
-  return { success: true, data: user };
+    return { success: true, data: user };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+  }
 }

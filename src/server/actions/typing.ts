@@ -4,28 +4,27 @@
 // Emits a Pusher event when a user is typing in a message thread.
 // Debounced on the client side (500ms) to reduce event volume.
 
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/server/lib/requireUser';
 import { getPusherServer } from '@/lib/pusher';
 
 export async function triggerTyping(params: {
   recipientId: string;
   threadId: string;
 }): Promise<void> {
-  const session = await auth();
-  if (!session?.user?.id) return;
-
-  // Don't trigger typing to yourself
-  if (params.recipientId === session.user.id) return;
-
   try {
+    const user = await requireUser();
+
+    // Don't trigger typing to yourself
+    if (params.recipientId === user.id) return;
+
     const pusher = getPusherServer();
     await pusher.trigger(
       `private-user-${params.recipientId}`,
       'typing',
       {
         threadId: params.threadId,
-        userId: session.user.id,
-        userName: session.user.name ?? 'Someone',
+        userId: user.id,
+        userName: user.email.split('@')[0],
       }
     );
   } catch {

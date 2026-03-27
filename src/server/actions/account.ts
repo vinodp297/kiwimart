@@ -10,7 +10,7 @@
 
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/server/lib/requireUser';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
 import { hashPassword, verifyPassword } from '@/server/lib/password';
@@ -47,78 +47,71 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export async function changePassword(
   input: ChangePasswordInput
 ): Promise<ActionResult<void>> {
-  const reqHeaders = await headers();
-  const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+  try {
+    const reqHeaders = await headers();
+    const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
 
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
-  }
+    const authedUser = await requireUser();
 
-  // 3. Validate
-  const parsed = changePasswordSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: 'Invalid input.',
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
-    };
-  }
+    const parsed = changePasswordSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: 'Invalid input.',
+        fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      };
+    }
 
-  const { currentPassword, newPassword } = parsed.data;
+    const { currentPassword, newPassword } = parsed.data;
 
-  // 5a. Load current password hash
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { passwordHash: true },
-  });
+    const user = await db.user.findUnique({
+      where: { id: authedUser.id },
+      select: { passwordHash: true },
+    });
 
-  if (!user?.passwordHash) {
-    return {
-      success: false,
-      error: 'Password change is not available for social login accounts.',
-    };
-  }
+    if (!user?.passwordHash) {
+      return {
+        success: false,
+        error: 'Password change is not available for social login accounts.',
+      };
+    }
 
-  // 5b. Verify current password
-  const valid = await verifyPassword(user.passwordHash, currentPassword);
-  if (!valid) {
+    const valid = await verifyPassword(user.passwordHash, currentPassword);
+    if (!valid) {
+      audit({
+        userId: authedUser.id,
+        action: 'PASSWORD_CHANGED',
+        metadata: { success: false, reason: 'invalid_current_password' },
+        ip,
+      });
+      return { success: false, error: 'Current password is incorrect.' };
+    }
+
+    const newHash = await hashPassword(newPassword);
+
+    await db.$transaction([
+      db.user.update({
+        where: { id: authedUser.id },
+        data: { passwordHash: newHash },
+      }),
+      db.session.deleteMany({
+        where: { userId: authedUser.id },
+      }),
+    ]);
+
     audit({
-      userId: session.user.id,
+      userId: authedUser.id,
       action: 'PASSWORD_CHANGED',
-      metadata: { success: false, reason: 'invalid_current_password' },
+      entityType: 'User',
+      entityId: authedUser.id,
+      metadata: { success: true },
       ip,
     });
-    return { success: false, error: 'Current password is incorrect.' };
+
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
-
-  // 5c. Hash new password
-  const newHash = await hashPassword(newPassword);
-
-  // 5d. Update password and invalidate all other sessions
-  await db.$transaction([
-    db.user.update({
-      where: { id: session.user.id },
-      data: { passwordHash: newHash },
-    }),
-    // Delete all sessions except the current one (forces re-login on other devices)
-    db.session.deleteMany({
-      where: { userId: session.user.id },
-    }),
-  ]);
-
-  // 6. Audit
-  audit({
-    userId: session.user.id,
-    action: 'PASSWORD_CHANGED',
-    entityType: 'User',
-    entityId: session.user.id,
-    metadata: { success: true },
-    ip,
-  });
-
-  return { success: true, data: undefined };
 }
 
 // ── updateProfile ────────────────────────────────────────────────────────────
@@ -134,31 +127,32 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export async function updateProfile(
   input: UpdateProfileInput
 ): Promise<ActionResult<void>> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
+  try {
+    const user = await requireUser();
+
+    const parsed = updateProfileSchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? 'Invalid input.',
+        fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      };
+    }
+
+    const { displayName, region, bio } = parsed.data;
+
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        displayName,
+        region: region || null,
+        bio: bio || null,
+      },
+    });
+
+    revalidatePath('/account/settings');
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
-
-  const parsed = updateProfileSchema.safeParse(input);
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: parsed.error.issues[0]?.message ?? 'Invalid input.',
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
-    };
-  }
-
-  const { displayName, region, bio } = parsed.data;
-
-  await db.user.update({
-    where: { id: session.user.id },
-    data: {
-      displayName,
-      region: region || null,
-      bio: bio || null,
-    },
-  });
-
-  revalidatePath('/account/settings');
-  return { success: true, data: undefined };
 }
