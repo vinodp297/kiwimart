@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/listings.ts
 // ─── Listing Server Actions ───────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ export async function createListing(
   try {
     authedUser = await requireUser();
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+    return { success: false, error: safeActionError(err, 'Authentication required.') };
   }
 
   // 2. Authorise — check email verified, seller terms accepted, stripe onboarded
@@ -286,7 +287,7 @@ export async function deleteListing(
     revalidatePath('/search');
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -304,7 +305,7 @@ export async function toggleWatch(
     const result = await listingService.toggleWatch(parsed.data.listingId, user.id);
     return { success: true, data: result };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 

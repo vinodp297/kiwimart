@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/onboarding.ts
 // ─── Onboarding Server Actions ────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export async function completeOnboarding(
 
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -87,6 +88,6 @@ export async function getOnboardingStatus(): Promise<ActionResult<OnboardingStat
 
     return { success: true, data: user };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

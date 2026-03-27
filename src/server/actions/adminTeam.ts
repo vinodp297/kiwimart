@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/adminTeam.ts
 // ─── Admin Team Management Actions ───────────────────────────────────────────
 
@@ -51,7 +52,7 @@ export async function inviteAdmin(
   } catch (err) {
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'An unexpected error occurred.',
+      error: safeActionError(err),
     };
   }
 }
@@ -77,7 +78,7 @@ export async function changeAdminRole(
   } catch (err) {
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'An unexpected error occurred.',
+      error: safeActionError(err),
     };
   }
 }
@@ -100,7 +101,7 @@ export async function revokeAdminAccess(targetUserId: string): Promise<ActionRes
   } catch (err) {
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'An unexpected error occurred.',
+      error: safeActionError(err),
     };
   }
 }

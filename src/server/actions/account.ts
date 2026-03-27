@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/account.ts
 // ─── Account Security Server Actions ─────────────────────────────────────────
 // Password change, account deletion, session management.
@@ -110,7 +111,7 @@ export async function changePassword(
 
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -153,6 +154,6 @@ export async function updateProfile(
     revalidatePath('/account/settings');
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

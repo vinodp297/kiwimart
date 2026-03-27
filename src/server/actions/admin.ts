@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/admin.ts — thin wrapper
 // Business logic delegated to AdminService.
 
@@ -33,7 +34,7 @@ export async function banUser(
     await adminService.banUser(parsed.data.userId, parsed.data.reason, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -44,7 +45,7 @@ export async function unbanUser(userId: string): Promise<ActionResult<void>> {
     await adminService.unbanUser(userId, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -56,7 +57,7 @@ export async function toggleSellerEnabled(
     await adminService.toggleSellerEnabled(userId, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -71,7 +72,7 @@ export async function resolveReport(
     await adminService.resolveReport(parsed.data.reportId, parsed.data.action, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -86,6 +87,6 @@ export async function resolveDispute(
     await adminService.resolveDispute(parsed.data.orderId, parsed.data.favour, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

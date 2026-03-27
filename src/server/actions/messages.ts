@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/messages.ts — thin wrapper
 // Business logic delegated to MessageService.
 
@@ -38,7 +39,7 @@ export async function sendMessage(
     const result = await messageService.sendMessage(parsed.data, user.id, user.email);
     return { success: true, data: result };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 

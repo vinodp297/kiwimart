@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/dashboard.ts
 // ─── Dashboard Data Server Actions ───────────────────────────────────────────
 // Secure data-fetching for buyer and seller dashboards.
@@ -319,7 +320,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
     },
   };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -562,6 +563,6 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
     },
   };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

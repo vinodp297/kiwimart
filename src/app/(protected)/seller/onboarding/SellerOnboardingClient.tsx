@@ -110,10 +110,11 @@ function TermsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/60 p-4"
+      className="fixed inset-0 z-50 bg-black/60 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-2xl my-auto">
+      <div className="flex min-h-full items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-2xl my-8">
         {/* Header */}
         <div className="bg-[#141414] px-6 py-4 flex items-center justify-between flex-shrink-0">
           <h2 className="font-semibold text-white text-[16px]">
@@ -130,7 +131,7 @@ function TermsModal({
         {/* Scrollable terms */}
         <div
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-6 text-[13px] text-[#73706A] leading-relaxed whitespace-pre-wrap bg-[#FAFAF8]"
+          className="flex-1 overflow-y-auto p-6 max-h-[60vh] text-[13px] text-[#73706A] leading-relaxed whitespace-pre-wrap bg-[#FAFAF8]"
         >
           {SELLER_TERMS}
         </div>
@@ -193,6 +194,7 @@ function TermsModal({
           )}
         </div>
       </div>
+      </div>
     </div>
   )
 }
@@ -211,15 +213,20 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
   async function handleAcceptTerms() {
     setLoading('terms')
     setMessage(null)
-    const result = await acceptSellerTerms()
-    setLoading(null)
-    if (result.success) {
-      setTermsAccepted(true)
-      setTermsAcceptedAt(new Date().toISOString())
-      setShowTermsModal(false)
-      setMessage({ type: 'success', text: 'Seller terms accepted! You can now create listings.' })
-    } else {
-      setMessage({ type: 'error', text: result.error ?? 'Something went wrong.' })
+    try {
+      const result = await acceptSellerTerms()
+      setLoading(null)
+      if (result.success) {
+        setTermsAccepted(true)
+        setTermsAcceptedAt(new Date().toISOString())
+        setShowTermsModal(false)
+        setMessage({ type: 'success', text: 'Seller terms accepted! You can now create listings.' })
+      } else {
+        setMessage({ type: 'error', text: result.error ?? 'Something went wrong.' })
+      }
+    } catch {
+      setLoading(null)
+      setMessage({ type: 'error', text: 'Failed to accept terms. Please try again.' })
     }
   }
 

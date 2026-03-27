@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/disputes.ts
 // ─── Dispute Server Actions — thin wrapper ──────────────────────────────────
 // Business logic delegated to OrderService.
@@ -43,6 +44,6 @@ export async function openDispute(
     await orderService.openDispute(parsed.data, user.id, ip);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

@@ -1,4 +1,5 @@
 'use server'
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/seller.ts
 // ─── Seller Onboarding Actions ────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ export async function acceptSellerTerms(): Promise<ActionResult<void>> {
   try {
     user = await requireUser()
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Unauthorised.' }
+    return { success: false, error: safeActionError(err, 'Unauthorised.') }
   }
 
   // 2. Authorise — must have seller access
@@ -79,7 +80,7 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
   try {
     user = await requireUser()
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Unauthorised.' }
+    return { success: false, error: safeActionError(err, 'Unauthorised.') }
   }
 
   // 2. Authorise

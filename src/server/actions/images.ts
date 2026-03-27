@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/images.ts  (Sprint 4 + Sprint 6 — real Cloudflare R2)
 // ─── Image Upload Server Actions ─────────────────────────────────────────────
 // Two-phase upload flow:
@@ -140,7 +141,7 @@ export async function requestImageUpload(params: {
     data: { uploadUrl, r2Key, imageId: image.id },
   };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -204,7 +205,7 @@ export async function confirmImageUpload(params: {
     };
   } catch (err) {
     // If R2 is not configured (dev with placeholders), mark safe directly
-    const msg = err instanceof Error ? err.message : 'Processing failed';
+    const msg = safeActionError(err, 'Processing failed.');
     if (msg.includes('Failed to download') || msg.includes('getaddrinfo') || msg.includes('ENOTFOUND')) {
       // R2 unavailable — marking image as safe directly
       await db.listingImage.update({
@@ -222,7 +223,7 @@ export async function confirmImageUpload(params: {
     return { success: false, error: msg };
   }
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
