@@ -1,5 +1,9 @@
-// src/server/workers/imageWorker.ts  (Sprint 4)
+// src/server/workers/imageWorker.ts
 // ─── Image Processing Worker ─────────────────────────────────────────────────
+// STATUS: INACTIVE on production Vercel. Requires persistent process.
+// Images are currently processed inline via processImage() server action.
+// To activate: Deploy separately — see emailWorker.ts header for details.
+//
 // Processes imageQueue jobs:
 //   1. Download from R2
 //   2. Mock ClamAV scan (Sprint 5: real virus scanning)
@@ -19,6 +23,10 @@ import { audit } from '@/server/lib/audit';
 import { logger } from '@/shared/logger';
 
 export function startImageWorker() {
+  if (process.env.VERCEL) {
+    console.error('worker.image: BullMQ workers cannot run on Vercel serverless.');
+    return;
+  }
   const worker = new Worker<ImageJobData>(
     'image',
     async (job) => {
@@ -44,8 +52,7 @@ export function startImageWorker() {
       return result;
     },
     {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      connection: getRedisConnection() as any,
+      connection: getRedisConnection() as unknown as import('bullmq').ConnectionOptions,
       concurrency: 3, // Process 3 images at a time (memory-intensive)
     }
   );

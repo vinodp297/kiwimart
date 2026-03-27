@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 import db from '@/lib/db';
+import { getCached } from '@/server/lib/cache';
 import CATEGORIES from '@/data/categories';
 import LISTINGS from '@/data/listings';
 
@@ -86,9 +87,17 @@ const TRUST_BADGES = [
 // ── Fetch real stats + featured listings from DB ──────────────────────────────
 async function getHomePageData() {
   try {
-    const [listingCount, memberCount, featuredListings, categoryCounts] = await Promise.all([
-      db.listing.count({ where: { status: 'ACTIVE', deletedAt: null } }),
-      db.user.count({ where: { deletedAt: null } }),
+    // Cache aggregate stats for 5 minutes to reduce DB load
+    const [listingCount, memberCount] = await getCached(
+      'stats:homepage',
+      () => Promise.all([
+        db.listing.count({ where: { status: 'ACTIVE', deletedAt: null } }),
+        db.user.count({ where: { deletedAt: null } }),
+      ]),
+      300
+    );
+
+    const [featuredListings, categoryCounts] = await Promise.all([
       db.listing.findMany({
         where: { status: 'ACTIVE', deletedAt: null },
         orderBy: { watcherCount: 'desc' },

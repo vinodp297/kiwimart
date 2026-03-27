@@ -26,9 +26,9 @@ logger.info('worker.process.ready', {
 async function shutdown(signal: string) {
   logger.info('worker.process.shutting_down', { signal })
   await Promise.all([
-    payoutWorker.close(),
-    emailWorker.close(),
-    imageWorker.close(),
+    payoutWorker?.close(),
+    emailWorker?.close(),
+    imageWorker?.close(),
   ])
   process.exit(0)
 }

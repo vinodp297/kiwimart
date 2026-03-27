@@ -23,6 +23,7 @@ export interface OpenDisputeInput {
   orderId: string
   reason: 'ITEM_NOT_RECEIVED' | 'ITEM_NOT_AS_DESCRIBED' | 'ITEM_DAMAGED' | 'WRONG_ITEM_SENT' | 'COUNTERFEIT_ITEM' | 'SELLER_UNRESPONSIVE' | 'SELLER_CANCELLED' | 'REFUND_NOT_PROCESSED' | 'OTHER'
   description: string
+  evidenceUrls?: string[]
 }
 
 export interface OrderCreateResult {

@@ -302,6 +302,30 @@ export async function confirmDelivery(
   }
 }
 
+// ── cancelOrder — buyer/seller cancels order within time window ──────────────
+
+const CancelOrderSchema = z.object({
+  orderId: z.string().min(1, 'Order ID is required'),
+  reason: z.string().max(500).optional(),
+});
+
+export async function cancelOrder(params: {
+  orderId: string;
+  reason?: string;
+}): Promise<ActionResult<void>> {
+  try {
+    const user = await requireUser();
+    const parsed = CancelOrderSchema.safeParse(params);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.issues[0].message };
+    }
+    await orderService.cancelOrder(parsed.data.orderId, user.id, parsed.data.reason);
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: safeActionError(err) };
+  }
+}
+
 // ── markDispatched — seller marks order dispatched ───────────────────────────
 
 export async function markDispatched(params: {

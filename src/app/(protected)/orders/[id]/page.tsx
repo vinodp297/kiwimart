@@ -11,7 +11,7 @@ import { Button, OrderStatusBadge, Alert } from '@/components/ui/primitives';
 import { formatPrice, relativeTime } from '@/lib/utils';
 import type { OrderStatus } from '@/types';
 import { confirmDelivery, markDispatched } from '@/server/actions/orders';
-import { openDispute } from '@/server/actions/disputes';
+import { openDispute, uploadDisputeEvidence } from '@/server/actions/disputes';
 import { fetchOrderDetail } from '@/server/actions/orderDetail';
 
 // ── Courier URL detection ────────────────────────────────────────────────────
@@ -153,6 +153,7 @@ export default function OrderDetailPage() {
 
   // Dispatch modal
   const [showDispatch, setShowDispatch] = useState(false);
+  const [courierService, setCourierService] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [trackingUrl, setTrackingUrl] = useState('');
 
@@ -163,6 +164,7 @@ export default function OrderDetailPage() {
   const [showDispute, setShowDispute] = useState(false);
   const [disputeReason, setDisputeReason] = useState('');
   const [disputeDescription, setDisputeDescription] = useState('');
+  const [disputePhotos, setDisputePhotos] = useState<File[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -222,21 +224,41 @@ export default function OrderDetailPage() {
     }
     setError(null);
     setActionLoading(true);
-    const result = await openDispute({
-      orderId,
-      reason: disputeReason,
-      description: disputeDescription,
-    });
-    if (result.success) {
-      setError(null);
-      setActionSuccess('Dispute opened. We will review your case within 48 hours.');
-      setShowDispute(false);
-      const updated = await fetchOrderDetail(orderId);
-      if (updated.success) setOrder(updated.data);
-    } else {
-      setError(result.error);
+
+    try {
+      let evidenceUrls: string[] = [];
+
+      // Upload photos first if any selected
+      if (disputePhotos.length > 0) {
+        const formData = new FormData();
+        disputePhotos.forEach(photo => formData.append('files', photo));
+        const uploadResult = await uploadDisputeEvidence(formData);
+        if (!uploadResult.success) {
+          setError(uploadResult.error);
+          setActionLoading(false);
+          return;
+        }
+        evidenceUrls = uploadResult.data?.urls ?? [];
+      }
+
+      const result = await openDispute({
+        orderId,
+        reason: disputeReason,
+        description: disputeDescription,
+        evidenceUrls,
+      });
+      if (result.success) {
+        setError(null);
+        setActionSuccess('Dispute opened. We will review your case within 48 hours.');
+        setShowDispute(false);
+        const updated = await fetchOrderDetail(orderId);
+        if (updated.success) setOrder(updated.data);
+      } else {
+        setError(result.error);
+      }
+    } finally {
+      setActionLoading(false);
     }
-    setActionLoading(false);
   }
 
   if (loading) {
@@ -588,21 +610,49 @@ export default function OrderDetailPage() {
       </main>
       <Footer />
 
-      {/* ── Dispatch Modal ──────────────────────────────────────────── */}
+      {/* ── Dispatch Modal (with seller guidance) ────────────────── */}
       {showDispatch && (
         <ModalOverlay onClose={() => setShowDispatch(false)}>
           <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
             Mark as dispatched
           </h2>
           <div className="space-y-4">
+            <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-[12px] text-amber-800">
+              <p className="font-semibold mb-1">Dispatch checklist:</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li>Pack securely in appropriate packaging</li>
+                <li>Use a tracked courier service</li>
+                <li>Dispatch within 5 business days</li>
+              </ul>
+            </div>
             <div>
               <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                Courier / tracking number <span className="text-[#9E9A91] font-normal">(optional)</span>
+                Courier service
+              </label>
+              <select
+                value={courierService}
+                onChange={(e) => setCourierService(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25
+                  focus:border-[#D4A843] transition"
+              >
+                <option value="">Select courier...</option>
+                <option value="nzpost">NZ Post</option>
+                <option value="courierpost">CourierPost</option>
+                <option value="aramex">Aramex NZ</option>
+                <option value="pbt">PBT Courier</option>
+                <option value="dhl">DHL</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Tracking number
               </label>
               <input
                 value={trackingNumber}
                 onChange={(e) => setTrackingNumber(e.target.value)}
-                placeholder="e.g. NZP123456789"
+                placeholder="e.g. NZ123456789"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
                   text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
                   focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
@@ -624,6 +674,9 @@ export default function OrderDetailPage() {
             <Button variant="gold" fullWidth size="md" onClick={handleDispatch} loading={actionLoading}>
               Confirm dispatch
             </Button>
+            <p className="text-[11px] text-[#9E9A91] text-center">
+              Payment is released to you only after the buyer confirms delivery
+            </p>
           </div>
         </ModalOverlay>
       )}
@@ -740,15 +793,22 @@ export default function OrderDetailPage() {
                   Add photos
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     multiple
                     className="hidden"
-                    onChange={() => {
-                      // Photo upload will be connected in Sprint 4
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files ?? []).slice(0, 3);
+                      setDisputePhotos(files);
                     }}
                   />
                 </label>
-                <span className="text-[11px] text-[#9E9A91]">JPG, PNG up to 5MB each</span>
+                {disputePhotos.length > 0 ? (
+                  <span className="text-[11px] text-emerald-600 font-medium">
+                    {disputePhotos.length} photo{disputePhotos.length !== 1 ? 's' : ''} selected
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-[#9E9A91]">JPG, PNG, WebP up to 5MB each</span>
+                )}
               </div>
             </div>
             <Alert variant="info">

@@ -90,8 +90,7 @@ export default async function SellerProfilePage({
   const { username } = await params;
 
   let user: Awaited<ReturnType<typeof getSellerByUsername>> = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let session: any = null;
+  let session: { user?: { id?: string } } | null = null;
 
   try {
     const [fetchedUser, fetchedSession] = await Promise.all([

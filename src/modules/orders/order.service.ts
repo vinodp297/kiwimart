@@ -251,6 +251,7 @@ export class OrderService {
         disputeReason: input.reason,
         disputeOpenedAt: new Date(),
         disputeNotes: input.description,
+        disputeEvidenceUrls: input.evidenceUrls ?? [],
       },
     })
 
@@ -293,6 +294,129 @@ export class OrderService {
 
     logger.info('order.dispute.opened', { orderId: input.orderId, buyerId })
   }
+
+  async cancelOrder(
+    orderId: string,
+    userId: string,
+    reason?: string
+  ): Promise<void> {
+    const order = await db.order.findFirst({
+      where: {
+        id: orderId,
+        OR: [{ buyerId: userId }, { sellerId: userId }],
+      },
+      select: {
+        id: true,
+        buyerId: true,
+        sellerId: true,
+        status: true,
+        createdAt: true,
+        listingId: true,
+      },
+    })
+
+    if (!order) throw AppError.notFound('Order')
+
+    const status = getCancellationStatus(order)
+    if (!status.canCancel) {
+      throw new AppError('ORDER_WRONG_STATE', status.message, 400)
+    }
+    if (status.requiresReason && !reason) {
+      throw AppError.validation('Please provide a reason for cancellation.')
+    }
+
+    await db.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'CANCELLED',
+          cancelledBy: order.buyerId === userId ? 'BUYER' : 'SELLER',
+          cancelReason: reason ?? null,
+          cancelledAt: new Date(),
+        },
+      })
+
+      // Reactivate the listing
+      if (order.listingId) {
+        await tx.listing.updateMany({
+          where: { id: order.listingId, status: 'RESERVED' },
+          data: { status: 'ACTIVE' },
+        })
+      }
+    })
+
+    audit({
+      userId,
+      action: 'ORDER_STATUS_CHANGED',
+      entityType: 'Order',
+      entityId: orderId,
+      metadata: {
+        newStatus: 'CANCELLED',
+        cancelledBy: order.buyerId === userId ? 'BUYER' : 'SELLER',
+        reason,
+      },
+    })
+
+    logger.info('order.cancelled', { orderId, cancelledBy: userId, reason })
+  }
 }
 
 export const orderService = new OrderService()
+
+// ── Cancellation window logic ────────────────────────────────────────────────
+
+const CANCEL_FREE_WINDOW_MINUTES = 60   // 1 hour free cancellation
+const CANCEL_REQUEST_WINDOW_HOURS = 24  // 24 hours with reason required
+
+export interface CancellationStatus {
+  canCancel: boolean
+  requiresReason: boolean
+  message: string
+  windowType: 'free' | 'request' | 'closed' | 'na'
+}
+
+export function getCancellationStatus(order: {
+  status: string
+  createdAt: Date
+}): CancellationStatus {
+  if (order.status !== 'PAYMENT_HELD') {
+    return {
+      canCancel: false,
+      requiresReason: false,
+      windowType: 'na',
+      message: order.status === 'DISPATCHED'
+        ? 'Order already dispatched. Open a dispute if there is an issue.'
+        : 'This order cannot be cancelled at this stage.',
+    }
+  }
+
+  const minutesElapsed = Math.floor(
+    (Date.now() - new Date(order.createdAt).getTime()) / (1000 * 60)
+  )
+
+  if (minutesElapsed <= CANCEL_FREE_WINDOW_MINUTES) {
+    const minutesLeft = CANCEL_FREE_WINDOW_MINUTES - minutesElapsed
+    return {
+      canCancel: true,
+      requiresReason: false,
+      windowType: 'free',
+      message: `Free cancellation available for another ${minutesLeft} minute${minutesLeft !== 1 ? 's' : ''}.`,
+    }
+  }
+
+  if (minutesElapsed <= CANCEL_REQUEST_WINDOW_HOURS * 60) {
+    return {
+      canCancel: true,
+      requiresReason: true,
+      windowType: 'request',
+      message: 'Cancellation requires a reason after the first hour.',
+    }
+  }
+
+  return {
+    canCancel: false,
+    requiresReason: false,
+    windowType: 'closed',
+    message: 'Cancellation window has closed. Open a dispute if there is an issue.',
+  }
+}
