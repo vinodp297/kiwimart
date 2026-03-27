@@ -48,6 +48,7 @@ describe('Dispute resolution atomicity', () => {
 
     // DB should never be updated
     expect(db.order.update).not.toHaveBeenCalled()
+    expect(db.order.updateMany).not.toHaveBeenCalled()
     expect(db.$transaction).not.toHaveBeenCalled()
   })
 
@@ -77,7 +78,7 @@ describe('Dispute resolution atomicity', () => {
       status: 'DISPUTED',
       stripePaymentIntentId: 'pi_refund_fail',
     } as never)
-    vi.mocked(db.order.update).mockResolvedValue({} as never)
+    vi.mocked(db.order.updateMany).mockResolvedValue({ count: 1 } as never)
 
     // Stripe refund will fail — use shared mock
     mockStripeRefund.mockRejectedValueOnce(new Error('Stripe: card_declined'))
@@ -87,8 +88,9 @@ describe('Dispute resolution atomicity', () => {
     expect(result.success).toBe(true)
 
     // DB IS updated (optimistic pattern — admin can retry Stripe manually)
-    expect(db.order.update).toHaveBeenCalledWith(
+    expect(db.order.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({ id: 'order-dispute-1', status: 'DISPUTED' }),
         data: expect.objectContaining({ status: 'REFUNDED' }),
       })
     )
@@ -118,10 +120,7 @@ describe('Dispute resolution atomicity', () => {
       stripePaymentIntentId: 'pi_refund_ok',
     } as never)
 
-    vi.mocked(db.order.update).mockResolvedValue({
-      id: 'order-refund-ok',
-      status: 'REFUNDED',
-    } as never)
+    vi.mocked(db.order.updateMany).mockResolvedValue({ count: 1 } as never)
 
     // Stripe refund succeeds — use shared mock
     mockStripeRefund.mockResolvedValueOnce({ id: 'refund_123' })
@@ -129,10 +128,10 @@ describe('Dispute resolution atomicity', () => {
     const result = await resolveDispute('order-refund-ok', 'buyer')
     expect(result.success).toBe(true)
 
-    // DB WAS updated after Stripe success
-    expect(db.order.update).toHaveBeenCalledWith(
+    // DB WAS updated with state machine transition
+    expect(db.order.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'order-refund-ok' },
+        where: expect.objectContaining({ id: 'order-refund-ok', status: 'DISPUTED' }),
         data: expect.objectContaining({ status: 'REFUNDED' }),
       })
     )

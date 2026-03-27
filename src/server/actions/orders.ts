@@ -27,11 +27,13 @@ import { orderService } from '@/modules/orders/order.service';
 import { createNotification } from '@/modules/notifications/notification.service';
 import { sendOrderConfirmationEmail } from '@/server/email';
 import { z } from 'zod';
+import { transitionOrder } from '@/modules/orders/order.transitions';
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
 
 const CreateOrderSchema = z.object({
   listingId: z.string().min(1, 'Listing ID is required'),
+  idempotencyKey: z.string().max(128).optional(),
   shippingAddress: z.object({
     name: z.string().min(2, 'Name is required').max(100),
     line1: z.string().min(5, 'Street address is required').max(200),
@@ -56,6 +58,7 @@ const MarkDispatchedSchema = z.object({
 
 export async function createOrder(params: {
   listingId: string;
+  idempotencyKey?: string;
   shippingAddress?: {
     name: string;
     line1: string;
@@ -86,6 +89,22 @@ export async function createOrder(params: {
   const parsed = CreateOrderSchema.safeParse(params);
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0].message };
+  }
+
+  // 4. Idempotency check — return existing order if same key already created one.
+  // Prevents duplicate orders from double-clicks or retried form submissions.
+  const idempotencyKey = parsed.data.idempotencyKey
+  if (idempotencyKey) {
+    const existingOrder = await db.order.findUnique({
+      where: { idempotencyKey },
+      select: { id: true, status: true, stripePaymentIntentId: true },
+    })
+    if (existingOrder && existingOrder.status === 'AWAITING_PAYMENT' && existingOrder.stripePaymentIntentId) {
+      const clientSecret = await paymentService.getClientSecret(existingOrder.stripePaymentIntentId)
+      if (clientSecret) {
+        return { success: true, data: { orderId: existingOrder.id, clientSecret } }
+      }
+    }
   }
 
   // 5a. Load listing — prices ALWAYS read from DB
@@ -142,6 +161,7 @@ export async function createOrder(params: {
       shippingNzd,
       totalNzd,
       status: 'AWAITING_PAYMENT',
+      ...(idempotencyKey ? { idempotencyKey } : {}),
       ...(parsed.data.shippingAddress
         ? {
             shippingName: parsed.data.shippingAddress.name,
@@ -168,10 +188,7 @@ export async function createOrder(params: {
     // BUG-1 FIX: Atomically cancel orphan order AND restore listing to ACTIVE.
     // Previously the listing was left RESERVED permanently on this early return.
     await db.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: order.id },
-        data: { status: 'CANCELLED' },
-      });
+      await transitionOrder(order.id, 'CANCELLED', {}, { tx, fromStatus: 'AWAITING_PAYMENT' });
       // Restore listing so other buyers can purchase it
       await tx.listing.updateMany({
         where: { id: parsed.data.listingId, status: 'RESERVED' },
@@ -210,6 +227,7 @@ export async function createOrder(params: {
       listingId: listing.id,
       listingTitle: listing.title,
       buyerId: user.id,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
     });
 
     // SUCCESS: persist the PaymentIntent ID so the webhook can match it back
@@ -260,10 +278,7 @@ export async function createOrder(params: {
   } catch (stripeErr) {
     // Stripe (via paymentService) failed — cancel the orphan order and
     // restore the listing so other buyers can still purchase it.
-    await db.order.update({
-      where: { id: order.id },
-      data: { status: 'CANCELLED' },
-    });
+    await transitionOrder(order.id, 'CANCELLED', {}, { fromStatus: 'AWAITING_PAYMENT' });
 
     // Release reservation — only if still RESERVED (guard against races)
     await db.listing.updateMany({

@@ -4,6 +4,7 @@
 
 import db from '@/lib/db'
 import { audit } from '@/server/lib/audit'
+import { withLock } from '@/server/lib/distributedLock'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
 import { createNotification } from '@/modules/notifications/notification.service'
@@ -127,29 +128,33 @@ export class OfferService {
     const newStatus = input.action === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED'
 
     if (input.action === 'ACCEPT') {
-      // Atomic: accept offer + reserve listing + decline competing offers
-      await db.$transaction(async (tx) => {
-        await tx.offer.update({
-          where: { id: input.offerId },
-          data: {
-            status: 'ACCEPTED',
-            respondedAt: new Date(),
-            paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          },
-        })
+      // Lock on listingId — prevents two concurrent ACCEPT calls reserving the same listing
+      // (e.g. seller double-clicks, or two admins accept simultaneously)
+      await withLock(`listing:purchase:${offer.listingId}`, async () => {
+        // Atomic: accept offer + reserve listing + decline competing offers
+        await db.$transaction(async (tx) => {
+          await tx.offer.update({
+            where: { id: input.offerId },
+            data: {
+              status: 'ACCEPTED',
+              respondedAt: new Date(),
+              paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+            },
+          })
 
-        await tx.listing.update({
-          where: { id: offer.listingId },
-          data: { status: 'RESERVED' },
-        })
+          await tx.listing.update({
+            where: { id: offer.listingId },
+            data: { status: 'RESERVED' },
+          })
 
-        await tx.offer.updateMany({
-          where: {
-            listingId: offer.listingId,
-            id: { not: input.offerId },
-            status: 'PENDING',
-          },
-          data: { status: 'DECLINED', respondedAt: new Date() },
+          await tx.offer.updateMany({
+            where: {
+              listingId: offer.listingId,
+              id: { not: input.offerId },
+              status: 'PENDING',
+            },
+            data: { status: 'DECLINED', respondedAt: new Date() },
+          })
         })
       })
     } else {

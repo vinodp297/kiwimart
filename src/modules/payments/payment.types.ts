@@ -10,6 +10,8 @@ export interface CreatePaymentIntentInput {
   listingTitle: string
   buyerId: string
   metadata?: Record<string, string>
+  /** Checkout session key — passed to Stripe to prevent duplicate PaymentIntents */
+  idempotencyKey?: string
 }
 
 export interface CapturePaymentInput {

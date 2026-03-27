@@ -3,7 +3,7 @@
 // ─── Checkout Form with Stripe Elements ─────────────────────────────────────
 // Handles payment form, shipping address, and order creation.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
 import {
@@ -50,6 +50,12 @@ export default function CheckoutForm({ listing }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Stable idempotency key — generated once per checkout mount, never changes.
+  // Prevents duplicate orders from double-clicks or retried submissions.
+  const idempotencyKey = useRef(
+    `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+
   // Shipping address state
   const [name, setName] = useState('');
   const [line1, setLine1] = useState('');
@@ -75,6 +81,7 @@ export default function CheckoutForm({ listing }: Props) {
 
     const result = await createOrder({
       listingId: listing.id,
+      idempotencyKey: idempotencyKey.current,
       ...(!isPickup
         ? {
             shippingAddress: {

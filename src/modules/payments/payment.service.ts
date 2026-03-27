@@ -28,10 +28,10 @@ export class PaymentService {
     }
 
     try {
-      const intent = await stripe.paymentIntents.create({
+      const intentData = {
         amount: input.amountNzd,
         currency: 'nzd',
-        capture_method: 'manual',
+        capture_method: 'manual' as const,
         transfer_data: {
           destination: input.sellerStripeAccountId,
         },
@@ -45,7 +45,13 @@ export class PaymentService {
         },
         description: `KiwiMart: ${input.listingTitle}`,
         statement_descriptor_suffix: 'KIWIMART',
-      })
+      }
+
+      // Pass idempotency key to Stripe to prevent duplicate PaymentIntents
+      // on double-click or retried requests within the same checkout session.
+      const intent = input.idempotencyKey
+        ? await stripe.paymentIntents.create(intentData, { idempotencyKey: `pi-${input.idempotencyKey}` })
+        : await stripe.paymentIntents.create(intentData)
 
       logger.info('payment.intent.created', {
         orderId: input.orderId,
@@ -127,6 +133,24 @@ export class PaymentService {
         error: msg,
       })
       throw AppError.stripeError('Refund failed. Please try again or contact support.')
+    }
+  }
+
+  /**
+   * Retrieve the client_secret for an existing PaymentIntent.
+   * Used in the idempotency path: if an order already exists for this
+   * checkout session, return its PI client_secret instead of creating a new one.
+   */
+  async getClientSecret(paymentIntentId: string): Promise<string | null> {
+    try {
+      const intent = await stripe.paymentIntents.retrieve(paymentIntentId)
+      return intent.client_secret ?? null
+    } catch (err) {
+      logger.warn('payment.intent.retrieve_failed', {
+        paymentIntentId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return null
     }
   }
 }

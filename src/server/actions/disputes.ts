@@ -6,10 +6,12 @@ import { safeActionError } from '@/shared/errors'
 import { headers } from 'next/headers';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { requireUser } from '@/server/lib/requireUser';
-import { getClientIp } from '@/server/lib/rateLimit';
+import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
+import { validateImageFile } from '@/server/lib/fileValidation';
 import { orderService } from '@/modules/orders/order.service';
 import { r2, R2_BUCKET, R2_PUBLIC_URL } from '@/infrastructure/storage/r2';
 import { logger } from '@/shared/logger';
+import db from '@/lib/db';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
 
@@ -41,6 +43,31 @@ export async function openDispute(
     const ip = getClientIp(reqHeaders as unknown as Headers);
     const user = await requireUser();
 
+    // Rate limit — 3 disputes per day per user
+    const limit = await rateLimit('disputes', user.id);
+    if (!limit.success) {
+      return {
+        success: false,
+        error: 'You have opened too many disputes today. Please contact support if you need further assistance.',
+      };
+    }
+
+    // Abuse detection — log warning if user has 5+ disputes in 30 days
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const recentDisputeCount = await db.order.count({
+      where: {
+        buyerId: user.id,
+        disputeOpenedAt: { not: null, gte: thirtyDaysAgo },
+      },
+    });
+    if (recentDisputeCount >= 5) {
+      logger.warn('dispute.abuse_detected', {
+        userId: user.id,
+        recentDisputeCount,
+        ip,
+      });
+    }
+
     const parsed = openDisputeSchema.safeParse(raw);
     if (!parsed.success) {
       return {
@@ -59,7 +86,6 @@ export async function openDispute(
 
 // ── Dispute evidence photo upload ──────────────────────────────────────────
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_FILES = 3;
 
@@ -78,22 +104,28 @@ export async function uploadDisputeEvidence(
       return { success: false, error: `Maximum ${MAX_FILES} photos allowed.` };
     }
 
-    for (const file of files) {
-      if (!ALLOWED_TYPES.includes(file.type)) {
-        return { success: false, error: 'Only JPEG, PNG and WebP images are allowed.' };
-      }
-      if (file.size > MAX_SIZE) {
-        return { success: false, error: 'Each photo must be under 5MB.' };
-      }
-    }
-
     const uploadedUrls: string[] = [];
 
     for (const file of files) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+
+      // Server-side security validation — magic bytes + extension + size + MIME type
+      const validation = validateImageFile({
+        buffer,
+        mimetype: file.type,
+        size: file.size,
+        originalname: file.name,
+      });
+      if (!validation.valid) {
+        return { success: false, error: validation.error ?? 'Invalid file.' };
+      }
+
+      if (file.size > MAX_SIZE) {
+        return { success: false, error: 'Each photo must be under 5MB.' };
+      }
+
       const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
       const key = `disputes/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-
-      const buffer = Buffer.from(await file.arrayBuffer());
 
       await r2.send(
         new PutObjectCommand({

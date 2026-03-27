@@ -25,7 +25,7 @@ describe('OrderService.openDispute', () => {
 
   it('opens dispute for dispatched order', async () => {
     vi.mocked(db.order.findUnique).mockResolvedValue(mockOrder as never)
-    vi.mocked(db.order.update).mockResolvedValue({} as never)
+    vi.mocked(db.order.updateMany).mockResolvedValue({ count: 1 } as never)
 
     await orderService.openDispute(
       { orderId: 'order-1', reason: 'ITEM_NOT_RECEIVED', description: 'Never arrived' },
@@ -33,8 +33,9 @@ describe('OrderService.openDispute', () => {
       '127.0.0.1'
     )
 
-    expect(db.order.update).toHaveBeenCalledWith(
+    expect(db.order.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({ id: 'order-1', status: 'DISPATCHED' }),
         data: expect.objectContaining({
           status: 'DISPUTED',
           disputeReason: 'ITEM_NOT_RECEIVED',
