@@ -22,9 +22,8 @@ export default function NavBar() {
   const [showSellBanner, setShowSellBanner] = useState(false);
 
   // ── Sign out ───────────────────────────────────────────────────────────────
-  // Use redirect:true + callbackUrl so Auth.js clears the session cookie fully
-  // before navigating — avoids the race condition where manual window.location
-  // fires before the session is actually invalidated.
+  // Auth.js v5 (beta.30): use redirectTo (callbackUrl is deprecated).
+  // redirect:true is the default so it is omitted.
   const PROTECTED_PREFIXES = [
     '/dashboard',
     '/admin',
@@ -45,7 +44,7 @@ export default function NavBar() {
       window.location.pathname.startsWith(p)
     );
     const redirectTo = isProtected ? '/' : window.location.pathname;
-    await signOut({ redirect: true, callbackUrl: redirectTo });
+    await signOut({ redirectTo });
   }
 
   // ── Real notifications ─────────────────────────────────────────────────────
