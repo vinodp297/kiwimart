@@ -25,6 +25,7 @@ export interface DashboardUser {
   onboardingIntent: string | null;
   onboardingCompleted: boolean;
   stripeOnboarded: boolean;
+  sellerTermsAcceptedAt: string | null;
 }
 
 export interface BuyerOrderRow {
@@ -132,6 +133,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
         avatarKey: true, createdAt: true, sellerEnabled: true, idVerified: true,
         emailVerified: true, region: true, bio: true,
         onboardingIntent: true, onboardingCompleted: true, stripeOnboarded: true,
+        sellerTermsAcceptedAt: true,
       },
     }),
     // Orders as buyer
@@ -309,6 +311,7 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
         onboardingIntent: dbUser.onboardingIntent ?? null,
         onboardingCompleted: dbUser.onboardingCompleted,
         stripeOnboarded: dbUser.stripeOnboarded,
+        sellerTermsAcceptedAt: dbUser.sellerTermsAcceptedAt?.toISOString() ?? null,
       },
       orders: mappedOrders,
       watchlist: mappedWatchlist,
@@ -399,6 +402,7 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
         avatarKey: true, createdAt: true, sellerEnabled: true, idVerified: true,
         emailVerified: true, region: true, bio: true,
         onboardingIntent: true, onboardingCompleted: true, stripeOnboarded: true,
+        sellerTermsAcceptedAt: true,
       },
     }),
     db.order.aggregate({
@@ -549,6 +553,7 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
         onboardingIntent: dbUser.onboardingIntent ?? null,
         onboardingCompleted: dbUser.onboardingCompleted,
         stripeOnboarded: dbUser.stripeOnboarded,
+        sellerTermsAcceptedAt: dbUser.sellerTermsAcceptedAt?.toISOString() ?? null,
       },
       stats,
       listings: mappedListings,

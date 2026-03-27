@@ -145,6 +145,37 @@ export default function SellerDashboardPage() {
     );
   }
 
+  // Locked state — seller terms not accepted
+  if (!user.sellerTermsAcceptedAt) {
+    return (
+      <>
+        <NavBar />
+        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E3E0D9] rounded-2xl p-8 max-w-md w-full text-center">
+            <div className="w-16 h-16 bg-[#F2EFE8] rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">🔒</span>
+            </div>
+            <h1 className="font-[family-name:var(--font-playfair)] text-[1.25rem] font-semibold text-[#141414] mb-2">
+              Accept seller terms first
+            </h1>
+            <p className="text-[#73706A] text-[14px] leading-relaxed mb-6">
+              To access your seller dashboard and start listing items, please read and accept
+              KiwiMart&apos;s seller terms and conditions.
+            </p>
+            <Link
+              href="/seller/onboarding"
+              className="inline-block w-full bg-[#D4A843] text-[#141414] py-3 rounded-xl font-semibold text-[14px] hover:bg-[#C49B35] transition-colors"
+            >
+              Go to Seller Hub →
+            </Link>
+            <p className="text-[11px] text-[#C9C5BC] mt-4">This takes less than 2 minutes.</p>
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
   const pendingOrders = orders.filter(
     (o) => o.status === 'payment_held' || o.status === 'dispatched'
   );
