@@ -33,6 +33,10 @@ const passwordField = z
   .regex(/[a-z]/, 'Must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Must contain at least one number');
 
+// Exported standalone so service-layer code (e.g. auth.service.ts resetPassword)
+// can validate the same strength rules without re-defining them.
+export const passwordSchema = passwordField;
+
 const usernameField = z
   .string()
   .min(3, 'Username must be at least 3 characters')

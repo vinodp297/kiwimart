@@ -22,6 +22,7 @@ import { audit } from '@/server/lib/audit';
 import { loginSchema } from '@/server/validators';
 import { blockToken, isTokenBlocked } from '@/server/lib/jwtBlocklist';
 import { getSessionVersion, invalidateAllSessions } from '@/server/lib/sessionStore';
+import { verifyTurnstile } from '@/server/lib/turnstile';
 import { logger } from '@/shared/logger';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -29,10 +30,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
   session: {
     // JWT strategy — sessions encoded in signed cookies, not stored in DB.
-    // Auth.js v5 beta.30 forces JWT for credentials regardless of strategy;
-    // switching to jwt makes credentials + OAuth consistent and fixes the
-    // proxy DB-lookup miss that caused the post-login redirect loop.
-    // The PrismaAdapter is still used to persist users/accounts for OAuth.
+    // Auth.js v5 uses JWT for all session types when strategy: 'jwt' is set.
+    // The PrismaAdapter is still used to persist users/accounts for OAuth
+    // provider linking (Account + User rows) but session data lives in the JWT.
     strategy: 'jwt',
     // 1-hour expiry — short window limits exposure if Redis is unavailable
     // and a token can't be blocklisted after sign-out.
@@ -65,16 +65,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password, turnstileToken } = parsed.data;
 
-        // 2. Verify Cloudflare Turnstile token (bot protection)
-        // Skip when: not in production, OR when a test secret key is configured
-        // (test keys start with 1x/2x and always show the "For testing only" banner).
+        // 2. Verify Cloudflare Turnstile token (bot protection) — fail CLOSED.
+        // verifyTurnstile() handles: non-production skip, test key warning, and
+        // fail-closed on network error. If token is absent, reject immediately.
         // TODO: Switch to real Cloudflare Turnstile keys — see login/page.tsx for steps.
-        const turnstileSecret = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ?? '';
-        const isTurnstileTestKey =
-          !turnstileSecret ||
-          turnstileSecret.startsWith('1x') ||
-          turnstileSecret.startsWith('2x');
-        if (process.env.NODE_ENV === 'production' && !isTurnstileTestKey) {
+        if (process.env.NODE_ENV === 'production') {
+          if (!turnstileToken) {
+            // No challenge token — reject silently (bot or direct API call)
+            return null;
+          }
           const turnstileOk = await verifyTurnstile(turnstileToken);
           if (!turnstileOk) {
             // Turnstile verification failed — silent return null
@@ -333,27 +332,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 });
 
-// ── Cloudflare Turnstile verification ─────────────────────────────────────────
-
-async function verifyTurnstile(token: string): Promise<boolean> {
-  if (!token) return false;
-
-  try {
-    const res = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          secret: process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY!,
-          response: token,
-        }),
-      }
-    );
-    const data = (await res.json()) as { success: boolean };
-    return data.success;
-  } catch {
-    // Network error — fail open in development, fail closed in production
-    return process.env.NODE_ENV !== 'production';
-  }
-}
+// Turnstile verification is provided by the shared utility:
+// import { verifyTurnstile } from '@/server/lib/turnstile'
+// Removed local implementation to eliminate duplicate code with different
+// failure behaviour. The shared utility always fails CLOSED on network error.

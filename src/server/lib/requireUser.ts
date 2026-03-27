@@ -29,8 +29,15 @@ export async function requireUser(): Promise<AuthenticatedUser> {
   // With DB sessions, session.user.isBanned is fresh from the DB.
   // But as defence-in-depth, also do a direct DB check on mutations
   // to catch bans that happened within the updateAge window.
+  //
+  // deletedAt: null — rejects users soft-deleted via deleteAccount().
+  // A JWT issued before deletion is valid for up to 1 hour; this guard
+  // ensures such tokens can never perform any server action.
   const user = await db.user.findUnique({
-    where: { id: session.user.id },
+    where: {
+      id: session.user.id,
+      deletedAt: null, // Reject soft-deleted accounts
+    },
     select: {
       id: true,
       email: true,
@@ -42,6 +49,7 @@ export async function requireUser(): Promise<AuthenticatedUser> {
   });
 
   if (!user) {
+    // User not found OR deletedAt is set — treat both as unauthenticated
     throw new Error('Unauthorised — user not found');
   }
 
