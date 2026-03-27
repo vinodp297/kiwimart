@@ -21,6 +21,30 @@ export default function NavBar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [showSellBanner, setShowSellBanner] = useState(false);
 
+  // ── Sign out ───────────────────────────────────────────────────────────────
+  // Stay on the current page for public routes; redirect to / for protected ones.
+  const PROTECTED_PREFIXES = [
+    '/dashboard',
+    '/admin',
+    '/sell',
+    '/account',
+    '/welcome',
+    '/seller',
+    '/notifications',
+    '/checkout',
+    '/orders',
+    '/reviews',
+    '/messages',
+  ];
+  function handleSignOut() {
+    signOut({ redirect: false }).then(() => {
+      const isProtected = PROTECTED_PREFIXES.some((p) =>
+        window.location.pathname.startsWith(p)
+      );
+      window.location.href = isProtected ? '/' : window.location.pathname;
+    });
+  }
+
   // ── Real notifications ─────────────────────────────────────────────────────
   interface NotifItem {
     id: string;
@@ -444,7 +468,7 @@ export default function NavBar() {
                             Account settings
                           </Link>
                           <button
-                            onClick={() => signOut({ callbackUrl: '/login' })}
+                            onClick={handleSignOut}
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px]
                               text-red-500 hover:bg-red-50 transition-colors"
                           >
@@ -663,7 +687,7 @@ export default function NavBar() {
                     <Link href="/seller/onboarding" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
                       🌿 Seller Hub
                     </Link>
-                    <button onClick={() => signOut({ callbackUrl: '/login' })} className="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors">
+                    <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors">
                       🚪 Sign out
                     </button>
                   </>
