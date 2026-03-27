@@ -17,6 +17,7 @@ import crypto from 'crypto';
 import db from '@/lib/db';
 import { hashPassword } from '@/server/lib/password';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
+import { verifyTurnstile } from '@/server/lib/turnstile';
 import { audit } from '@/server/lib/audit';
 import { logger } from '@/shared/logger';
 import {
@@ -55,8 +56,15 @@ export async function registerUser(
     };
   }
 
-  // 5a. Verify Cloudflare Turnstile
-  if (process.env.NODE_ENV === 'production' && data.turnstileToken) {
+  // 5a. Verify Cloudflare Turnstile — fail CLOSED if token is absent.
+  // An empty/missing token means the client bypassed the challenge widget.
+  if (process.env.NODE_ENV === 'production') {
+    if (!data.turnstileToken) {
+      return {
+        success: false,
+        error: 'Bot verification required. Please complete the security check.',
+      };
+    }
     const turnstileOk = await verifyTurnstile(data.turnstileToken);
     if (!turnstileOk) {
       return { success: false, error: 'Bot verification failed. Please try again.' };
@@ -156,8 +164,11 @@ export async function requestPasswordReset(
     };
   }
 
-  // 5a. Verify Turnstile
-  if (process.env.NODE_ENV === 'production' && turnstileToken) {
+  // 5a. Verify Turnstile — fail CLOSED if token is absent.
+  if (process.env.NODE_ENV === 'production') {
+    if (!turnstileToken) {
+      return { success: false, error: 'Bot verification required.' };
+    }
     const ok = await verifyTurnstile(turnstileToken);
     if (!ok) return { success: false, error: 'Bot verification failed.' };
   }
@@ -369,23 +380,7 @@ function generateUsername(firstName: string, lastName: string): string {
   return base || 'user';
 }
 
-async function verifyTurnstile(token: string): Promise<boolean> {
-  try {
-    const res = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          secret: process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY!,
-          response: token,
-        }),
-      }
-    );
-    const data = (await res.json()) as { success: boolean };
-    return data.success;
-  } catch {
-    return false;
-  }
-}
+// Turnstile verification delegated to shared utility: @/server/lib/turnstile
+// Removed local implementation — the shared version has consistent fail-closed
+// behaviour and a 5-second timeout. Import is at the top of this file.
 

@@ -5,11 +5,13 @@
 //   const authError = verifyCronSecret(request)
 //   if (authError) return authError
 
+import { timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
 import { logger } from '@/shared/logger';
 
 /**
  * Verifies the Authorization header matches the CRON_SECRET env var.
+ * Uses a timing-safe comparison to prevent timing-oracle attacks on the secret.
  * Returns a NextResponse error if unauthorized, or null if authorized.
  */
 export function verifyCronSecret(request: Request): NextResponse | null {
@@ -24,10 +26,19 @@ export function verifyCronSecret(request: Request): NextResponse | null {
     );
   }
 
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  // Timing-safe comparison — prevents byte-by-byte secret disclosure via
+  // response-time oracles. Buffers must be same length before comparing.
+  const expected = Buffer.from(`Bearer ${cronSecret}`);
+  const received = Buffer.from(authHeader ?? '');
+
+  const isValid =
+    expected.length === received.length &&
+    timingSafeEqual(expected, received);
+
+  if (!isValid) {
     logger.warn('cron.auth: unauthorized request', {
       path: request.url,
-      ip: request.headers.get('x-real-ip') ?? request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown',
+      ip: request.headers.get('x-real-ip') ?? 'unknown',
     });
     return NextResponse.json(
       { error: 'Unauthorized' },

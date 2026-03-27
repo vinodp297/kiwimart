@@ -1,7 +1,7 @@
 // prisma/schema.prisma
 // ─── KiwiMart — Production Prisma Schema ─────────────────────────────────────
 // Database: Neon PostgreSQL (serverless)
-// ORM: Prisma 5 with Accelerate for connection pooling at the edge
+// ORM: Prisma 7 with Accelerate for connection pooling at the edge
 //
 // Conventions:
 //   • All IDs: cuid2 (collision-resistant, URL-safe, no timestamp leakage)

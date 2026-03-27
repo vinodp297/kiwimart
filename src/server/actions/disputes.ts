@@ -6,6 +6,7 @@ import { safeActionError } from '@/shared/errors'
 import { headers } from 'next/headers';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { requireUser } from '@/server/lib/requireUser';
+import { getClientIp } from '@/server/lib/rateLimit';
 import { orderService } from '@/modules/orders/order.service';
 import { r2, R2_BUCKET, R2_PUBLIC_URL } from '@/infrastructure/storage/r2';
 import { logger } from '@/shared/logger';
@@ -36,7 +37,8 @@ export async function openDispute(
 ): Promise<ActionResult<void>> {
   try {
     const reqHeaders = await headers();
-    const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+    // Use getClientIp() — x-forwarded-for is client-controllable and spoofable.
+    const ip = getClientIp(reqHeaders as unknown as Headers);
     const user = await requireUser();
 
     const parsed = openDisputeSchema.safeParse(raw);

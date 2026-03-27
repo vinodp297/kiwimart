@@ -5,6 +5,7 @@ import { safeActionError } from '@/shared/errors'
 
 import { headers } from 'next/headers';
 import { requireUser } from '@/server/lib/requireUser';
+import { getClientIp } from '@/server/lib/rateLimit';
 import { userService } from '@/modules/users/user.service';
 import type { ActionResult } from '@/types';
 
@@ -13,7 +14,8 @@ export async function requestPhoneVerification(params: {
 }): Promise<ActionResult<{ expiresAt: string }>> {
   try {
     const reqHeaders = await headers();
-    const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+    // Use getClientIp() — x-forwarded-for is client-controllable and spoofable.
+    const ip = getClientIp(reqHeaders as unknown as Headers);
     const user = await requireUser();
 
     const result = await userService.requestPhoneVerification(user.id, params.phone, ip);
@@ -28,7 +30,8 @@ export async function verifyPhoneCode(params: {
 }): Promise<ActionResult<void>> {
   try {
     const reqHeaders = await headers();
-    const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+    // Use getClientIp() — x-forwarded-for is client-controllable and spoofable.
+    const ip = getClientIp(reqHeaders as unknown as Headers);
     const user = await requireUser();
 
     await userService.verifyPhoneCode(user.id, params.code, ip);

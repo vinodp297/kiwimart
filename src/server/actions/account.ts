@@ -12,6 +12,7 @@ import { safeActionError } from '@/shared/errors'
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '@/server/lib/requireUser';
+import { getClientIp } from '@/server/lib/rateLimit';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
 import { logger } from '@/shared/logger';
@@ -51,7 +52,9 @@ export async function changePassword(
 ): Promise<ActionResult<void>> {
   try {
     const reqHeaders = await headers();
-    const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+    // Use getClientIp() — x-forwarded-for is client-controllable and spoofable.
+    // Trusted platform headers (x-real-ip, cf-connecting-ip) are used instead.
+    const ip = getClientIp(reqHeaders as unknown as Headers);
 
     const authedUser = await requireUser();
 

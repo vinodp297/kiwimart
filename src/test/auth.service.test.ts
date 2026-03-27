@@ -71,7 +71,7 @@ describe('AuthService.resetPassword', () => {
     vi.mocked(db.$transaction).mockResolvedValue([{}, {}, {}] as never)
 
     await authService.resetPassword(
-      { token: 'raw-token', password: 'NewPass123!' },
+      { token: 'raw-token', password: 'NewStrongPass123!' },
       '127.0.0.1'
     )
 

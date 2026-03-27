@@ -29,12 +29,24 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
   let processed = 0;
   let errors = 0;
 
-  // Fetch ALL dispatched orders, then filter by business-day cutoff in JS
+  // DB-side pre-filter: only orders dispatched within the last 30 days.
+  // This caps the result set so the query never loads unbounded rows into memory.
+  // The JS addBusinessDays() filter below fine-tunes the exact 4-business-day cutoff.
+  // Safety cap: take: 500 ensures a single cron run never exceeds memory limits
+  // even if the pre-filter is wider than expected.
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - 30);
+
   const dispatchedOrders = await db.order.findMany({
     where: {
       status: 'DISPATCHED',
-      dispatchedAt: { not: null },
+      dispatchedAt: {
+        not: null,
+        gte: cutoffDate, // Only orders dispatched in the last 30 days
+      },
     },
+    take: 500,           // Safety cap — prevents unbounded memory use
+    orderBy: { dispatchedAt: 'asc' }, // Process oldest first
     select: {
       id: true,
       buyerId: true,

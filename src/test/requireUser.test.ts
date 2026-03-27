@@ -130,7 +130,7 @@ describe('requireUser', () => {
 
     // Critical: DB was always queried even though session had data
     expect(db.user.findUnique).toHaveBeenCalledWith({
-      where: { id: 'user-456' },
+      where: { id: 'user-456', deletedAt: null },
       select: {
         id: true,
         email: true,

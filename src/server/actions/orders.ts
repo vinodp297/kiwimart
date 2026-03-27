@@ -22,7 +22,6 @@ import { audit } from '@/server/lib/audit';
 import { requireUser } from '@/server/lib/requireUser';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
-import { stripe } from '@/infrastructure/stripe/client';
 import { paymentService } from '@/modules/payments/payment.service';
 import { orderService } from '@/modules/orders/order.service';
 import { createNotification } from '@/modules/notifications/notification.service';
@@ -166,10 +165,18 @@ export async function createOrder(params: {
     /^acct_[A-Za-z0-9]{16,}$/.test(listing.seller.stripeAccountId);
 
   if (!isRealConnectAccount) {
-    // Cancel orphan order — seller account is not valid
-    await db.order.update({
-      where: { id: order.id },
-      data: { status: 'CANCELLED' },
+    // BUG-1 FIX: Atomically cancel orphan order AND restore listing to ACTIVE.
+    // Previously the listing was left RESERVED permanently on this early return.
+    await db.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: 'CANCELLED' },
+      });
+      // Restore listing so other buyers can purchase it
+      await tx.listing.updateMany({
+        where: { id: parsed.data.listingId, status: 'RESERVED' },
+        data: { status: 'ACTIVE' },
+      });
     });
 
     audit({
@@ -186,31 +193,29 @@ export async function createOrder(params: {
 
     return {
       success: false,
-      error: 'Seller payment account is not properly configured. Please contact support.',
+      error: 'Seller payment account is not properly configured. Please contact the seller.',
     };
   }
 
+  // QUALITY-1 FIX: Route through PaymentService instead of calling Stripe inline.
+  // Previously this file had its own stripe.paymentIntents.create() call that
+  // duplicated logic from payment.service.ts. One place to update if Stripe
+  // config ever changes (API version, metadata, statement descriptor, etc.).
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: totalNzd,
-      currency: 'nzd',
-      transfer_data: { destination: listing.seller.stripeAccountId! },
-      payment_method_types: ['card', 'afterpay_clearpay'],
-      metadata: {
-        orderId: order.id,
-        listingId: listing.id,
-        buyerId: user.id,
-        sellerId: listing.sellerId,
-      },
-      description: `KiwiMart: ${listing.title}`,
-      statement_descriptor_suffix: 'KIWIMART',
-      capture_method: 'manual',
+    const paymentResult = await paymentService.createPaymentIntent({
+      amountNzd: totalNzd,
+      sellerId: listing.sellerId,
+      sellerStripeAccountId: listing.seller.stripeAccountId!,
+      orderId: order.id,
+      listingId: listing.id,
+      listingTitle: listing.title,
+      buyerId: user.id,
     });
 
-    // SUCCESS: update order with payment intent ID
+    // SUCCESS: persist the PaymentIntent ID so the webhook can match it back
     await db.order.update({
       where: { id: order.id },
-      data: { stripePaymentIntentId: paymentIntent.id },
+      data: { stripePaymentIntentId: paymentResult.paymentIntentId },
     });
 
     // 6. Audit
@@ -250,10 +255,11 @@ export async function createOrder(params: {
 
     return {
       success: true,
-      data: { orderId: order.id, clientSecret: paymentIntent.client_secret! },
+      data: { orderId: order.id, clientSecret: paymentResult.clientSecret },
     };
   } catch (stripeErr) {
-    // FIX 7: Stripe failed — cancel the orphan order immediately
+    // Stripe (via paymentService) failed — cancel the orphan order and
+    // restore the listing so other buyers can still purchase it.
     await db.order.update({
       where: { id: order.id },
       data: { status: 'CANCELLED' },

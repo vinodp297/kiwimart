@@ -15,6 +15,7 @@ import { headers } from 'next/headers';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
 import { requireUser } from '@/server/lib/requireUser';
+import { getClientIp } from '@/server/lib/rateLimit';
 import { moderateText } from '@/server/lib/moderation';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
@@ -40,7 +41,8 @@ export async function createReport(
   input: CreateReportInput
 ): Promise<ActionResult<{ reportId: string }>> {
   const reqHeaders = await headers();
-  const ip = reqHeaders.get('x-forwarded-for') ?? 'unknown';
+  // Use getClientIp() — x-forwarded-for is client-controllable and spoofable.
+  const ip = getClientIp(reqHeaders as unknown as Headers);
 
   // 1. Authenticate + ban check
   let user;

@@ -71,6 +71,8 @@ export const proxy = auth(async function proxyHandler(
     // 'strict-dynamic' allows nonce-approved scripts to load their own sub-resources.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
     `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`,
+    // images.unsplash.com: used for seed/demo listing images in development.
+    // Remove before production launch once real product images replace all demo data.
     "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://r2.kiwimart.co.nz https://*.stripe.com",
     "font-src 'self' https://fonts.gstatic.com",
     // PostHog sends analytics to us.i.posthog.com & us-assets; Pusher needs both WS and HTTPS.
@@ -133,7 +135,10 @@ export const proxy = auth(async function proxyHandler(
   if (isProtected && isAuthenticated && sessionUser?.id) {
     try {
       const { getToken } = await import('next-auth/jwt');
-      const jwtToken = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+      // IMPORTANT: use NEXTAUTH_SECRET — the variable validated in env.ts.
+      // process.env.AUTH_SECRET would be undefined if only NEXTAUTH_SECRET is
+      // set in Vercel, silently disabling this bfcache defence for all users.
+      const jwtToken = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
       if (jwtToken && typeof jwtToken.sessionVersion === 'number') {
         const currentVersion = await getSessionVersion(jwtToken.sub as string);
         if (currentVersion > jwtToken.sessionVersion) {

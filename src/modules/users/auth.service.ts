@@ -7,6 +7,8 @@ import { hashPassword } from '@/server/lib/password'
 import { audit } from '@/server/lib/audit'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
+import { verifyTurnstile } from '@/server/lib/turnstile'
+import { passwordSchema } from '@/server/validators'
 import crypto from 'crypto'
 import type { RegisterInput, ResetPasswordInput } from './user.types'
 
@@ -18,36 +20,21 @@ function generateUsername(firstName: string, lastName: string): string {
   return base || 'user'
 }
 
-async function verifyTurnstile(token: string): Promise<boolean> {
-  try {
-    const res = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          secret: process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY!,
-          response: token,
-        }),
-      }
-    )
-    const data = (await res.json()) as { success: boolean }
-    return data.success
-  } catch {
-    return false
-  }
-}
-
 export class AuthService {
   async register(
     input: RegisterInput,
     ip: string,
     userAgent?: string
   ): Promise<{ userId: string }> {
-    // Verify Turnstile in production
-    if (process.env.NODE_ENV === 'production' && input.turnstileToken) {
-      const turnstileOk = await verifyTurnstile(input.turnstileToken)
-      if (!turnstileOk) {
+    // Verify Turnstile in production — fail CLOSED if token is absent
+    if (process.env.NODE_ENV === 'production') {
+      if (!input.turnstileToken) {
+        throw AppError.validation(
+          'Bot verification required. Please complete the security check.'
+        )
+      }
+      const isHuman = await verifyTurnstile(input.turnstileToken)
+      if (!isHuman) {
         throw AppError.validation('Bot verification failed. Please try again.')
       }
     }
@@ -175,6 +162,13 @@ export class AuthService {
     if (!resetRecord) throw AppError.validation(GENERIC_ERROR)
     if (resetRecord.usedAt) throw AppError.validation(GENERIC_ERROR)
     if (resetRecord.expiresAt < new Date()) throw AppError.validation(GENERIC_ERROR)
+
+    // Enforce the same password strength rules as changePassword:
+    // min 12 chars, uppercase, lowercase, number.
+    const pwdCheck = passwordSchema.safeParse(input.password)
+    if (!pwdCheck.success) {
+      throw AppError.validation(pwdCheck.error.issues[0]?.message ?? 'Password does not meet strength requirements.')
+    }
 
     const newHash = await hashPassword(input.password)
     await db.$transaction([
