@@ -20,6 +20,7 @@ import db from '@/lib/db';
 import { verifyPassword, needsRehash, hashPassword } from '@/server/lib/password';
 import { audit } from '@/server/lib/audit';
 import { loginSchema } from '@/server/validators';
+import { blockToken, isTokenBlocked } from '@/server/lib/jwtBlocklist';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -31,10 +32,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // proxy DB-lookup miss that caused the post-login redirect loop.
     // The PrismaAdapter is still used to persist users/accounts for OAuth.
     strategy: 'jwt',
-    // Sessions expire after 30 days of inactivity
-    maxAge: 30 * 24 * 60 * 60,
-    // JWT sessions don't have an updateAge — they refresh on every request
-    updateAge: 24 * 60 * 60,
+    // 1-hour expiry — short window limits exposure if Redis is unavailable
+    // and a token can't be blocklisted after sign-out.
+    maxAge: 60 * 60,
+  },
+
+  jwt: {
+    maxAge: 60 * 60, // 1 hour — must match session.maxAge
   },
 
   pages: {
@@ -144,13 +148,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
-    // JWT callback: fires for credentials logins (beta.30 always uses JWT for
-    // credentials regardless of strategy:'database').  Embeds custom DB fields
-    // into the token on first sign-in so the session callback can read them.
-    // Does NOT fire for OAuth (DB sessions) — only credentials.
+    // JWT callback: fires on every request for credentials-based sessions.
+    // 1. Check Redis blocklist — if the jti was revoked (signed out), reject immediately.
+    // 2. Assign a jti if the token doesn't have one yet (first issue).
+    // 3. Embed custom DB fields on initial sign-in.
     async jwt({ token, user }) {
+      // ── Blocklist check (every request) ──────────────────────────────────────
+      if (token?.jti) {
+        const blocked = await isTokenBlocked(token.jti as string);
+        if (blocked) return null; // invalidate session
+      }
+
+      // ── Ensure unique jti ─────────────────────────────────────────────────────
+      if (!token.jti) {
+        token.jti = crypto.randomUUID();
+      }
+
+      // ── Initial sign-in: embed custom DB fields ───────────────────────────────
       if (user?.id) {
-        // Initial sign-in: fetch fresh DB fields and embed in token
         const dbUser = await db.user.findUnique({
           where: { id: user.id },
           select: {
@@ -185,7 +200,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Session callback: handles both JWT (credentials) and DB (OAuth) sessions.
     // JWT mode:  token is populated, user is undefined
     // DB mode:   user is the fresh DB row, token is undefined
+    // null token: jwt() returned null (blocklisted) — Auth.js clears cookie before
+    //             calling session(), so this guard is purely defensive.
     async session({ session, user, token }) {
+      if (!token && !user) return session; // blocked token — return bare session
       if (session.user) {
         if (token?.id) {
           // Credentials login — JWT session (Auth.js v5 beta.30 always uses JWT
@@ -245,8 +263,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   events: {
-    // Audit logout events
-    // JWT strategy: signOut receives { token }; database strategy: { session }
+    // Audit logout and revoke the JWT in Redis so stolen tokens are useless.
+    // JWT strategy:      receives { token }
+    // Database strategy: receives { session }
     async signOut(params) {
       const userId =
         'token' in params && params.token
@@ -256,6 +275,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           : null;
       if (userId) {
         audit({ userId, action: 'USER_LOGOUT' });
+      }
+
+      // Blocklist the JWT so it can't be replayed if it was stolen
+      if ('token' in params && params.token) {
+        const t = params.token as { jti?: string; exp?: number };
+        if (t.jti && t.exp) {
+          await blockToken(t.jti, t.exp);
+        }
       }
     },
   },
