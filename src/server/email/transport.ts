@@ -1,8 +1,12 @@
 // src/server/email/transport.ts
 // ─── Email Transport Layer ────────────────────────────────────────────────────
-// Sends via Resend when RESEND_API_KEY is set; logs via logger otherwise.
+// Sends via Resend when RESEND_API_KEY is set; logs to console in dev/test.
+//
+// IMPORTANT: this function THROWS on failure so callers' try/catch blocks
+// can log the error and surface it properly.  Previously it returned
+// { success: false } silently, which made all email failures invisible.
 
-import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client';
+import { getEmailClient } from '@/infrastructure/email/client';
 import { logger } from '@/shared/logger';
 
 export async function sendTransactionalEmail({
@@ -13,26 +17,42 @@ export async function sendTransactionalEmail({
   to: string;
   subject: string;
   html: string;
-}): Promise<{ success: boolean; dev?: boolean }> {
+}): Promise<{ id?: string }> {
   const client = getEmailClient();
 
+  // Always read from env fresh — never rely on a module-level constant
+  // that could have been captured before the env var was available.
+  const from = process.env.EMAIL_FROM ?? 'KiwiMart <onboarding@resend.dev>';
+
   if (!client) {
-    // Dev mode — log email info so content is visible during development
-    logger.info('email.dev.logged', { to, subject });
-    return { success: true, dev: true };
+    if (process.env.NODE_ENV === 'production') {
+      // Hard failure in production — RESEND_API_KEY is not configured.
+      throw new Error(
+        'Email client not initialised: RESEND_API_KEY is missing or set to a placeholder value'
+      );
+    }
+    // Dev / test mode — just log so email content is visible without sending.
+    logger.info('email.dev.logged', { to, subject, from });
+    return {};
   }
 
-  try {
-    const fromAddress = EMAIL_FROM;
-    const { error } = await client.emails.send({ from: fromAddress, to, subject, html });
-    if (error) {
-      logger.error('email.send.failed', { to, subject, error: String(error) });
-      return { success: false };
-    }
-    logger.info('email.sent', { to, subject });
-    return { success: true };
-  } catch (err) {
-    logger.error('email.transport.failed', { to, subject, error: err instanceof Error ? err.message : String(err) });
-    return { success: false };
+  // Pre-send log — makes it easy to verify the send is attempted in Vercel logs.
+  logger.info('email.sending', { to, subject, from });
+
+  const { data, error } = await client.emails.send({ from, to, subject, html });
+
+  if (error) {
+    // Log the full Resend error and THROW so callers know the send failed.
+    logger.error('email.send.failed', {
+      to,
+      subject,
+      from,
+      resendError: String(error),
+    });
+    throw new Error(`Resend rejected the email: ${String(error)}`);
   }
+
+  // Post-send success log — the id lets you look it up in the Resend dashboard.
+  logger.info('email.sent', { to, subject, id: data?.id });
+  return { id: data?.id };
 }
