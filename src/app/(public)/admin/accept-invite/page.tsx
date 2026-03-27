@@ -9,7 +9,7 @@ import { getRoleDisplayName } from '@/lib/permissions';
 import type { Metadata } from 'next';
 import type { AdminRole } from '@prisma/client';
 
-export const metadata: Metadata = { title: 'Accept Invitation — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Accept Invitation — Admin' };
 
 interface Props {
   searchParams: Promise<{ token?: string }>;

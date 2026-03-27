@@ -6,7 +6,7 @@ import db from '@/lib/db';
 import ApproveIdButton from '../ApproveIdButton';
 import type { Metadata } from 'next';
 
-export const metadata: Metadata = { title: 'Sellers — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Sellers — Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function SellersPage() {

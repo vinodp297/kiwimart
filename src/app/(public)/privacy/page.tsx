@@ -3,7 +3,7 @@ import Footer from '@/components/Footer';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — KiwiMart',
+  title: 'Privacy Policy',
   description: 'KiwiMart Privacy Policy. Compliant with NZ Privacy Act 2020.',
 };
 

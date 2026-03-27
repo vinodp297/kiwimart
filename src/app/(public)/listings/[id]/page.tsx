@@ -36,14 +36,14 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const listing = await getListingById(id);
-  if (!listing) return { title: 'Listing not found — KiwiMart' };
+  if (!listing) return { title: 'Listing not found' };
 
   const price = listing.priceNzd / 100;
   const condition = mapCondition(listing.condition);
   const thumb = listing.images[0]?.r2Key ? r2Url(listing.images[0].r2Key) : undefined;
 
   return {
-    title: `${listing.title} — KiwiMart`,
+    title: listing.title,
     description: `Buy ${listing.title} for ${formatPrice(price)} NZD. ${CONDITION_LABELS[condition]} condition. ${listing.region}, NZ.`,
     openGraph: {
       title: listing.title,

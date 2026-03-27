@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useRef, useState, useTransition, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import CATEGORIES from '@/data/categories';
@@ -166,6 +166,21 @@ export default function SearchPageClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+
+  // ── Delayed pending indicator — only dim grid after 300 ms to avoid flash
+  const [showPending, setShowPending] = useState(false);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (isPending) {
+      pendingTimerRef.current = setTimeout(() => setShowPending(true), 300);
+    } else {
+      if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+      setShowPending(false);
+    }
+    return () => {
+      if (pendingTimerRef.current) clearTimeout(pendingTimerRef.current);
+    };
+  }, [isPending]);
 
   // ── Local filter state — initialised from URL params once on mount ──────
   const [filters, setFilters] = useState<FilterState>({
@@ -519,10 +534,10 @@ export default function SearchPageClient({
         </div>
       )}
 
-      {/* ── Results grid — opacity-60 while new results are loading ─ */}
+      {/* ── Results grid — dim slightly after 300 ms if still loading ─ */}
       <div
         className={`transition-opacity duration-300 ${
-          isPending ? 'opacity-60 pointer-events-none' : 'opacity-100'
+          showPending ? 'opacity-[0.85]' : 'opacity-100'
         }`}
       >
         {results.length > 0 ? (

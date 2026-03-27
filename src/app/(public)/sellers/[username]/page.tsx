@@ -70,9 +70,9 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { username } = await params;
   const user = await getSellerByUsername(username);
-  if (!user) return { title: 'Seller not found — KiwiMart' };
+  if (!user) return { title: 'Seller not found' };
   return {
-    title: `${user.displayName} — KiwiMart Seller`,
+    title: `${user.displayName} — Seller Profile`,
     description: `${user.displayName} is a ${user.idVerified ? 'verified' : ''} NZ seller on KiwiMart with ${user._count.reviews} reviews.`,
   };
 }

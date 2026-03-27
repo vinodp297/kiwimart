@@ -10,7 +10,7 @@ import { formatPrice } from '@/lib/utils';
 import { OrderVolumeChart } from '@/components/admin/OrderVolumeChart';
 import type { Metadata } from 'next';
 
-export const metadata: Metadata = { title: 'Admin Dashboard — KiwiMart' };
+export const metadata: Metadata = { title: 'Admin Dashboard' };
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {

@@ -52,11 +52,6 @@ function ReportForm() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
-  if (!listingId && !targetUserId) {
-    router.push('/');
-    return null;
-  }
-
   if (submitted) {
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
@@ -119,7 +114,7 @@ function ReportForm() {
           </div>
           <div>
             <h1 className="font-semibold text-[18px] text-[#141414]">
-              Report {listingId ? 'listing' : 'user'}
+              {listingId ? 'Report listing' : targetUserId ? 'Report user' : 'Report a problem'}
             </h1>
             <p className="text-[#73706A] text-[12px]">Help us keep KiwiMart safe</p>
           </div>

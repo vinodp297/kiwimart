@@ -91,10 +91,12 @@ function TermsModal({
   onAccept,
   onClose,
   loading,
+  readOnly = false,
 }: {
   onAccept: () => void
   onClose: () => void
   loading: boolean
+  readOnly?: boolean
 }) {
   const [hasScrolled, setHasScrolled] = useState(false)
   const [checked, setChecked] = useState(false)
@@ -108,10 +110,10 @@ function TermsModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto bg-black/60 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-2xl my-auto">
         {/* Header */}
         <div className="bg-[#141414] px-6 py-4 flex items-center justify-between flex-shrink-0">
           <h2 className="font-semibold text-white text-[16px]">
@@ -133,8 +135,8 @@ function TermsModal({
           {SELLER_TERMS}
         </div>
 
-        {/* Scroll hint */}
-        {!hasScrolled && (
+        {/* Scroll hint — only when accepting */}
+        {!readOnly && !hasScrolled && (
           <div className="bg-[#FFF9EC] border-t border-[#E3E0D9] px-4 py-2 flex-shrink-0">
             <p className="text-[11px] text-[#D4A843] text-center font-medium">
               ↓ Scroll to the bottom to enable acceptance
@@ -142,40 +144,53 @@ function TermsModal({
           </div>
         )}
 
-        {/* Acceptance footer */}
+        {/* Footer */}
         <div className="border-t border-[#E3E0D9] p-5 flex-shrink-0 bg-white">
-          <label
-            className={`flex items-start gap-3 mb-4 cursor-pointer ${
-              !hasScrolled ? 'opacity-40 pointer-events-none' : ''
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={(e) => setChecked(e.target.checked)}
-              disabled={!hasScrolled}
-              className="mt-0.5 w-4 h-4 accent-[#D4A843] flex-shrink-0"
-            />
-            <span className="text-[13px] text-[#141414] leading-relaxed">
-              I have read and agree to KiwiMart&apos;s Seller Terms & Conditions
-            </span>
-          </label>
-
-          <div className="flex gap-3">
+          {readOnly ? (
+            /* View-only mode — just a Close button, no checkbox */
             <button
               onClick={onClose}
-              className="flex-1 py-2.5 border border-[#E3E0D9] text-[#73706A] rounded-xl text-[13px] hover:bg-[#F2EFE8] transition-colors"
+              className="w-full py-2.5 border border-[#E3E0D9] text-[#73706A] rounded-xl text-[13px] hover:bg-[#F2EFE8] transition-colors"
             >
-              Cancel
+              Close
             </button>
-            <button
-              onClick={onAccept}
-              disabled={!checked || !hasScrolled || loading}
-              className="flex-[2] py-2.5 bg-[#D4A843] text-[#141414] rounded-xl font-semibold text-[13px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#C49B35] transition-colors"
-            >
-              {loading ? 'Accepting...' : 'Accept Terms'}
-            </button>
-          </div>
+          ) : (
+            /* Accept mode — checkbox + Cancel / Accept */
+            <>
+              <label
+                className={`flex items-start gap-3 mb-4 cursor-pointer ${
+                  !hasScrolled ? 'opacity-40 pointer-events-none' : ''
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => setChecked(e.target.checked)}
+                  disabled={!hasScrolled}
+                  className="mt-0.5 w-4 h-4 accent-[#D4A843] flex-shrink-0"
+                />
+                <span className="text-[13px] text-[#141414] leading-relaxed">
+                  I have read and agree to KiwiMart&apos;s Seller Terms & Conditions
+                </span>
+              </label>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={onClose}
+                  className="flex-1 py-2.5 border border-[#E3E0D9] text-[#73706A] rounded-xl text-[13px] hover:bg-[#F2EFE8] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={onAccept}
+                  disabled={!checked || !hasScrolled || loading}
+                  className="flex-[2] py-2.5 bg-[#D4A843] text-[#141414] rounded-xl font-semibold text-[13px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#C49B35] transition-colors"
+                >
+                  {loading ? 'Accepting...' : 'Accept Terms'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -474,6 +489,7 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
           onAccept={handleAcceptTerms}
           onClose={() => setShowTermsModal(false)}
           loading={loading === 'terms'}
+          readOnly={termsAccepted}
         />
       )}
     </div>

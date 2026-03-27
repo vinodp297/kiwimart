@@ -25,29 +25,35 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'images.unsplash.com',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: '*.cloudflare.com',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: '*.cloudflarestorage.com',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: '*.r2.cloudflarestorage.com',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: 'pub-*.r2.dev',
+        pathname: '/**',
       },
       {
         protocol: 'https',
         hostname: 'r2.kiwimart.co.nz',
+        pathname: '/**',
       },
       // Dynamically allow whatever domain NEXT_PUBLIC_R2_PUBLIC_URL points to
-      ...(r2Host ? [{ protocol: 'https' as const, hostname: r2Host }] : []),
+      ...(r2Host ? [{ protocol: 'https' as const, hostname: r2Host, pathname: '/**' }] : []),
     ],
   },
 };

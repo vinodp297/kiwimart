@@ -3,7 +3,7 @@ import Footer from '@/components/Footer';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Fees — KiwiMart',
+  title: 'Fees',
   description: 'Simple, transparent pricing. Free to list, free to buy. No hidden fees.',
 };
 

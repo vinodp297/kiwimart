@@ -13,7 +13,7 @@ import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: "KiwiMart — New Zealand's Trusted Marketplace",
+  title: "New Zealand's Trusted Marketplace",
   description:
     'Buy and sell with confidence on KiwiMart. Secure escrow payments, $3,000 buyer protection, and verified NZ sellers. Browse 120,000+ listings across Aotearoa.',
   keywords: ['marketplace', 'buy', 'sell', 'New Zealand', 'NZ', 'Trade Me alternative', 'second hand'],

@@ -9,7 +9,7 @@ import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: '404 — Page not found | KiwiMart',
+  title: '404 — Page not found',
 };
 
 export default function NotFound() {
