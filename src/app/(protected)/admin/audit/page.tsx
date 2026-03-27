@@ -7,7 +7,7 @@ import type { Metadata } from 'next';
 import AuditExport from './AuditExport';
 import AuditLogTable from './AuditLogTable';
 
-export const metadata: Metadata = { title: 'Audit Log — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Audit Log — Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function AuditPage() {

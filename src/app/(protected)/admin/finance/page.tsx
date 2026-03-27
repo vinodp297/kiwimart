@@ -8,7 +8,7 @@ import ExportCSV from './ExportCSV';
 import { RevenueChart } from '@/components/admin/RevenueChart';
 import type { Metadata } from 'next';
 
-export const metadata: Metadata = { title: 'Finance — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Finance — Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function FinancePage() {

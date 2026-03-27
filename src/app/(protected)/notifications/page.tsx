@@ -13,7 +13,7 @@ import { getNotifIcon } from '@/modules/notifications/notification.service';
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Notifications — KiwiMart',
+  title: 'Notifications',
 };
 
 function formatDate(date: Date): string {

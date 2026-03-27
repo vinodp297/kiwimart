@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import { Breadcrumb } from '@/components/ui/primitives';
 
 export const metadata: Metadata = {
-  title: 'Trust & Protection — KiwiMart',
+  title: 'Trust & Protection',
   description: 'Learn how KiwiMart protects buyers and sellers with secure escrow payments, $3,000 buyer protection, and verified seller accounts.',
 };
 

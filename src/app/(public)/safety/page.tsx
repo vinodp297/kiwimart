@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import { Breadcrumb } from '@/components/ui/primitives';
 
 export const metadata: Metadata = {
-  title: 'Safety Guide — KiwiMart',
+  title: 'Safety Guide',
   description: 'Stay safe when buying and selling on KiwiMart. Tips for safe transactions, meeting in person, and protecting your account.',
 };
 

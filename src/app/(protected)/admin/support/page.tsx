@@ -5,7 +5,7 @@ import { requirePermission } from '@/shared/auth/requirePermission';
 import type { Metadata } from 'next';
 import SupportSearch from './SupportSearch';
 
-export const metadata: Metadata = { title: 'Support — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Support — Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function SupportPage() {

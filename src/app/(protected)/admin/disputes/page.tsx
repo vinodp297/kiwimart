@@ -8,7 +8,7 @@ import { formatPrice } from '@/lib/utils';
 import DisputeActionButtons from './DisputeActionButtons';
 import type { Metadata } from 'next';
 
-export const metadata: Metadata = { title: 'Disputes — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Disputes — Admin' };
 export const dynamic = 'force-dynamic';
 
 const DISPUTE_REASON_LABELS: Record<string, string> = {

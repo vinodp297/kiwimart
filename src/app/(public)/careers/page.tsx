@@ -3,7 +3,7 @@ import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: 'Careers — KiwiMart',
+  title: 'Careers',
   description: 'Join the KiwiMart team and help build New Zealand\'s most trusted marketplace.',
 };
 

@@ -3,7 +3,7 @@ import Footer from '@/components/Footer';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'About KiwiMart — Built by Kiwis, for Kiwis',
+  title: 'About — Built by Kiwis, for Kiwis',
   description: 'KiwiMart is a New Zealand marketplace built in Auckland in 2026. Our mission: safe, simple, fair trading for everyone in Aotearoa.',
 };
 

@@ -3,7 +3,7 @@ import Footer from '@/components/Footer';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service — KiwiMart',
+  title: 'Terms of Service',
   description: 'KiwiMart Terms of Service. Governed by New Zealand law.',
 };
 

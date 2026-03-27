@@ -10,7 +10,7 @@ import type { SortOption } from '@/types';
 export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: 'Search Listings — KiwiMart',
+  title: 'Search Listings',
   description: 'Search and filter thousands of listings from verified New Zealand sellers.',
 };
 

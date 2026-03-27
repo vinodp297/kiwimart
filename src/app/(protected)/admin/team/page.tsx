@@ -8,7 +8,7 @@ import TeamActions from './TeamActions';
 import type { Metadata } from 'next';
 import type { AdminRole } from '@prisma/client';
 
-export const metadata: Metadata = { title: 'Team Management — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Team Management — Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function TeamPage() {

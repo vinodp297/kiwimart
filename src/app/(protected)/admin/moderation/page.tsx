@@ -6,7 +6,7 @@ import db from '@/lib/db';
 import type { Metadata } from 'next';
 import ModerationActions from './ModerationActions';
 
-export const metadata: Metadata = { title: 'Moderation — KiwiMart Admin' };
+export const metadata: Metadata = { title: 'Moderation — Admin' };
 export const dynamic = 'force-dynamic';
 
 const REASON_LABELS: Record<string, string> = {

@@ -4,7 +4,7 @@ import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
-  title: 'Blog — KiwiMart',
+  title: 'Blog',
   description: 'Tips, updates and stories from the KiwiMart team.',
 };
 

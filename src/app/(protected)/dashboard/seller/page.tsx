@@ -391,17 +391,6 @@ export default function SellerDashboardPage() {
               </div>
 
               <div className="flex gap-2 shrink-0 self-start">
-                <Link href="/sell">
-                  <Button variant="gold" size="sm">
-                    <svg
-                      width="12" height="12" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="3"
-                    >
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    New listing
-                  </Button>
-                </Link>
                 <Link href={`/sellers/${user.username}`}>
                   <Button
                     variant="ghost"
@@ -1101,7 +1090,7 @@ function ReviewsTabContent({ sellerId }: { sellerId: string }) {
   if (loading) {
     return (
       <div className="animate-pulse space-y-3">
-        {[1, 2, 3].map((i) => (
+        {[1].map((i) => (
           <div key={i} className="bg-white rounded-2xl border border-[#E3E0D9] h-32" />
         ))}
       </div>
