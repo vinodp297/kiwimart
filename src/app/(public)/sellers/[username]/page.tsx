@@ -94,11 +94,15 @@ export default async function SellerProfilePage({
   // Check if logged-in viewer has blocked this seller
   let isBlocked = false;
   if (currentUserId && currentUserId !== user.id) {
-    const block = await db.blockedUser.findFirst({
-      where: { blockerId: currentUserId, blockedId: user.id },
-      select: { id: true },
-    });
-    isBlocked = !!block;
+    try {
+      const block = await db.blockedUser.findFirst({
+        where: { blockerId: currentUserId, blockedId: user.id },
+        select: { id: true },
+      });
+      isBlocked = !!block;
+    } catch {
+      // Fail-safe: block check failure → treat as not blocked, page still loads
+    }
   }
 
   // Compute avg rating from reviews
@@ -106,18 +110,20 @@ export default async function SellerProfilePage({
     ? user.reviews.reduce((sum, r) => sum + r.rating, 0) / user.reviews.length / 10
     : 0;
 
-  // Map DB reviews to Review type
-  const reviews: Review[] = user.reviews.map((r) => ({
-    id: r.id,
-    buyerName: r.author.displayName,
-    buyerUsername: r.author.username,
-    buyerAvatarUrl: getImageUrl(r.author.avatarKey),
-    rating: r.rating / 10, // DB stores 1-50, display as 0.1-5.0
-    comment: r.comment ?? '',
-    listingTitle: r.order?.listing?.title ?? 'Unknown listing',
-    createdAt: r.createdAt.toISOString(),
-    sellerReply: r.sellerReply,
-  }));
+  // Map DB reviews to Review type — guard against orphaned author FKs
+  const reviews: Review[] = user.reviews
+    .filter((r) => r.author != null) // skip reviews whose author was hard-deleted
+    .map((r) => ({
+      id: r.id,
+      buyerName: r.author?.displayName ?? 'KiwiMart user',
+      buyerUsername: r.author?.username ?? '',
+      buyerAvatarUrl: r.author?.avatarKey ? getImageUrl(r.author.avatarKey) : null,
+      rating: r.rating / 10, // DB stores 1-50, display as 0.1-5.0
+      comment: r.comment ?? '',
+      listingTitle: r.order?.listing?.title ?? 'Unknown listing',
+      createdAt: r.createdAt.toISOString(),
+      sellerReply: r.sellerReply,
+    }));
 
   // Build seller shape for display
   const seller = {

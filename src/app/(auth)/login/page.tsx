@@ -45,9 +45,24 @@ export default function LoginPage() {
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
 
-  // Load Turnstile script
+  // Load Turnstile script.
+  // Test keys (1x… / 2x…) always show a red "For testing only" banner — skip
+  // them entirely. Real production keys don't start with these prefixes.
+  // TODO: Replace with real Cloudflare Turnstile keys once ready:
+  //   1. Go to dash.cloudflare.com → Turnstile
+  //   2. Create a site with domain: kiwimart.vercel.app
+  //   3. Add to Vercel env vars:
+  //      NEXT_PUBLIC_TURNSTILE_SITE_KEY = <real site key>
+  //      CLOUDFLARE_TURNSTILE_SECRET_KEY = <real secret key>
+  const isTurnstileActive = (() => {
+    const key = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+    if (!key) return false;
+    if (key.startsWith('1x') || key.startsWith('2x')) return false; // test keys
+    return true;
+  })();
+
   useEffect(() => {
-    if (!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) return;
+    if (!isTurnstileActive) return;
     const script = document.createElement('script');
     script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
     script.async = true;
@@ -62,7 +77,7 @@ export default function LoginPage() {
       }
     };
     return () => { document.head.removeChild(script); };
-  }, []);
+  }, [isTurnstileActive]);
 
   function validate() {
     const errs: typeof fieldErrors = {};
@@ -197,8 +212,8 @@ export default function LoginPage() {
               <span className="text-[13px] text-[#73706A]">Keep me signed in for 30 days</span>
             </label>
 
-            {/* Cloudflare Turnstile */}
-            {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && (
+            {/* Cloudflare Turnstile — only rendered when a real (non-test) key is set */}
+            {isTurnstileActive && (
               <div ref={turnstileRef} className="mt-1" />
             )}
 

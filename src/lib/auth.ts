@@ -66,7 +66,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { email, password, turnstileToken } = parsed.data;
 
         // 2. Verify Cloudflare Turnstile token (bot protection)
-        if (process.env.NODE_ENV === 'production') {
+        // Skip when: not in production, OR when a test secret key is configured
+        // (test keys start with 1x/2x and always show the "For testing only" banner).
+        // TODO: Switch to real Cloudflare Turnstile keys — see login/page.tsx for steps.
+        const turnstileSecret = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ?? '';
+        const isTurnstileTestKey =
+          !turnstileSecret ||
+          turnstileSecret.startsWith('1x') ||
+          turnstileSecret.startsWith('2x');
+        if (process.env.NODE_ENV === 'production' && !isTurnstileTestKey) {
           const turnstileOk = await verifyTurnstile(turnstileToken);
           if (!turnstileOk) {
             // Turnstile verification failed — silent return null
