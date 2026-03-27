@@ -22,7 +22,9 @@ export default function NavBar() {
   const [showSellBanner, setShowSellBanner] = useState(false);
 
   // ── Sign out ───────────────────────────────────────────────────────────────
-  // Stay on the current page for public routes; redirect to / for protected ones.
+  // Use redirect:true + callbackUrl so Auth.js clears the session cookie fully
+  // before navigating — avoids the race condition where manual window.location
+  // fires before the session is actually invalidated.
   const PROTECTED_PREFIXES = [
     '/dashboard',
     '/admin',
@@ -36,13 +38,14 @@ export default function NavBar() {
     '/reviews',
     '/messages',
   ];
-  function handleSignOut() {
-    signOut({ redirect: false }).then(() => {
-      const isProtected = PROTECTED_PREFIXES.some((p) =>
-        window.location.pathname.startsWith(p)
-      );
-      window.location.href = isProtected ? '/' : window.location.pathname;
-    });
+  async function handleSignOut() {
+    setMobileOpen(false);
+    setAccountOpen(false);
+    const isProtected = PROTECTED_PREFIXES.some((p) =>
+      window.location.pathname.startsWith(p)
+    );
+    const redirectTo = isProtected ? '/' : window.location.pathname;
+    await signOut({ redirect: true, callbackUrl: redirectTo });
   }
 
   // ── Real notifications ─────────────────────────────────────────────────────
