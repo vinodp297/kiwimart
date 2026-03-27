@@ -2,9 +2,10 @@
 // src/app/(auth)/verify-email/page.tsx
 // ─── Email Verification Waiting Page ─────────────────────────────────────────
 
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { resendVerificationEmail } from '@/server/actions/auth';
 
 function VerifyEmailContent() {
   const params = useSearchParams();
@@ -86,8 +87,86 @@ function VerifyEmailContent() {
             Already verified? Sign in →
           </Link>
         </div>
+
+        {/* ── Resend verification email ──────────────────────────── */}
+        <div className="text-center mt-5 pt-5 border-t border-[#E3E0D9]">
+          <p className="text-[12px] text-[#C9C5BC] mb-2">
+            Didn&apos;t receive the email?
+          </p>
+          <ResendButton />
+        </div>
       </div>
     </div>
+  );
+}
+
+function ResendButton() {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
+  const [countdown, setCountdown] = useState(0);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleResend = async () => {
+    setStatus('loading');
+    try {
+      const result = await resendVerificationEmail();
+      if (result.success) {
+        setStatus('sent');
+        setCountdown(60);
+        const interval = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(interval);
+              setStatus('idle');
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        setErrorMsg(result.error ?? 'Something went wrong.');
+        setStatus('error');
+        setTimeout(() => setStatus('idle'), 4000);
+      }
+    } catch {
+      setErrorMsg('Something went wrong. Please try again.');
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 4000);
+    }
+  };
+
+  if (status === 'sent') {
+    return (
+      <div className="text-center">
+        <div className="inline-flex items-center gap-2 bg-[#F0FDF4] text-[#16a34a] px-4 py-2.5 rounded-xl text-[13px] font-medium border border-[#16a34a]/20">
+          <span>✅</span>
+          Verification email sent! Check your inbox.
+        </div>
+        {countdown > 0 && (
+          <p className="text-[11px] text-[#C9C5BC] mt-2">
+            Resend available in {countdown}s
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="inline-flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-red-200">
+        <span>⚠️</span>
+        {errorMsg}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleResend}
+      disabled={status === 'loading' || countdown > 0}
+      className="text-[13px] text-[#D4A843] hover:underline disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+    >
+      {status === 'loading' ? 'Sending…' : 'Resend verification email'}
+    </button>
   );
 }
 
