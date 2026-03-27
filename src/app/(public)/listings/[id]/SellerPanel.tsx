@@ -46,11 +46,15 @@ export default function SellerPanel({ seller, listingId }: Props) {
             Member since {memberSince} · {seller.soldCount} sold
           </p>
           <div className="mt-1.5">
-            <StarRating
-              rating={seller.rating}
-              reviewCount={seller.reviewCount}
-              size="sm"
-            />
+            {seller.reviewCount > 0 ? (
+              <StarRating
+                rating={seller.rating}
+                reviewCount={seller.reviewCount}
+                size="sm"
+              />
+            ) : (
+              <span className="text-[12px] text-[#C9C5BC]">No reviews yet</span>
+            )}
           </div>
         </div>
       </div>
@@ -75,12 +79,14 @@ export default function SellerPanel({ seller, listingId }: Props) {
       )}
 
       {/* Response time */}
-      <div className="flex items-center gap-2 text-[12px] text-[#73706A] mb-4">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-        {seller.responseTimeLabel}
-      </div>
+      {seller.responseTimeLabel && (
+        <div className="flex items-center gap-2 text-[12px] text-[#73706A] mb-4">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          {seller.responseTimeLabel}
+        </div>
+      )}
 
       {/* Bio */}
       {seller.bio && (

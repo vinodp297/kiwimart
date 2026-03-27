@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 import { Avatar, OrderStatusBadge, Button, ConditionBadge, Alert } from '@/components/ui/primitives';
@@ -21,7 +22,10 @@ type Tab = 'orders' | 'watchlist' | 'messages';
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function BuyerDashboardPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('orders');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab = (searchParams.get('tab') as Tab) || 'orders';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +37,19 @@ export default function BuyerDashboardPage() {
   const [activeThread, setActiveThread] = useState<ThreadRow | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+
+  // Sync tab from URL changes
+  useEffect(() => {
+    const tab = searchParams.get('tab') as Tab | null;
+    if (tab && ['orders', 'watchlist', 'messages'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = useCallback((tab: Tab) => {
+    setActiveTab(tab);
+    router.replace(`/dashboard/buyer?tab=${tab}`, { scroll: false });
+  }, [router]);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -277,7 +294,7 @@ export default function BuyerDashboardPage() {
                 key={tab.id}
                 role="tab"
                 aria-selected={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center gap-2 px-5 py-3.5 text-[13px] font-semibold
                   border-b-2 transition-all duration-150 whitespace-nowrap
                   ${activeTab === tab.id

@@ -136,7 +136,7 @@ export interface SellerPublic {
   memberSince: string;
   activeListingCount: number;
   soldCount: number;
-  responseTimeLabel: string;  // e.g. "Usually replies within 1 hour"
+  responseTimeLabel: string | null;  // e.g. "Usually replies within 1 hour"
   badges: SellerBadge[];
 }
 

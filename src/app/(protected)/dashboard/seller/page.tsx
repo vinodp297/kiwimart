@@ -2,8 +2,9 @@
 // src/app/(protected)/dashboard/seller/page.tsx
 // ─── Seller Dashboard ─────────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
 import Footer from '@/components/Footer';
 import {
@@ -31,7 +32,10 @@ type Tab = 'overview' | 'listings' | 'orders' | 'payouts' | 'reviews';
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SellerDashboardPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab = (searchParams.get('tab') as Tab) || 'overview';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +50,19 @@ export default function SellerDashboardPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null);
   const [reviews, setReviews] = useState<SellerReviewRow[]>([]);
+
+  // Sync tab from URL
+  useEffect(() => {
+    const tab = searchParams.get('tab') as Tab | null;
+    if (tab && ['overview', 'listings', 'orders', 'payouts', 'reviews'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = useCallback((tab: Tab) => {
+    setActiveTab(tab);
+    router.replace(`/dashboard/seller?tab=${tab}`, { scroll: false });
+  }, [router]);
 
   // Fetch real data on mount
   useEffect(() => {
@@ -218,8 +235,14 @@ export default function SellerDashboardPage() {
                       highlight: true,
                     },
                     { value: stats.totalSales.toString(), label: 'Sales' },
-                    { value: `${stats.avgRating.toFixed(1)} ★`, label: `${stats.reviewCount} reviews` },
-                    { value: `${stats.responseRate}%`, label: 'Response rate' },
+                    {
+                      value: stats.reviewCount > 0 ? `${stats.avgRating.toFixed(1)} ★` : '—',
+                      label: stats.reviewCount > 0 ? `${stats.reviewCount} reviews` : 'No reviews yet',
+                    },
+                    {
+                      value: stats.totalSales >= 5 ? `${stats.responseRate}%` : '—',
+                      label: stats.totalSales >= 5 ? 'Response rate' : 'New seller',
+                    },
                   ].map(({ value, label, highlight }) => (
                     <div key={label}>
                       <p
@@ -283,7 +306,7 @@ export default function SellerDashboardPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => setActiveTab('payouts')}
+                  onClick={() => handleTabChange('payouts')}
                   className="text-[12px] text-[#D4A843] font-semibold hover:underline shrink-0"
                 >
                   View payouts →
@@ -303,7 +326,7 @@ export default function SellerDashboardPage() {
                 key={tab.id}
                 role="tab"
                 aria-selected={activeTab === tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center gap-2 px-5 py-3.5 text-[13px] font-semibold
                   border-b-2 transition-all duration-150 whitespace-nowrap
                   ${

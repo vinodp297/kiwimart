@@ -97,8 +97,10 @@ export default async function ListingDetailPage({
     bio: listing.seller.bio,
     region: (listing.seller.region ?? listing.region) as NZRegion,
     suburb: listing.seller.suburb ?? listing.suburb,
-    rating: 4.5, // Sprint 5: compute from reviews aggregate
-    reviewCount: 0, // Sprint 5: compute
+    rating: listing.seller.reviews.length > 0
+      ? listing.seller.reviews.reduce((sum: number, r: { rating: number }) => sum + r.rating, 0) / listing.seller.reviews.length / 10
+      : 0,
+    reviewCount: listing.seller._count.reviews,
     verified: listing.seller.idVerified,
     memberSince: listing.seller.createdAt.toISOString(),
     activeListingCount: listing.seller._count.listings,
