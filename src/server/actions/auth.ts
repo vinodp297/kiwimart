@@ -288,6 +288,84 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
   return { success: true, data: undefined };
 }
 
+// ── resendVerificationEmail ──────────────────────────────────────────────────
+
+export async function resendVerificationEmail(): Promise<ActionResult<void>> {
+  const reqHeaders = await headers();
+  const ip = getClientIp(reqHeaders);
+
+  // Rate limit — 3 resend attempts per 15 min per IP
+  const limit = await rateLimit('auth', ip);
+  if (!limit.success) {
+    return {
+      success: false,
+      error: `Too many attempts. Try again in ${limit.retryAfter} seconds.`,
+    };
+  }
+
+  // We need a session — use auth() directly here since requireUser()
+  // may redirect unverified users in some configurations
+  const { auth } = await import('@/lib/auth');
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { success: false, error: 'Not logged in.' };
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      emailVerified: true,
+    },
+  });
+
+  if (!user) {
+    return { success: false, error: 'User not found.' };
+  }
+
+  if (user.emailVerified) {
+    return { success: false, error: 'Email is already verified.' };
+  }
+
+  // Generate new token (24-hour expiry)
+  const token = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  await db.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerifyToken: token,
+      emailVerifyExpires: expires,
+    },
+  });
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  const verifyUrl = `${appUrl}/api/verify-email?token=${token}`;
+
+  try {
+    const { sendVerificationEmail } = await import('@/server/email');
+    await sendVerificationEmail({
+      to: user.email,
+      displayName: user.displayName ?? 'there',
+      verifyUrl,
+    });
+  } catch {
+    logger.error('auth.resend_verification.failed', { email: user.email });
+    return { success: false, error: 'Failed to send email. Please try again.' };
+  }
+
+  audit({
+    userId: user.id,
+    action: 'USER_PASSWORD_CHANGED',
+    metadata: { step: 'verification_email_resent' },
+    ip,
+  });
+
+  return { success: true, data: undefined };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function generateUsername(firstName: string, lastName: string): string {
