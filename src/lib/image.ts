@@ -40,6 +40,34 @@ export function getImageUrl(
   return `${base.replace(/\/$/, '')}/${r2Key}`;
 }
 
+// ─── Default / tier avatars ───────────────────────────────────────────────────
+// Returns an SVG data-URI placeholder appropriate for a seller's tier.
+// Used when avatarKey is null so we show something branded, not a broken image.
+
+type SellerTierName = 'basic' | 'phone_verified' | 'id_verified';
+
+function makeSvgAvatar(bg: string, ring: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${bg}" rx="50"/><circle cx="50" cy="38" r="18" fill="${ring}" opacity="0.85"/><ellipse cx="50" cy="85" rx="30" ry="22" fill="${ring}" opacity="0.85"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+const DEFAULT_AVATARS: Record<SellerTierName, string> = {
+  basic:          makeSvgAvatar('#D1CEC7', '#ffffff'),
+  phone_verified: makeSvgAvatar('#3B82F6', '#ffffff'),
+  id_verified:    makeSvgAvatar('#D4A843', '#141414'),
+};
+const DEFAULT_AVATAR_BASIC = DEFAULT_AVATARS.basic;
+
+/**
+ * Return a branded SVG data-URI avatar for when the user has no photo.
+ * Pass the seller's tier to use a tier-coloured placeholder.
+ */
+export function getDefaultAvatar(
+  tier?: SellerTierName | null,
+): string {
+  return DEFAULT_AVATARS[tier ?? 'basic'] ?? DEFAULT_AVATAR_BASIC;
+}
+
 /**
  * Prefer thumbnailKey (480×480 webp) for card/grid contexts;
  * fall back to full r2Key.

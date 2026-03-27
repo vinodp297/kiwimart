@@ -15,6 +15,7 @@ import {
   Alert,
 } from '@/components/ui/primitives';
 import { formatPrice, relativeTime } from '@/lib/utils';
+import { getImageUrl, getDefaultAvatar } from '@/lib/image';
 import type { OrderStatus, Condition } from '@/types';
 import { fetchSellerDashboard } from '@/server/actions/dashboard';
 import type {
@@ -27,6 +28,12 @@ import type {
 import { markDispatched } from '@/server/actions/orders';
 import { replyToReview } from '@/server/actions/reviews';
 import { getStripeAccountStatus } from '@/server/actions/stripe';
+import { ImageCropModal } from '@/components/ui/ImageCropModal';
+import type { CropMode } from '@/components/ui/ImageCropModal';
+import {
+  requestProfileImageUpload,
+  confirmProfileImageUpload,
+} from '@/server/actions/profile-images';
 
 type Tab = 'overview' | 'listings' | 'orders' | 'payouts' | 'reviews';
 
@@ -50,6 +57,11 @@ export default function SellerDashboardPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null);
   const [reviews, setReviews] = useState<SellerReviewRow[]>([]);
+
+  // Profile image crop modal
+  const [cropFile, setCropFile]     = useState<File | null>(null);
+  const [cropMode, setCropMode]     = useState<CropMode>('avatar');
+  const [imgUploading, setImgUploading] = useState(false);
 
   // Sync tab from URL
   useEffect(() => {
@@ -95,6 +107,67 @@ export default function SellerDashboardPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  // ── Profile image upload ─────────────────────────────────────────────────────
+
+  function openImagePicker(mode: CropMode) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) {
+        setCropMode(mode);
+        setCropFile(file);
+      }
+    };
+    input.click();
+  }
+
+  async function handleCropAccept(blob: Blob) {
+    setCropFile(null);
+    setImgUploading(true);
+    try {
+      const uploadResult = await requestProfileImageUpload({
+        contentType: 'image/jpeg',
+        sizeBytes:   blob.size,
+        imageType:   cropMode,
+      });
+      if (!uploadResult.success) {
+        alert(uploadResult.error);
+        return;
+      }
+      // Upload the blob directly to R2
+      const putRes = await fetch(uploadResult.data.uploadUrl, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body:    blob,
+      });
+      if (!putRes.ok) {
+        alert('Upload failed. Please try again.');
+        return;
+      }
+      // Confirm + update DB
+      const confirmResult = await confirmProfileImageUpload({
+        r2Key:     uploadResult.data.r2Key,
+        imageType: cropMode,
+      });
+      if (!confirmResult.success) {
+        alert(confirmResult.error);
+        return;
+      }
+      // Optimistically update local state
+      if (cropMode === 'avatar') {
+        setUser((prev) => prev ? { ...prev, avatarKey: confirmResult.data.newKey } : null);
+      }
+    } catch {
+      alert('An unexpected error occurred.');
+    } finally {
+      setImgUploading(false);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   async function handleDeleteListing(id: string) {
     setActionLoading(id);
@@ -230,11 +303,39 @@ export default function SellerDashboardPage() {
             />
             <div className="relative flex flex-col sm:flex-row items-start
               sm:items-center gap-5">
-              <Avatar
-                name={user.displayName}
-                size="xl"
-                className="ring-4 ring-[#D4A843]/30"
-              />
+              {/* Hover-to-edit avatar */}
+              <div className="relative group shrink-0">
+                <Avatar
+                  name={user.displayName}
+                  src={user.avatarKey ? getImageUrl(user.avatarKey) : getDefaultAvatar(
+                    user.idVerified ? 'id_verified' : undefined
+                  )}
+                  size="xl"
+                  className="ring-4 ring-[#D4A843]/30"
+                />
+                <button
+                  onClick={() => openImagePicker('avatar')}
+                  disabled={imgUploading}
+                  className="absolute inset-0 rounded-full flex items-center justify-center
+                    bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity
+                    cursor-pointer disabled:cursor-wait"
+                  aria-label="Change profile photo"
+                  title="Change photo"
+                >
+                  {imgUploading ? (
+                    <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24"
+                      fill="none" stroke="white" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                      stroke="white" strokeWidth="2">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                      <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2.5 mb-0.5">
                   <h1
@@ -687,6 +788,16 @@ export default function SellerDashboardPage() {
         </div>
       </main>
       <Footer />
+
+      {/* Image crop modal — rendered outside the dashboard scroll context */}
+      {cropFile && (
+        <ImageCropModal
+          file={cropFile}
+          mode={cropMode}
+          onAccept={handleCropAccept}
+          onClose={() => setCropFile(null)}
+        />
+      )}
     </>
   );
 }
