@@ -86,6 +86,17 @@ export const proxy = auth(async function proxyHandler(
     );
   }
 
+  // ── No-store headers for protected pages ──────────────────────────────────
+  // Prevents the browser bfcache from restoring a signed-in page after
+  // sign-out. Must-revalidate + no-store forces the browser to always hit
+  // the server, where the (now-missing) session cookie will trigger a
+  // redirect to /login instead of showing a cached dashboard.
+  if (matchesProtected(pathname)) {
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+  }
+
   // ── Auth decision ─────────────────────────────────────────────────────────
   // request.auth is populated by auth() — works for JWT (credentials) and
   // database sessions (OAuth) transparently.
