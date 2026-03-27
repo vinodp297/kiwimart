@@ -9,7 +9,7 @@ import { paymentService } from '@/modules/payments/payment.service'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
 import { createNotification } from '@/modules/notifications/notification.service'
-import { sendDisputeOpenedEmail } from '@/server/email'
+import { sendDisputeOpenedEmail, sendOrderDispatchedEmail } from '@/server/email'
 import type { DispatchOrderInput, OpenDisputeInput } from './order.types'
 
 export class OrderService {
@@ -154,30 +154,21 @@ export class OrderService {
       },
     })
 
-    // Notify buyer via email queue
+    // Notify buyer directly — BullMQ worker does not run on Vercel serverless
     try {
-      const { emailQueue } = await import('@/lib/queue')
-      await emailQueue.add('orderDispatched', {
-        type: 'orderDispatched' as const,
-        payload: {
-          to: order.buyer.email,
-          buyerName: order.buyer.displayName,
-          listingTitle: order.listing.title,
-          trackingNumber: input.trackingNumber,
-          trackingUrl: input.trackingUrl,
-          orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer`,
-        },
-      }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } })
-    } catch {
-      const { sendOrderDispatchedEmail } = await import('@/server/email')
-      sendOrderDispatchedEmail({
+      await sendOrderDispatchedEmail({
         to: order.buyer.email,
         buyerName: order.buyer.displayName,
         listingTitle: order.listing.title,
         trackingNumber: input.trackingNumber,
         trackingUrl: input.trackingUrl,
         orderUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer`,
-      }).catch(() => {})
+      })
+    } catch (err) {
+      logger.warn('order.dispatch.email.failed', {
+        orderId: input.orderId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     audit({
@@ -263,24 +254,9 @@ export class OrderService {
       },
     })
 
-    // Notify seller via email queue (with direct fallback if queue unavailable)
+    // Notify seller directly — BullMQ worker does not run on Vercel serverless
     try {
-      const { emailQueue } = await import('@/lib/queue')
-      await emailQueue.add('disputeOpened', {
-        type: 'disputeOpened' as const,
-        payload: {
-          to:           order.seller.email,
-          sellerName:   order.seller.displayName,
-          buyerName:    order.buyer?.displayName ?? 'A buyer',
-          listingTitle: order.listing.title,
-          orderId:      input.orderId,
-          reason:       input.reason,
-          description:  input.description,
-        },
-      }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } })
-    } catch {
-      logger.warn('order.dispute.email_queue_failed', { orderId: input.orderId })
-      sendDisputeOpenedEmail({
+      await sendDisputeOpenedEmail({
         to:           order.seller.email,
         sellerName:   order.seller.displayName,
         buyerName:    order.buyer?.displayName ?? 'A buyer',
@@ -288,7 +264,12 @@ export class OrderService {
         orderId:      input.orderId,
         reason:       input.reason,
         description:  input.description,
-      }).catch(() => {})
+      })
+    } catch (err) {
+      logger.warn('order.dispute.email.failed', {
+        orderId: input.orderId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     audit({
