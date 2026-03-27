@@ -40,6 +40,8 @@ describe('WebhookService', () => {
   describe('processEvent', () => {
     it('processes payment_intent.succeeded', async () => {
       vi.mocked(db.stripeEvent.create).mockResolvedValue({} as never)
+      // State validation: order must be AWAITING_PAYMENT
+      vi.mocked(db.order.findUnique).mockResolvedValue({ status: 'AWAITING_PAYMENT' } as never)
       vi.mocked(db.$transaction).mockResolvedValue([] as never)
 
       await webhookService.processEvent({
@@ -55,6 +57,7 @@ describe('WebhookService', () => {
         },
       } as never)
 
+      expect(db.order.findUnique).toHaveBeenCalled()
       expect(db.$transaction).toHaveBeenCalled()
     })
 

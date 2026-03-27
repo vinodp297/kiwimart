@@ -62,7 +62,25 @@ export class WebhookService {
   private async handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> {
     const pi = event.data.object as Stripe.PaymentIntent
     const orderId = pi.metadata?.orderId
-    if (!orderId) return
+    const sellerId = pi.metadata?.sellerId
+    if (!orderId || !sellerId) return
+
+    // State validation: only transition from AWAITING_PAYMENT to PAYMENT_HELD.
+    // Prevents replayed webhooks from reverting completed/refunded orders.
+    const currentOrder = await db.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    })
+
+    if (currentOrder?.status !== 'AWAITING_PAYMENT') {
+      logger.warn('webhook.payment_intent_succeeded: unexpected order state', {
+        orderId,
+        currentStatus: currentOrder?.status ?? 'NOT_FOUND',
+        eventId: event.id,
+        stripePaymentIntentId: pi.id,
+      })
+      return // Return without error — Stripe should not retry this
+    }
 
     await db.$transaction([
       db.order.update({
@@ -73,7 +91,7 @@ export class WebhookService {
         where: { orderId },
         create: {
           orderId,
-          userId: pi.metadata!.sellerId,
+          userId: sellerId,
           amountNzd: Math.round(
             (pi.amount - (pi.application_fee_amount ?? 0)) * 1
           ),

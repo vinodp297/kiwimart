@@ -83,31 +83,38 @@ export class AdminService {
     })
     if (!report) throw AppError.notFound('Report')
 
-    await db.report.update({
-      where: { id: reportId },
-      data: {
-        status: 'RESOLVED',
-        resolvedAt: new Date(),
-        resolvedBy: adminUserId,
-      },
-    })
-
-    if (action === 'remove' && report.listingId) {
-      await db.listing.update({
-        where: { id: report.listingId },
-        data: { status: 'REMOVED' },
-      })
-    }
-
-    if (action === 'ban' && report.targetUserId) {
-      await db.user.update({
-        where: { id: report.targetUserId },
+    // Wrap all DB mutations in a transaction for atomicity
+    await db.$transaction(async (tx) => {
+      await tx.report.update({
+        where: { id: reportId },
         data: {
-          isBanned: true,
-          bannedAt: new Date(),
-          bannedReason: 'Banned following report review.',
+          status: 'RESOLVED',
+          resolvedAt: new Date(),
+          resolvedBy: adminUserId,
         },
       })
+
+      if (action === 'remove' && report.listingId) {
+        await tx.listing.update({
+          where: { id: report.listingId },
+          data: { status: 'REMOVED' },
+        })
+      }
+
+      if (action === 'ban' && report.targetUserId) {
+        await tx.user.update({
+          where: { id: report.targetUserId },
+          data: {
+            isBanned: true,
+            bannedAt: new Date(),
+            bannedReason: 'Banned following report review.',
+          },
+        })
+      }
+    })
+
+    // Delete sessions outside transaction — can't rollback session deletion anyway
+    if (action === 'ban' && report.targetUserId) {
       await db.session.deleteMany({ where: { userId: report.targetUserId } })
     }
 
@@ -145,18 +152,29 @@ export class AdminService {
     }
 
     if (favour === 'buyer') {
-      // STRIPE REFUND FIRST via PaymentService — then DB
-      await paymentService.refundPayment({
-        paymentIntentId: order.stripePaymentIntentId,
-        orderId,
-      })
-
+      // DB first (optimistic) — then Stripe refund.
+      // If Stripe fails, the order is already REFUNDED in DB so admin can retry Stripe.
       await db.order.update({
         where: { id: orderId },
         data: { status: 'REFUNDED', disputeResolvedAt: new Date() },
       })
+
+      try {
+        await paymentService.refundPayment({
+          paymentIntentId: order.stripePaymentIntentId,
+          orderId,
+        })
+      } catch (stripeError) {
+        // Log for manual intervention — DB already updated
+        logger.error('admin.dispute.refund_failed', {
+          orderId,
+          stripePaymentIntentId: order.stripePaymentIntentId,
+          error: stripeError instanceof Error ? stripeError.message : String(stripeError),
+        })
+        // Don't re-throw — admin sees REFUNDED status and can retry Stripe manually
+      }
     } else {
-      // STRIPE CAPTURE FIRST via PaymentService — then DB
+      // Seller wins — capture first, then atomically update DB
       await paymentService.capturePayment({
         paymentIntentId: order.stripePaymentIntentId,
         orderId,

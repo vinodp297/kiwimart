@@ -14,7 +14,7 @@ const envSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url(),
   DATABASE_URL: z.string().min(1),
   DATABASE_DIRECT_URL: z.string().min(1),
-  NEXTAUTH_SECRET: z.string().min(16),
+  NEXTAUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters. Generate with: openssl rand -base64 32'),
   NEXTAUTH_URL: z.string().url(),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().startsWith('pk_'),
   STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
@@ -60,6 +60,26 @@ function validateEnv(): Env {
       `\nCheck your .env.local file and Vercel environment settings.`
     )
   }
+
+  // ── Turnstile test key warning ───────────────────────────────────────────
+  // Cloudflare test keys (1x/2x prefix) auto-pass all challenges — zero bot
+  // protection. Warn loudly in production.
+  const turnstileSiteKey = result.data.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''
+  if (
+    result.data.NODE_ENV === 'production' &&
+    (!turnstileSiteKey ||
+     turnstileSiteKey.startsWith('1x') ||
+     turnstileSiteKey.startsWith('2x'))
+  ) {
+    // Use console.error directly — logger may not be initialised yet
+    console.error(
+      '\n🚨 SECURITY WARNING: Turnstile is using test keys in production!\n' +
+      '   Bot protection is DISABLED. Login/register forms are unprotected.\n' +
+      '   Get real keys at: https://dash.cloudflare.com/turnstile\n' +
+      '   Set NEXT_PUBLIC_TURNSTILE_SITE_KEY and CLOUDFLARE_TURNSTILE_SECRET_KEY\n'
+    )
+  }
+
   return result.data
 }
 

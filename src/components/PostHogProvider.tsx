@@ -54,7 +54,7 @@ function PostHogIdentifier() {
   return null;
 }
 
-export default function PostHogProvider({ children }: { children: React.ReactNode }) {
+export default function PostHogProvider({ children, nonce: _nonce }: { children: React.ReactNode; nonce?: string }) {
   // Not configured (missing key or placeholder) — render children without PostHog
   if (!isConfigured) {
     return <>{children}</>;

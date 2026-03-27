@@ -1,20 +1,31 @@
 // src/app/api/test-email/route.ts
 // ─── Email System Diagnostic Endpoint ────────────────────────────────────────
 // Returns configuration status and sends two test emails to Resend's safe test
-// addresses (delivered@resend.dev / bounced@resend.dev).  Safe to leave
-// deployed — never spams a real inbox.
+// addresses (delivered@resend.dev / bounced@resend.dev).
 //
-// Test 1 — raw Resend client: verifies the API key and transport layer.
-// Test 2 — sendPasswordResetEmail(): exercises the full template + transport
-//          stack used by the forgot-password flow.
+// SECURITY: Requires SUPER_ADMIN authentication. Exposes API key prefix
+// and email config for diagnostic purposes.
 
 import { NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import { requireAnyAdmin } from '@/shared/auth/requirePermission'
 import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client'
 import { sendPasswordResetEmail } from '@/server/email'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  // ── Auth guard — admin only ────────────────────────────────────────────────
+  try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    await requireAnyAdmin()
+  } catch {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const results: Record<string, unknown> = {}
 
   // ── Configuration checks ───────────────────────────────────────────────────
@@ -36,7 +47,6 @@ export async function GET() {
   }
 
   // ── Test 1: raw Resend client ──────────────────────────────────────────────
-  // Verifies the API key + transport layer at the lowest level.
   try {
     const { data, error } = await resend.emails.send({
       from: EMAIL_FROM,
@@ -52,8 +62,6 @@ export async function GET() {
   }
 
   // ── Test 2: sendPasswordResetEmail() template ──────────────────────────────
-  // Exercises the full path used by the forgot-password flow:
-  //   requestPasswordReset → sendPasswordResetEmail → sendTransactionalEmail → Resend
   try {
     await sendPasswordResetEmail({
       to: 'delivered@resend.dev',

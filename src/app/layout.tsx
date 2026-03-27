@@ -6,6 +6,7 @@
 //   • Canonical URL meta (Sprint 4: dynamic per-page)
 
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Playfair_Display, DM_Sans } from 'next/font/google';
 import SessionProvider from '@/components/SessionProvider';
 import PostHogProvider from '@/components/PostHogProvider';
@@ -61,7 +62,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const [session, headersList] = await Promise.all([auth(), headers()]);
+  const nonce = headersList.get('x-nonce') ?? '';
 
   return (
     <html lang="en-NZ" className={`${playfair.variable} ${dmSans.variable}`} data-scroll-behavior="smooth">
@@ -71,7 +73,7 @@ export default async function RootLayout({
       </head>
       <body className={`${dmSans.className} antialiased`} suppressHydrationWarning>
         <SessionProvider session={session}>
-          <PostHogProvider>
+          <PostHogProvider nonce={nonce}>
             <BfcacheGuard />
             {children}
           </PostHogProvider>

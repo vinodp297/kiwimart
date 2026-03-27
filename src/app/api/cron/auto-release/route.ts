@@ -6,18 +6,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processAutoReleases } from '@/server/jobs/autoReleaseEscrow';
 import { sendDeliveryReminders } from '@/server/jobs/buyerReminders';
+import { verifyCronSecret } from '@/server/lib/verifyCronSecret';
 import { logger } from '@/shared/logger';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  // Verify caller is Vercel Cron or our system
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
-  }
+  const authError = verifyCronSecret(request);
+  if (authError) return authError;
 
   try {
     await sendDeliveryReminders();
