@@ -192,21 +192,14 @@ export async function requestPasswordReset(
       },
     });
 
-    // 5e. Queue reset email (non-blocking via BullMQ)
+    // 5e. Send reset email directly — BullMQ worker does not run on Vercel serverless
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`;
     try {
-      const { emailQueue } = await import('@/lib/queue');
-      await emailQueue.add(
-        'passwordReset',
-        {
-          type: 'passwordReset' as const,
-          payload: { to: user.email, displayName: user.displayName, resetUrl, expiresInMinutes: 60 },
-        },
-        { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
-      );
-    } catch {
       const { sendPasswordResetEmail } = await import('@/server/email');
-      sendPasswordResetEmail({ to: user.email, displayName: user.displayName, resetUrl, expiresInMinutes: 60 }).catch(() => {});
+      await sendPasswordResetEmail({ to: user.email, displayName: user.displayName, resetUrl, expiresInMinutes: 60 });
+    } catch {
+      // Log but do not rethrow — always return success to prevent user enumeration
+      logger.warn('auth.password_reset.email.failed', { email: user.email });
     }
 
     // 6. Audit

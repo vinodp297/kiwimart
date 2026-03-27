@@ -87,17 +87,16 @@ export class AuthService {
       select: { id: true, email: true, displayName: true },
     })
 
-    // Queue welcome email
+    // Send welcome email directly — BullMQ worker does not run on Vercel serverless
     try {
-      const { emailQueue } = await import('@/lib/queue')
-      await emailQueue.add(
-        'welcome',
-        { type: 'welcome' as const, payload: { to: user.email, displayName: user.displayName } },
-        { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
-      )
-    } catch {
       const { sendWelcomeEmail } = await import('@/server/email')
-      sendWelcomeEmail({ to: user.email, displayName: user.displayName }).catch(() => {})
+      await sendWelcomeEmail({ to: user.email, displayName: user.displayName })
+    } catch (err) {
+      // Non-blocking — user is already registered; log for ops visibility
+      logger.warn('user.register.welcome_email.failed', {
+        userId: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     audit({
@@ -142,21 +141,18 @@ export class AuthService {
     })
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`
+    // Send password-reset email directly — BullMQ worker does not run on Vercel serverless
     try {
-      const { emailQueue } = await import('@/lib/queue')
-      await emailQueue.add(
-        'passwordReset',
-        {
-          type: 'passwordReset' as const,
-          payload: { to: user.email, displayName: user.displayName, resetUrl, expiresInMinutes: 60 },
-        },
-        { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
-      )
-    } catch {
       const { sendPasswordResetEmail } = await import('@/server/email')
-      sendPasswordResetEmail({
+      await sendPasswordResetEmail({
         to: user.email, displayName: user.displayName, resetUrl, expiresInMinutes: 60,
-      }).catch(() => {})
+      })
+    } catch (err) {
+      // Log but do not rethrow — caller always returns success to prevent user enumeration
+      logger.warn('user.password_reset.email.failed', {
+        userId: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     audit({

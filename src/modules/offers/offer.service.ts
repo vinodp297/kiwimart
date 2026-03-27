@@ -7,6 +7,7 @@ import { audit } from '@/server/lib/audit'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
 import { createNotification } from '@/modules/notifications/notification.service'
+import { sendOfferReceivedEmail, sendOfferResponseEmail } from '@/server/email'
 import type { CreateOfferInput, RespondOfferInput } from './offer.types'
 
 export class OfferService {
@@ -58,34 +59,25 @@ export class OfferService {
       select: { id: true },
     })
 
-    // Notify seller
+    // Notify seller directly — BullMQ worker does not run on Vercel serverless
     const buyer = await db.user.findUnique({
       where: { id: userId },
       select: { displayName: true },
     })
     try {
-      const { emailQueue } = await import('@/lib/queue')
-      await emailQueue.add('offerReceived', {
-        type: 'offerReceived' as const,
-        payload: {
-          to: listing.seller.email,
-          sellerName: listing.seller.displayName,
-          buyerName: buyer?.displayName ?? 'A buyer',
-          listingTitle: listing.title,
-          offerAmount: input.amount,
-          listingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/listings/${input.listingId}`,
-        },
-      }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } })
-    } catch {
-      const { sendOfferReceivedEmail } = await import('@/server/email')
-      sendOfferReceivedEmail({
+      await sendOfferReceivedEmail({
         to: listing.seller.email,
         sellerName: listing.seller.displayName,
         buyerName: buyer?.displayName ?? 'A buyer',
         listingTitle: listing.title,
         offerAmount: input.amount,
         listingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/listings/${input.listingId}`,
-      }).catch(() => {})
+      })
+    } catch (err) {
+      logger.warn('offer.create.email.failed', {
+        listingId: input.listingId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     audit({
@@ -161,28 +153,20 @@ export class OfferService {
       })
     }
 
-    // Notify buyer
+    // Notify buyer directly — BullMQ worker does not run on Vercel serverless
     try {
-      const { emailQueue } = await import('@/lib/queue')
-      await emailQueue.add('offerResponse', {
-        type: 'offerResponse' as const,
-        payload: {
-          to: offer.buyer.email,
-          buyerName: offer.buyer.displayName,
-          listingTitle: offer.listing.title,
-          accepted: input.action === 'ACCEPT',
-          listingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/listings/${offer.listingId}`,
-        },
-      }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } })
-    } catch {
-      const { sendOfferResponseEmail } = await import('@/server/email')
-      sendOfferResponseEmail({
+      await sendOfferResponseEmail({
         to: offer.buyer.email,
         buyerName: offer.buyer.displayName,
         listingTitle: offer.listing.title,
         accepted: input.action === 'ACCEPT',
         listingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/listings/${offer.listingId}`,
-      }).catch(() => {})
+      })
+    } catch (err) {
+      logger.warn('offer.respond.email.failed', {
+        offerId: input.offerId,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     audit({
