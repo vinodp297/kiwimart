@@ -38,6 +38,109 @@ function getCourierUrl(trackingNumber: string): string {
   return `https://www.nzpost.co.nz/tools/tracking?trackid=${encodeURIComponent(tn)}`;
 }
 
+// ── Format a date/time string for timeline display ───────────────────────────
+function fmtDate(iso: string | null): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString('en-NZ', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ── Status info messages (Fix 8) ─────────────────────────────────────────────
+function getStatusInfo(order: OrderDetailData): {
+  icon: React.ReactNode; title: string; message: string; colour: string;
+} | null {
+  const isBuyer = order.isBuyer;
+
+  switch (order.status) {
+    case 'awaiting_payment':
+      return {
+        icon: <CreditCardIcon />,
+        title: 'Awaiting payment',
+        message: 'Your payment is being processed. This usually takes a few seconds.',
+        colour: 'bg-amber-50 border-amber-200 text-amber-800',
+      };
+    case 'payment_held':
+      return isBuyer
+        ? {
+            icon: <ShieldIcon />,
+            title: 'Payment secured',
+            message: `Your payment of ${formatPrice(order.total)} is held safely. It will be released to the seller once you confirm delivery.`,
+            colour: 'bg-sky-50 border-sky-200 text-sky-800',
+          }
+        : {
+            icon: <PackageIcon />,
+            title: 'Payment received — time to ship!',
+            message: `The buyer has paid ${formatPrice(order.total)}. Please dispatch the item and add a tracking number.`,
+            colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+          };
+    case 'dispatched':
+      return isBuyer
+        ? {
+            icon: <TruckIcon />,
+            title: 'Item on its way',
+            message: 'The seller has dispatched your item. Please confirm delivery once it arrives.',
+            colour: 'bg-sky-50 border-sky-200 text-sky-800',
+          }
+        : {
+            icon: <TruckIcon />,
+            title: 'Item dispatched',
+            message: 'Waiting for the buyer to confirm delivery. Payment will be released once confirmed.',
+            colour: 'bg-sky-50 border-sky-200 text-sky-800',
+          };
+    case 'delivered':
+      return isBuyer
+        ? {
+            icon: <CheckCircleIcon />,
+            title: 'Item delivered',
+            message: 'Your item has been marked as delivered. Please confirm receipt to release payment.',
+            colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+          }
+        : {
+            icon: <CheckCircleIcon />,
+            title: 'Delivered',
+            message: 'The item has been delivered. Waiting for buyer confirmation to release your payment.',
+            colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+          };
+    case 'completed':
+      return {
+        icon: <CheckCircleIcon />,
+        title: 'Order complete',
+        message: isBuyer
+          ? 'This order is complete. Payment has been released to the seller.'
+          : `This order is complete. ${formatPrice(order.total)} has been released to your account.`,
+        colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+      };
+    case 'disputed':
+      return {
+        icon: <AlertTriangleIcon />,
+        title: 'Dispute in progress',
+        message: 'Our Trust & Safety team is reviewing this case. We aim to resolve disputes within 48 hours.',
+        colour: 'bg-red-50 border-red-200 text-red-800',
+      };
+    case 'refunded':
+      return {
+        icon: <RefundIcon />,
+        title: 'Refunded',
+        message: isBuyer
+          ? `A refund of ${formatPrice(order.total)} has been issued to your original payment method.`
+          : 'This order has been refunded to the buyer.',
+        colour: 'bg-violet-50 border-violet-200 text-violet-800',
+      };
+    case 'cancelled':
+      return {
+        icon: <XCircleIcon />,
+        title: 'Order cancelled',
+        message: order.cancelReason
+          ? `This order was cancelled. Reason: ${order.cancelReason}`
+          : 'This order has been cancelled.',
+        colour: 'bg-neutral-50 border-neutral-200 text-neutral-700',
+      };
+    default:
+      return null;
+  }
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = params.id as string;
@@ -172,29 +275,62 @@ export default function OrderDetailPage() {
 
   if (!order) return null;
 
-  const statusSteps: { label: string; done: boolean; active: boolean }[] = [
-    { label: 'Order placed', done: true, active: false },
+  // ── Timeline steps with dates (Fix 2 + Fix 3) ─────────────────────────────
+  const isDisputed = order.status === 'disputed';
+  const isCancelled = order.status === 'cancelled';
+
+  const statusSteps: { label: string; done: boolean; active: boolean; date: string | null; variant?: 'warning' | 'danger' }[] = [
+    {
+      label: 'Order placed',
+      done: true,
+      active: false,
+      date: fmtDate(order.createdAt),
+    },
     {
       label: 'Payment received',
-      done: ['payment_held', 'dispatched', 'delivered', 'completed'].includes(order.status),
+      done: ['payment_held', 'dispatched', 'delivered', 'completed'].includes(order.status) || isDisputed,
       active: order.status === 'payment_held',
+      date: fmtDate(order.createdAt), // payment happens at order creation
     },
     {
       label: 'Dispatched',
-      done: ['dispatched', 'delivered', 'completed'].includes(order.status),
+      done: ['dispatched', 'delivered', 'completed'].includes(order.status) || isDisputed,
       active: order.status === 'dispatched',
+      date: fmtDate(order.dispatchedAt),
     },
     {
       label: 'Delivered',
       done: ['delivered', 'completed'].includes(order.status),
       active: order.status === 'delivered',
+      date: fmtDate(order.deliveredAt),
     },
-    {
-      label: 'Completed',
-      done: order.status === 'completed',
-      active: order.status === 'completed',
-    },
+    // Show dispute milestone if disputed (Fix 3)
+    ...(isDisputed
+      ? [{
+          label: 'Disputed',
+          done: true,
+          active: true,
+          date: fmtDate(order.disputeOpenedAt),
+          variant: 'danger' as const,
+        }]
+      : isCancelled
+        ? [{
+            label: 'Cancelled',
+            done: true,
+            active: true,
+            date: fmtDate(order.cancelledAt),
+            variant: 'danger' as const,
+          }]
+        : [{
+            label: 'Completed',
+            done: order.status === 'completed',
+            active: order.status === 'completed',
+            date: fmtDate(order.completedAt),
+          }]
+    ),
   ];
+
+  const statusInfo = getStatusInfo(order);
 
   return (
     <>
@@ -253,55 +389,85 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
+          {/* ── Status info box (Fix 8) ───────────────────────────────────── */}
+          {statusInfo && (
+            <div className={`rounded-2xl border p-4 mb-6 flex items-start gap-3 ${statusInfo.colour}`}>
+              <div className="shrink-0 mt-0.5">{statusInfo.icon}</div>
+              <div>
+                <p className="text-[13.5px] font-semibold mb-0.5">{statusInfo.title}</p>
+                <p className="text-[12.5px] leading-relaxed opacity-80">{statusInfo.message}</p>
+              </div>
+            </div>
+          )}
+
           {/* Timeline */}
           <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6 mb-6">
             <h2 className="text-[13.5px] font-semibold text-[#141414] mb-5">
               Order timeline
             </h2>
-            {order.status === 'disputed' ? (
-              <Alert variant="error">
-                This order is under dispute. Our team will review and respond within 48 hours.
-                {order.disputeReason && (
-                  <span className="block mt-1 text-[12px]">
-                    Reason: {order.disputeReason.replace(/_/g, ' ').toLowerCase()}
-                  </span>
-                )}
-              </Alert>
-            ) : (
-              <div className="flex items-center justify-between relative">
-                {/* Line */}
-                <div className="absolute top-3 left-3 right-3 h-0.5 bg-[#E3E0D9]" />
-                <div
-                  className="absolute top-3 left-3 h-0.5 bg-[#D4A843] transition-all duration-500"
-                  style={{
-                    width: `${(statusSteps.filter((s) => s.done).length - 1) / (statusSteps.length - 1) * 100}%`,
-                  }}
-                />
+            <div className="flex items-start justify-between relative">
+              {/* Line */}
+              <div className="absolute top-3 left-3 right-3 h-0.5 bg-[#E3E0D9]" />
+              <div
+                className={`absolute top-3 left-3 h-0.5 transition-all duration-500 ${
+                  isDisputed || isCancelled ? 'bg-red-400' : 'bg-[#D4A843]'
+                }`}
+                style={{
+                  width: `${(statusSteps.filter((s) => s.done).length - 1) / (statusSteps.length - 1) * 100}%`,
+                }}
+              />
 
-                {statusSteps.map((step, i) => (
-                  <div key={step.label} className="relative flex flex-col items-center z-10" style={{ flex: 1 }}>
-                    <div
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
-                        ${step.done
-                          ? 'bg-[#D4A843] border-[#D4A843]'
-                          : step.active
-                          ? 'bg-white border-[#D4A843]'
-                          : 'bg-[#F8F7F4] border-[#E3E0D9]'
-                        }`}
-                    >
-                      {step.done && (
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
-                    </div>
-                    <span className={`text-[10.5px] mt-2 text-center whitespace-nowrap
-                      ${step.done || step.active ? 'text-[#141414] font-medium' : 'text-[#9E9A91]'}`}
-                    >
-                      {step.label}
-                    </span>
+              {statusSteps.map((step) => (
+                <div key={step.label} className="relative flex flex-col items-center z-10" style={{ flex: 1 }}>
+                  <div
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
+                      ${step.variant === 'danger'
+                        ? 'bg-red-500 border-red-500'
+                        : step.done
+                        ? 'bg-[#D4A843] border-[#D4A843]'
+                        : step.active
+                        ? 'bg-white border-[#D4A843]'
+                        : 'bg-[#F8F7F4] border-[#E3E0D9]'
+                      }`}
+                  >
+                    {step.variant === 'danger' && step.done ? (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    ) : step.done ? (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : null}
                   </div>
-                ))}
+                  <span className={`text-[10.5px] mt-2 text-center whitespace-nowrap
+                    ${step.variant === 'danger'
+                      ? 'text-red-600 font-semibold'
+                      : step.done || step.active ? 'text-[#141414] font-medium' : 'text-[#9E9A91]'
+                    }`}
+                  >
+                    {step.label}
+                  </span>
+                  {/* Date under each milestone (Fix 2) */}
+                  {step.date && step.done && (
+                    <span className="text-[9.5px] text-[#9E9A91] mt-0.5 text-center whitespace-nowrap">
+                      {step.date}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Dispute details if disputed (Fix 3) */}
+            {isDisputed && (
+              <div className="mt-5 p-3 rounded-xl bg-red-50 border border-red-200 text-[12.5px] text-red-800">
+                <p className="font-semibold mb-1">Dispute details</p>
+                {order.disputeReason && (
+                  <p>Reason: {order.disputeReason.replace(/_/g, ' ').toLowerCase()}</p>
+                )}
+                <p className="mt-1 text-[11.5px] opacity-75">
+                  Our Trust &amp; Safety team will review and respond within 48 hours.
+                </p>
               </div>
             )}
           </div>
@@ -357,6 +523,29 @@ export default function OrderDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Cancellation audit trail (Fix 9) */}
+          {isCancelled && (order.cancelReason || order.cancelledAt) && (
+            <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 mb-6">
+              <h3 className="text-[13px] font-semibold text-[#141414] mb-3 flex items-center gap-2">
+                <XCircleIcon />
+                Cancellation details
+              </h3>
+              <div className="space-y-1.5 text-[12.5px] text-[#73706A]">
+                {order.cancelledAt && (
+                  <p>Cancelled on: {new Date(order.cancelledAt).toLocaleDateString('en-NZ', {
+                    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                  })}</p>
+                )}
+                {order.cancelledBy && (
+                  <p>Cancelled by: {order.cancelledBy === 'BUYER' ? 'Buyer' : order.cancelledBy === 'SELLER' ? 'Seller' : 'System'}</p>
+                )}
+                {order.cancelReason && (
+                  <p>Reason: {order.cancelReason}</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3">
@@ -439,7 +628,7 @@ export default function OrderDetailPage() {
         </ModalOverlay>
       )}
 
-      {/* ── Confirm Delivery Modal ──────────────────────────────────── */}
+      {/* ── Confirm Delivery Modal (Fix 5 — enhanced) ──────────────── */}
       {showConfirm && (
         <ModalOverlay onClose={() => setShowConfirm(false)}>
           <div className="text-center">
@@ -453,23 +642,43 @@ export default function OrderDetailPage() {
             <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2">
               Confirm delivery
             </h2>
-            <p className="text-[13px] text-[#73706A] mb-6">
-              Confirming delivery releases payment to the seller.
-              Only confirm if you have received the item and are satisfied.
+            <p className="text-[13px] text-[#73706A] mb-2">
+              Confirming delivery will release <span className="font-semibold text-[#141414]">{formatPrice(order.total)}</span> to{' '}
+              <span className="font-semibold text-[#141414]">{order.otherPartyName}</span>.
             </p>
-            <div className="flex gap-3 justify-center">
-              <Button variant="gold" size="md" onClick={handleConfirmDelivery} loading={actionLoading}>
-                Yes, I received it
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 mb-4 text-left">
+              <p className="text-[12px] text-amber-800 font-semibold flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                This action cannot be undone
+              </p>
+              <p className="text-[11.5px] text-amber-700 mt-1">
+                Only confirm if you have received the item and are satisfied with it.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button variant="gold" fullWidth size="md" onClick={handleConfirmDelivery} loading={actionLoading}>
+                Yes, I received it — release {formatPrice(order.total)}
               </Button>
-              <Button variant="ghost" size="md" onClick={() => setShowConfirm(false)}>
+              <Button variant="ghost" fullWidth size="md" onClick={() => setShowConfirm(false)}>
                 Cancel
               </Button>
+              <button
+                type="button"
+                onClick={() => { setShowConfirm(false); setShowDispute(true); }}
+                className="text-[12px] text-red-500 hover:text-red-600 font-medium mt-1 transition-colors"
+              >
+                Something wrong? Open a dispute instead
+              </button>
             </div>
           </div>
         </ModalOverlay>
       )}
 
-      {/* ── Dispute Modal ───────────────────────────────────────────── */}
+      {/* ── Dispute Modal (Fix 4 — expanded categories) ───────────── */}
       {showDispute && (
         <ModalOverlay onClose={() => setShowDispute(false)}>
           <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
@@ -488,8 +697,12 @@ export default function OrderDetailPage() {
                 <option value="">Select a reason</option>
                 <option value="ITEM_NOT_RECEIVED">Item not received</option>
                 <option value="ITEM_NOT_AS_DESCRIBED">Item not as described</option>
-                <option value="ITEM_DAMAGED">Item damaged</option>
+                <option value="ITEM_DAMAGED">Item damaged in transit</option>
+                <option value="WRONG_ITEM_SENT">Wrong item sent</option>
+                <option value="COUNTERFEIT_ITEM">Suspected counterfeit</option>
                 <option value="SELLER_UNRESPONSIVE">Seller unresponsive</option>
+                <option value="SELLER_CANCELLED">Seller cancelled after payment</option>
+                <option value="REFUND_NOT_PROCESSED">Refund not processed</option>
                 <option value="OTHER">Other</option>
               </select>
             </div>
@@ -510,6 +723,33 @@ export default function OrderDetailPage() {
               <p className="text-[11px] text-[#9E9A91] mt-1">
                 {disputeDescription.length}/2000 characters
               </p>
+            </div>
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Photos <span className="text-[#9E9A91] font-normal">(optional, up to 3)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed
+                  border-[#C9C5BC] bg-[#FAFAF8] text-[12.5px] text-[#73706A] cursor-pointer
+                  hover:border-[#D4A843] hover:bg-[#F5ECD4]/20 transition-colors">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  Add photos
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={() => {
+                      // Photo upload will be connected in Sprint 4
+                    }}
+                  />
+                </label>
+                <span className="text-[11px] text-[#9E9A91]">JPG, PNG up to 5MB each</span>
+              </div>
             </div>
             <Alert variant="info">
               Our team will review your dispute within 48 hours. The seller will be
@@ -537,6 +777,10 @@ interface OrderDetailData {
   shippingPrice: number;
   total: number;
   createdAt: string;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  disputeOpenedAt: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
   disputeReason: string | null;
@@ -546,6 +790,9 @@ interface OrderDetailData {
   otherPartyName: string;
   otherPartyUsername: string;
   hasReview: boolean;
+  cancelledBy: string | null;
+  cancelReason: string | null;
+  cancelledAt: string | null;
 }
 
 // ── Modal wrapper ───────────────────────────────────────────────────────────
@@ -564,7 +811,7 @@ function ModalOverlay({
       aria-modal="true"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           aria-label="Close"
@@ -578,5 +825,64 @@ function ModalOverlay({
         {children}
       </div>
     </div>
+  );
+}
+
+// ── Status info icons ─────────────────────────────────────────────────────
+
+function CreditCardIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+    </svg>
+  );
+}
+function ShieldIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  );
+}
+function PackageIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+    </svg>
+  );
+}
+function TruckIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+    </svg>
+  );
+}
+function CheckCircleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+    </svg>
+  );
+}
+function AlertTriangleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  );
+}
+function RefundIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+    </svg>
+  );
+}
+function XCircleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+    </svg>
   );
 }
