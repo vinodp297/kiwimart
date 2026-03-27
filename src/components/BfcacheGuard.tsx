@@ -1,32 +1,60 @@
 'use client';
 // src/components/BfcacheGuard.tsx
 // ─── bfcache (back-forward cache) guard ───────────────────────────────────────
-// Browsers can restore a full in-memory snapshot of a page from bfcache when
-// the user presses Back.  This snapshot bypasses network requests entirely, so
-// it can show a signed-in dashboard to a user who already signed out.
+// Mounted in the ROOT layout so it covers every page — public and protected.
 //
-// The `pageshow` event fires with event.persisted === true when a page is
-// restored from bfcache.  We force a hard reload in that case so the server
-// can verify the session and redirect to /login if the cookie is gone.
+// Two defences:
 //
-// This component renders nothing — it only attaches the event listener.
-// It is mounted once in the (protected) layout, covering every protected page.
+// 1. pageshow listener — fires with event.persisted === true when the browser
+//    restores a page from bfcache (back/forward button).  We force a hard
+//    reload so the server re-validates the session cookie and either renders
+//    the page fresh or redirects to /login.
+//
+// 2. Session-null redirect — if Auth.js reports status:'unauthenticated'
+//    while the user is on a protected path (cookie expired, Redis blocklist
+//    hit, etc.) we send them to /login immediately without waiting for a
+//    server round-trip.
 
 import { useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+
+const PROTECTED_PREFIXES = [
+  '/dashboard',
+  '/account',
+  '/orders',
+  '/messages',
+  '/admin',
+  '/seller',
+  '/notifications',
+  '/reviews',
+  '/welcome',
+];
 
 export function BfcacheGuard() {
+  const { status } = useSession();
+
+  // ── Defence 1: bfcache reload ──────────────────────────────────────────────
   useEffect(() => {
     function handlePageShow(event: PageTransitionEvent) {
       if (event.persisted) {
-        // Page was restored from bfcache — force a live network fetch so
-        // the server can re-validate the session cookie.
         window.location.reload();
       }
     }
-
     window.addEventListener('pageshow', handlePageShow);
     return () => window.removeEventListener('pageshow', handlePageShow);
   }, []);
+
+  // ── Defence 2: session-null redirect ──────────────────────────────────────
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      const isProtected = PROTECTED_PREFIXES.some((p) =>
+        window.location.pathname.startsWith(p)
+      );
+      if (isProtected) {
+        window.location.href = '/login';
+      }
+    }
+  }, [status]);
 
   return null;
 }

@@ -9,6 +9,7 @@ import type { Metadata } from 'next';
 import { Playfair_Display, DM_Sans } from 'next/font/google';
 import SessionProvider from '@/components/SessionProvider';
 import PostHogProvider from '@/components/PostHogProvider';
+import { BfcacheGuard } from '@/components/BfcacheGuard';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { auth } from '@/lib/auth';
@@ -71,6 +72,7 @@ export default async function RootLayout({
       <body className={`${dmSans.className} antialiased`} suppressHydrationWarning>
         <SessionProvider session={session}>
           <PostHogProvider>
+            <BfcacheGuard />
             {children}
           </PostHogProvider>
         </SessionProvider>
