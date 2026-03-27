@@ -78,17 +78,25 @@ export class PaymentService {
         orderId: input.orderId,
         paymentIntentId: input.paymentIntentId,
       })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      // Handle already-captured gracefully
+    } catch (err: unknown) {
+      // Robust Stripe error detection via .code and .type properties
+      // (not fragile string matching on error messages)
+      const stripeErr = err as { code?: string; type?: string; message?: string }
+      const code = stripeErr?.code ?? ''
+      const type = stripeErr?.type ?? ''
+
       if (
-        msg.includes('already_captured') ||
-        msg.includes('amount_capturable') ||
-        msg.includes('already captured')
+        code === 'charge_already_captured' ||
+        code === 'payment_intent_unexpected_state' ||
+        (type === 'invalid_request_error' && code.includes('already'))
       ) {
-        logger.info('payment.capture.already_done', { orderId: input.orderId })
+        logger.info('payment.capture.already_done', {
+          orderId: input.orderId,
+          stripeCode: code,
+        })
         return
       }
+      const msg = err instanceof Error ? err.message : String(err)
       logger.error('payment.capture.failed', {
         orderId: input.orderId,
         paymentIntentId: input.paymentIntentId,

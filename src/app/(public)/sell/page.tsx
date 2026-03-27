@@ -68,18 +68,25 @@ export default function SellPage() {
   }>({ loading: true, stripeOnboarded: false, authenticated: false });
 
   useEffect(() => {
-    fetch('/api/seller/status')
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    fetch('/api/seller/status', { signal: controller.signal })
       .then((r) => r.json())
-      .then((data) =>
+      .then((data) => {
+        clearTimeout(timeoutId);
         setSellerStatus({
           loading: false,
           stripeOnboarded: data.stripeOnboarded,
           authenticated: data.authenticated,
-        })
-      )
-      .catch(() =>
-        setSellerStatus({ loading: false, stripeOnboarded: false, authenticated: false })
-      );
+        });
+      })
+      .catch(() => {
+        clearTimeout(timeoutId);
+        setSellerStatus({ loading: false, stripeOnboarded: false, authenticated: false });
+      });
+
+    return () => { clearTimeout(timeoutId); controller.abort(); };
   }, []);
 
   const [step, setStep] = useState(1);

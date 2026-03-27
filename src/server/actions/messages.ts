@@ -52,11 +52,14 @@ export async function getMyThreads() {
   }
 }
 
-export async function getThreadMessages(threadId: string) {
+export async function getThreadMessages(
+  threadId: string,
+  options?: { take?: number; cursor?: string }
+) {
   try {
     const user = await requireUser();
-    return await messageService.getThreadMessages(threadId, user.id);
+    return await messageService.getThreadMessages(threadId, user.id, options);
   } catch {
-    return [];
+    return { messages: [], hasMore: false };
   }
 }

@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache';
 import { requireUser } from '@/server/lib/requireUser';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
+import { logger } from '@/shared/logger';
 import { hashPassword, verifyPassword } from '@/server/lib/password';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
@@ -155,5 +156,94 @@ export async function updateProfile(
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: safeActionError(err) };
+  }
+}
+
+// ── deleteAccount — NZ Privacy Act 2020 compliance ──────────────────────────
+// Soft-deletes the user: anonymises PII while retaining order records
+// for the 7-year NZ tax requirement.
+
+export async function deleteAccount(): Promise<ActionResult<void>> {
+  try {
+    const user = await requireUser();
+
+    // Check for active orders — can't delete if money is in escrow
+    const activeOrders = await db.order.count({
+      where: {
+        OR: [
+          { buyerId: user.id },
+          { sellerId: user.id },
+        ],
+        status: {
+          in: ['AWAITING_PAYMENT', 'PAYMENT_HELD', 'DISPATCHED', 'DISPUTED'],
+        },
+      },
+    });
+
+    if (activeOrders > 0) {
+      return {
+        success: false,
+        error: `Cannot delete account with ${activeOrders} active order(s). Please resolve all active orders first.`,
+      };
+    }
+
+    // Soft delete — anonymise personal data
+    await db.$transaction(async (tx) => {
+      const anonymisedEmail = `deleted-${user.id}@kiwimart-deleted.invalid`;
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          email: anonymisedEmail,
+          displayName: 'Deleted User',
+          username: `deleted-${user.id.slice(0, 8)}`,
+          bio: null,
+          avatarKey: null,
+          coverImageKey: null,
+          phone: null,
+          deletedAt: new Date(),
+          emailVerified: null,
+          passwordHash: null,
+        },
+      });
+
+      // Delete sessions
+      await tx.session.deleteMany({
+        where: { userId: user.id },
+      });
+
+      // Withdraw pending offers
+      await tx.offer.updateMany({
+        where: {
+          buyerId: user.id,
+          status: 'PENDING',
+        },
+        data: { status: 'WITHDRAWN' },
+      });
+
+      // Remove from watchlists
+      await tx.watchlistItem.deleteMany({
+        where: { userId: user.id },
+      });
+    });
+
+    audit({
+      userId: user.id,
+      action: 'ADMIN_ACTION',
+      entityType: 'User',
+      entityId: user.id,
+      metadata: { type: 'account_deleted', anonymised: true },
+    });
+
+    logger.info('account.deleted', { userId: user.id });
+    return { success: true, data: undefined };
+  } catch (err) {
+    logger.error('account.delete.failed', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      success: false,
+      error: 'Failed to delete account. Please contact support@kiwimart.co.nz',
+    };
   }
 }

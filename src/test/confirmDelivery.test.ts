@@ -85,7 +85,12 @@ describe('confirmDelivery — happy path', () => {
 
   it('succeeds even if Stripe says already captured', async () => {
     vi.mocked(db.order.findUnique).mockResolvedValue(makeOrder() as never)
-    mockStripeCapture.mockRejectedValueOnce(new Error('PaymentIntent already_captured'))
+    mockStripeCapture.mockRejectedValueOnce(
+      Object.assign(new Error('PaymentIntent already_captured'), {
+        code: 'charge_already_captured',
+        type: 'invalid_request_error',
+      })
+    )
 
     const result = await confirmDelivery('order_1')
 

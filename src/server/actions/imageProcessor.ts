@@ -36,7 +36,15 @@ export interface ProcessImageResult {
 
 export async function processImage(params: ProcessImageParams): Promise<ProcessImageResult> {
   const { imageId, r2Key, userId } = params;
-  
+
+  // Verify image ownership — the image record must belong to the claimed user
+  const imageRecord = await db.listingImage.findUnique({
+    where: { id: imageId },
+    select: { listing: { select: { sellerId: true } } },
+  });
+  if (!imageRecord?.listing || imageRecord.listing.sellerId !== userId) {
+    throw new Error(`Image ${imageId} does not belong to user ${userId}`);
+  }
 
   // 1. Download original from R2
   const getCmd = new GetObjectCommand({

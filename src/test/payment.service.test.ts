@@ -105,7 +105,12 @@ describe('PaymentService', () => {
     })
 
     it('handles already_captured gracefully', async () => {
-      mockStripeCapture.mockRejectedValueOnce(new Error('already_captured'))
+      // Stripe errors have .code and .type properties
+      const stripeErr = Object.assign(new Error('already_captured'), {
+        code: 'charge_already_captured',
+        type: 'invalid_request_error',
+      })
+      mockStripeCapture.mockRejectedValueOnce(stripeErr)
 
       await expect(
         paymentService.capturePayment({
@@ -116,7 +121,11 @@ describe('PaymentService', () => {
     })
 
     it('handles amount_capturable gracefully', async () => {
-      mockStripeCapture.mockRejectedValueOnce(new Error('amount_capturable is zero'))
+      const stripeErr = Object.assign(new Error('amount_capturable is zero'), {
+        code: 'payment_intent_unexpected_state',
+        type: 'invalid_request_error',
+      })
+      mockStripeCapture.mockRejectedValueOnce(stripeErr)
 
       await expect(
         paymentService.capturePayment({

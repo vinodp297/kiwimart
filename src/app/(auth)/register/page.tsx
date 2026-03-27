@@ -30,7 +30,9 @@ export default function RegisterPage() {
   useEffect(() => {
     if (status === 'loading') return;
     if (session) {
-      signOut({ redirect: false }).then(() => setSessionCleared(true));
+      signOut({ redirect: false })
+        .then(() => setSessionCleared(true))
+        .catch(() => setSessionCleared(true)); // Continue anyway if signOut fails
     } else {
       setSessionCleared(true);
     }

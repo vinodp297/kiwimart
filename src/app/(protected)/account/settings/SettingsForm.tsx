@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { updateProfile } from '@/server/actions/account';
+import { updateProfile, deleteAccount } from '@/server/actions/account';
 
 const NZ_REGIONS = [
   'Auckland', 'Wellington', 'Canterbury', 'Waikato', 'Bay of Plenty',
@@ -33,7 +34,11 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
   const [saveError, setSaveError] = useState('');
   const [isPending, startTransition] = useTransition();
 
+  const router = useRouter();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [isDeleting, startDeleteTransition] = useTransition();
 
   const inputClass =
     'w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] text-[14px] ' +
@@ -358,12 +363,12 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
         </div>
       </div>
 
-      {/* ── Delete account warning modal ──────────────────────────────── */}
+      {/* ── Delete account confirmation modal ───────────────────────── */}
       {showDeleteModal && (
         <div
           className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm
             flex items-center justify-center p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowDeleteModal(false); }}
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteError(''); } }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
             <div
@@ -380,31 +385,54 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
               font-semibold text-[#141414] mb-2">
               Delete your account?
             </h2>
-            <p className="text-[13.5px] text-[#73706A] leading-relaxed mb-6">
-              This action cannot be undone. All your listings, orders, and data will be
-              permanently removed. Please contact{' '}
-              <a href="mailto:support@kiwimart.co.nz" className="text-[#D4A843] font-semibold">
-                support@kiwimart.co.nz
-              </a>{' '}
-              to request account deletion.
+            <p className="text-[13.5px] text-[#73706A] leading-relaxed mb-4">
+              This action <strong>cannot be undone</strong>. Your personal data will
+              be anonymised and your listings will be removed. Order history is
+              retained for tax compliance.
             </p>
+            <p className="text-[13px] text-[#141414] font-medium mb-2">
+              Type <span className="font-mono font-bold text-red-600">DELETE</span> to confirm:
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="Type DELETE"
+              className={`${inputClass} mb-4`}
+              autoComplete="off"
+            />
+            {deleteError && (
+              <p className="text-[13px] text-red-600 mb-4">{deleteError}</p>
+            )}
             <div className="flex gap-3">
               <button
-                onClick={() => setShowDeleteModal(false)}
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteError(''); }}
                 className="flex-1 h-11 rounded-xl border border-[#E3E0D9]
                   text-[13.5px] font-semibold text-[#141414]
                   hover:bg-[#F8F7F4] transition-colors"
               >
                 Cancel
               </button>
-              <a
-                href="mailto:support@kiwimart.co.nz?subject=Account deletion request"
+              <button
+                disabled={deleteConfirmText !== 'DELETE' || isDeleting}
+                onClick={() => {
+                  setDeleteError('');
+                  startDeleteTransition(async () => {
+                    const result = await deleteAccount();
+                    if (result.success) {
+                      router.push('/login?deleted=true');
+                    } else {
+                      setDeleteError(result.error ?? 'Deletion failed.');
+                    }
+                  });
+                }}
                 className="flex-1 h-11 rounded-xl bg-red-500 text-white
                   text-[13.5px] font-semibold flex items-center justify-center
-                  hover:bg-red-600 transition-colors"
+                  hover:bg-red-600 transition-colors
+                  disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Contact support
-              </a>
+                {isDeleting ? 'Deleting...' : 'Delete my account'}
+              </button>
             </div>
           </div>
         </div>

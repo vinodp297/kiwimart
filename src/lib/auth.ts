@@ -164,18 +164,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // 3. Assign a jti if the token doesn't have one yet (first issue).
     // 4. On initial sign-in: embed session version + custom DB fields.
     async jwt({ token, user, trigger }) {
-      // ── Blocklist check (every request) ──────────────────────────────────────
+      // ── Blocklist + session version checks (every request) ─────────────────
+      // For admin tokens, fail CLOSED if Redis is unavailable — a Redis outage
+      // must NOT grant admin access with a stolen/revoked JWT.
+      const isAdminToken = !!(token?.isAdmin);
+
       if (token?.jti) {
-        const blocked = await isTokenBlocked(token.jti as string);
+        const blocked = await isTokenBlocked(
+          token.jti as string,
+          { failClosed: isAdminToken }
+        );
         if (blocked) return null; // invalidate session
       }
 
-      // ── Session version check (every request) ────────────────────────────────
       // If the server's version for this user is higher than the one baked into
       // the token, the user signed out (or was force-logged-out) after this
       // token was issued → reject it.
       if (token.sub && typeof token.sessionVersion === 'number') {
-        const currentVersion = await getSessionVersion(token.sub);
+        const currentVersion = await getSessionVersion(
+          token.sub,
+          { failClosed: isAdminToken }
+        );
         if (currentVersion > token.sessionVersion) {
           logger.info('jwt.session_version_mismatch', {
             userId: token.sub,

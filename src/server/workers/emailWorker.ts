@@ -3,7 +3,7 @@
 // Processes emailQueue jobs with 3 retries and exponential backoff.
 // Job types: welcome, passwordReset, offerReceived, offerResponse,
 //            orderDispatched, orderComplete
-// All jobs are idempotent — Postmark deduplicates by MessageID.
+// All jobs are idempotent — Resend deduplicates by MessageID.
 
 import { Worker } from 'bullmq';
 import { getRedisConnection } from '@/lib/queue';
@@ -69,7 +69,7 @@ export function startEmailWorker() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       connection: getRedisConnection() as any,
       concurrency: 5,
-      limiter: { max: 10, duration: 1000 }, // Max 10 emails/sec (Postmark limit)
+      limiter: { max: 10, duration: 1000 }, // Max 10 emails/sec (Resend limit)
     }
   );
 
