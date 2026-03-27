@@ -19,6 +19,7 @@ declare module 'next-auth/jwt' {
     avatarUrl?: string | null;
     emailVerified?: string | null;
     idVerified?: boolean;
+    sessionVersion?: number;
   }
 }
 

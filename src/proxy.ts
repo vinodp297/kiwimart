@@ -16,6 +16,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logger } from '@/shared/logger';
+import { getSessionVersion } from '@/server/lib/sessionStore';
 
 // Paths that require a session. Matched with exact-segment logic so that
 // /sell blocks /sell and /sell/* but NOT /sellers/* (public seller profiles).
@@ -98,14 +99,52 @@ export const proxy = auth(async function proxyHandler(
   }
 
   // ── Auth decision ─────────────────────────────────────────────────────────
-  // request.auth is populated by auth() — works for JWT (credentials) and
-  // database sessions (OAuth) transparently.
+  // request.auth is populated by auth() which runs the jwt() callback.
+  // The jwt() callback already checks session version and jti blocklist —
+  // if either fails it returns null, making request.auth null here.
+  //
+  // Defence-in-depth: for protected routes we also do a direct Redis
+  // session-version check so that even if auth() somehow passes a stale
+  // session through, the proxy will still catch it.
   const sessionUser = request.auth?.user ?? null;
-  const isAuthenticated = !!(sessionUser?.id) && !(sessionUser?.isBanned);
+  let isAuthenticated = !!(sessionUser?.id) && !(sessionUser?.isBanned);
 
   const isProtected = matchesProtected(pathname);
   const isAuthPath = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
   const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
+
+  // ── Proxy-level session version check (defence-in-depth) ────────────────
+  // If the user appears authenticated on a protected route, verify the
+  // session version stored in the cookie hasn't been superseded by a
+  // sign-out.  This catches bfcache-restored pages where Chrome replayed
+  // the original cookie before Auth.js had a chance to clear it.
+  if (isProtected && isAuthenticated && sessionUser?.id) {
+    try {
+      const { getToken } = await import('next-auth/jwt');
+      const jwtToken = await getToken({ req: request, secret: process.env.AUTH_SECRET });
+      if (jwtToken && typeof jwtToken.sessionVersion === 'number') {
+        const currentVersion = await getSessionVersion(jwtToken.sub as string);
+        if (currentVersion > jwtToken.sessionVersion) {
+          logger.info('proxy.session_version_stale', {
+            userId: jwtToken.sub,
+            tokenVersion: jwtToken.sessionVersion,
+            currentVersion,
+            path: pathname,
+          });
+          isAuthenticated = false;
+          // Clear the stale cookie so the browser doesn't keep sending it
+          const loginUrl = new URL('/login', request.url);
+          loginUrl.searchParams.set('from', pathname);
+          const redirectResponse = NextResponse.redirect(loginUrl);
+          redirectResponse.cookies.delete('__Secure-authjs.session-token');
+          redirectResponse.cookies.delete('authjs.session-token');
+          return redirectResponse;
+        }
+      }
+    } catch {
+      // Redis/getToken failure — fail open, let the normal auth flow handle it
+    }
+  }
 
   const sellerEnabled = sessionUser?.sellerEnabled ?? false;
   const isAdmin = sessionUser?.isAdmin ?? false;

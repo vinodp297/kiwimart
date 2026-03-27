@@ -21,6 +21,8 @@ import { verifyPassword, needsRehash, hashPassword } from '@/server/lib/password
 import { audit } from '@/server/lib/audit';
 import { loginSchema } from '@/server/validators';
 import { blockToken, isTokenBlocked } from '@/server/lib/jwtBlocklist';
+import { getSessionVersion, invalidateAllSessions } from '@/server/lib/sessionStore';
+import { logger } from '@/shared/logger';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -148,15 +150,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
-    // JWT callback: fires on every request for credentials-based sessions.
-    // 1. Check Redis blocklist — if the jti was revoked (signed out), reject immediately.
-    // 2. Assign a jti if the token doesn't have one yet (first issue).
-    // 3. Embed custom DB fields on initial sign-in.
-    async jwt({ token, user }) {
+    // JWT callback: fires on every request for JWT-based sessions.
+    // 1. Check jti blocklist — reject individually-revoked tokens.
+    // 2. Check session version — reject tokens issued before the last sign-out.
+    // 3. Assign a jti if the token doesn't have one yet (first issue).
+    // 4. On initial sign-in: embed session version + custom DB fields.
+    async jwt({ token, user, trigger }) {
       // ── Blocklist check (every request) ──────────────────────────────────────
       if (token?.jti) {
         const blocked = await isTokenBlocked(token.jti as string);
         if (blocked) return null; // invalidate session
+      }
+
+      // ── Session version check (every request) ────────────────────────────────
+      // If the server's version for this user is higher than the one baked into
+      // the token, the user signed out (or was force-logged-out) after this
+      // token was issued → reject it.
+      if (token.sub && typeof token.sessionVersion === 'number') {
+        const currentVersion = await getSessionVersion(token.sub);
+        if (currentVersion > token.sessionVersion) {
+          logger.info('jwt.session_version_mismatch', {
+            userId: token.sub,
+            tokenVersion: token.sessionVersion,
+            currentVersion,
+          });
+          return null; // invalidate session
+        }
       }
 
       // ── Ensure unique jti ─────────────────────────────────────────────────────
@@ -164,8 +183,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.jti = crypto.randomUUID();
       }
 
-      // ── Initial sign-in: embed custom DB fields ───────────────────────────────
+      // ── Initial sign-in: embed session version + custom DB fields ─────────────
       if (user?.id) {
+        // Stamp the current session version into the token so we can detect
+        // subsequent sign-outs via the version-mismatch check above.
+        token.sessionVersion = await getSessionVersion(user.id);
+
         const dbUser = await db.user.findUnique({
           where: { id: user.id },
           select: {
@@ -263,7 +286,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   events: {
-    // Audit logout and revoke the JWT in Redis so stolen tokens are useless.
+    // Audit logout, bump session version (invalidates ALL sessions for the
+    // user across every device/tab), and blocklist this specific JWT.
     // JWT strategy:      receives { token }
     // Database strategy: receives { session }
     async signOut(params) {
@@ -275,9 +299,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           : null;
       if (userId) {
         audit({ userId, action: 'USER_LOGOUT' });
+        // Increment session version — every existing JWT for this user
+        // (including bfcache-restored ones) becomes invalid on the next
+        // jwt() callback check.
+        await invalidateAllSessions(userId);
       }
 
-      // Blocklist the JWT so it can't be replayed if it was stolen
+      // Also blocklist this specific token as defence-in-depth
       if ('token' in params && params.token) {
         const t = params.token as { jti?: string; exp?: number };
         if (t.jti && t.exp) {
