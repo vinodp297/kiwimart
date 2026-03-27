@@ -18,7 +18,7 @@
 //   • Only processed+safe images are accepted in createListing
 //   • Max 8MB file size, min 200×200 dimensions, max 10 images per listing
 
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/server/lib/requireUser';
 import db from '@/lib/db';
 import { rateLimit } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
@@ -54,11 +54,8 @@ export async function requestImageUpload(params: {
   sizeBytes: number;
   listingId?: string;
 }): Promise<ActionResult<PresignedUploadResult>> {
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
-  }
+  try {
+  const user = await requireUser();
 
   // 2. Validate MIME type
   if (!ALLOWED_MIME_TYPES.includes(params.contentType)) {
@@ -92,7 +89,7 @@ export async function requestImageUpload(params: {
     const pendingCount = await db.listingImage.count({
       where: {
         listingId: 'pending',
-        r2Key: { startsWith: `listings/${session.user.id}/` },
+        r2Key: { startsWith: `listings/${user.id}/` },
       },
     });
     if (pendingCount >= MAX_IMAGES_PER_LISTING) {
@@ -104,7 +101,7 @@ export async function requestImageUpload(params: {
   }
 
   // 5. Rate limit — reuse listing limiter (same user)
-  const limit = await rateLimit('listing', session.user.id);
+  const limit = await rateLimit('listing', user.id);
   if (!limit.success) {
     return { success: false, error: 'Too many uploads. Please wait a moment.' };
   }
@@ -113,7 +110,7 @@ export async function requestImageUpload(params: {
   // Format: listings/{userId}/{uuid}.{ext}
   const ext = params.contentType.split('/')[1].replace('jpeg', 'jpg');
   const uuid = crypto.randomUUID();
-  const r2Key = `listings/${session.user.id}/${uuid}.${ext}`;
+  const r2Key = `listings/${user.id}/${uuid}.${ext}`;
 
   // 7. Create a DB record (status: pending/not-scanned)
   const image = await db.listingImage.create({
@@ -134,7 +131,7 @@ export async function requestImageUpload(params: {
     Key: r2Key,
     ContentType: params.contentType,
     ContentLength: params.sizeBytes,
-    Metadata: { userId: session.user.id, imageId: image.id },
+    Metadata: { userId: user.id, imageId: image.id },
   });
   const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 }); // 5 min
 
@@ -142,6 +139,9 @@ export async function requestImageUpload(params: {
     success: true,
     data: { uploadUrl, r2Key, imageId: image.id },
   };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+  }
 }
 
 // ── confirmImageUpload — triggers image processing pipeline ─────────────────
@@ -150,14 +150,11 @@ export async function confirmImageUpload(params: {
   imageId: string;
   r2Key: string;
 }): Promise<ActionResult<ProcessedImageResult>> {
-  // 1. Authenticate
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
-  }
+  try {
+  const user = await requireUser();
 
   // 2. Verify image belongs to this user (key is scoped to userId)
-  if (!params.r2Key.startsWith(`listings/${session.user.id}/`)) {
+  if (!params.r2Key.startsWith(`listings/${user.id}/`)) {
     return { success: false, error: 'Unauthorised image access.' };
   }
 
@@ -169,7 +166,7 @@ export async function confirmImageUpload(params: {
       {
         imageId: params.imageId,
         r2Key: params.r2Key,
-        userId: session.user.id,
+        userId: user.id,
       },
       {
         attempts: 3,
@@ -191,7 +188,7 @@ export async function confirmImageUpload(params: {
     const result = await processImage({
       imageId: params.imageId,
       r2Key: params.r2Key,
-      userId: session.user.id,
+      userId: user.id,
     });
 
     return {
@@ -223,6 +220,9 @@ export async function confirmImageUpload(params: {
 
     // Real processing error (e.g. image too small, virus detected)
     return { success: false, error: msg };
+  }
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
   }
 }
 

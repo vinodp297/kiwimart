@@ -4,7 +4,7 @@
 // Secure data-fetching for buyer and seller dashboards.
 // All queries are scoped to the authenticated user's ID.
 
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/server/lib/requireUser';
 import db from '@/lib/db';
 import type { ActionResult } from '@/types';
 
@@ -119,14 +119,11 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
   watchlist: WatchlistRow[];
   threads: ThreadRow[];
 }>> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
-  }
+  try {
+    const authedUser = await requireUser();
+    const userId = authedUser.id;
 
-  const userId = session.user.id;
-
-  const [dbUser, orders, watchlist, threads] = await Promise.all([
+    const [dbUser, orders, watchlist, threads] = await Promise.all([
     // User profile
     db.user.findUnique({
       where: { id: userId },
@@ -318,6 +315,9 @@ export async function fetchBuyerDashboard(): Promise<ActionResult<{
       threads: mappedThreads,
     },
   };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+  }
 }
 
 // ── Seller Dashboard Stats ───────────────────────────────────────────────────
@@ -387,14 +387,11 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
   orders: SellerOrderRow[];
   payouts: SellerPayoutRow[];
 }>> {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { success: false, error: 'Authentication required.' };
-  }
+  try {
+    const authedUser = await requireUser();
+    const userId = authedUser.id;
 
-  const userId = session.user.id;
-
-  const [dbUser, completedOrders, activeListingCount, pendingOrderCount, reviewAgg, pendingPayoutAgg, listings, sellerOrders, payouts] = await Promise.all([
+    const [dbUser, completedOrders, activeListingCount, pendingOrderCount, reviewAgg, pendingPayoutAgg, listings, sellerOrders, payouts] = await Promise.all([
     db.user.findUnique({
       where: { id: userId },
       select: {
@@ -559,4 +556,7 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
       payouts: mappedPayouts,
     },
   };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+  }
 }

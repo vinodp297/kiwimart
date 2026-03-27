@@ -2,7 +2,7 @@
 // src/server/actions/sellerReviews.ts — thin wrapper
 // Business logic delegated to ReviewService.
 
-import { auth } from '@/lib/auth';
+import { requireUser } from '@/server/lib/requireUser';
 import { reviewService } from '@/modules/reviews/review.service';
 import type { ActionResult } from '@/types';
 
@@ -17,9 +17,11 @@ interface SellerReviewRow {
 }
 
 export async function fetchSellerReviews(): Promise<ActionResult<SellerReviewRow[]>> {
-  const session = await auth();
-  if (!session?.user?.id) return { success: false, error: 'Authentication required.' };
-
-  const data = await reviewService.fetchSellerReviews(session.user.id);
-  return { success: true, data };
+  try {
+    const user = await requireUser();
+    const data = await reviewService.fetchSellerReviews(user.id);
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+  }
 }
