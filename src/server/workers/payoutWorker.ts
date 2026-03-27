@@ -10,7 +10,6 @@
 
 import { Worker } from 'bullmq';
 import { getRedisConnection } from '@/lib/queue';
-import { emailQueue } from '@/lib/queue';
 import type { PayoutJobData } from '@/lib/queue';
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
@@ -68,19 +67,14 @@ export function startPayoutWorker() {
       });
 
       if (seller) {
-        await emailQueue.add(
-          'payout-notification',
-          {
-            type: 'orderComplete' as const,
-            payload: {
-              to: seller.email,
-              sellerName: seller.displayName,
-              orderId,
-              amount: amountNzd / 100,
-            },
-          },
-          { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
-        );
+        // Payout-notification email template not yet built — log the intent so
+        // ops can see it in Vercel / worker logs until the template is ready.
+        logger.info('payout.worker.email.stub', {
+          to: seller.email,
+          sellerName: seller.displayName,
+          orderId,
+          amount: amountNzd / 100,
+        });
       }
 
       // 4. Audit
