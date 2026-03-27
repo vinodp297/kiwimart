@@ -476,10 +476,10 @@ export async function fetchSellerDashboard(): Promise<ActionResult<{
     totalRevenue: (completedOrders._sum.totalNzd ?? 0) / 100,
     activeListings: activeListingCount,
     pendingOrders: pendingOrderCount,
-    avgRating: avgRating || 4.5,
+    avgRating,
     reviewCount: reviewAgg._count,
     pendingPayout: (pendingPayoutAgg._sum.amountNzd ?? 0) / 100,
-    responseRate: 95,
+    responseRate: 0,
   };
 
   const mappedListings: SellerListingRow[] = listings.map((l) => ({

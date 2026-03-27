@@ -127,13 +127,13 @@ export default async function SellerProfilePage({
     bio: user.bio,
     region: (user.region ?? 'Auckland') as NZRegion,
     suburb: user.suburb ?? '',
-    rating: avgRating || 4.5,
+    rating: avgRating,
     reviewCount: user._count.reviews,
     verified: user.idVerified,
     memberSince: user.createdAt.toISOString(),
     activeListingCount: user._count.listings,
     soldCount: user._count.sellerOrders,
-    responseTimeLabel: 'Usually replies within 1 hour',
+    responseTimeLabel: user._count.sellerOrders >= 5 ? 'Usually replies within 1 hour' : null,
     badges: (user.idVerified ? ['verified_id'] : []) as SellerBadge[],
   };
 
@@ -253,8 +253,12 @@ export default async function SellerProfilePage({
                   {[
                     { value: seller.soldCount.toLocaleString('en-NZ'), label: 'Items sold' },
                     { value: seller.activeListingCount.toString(), label: 'Active listings' },
-                    { value: `${seller.rating.toFixed(1)} ★`, label: `${seller.reviewCount} reviews` },
-                    { value: seller.responseTimeLabel.replace('Usually replies ', ''), label: 'Response time' },
+                    seller.reviewCount > 0
+                      ? { value: `${seller.rating.toFixed(1)} ★`, label: `${seller.reviewCount} reviews` }
+                      : { value: '—', label: 'No reviews yet' },
+                    seller.responseTimeLabel
+                      ? { value: seller.responseTimeLabel.replace('Usually replies ', ''), label: 'Response time' }
+                      : { value: '—', label: 'New seller' },
                   ].map(({ value, label }) => (
                     <div key={label}>
                       <p className="text-[#D4A843] font-[family-name:var(--font-playfair)]
@@ -267,36 +271,47 @@ export default async function SellerProfilePage({
                 </div>
               </div>
 
-              {/* Action buttons */}
-              <div className="flex gap-2 shrink-0 self-start">
+              {/* Action buttons — hide for own profile */}
+              {currentUserId === seller.id ? (
                 <Link
-                  href={`/messages/new?sellerId=${seller.id}`}
+                  href="/account/settings"
                   className="flex items-center gap-2 h-9 px-4 rounded-xl bg-white/10
                     hover:bg-white/20 text-white text-[12.5px] font-semibold
-                    transition-colors border border-white/20"
+                    transition-colors border border-white/20 shrink-0 self-start"
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                  </svg>
-                  Message
+                  ✏️ Edit profile
                 </Link>
-                <Link
-                  href={`/report?user=${seller.id}`}
-                  className="flex items-center gap-2 h-9 px-4 rounded-xl bg-white/5
-                    hover:bg-red-500/20 text-white/50 hover:text-red-400 text-[12.5px]
-                    font-semibold transition-colors border border-white/10"
-                  title="Report this user"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                    <line x1="4" y1="22" x2="4" y2="15" />
-                  </svg>
-                  Report
-                </Link>
-                {currentUserId && currentUserId !== seller.id && (
-                  <BlockButton targetUserId={seller.id} initialBlocked={isBlocked} />
-                )}
-              </div>
+              ) : (
+                <div className="flex gap-2 shrink-0 self-start">
+                  <Link
+                    href={`/messages/new?sellerId=${seller.id}`}
+                    className="flex items-center gap-2 h-9 px-4 rounded-xl bg-white/10
+                      hover:bg-white/20 text-white text-[12.5px] font-semibold
+                      transition-colors border border-white/20"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Message
+                  </Link>
+                  <Link
+                    href={`/report?user=${seller.id}`}
+                    className="flex items-center gap-2 h-9 px-4 rounded-xl bg-white/5
+                      hover:bg-red-500/20 text-white/50 hover:text-red-400 text-[12.5px]
+                      font-semibold transition-colors border border-white/10"
+                    title="Report this user"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                      <line x1="4" y1="22" x2="4" y2="15" />
+                    </svg>
+                    Report
+                  </Link>
+                  {currentUserId && (
+                    <BlockButton targetUserId={seller.id} initialBlocked={isBlocked} />
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Bio */}

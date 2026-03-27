@@ -33,15 +33,21 @@ export async function createListing(
     return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
   }
 
-  // 2. Authorise — check email is verified and stripe onboarded
+  // 2. Authorise — check email verified, seller terms accepted, stripe onboarded
   const userDetails = await db.user.findUnique({
     where: { id: authedUser.id },
-    select: { emailVerified: true, sellerEnabled: true },
+    select: { emailVerified: true, sellerEnabled: true, sellerTermsAcceptedAt: true },
   });
   if (!userDetails?.emailVerified) {
     return {
       success: false,
       error: 'Please verify your email address before creating a listing.',
+    };
+  }
+  if (!userDetails.sellerTermsAcceptedAt) {
+    return {
+      success: false,
+      error: 'Please accept seller terms before listing items. Go to Seller Hub to accept.',
     };
   }
   if (!authedUser.stripeOnboarded) {

@@ -97,7 +97,11 @@ export class ListingService {
               select: {
                 sellerOrders: { where: { status: 'COMPLETED' } },
                 listings: { where: { status: 'ACTIVE' } },
+                reviews: true,
               },
+            },
+            reviews: {
+              select: { rating: true },
             },
           },
         },
