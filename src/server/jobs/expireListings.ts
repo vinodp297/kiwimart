@@ -88,23 +88,38 @@ export async function releaseExpiredOfferReservations(): Promise<{
 
   const trulyExpired = expiredOffers.filter((o) => !paidListingIds.has(o.listingId))
 
-  for (const offer of trulyExpired) {
+  if (trulyExpired.length > 0) {
     try {
+      const expiredOfferIds = trulyExpired.map(o => o.id)
+      const expiredListingIds = [...new Set(trulyExpired.map(o => o.listingId))]
+
+      // Bulk update in a single transaction
       await db.$transaction([
-        db.offer.update({
-          where: { id: offer.id },
-          data: { status: 'EXPIRED' },
+        db.offer.updateMany({
+          where: {
+            id: { in: expiredOfferIds },
+            status: 'ACCEPTED', // safety check
+          },
+          data: { status: 'EXPIRED', updatedAt: new Date() },
         }),
         db.listing.updateMany({
-          where: { id: offer.listingId, status: 'RESERVED' },
+          where: {
+            id: { in: expiredListingIds },
+            status: 'RESERVED', // only release if still reserved
+          },
           data: { status: 'ACTIVE' },
         }),
       ])
-      released++
+
+      released = trulyExpired.length
+      logger.info('job.release_expired_offers.bulk', {
+        offersExpired: expiredOfferIds.length,
+        listingsReleased: expiredListingIds.length,
+      })
     } catch (err) {
-      errors++
-      logger.error('job.release_expired_offer.failed', {
-        offerId: offer.id,
+      errors = trulyExpired.length
+      logger.error('job.release_expired_offers.bulk_failed', {
+        count: trulyExpired.length,
         error: err instanceof Error ? err.message : String(err),
       })
     }

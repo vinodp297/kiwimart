@@ -60,98 +60,122 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
     dispatched: dispatchedOrders.length,
   });
 
-  for (const order of eligibleOrders) {
-    try {
-      // STEP B — Hard fail on missing payment intent
-      if (!order.stripePaymentIntentId) {
-        logger.error('escrow.auto_release.skipped', {
-          orderId: order.id,
-          reason: 'missing_payment_intent',
-          requiresManualReview: true,
-        });
-        audit({
-          userId: null,
-          action: 'ORDER_STATUS_CHANGED',
-          entityType: 'Order',
-          entityId: order.id,
-          metadata: {
-            trigger: 'AUTO_RELEASE_SKIPPED',
-            reason: 'missing_payment_intent',
-            requiresManualReview: true,
-          },
-        });
-        errors++;
-        continue;
-      }
+  // Process in parallel batches of 10 to avoid sequential Stripe calls
+  const BATCH_SIZE = 10;
 
-      // STEP C — Stripe capture FIRST via PaymentService, then DB update
-      try {
-        await paymentService.capturePayment({
-          paymentIntentId: order.stripePaymentIntentId,
-          orderId: order.id,
-        });
-      } catch (captureErr) {
-        logger.error('escrow.auto_release.capture_failed', {
-          orderId: order.id,
-          error: captureErr instanceof Error ? captureErr.message : String(captureErr),
-          requiresManualReview: true,
-        });
-        audit({
-          userId: null,
-          action: 'ORDER_STATUS_CHANGED',
-          entityType: 'Order',
-          entityId: order.id,
-          metadata: {
-            trigger: 'AUTO_RELEASE_CAPTURE_FAILED',
-            error: captureErr instanceof Error ? captureErr.message : String(captureErr),
-            requiresManualReview: true,
-          },
-        });
-        errors++;
-        continue;
-      }
-
-      // DB update ONLY AFTER Stripe capture succeeds
-      await db.$transaction([
-        db.order.update({
-          where: { id: order.id },
-          data: { status: 'COMPLETED', completedAt: new Date() },
-        }),
-        db.payout.updateMany({
-          where: { orderId: order.id },
-          data: { status: 'PROCESSING', initiatedAt: new Date() },
-        }),
-        db.listing.update({
-          where: { id: order.listing.id },
-          data: { status: 'SOLD', soldAt: new Date() },
-        }),
-      ]);
-
+  async function processOrderRelease(order: typeof eligibleOrders[number]) {
+    // Hard fail on missing payment intent
+    if (!order.stripePaymentIntentId) {
+      logger.error('escrow.auto_release.skipped', {
+        orderId: order.id,
+        reason: 'missing_payment_intent',
+        requiresManualReview: true,
+      });
       audit({
         userId: null,
         action: 'ORDER_STATUS_CHANGED',
         entityType: 'Order',
         entityId: order.id,
         metadata: {
-          newStatus: 'COMPLETED',
-          previousStatus: 'DISPATCHED',
-          trigger: 'AUTO_RELEASE',
-          buyerEmail: order.buyer.email,
-          sellerEmail: order.seller.email,
+          trigger: 'AUTO_RELEASE_SKIPPED',
+          reason: 'missing_payment_intent',
+          requiresManualReview: true,
         },
       });
+      return false;
+    }
 
-      logger.info('escrow.auto_release.order_released', {
+    // Stripe capture FIRST via PaymentService, then DB update
+    try {
+      await paymentService.capturePayment({
+        paymentIntentId: order.stripePaymentIntentId,
         orderId: order.id,
-        sellerName: order.seller.displayName,
       });
-      processed++;
-    } catch (err) {
-      logger.error('escrow.auto_release.failed', {
+    } catch (captureErr) {
+      logger.error('escrow.auto_release.capture_failed', {
         orderId: order.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: captureErr instanceof Error ? captureErr.message : String(captureErr),
+        requiresManualReview: true,
       });
-      errors++;
+      audit({
+        userId: null,
+        action: 'ORDER_STATUS_CHANGED',
+        entityType: 'Order',
+        entityId: order.id,
+        metadata: {
+          trigger: 'AUTO_RELEASE_CAPTURE_FAILED',
+          error: captureErr instanceof Error ? captureErr.message : String(captureErr),
+          requiresManualReview: true,
+        },
+      });
+      return false;
+    }
+
+    // DB update ONLY AFTER Stripe capture succeeds
+    await db.$transaction([
+      db.order.update({
+        where: { id: order.id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      }),
+      db.payout.updateMany({
+        where: { orderId: order.id },
+        data: { status: 'PROCESSING', initiatedAt: new Date() },
+      }),
+      db.listing.update({
+        where: { id: order.listing.id },
+        data: { status: 'SOLD', soldAt: new Date() },
+      }),
+    ]);
+
+    audit({
+      userId: null,
+      action: 'ORDER_STATUS_CHANGED',
+      entityType: 'Order',
+      entityId: order.id,
+      metadata: {
+        newStatus: 'COMPLETED',
+        previousStatus: 'DISPATCHED',
+        trigger: 'AUTO_RELEASE',
+        buyerEmail: order.buyer.email,
+        sellerEmail: order.seller.email,
+      },
+    });
+
+    logger.info('escrow.auto_release.order_released', {
+      orderId: order.id,
+      sellerName: order.seller.displayName,
+    });
+    return true;
+  }
+
+  for (let i = 0; i < eligibleOrders.length; i += BATCH_SIZE) {
+    const batch = eligibleOrders.slice(i, i + BATCH_SIZE);
+
+    const results = await Promise.allSettled(
+      batch.map(async (order) => {
+        try {
+          return await processOrderRelease(order);
+        } catch (err) {
+          logger.error('escrow.auto_release.failed', {
+            orderId: order.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return false;
+        }
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        processed++;
+      } else {
+        errors++;
+      }
+    }
+
+    // Small delay between batches to respect Stripe rate limits
+    if (i + BATCH_SIZE < eligibleOrders.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
 

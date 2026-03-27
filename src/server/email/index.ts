@@ -1,7 +1,7 @@
 // src/server/email/index.ts
 // ─── Transactional Email ──────────────────────────────────────────────────────
 // Transport layer: Resend (when RESEND_API_KEY is set) or console logging.
-// All HTML templates are kept here; only the delivery mechanism changed from Postmark.
+// All HTML templates are kept here; transport via Resend.
 
 import { sendTransactionalEmail } from './transport';
 

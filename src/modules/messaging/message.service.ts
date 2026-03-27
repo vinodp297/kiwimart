@@ -159,15 +159,19 @@ export class MessageService {
     })
   }
 
-  async getThreadMessages(threadId: string, userId: string) {
+  async getThreadMessages(
+    threadId: string,
+    userId: string,
+    options?: { take?: number; cursor?: string }
+  ) {
     const thread = await db.messageThread.findUnique({
       where: { id: threadId },
       select: { participant1Id: true, participant2Id: true },
     })
 
-    if (!thread) return []
+    if (!thread) return { messages: [], hasMore: false }
     if (thread.participant1Id !== userId && thread.participant2Id !== userId) {
-      return []
+      return { messages: [], hasMore: false }
     }
 
     // Mark messages as read
@@ -180,8 +184,15 @@ export class MessageService {
       data: { read: true, readAt: new Date() },
     })
 
-    return db.message.findMany({
+    const take = options?.take ?? 50
+
+    const messages = await db.message.findMany({
       where: { threadId },
+      take: take + 1, // fetch one extra to detect hasMore
+      ...(options?.cursor && {
+        cursor: { id: options.cursor },
+        skip: 1,
+      }),
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -192,6 +203,11 @@ export class MessageService {
         sender: { select: { displayName: true } },
       },
     })
+
+    const hasMore = messages.length > take
+    if (hasMore) messages.pop() // remove the extra
+
+    return { messages, hasMore }
   }
 }
 

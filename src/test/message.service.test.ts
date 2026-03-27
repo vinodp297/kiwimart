@@ -156,19 +156,20 @@ describe('MessageService', () => {
 
       const result = await messageService.getThreadMessages('thread-1', 'user-1')
 
-      expect(result).toHaveLength(1)
+      expect(result.messages).toHaveLength(1)
+      expect(result.hasMore).toBe(false)
       expect(db.message.updateMany).toHaveBeenCalled()
     })
 
-    it('returns empty array for non-existent thread', async () => {
+    it('returns empty for non-existent thread', async () => {
       vi.mocked(db.messageThread.findUnique).mockResolvedValue(null)
 
       const result = await messageService.getThreadMessages('nope', 'user-1')
 
-      expect(result).toEqual([])
+      expect(result).toEqual({ messages: [], hasMore: false })
     })
 
-    it('returns empty array when user is not participant', async () => {
+    it('returns empty when user is not participant', async () => {
       vi.mocked(db.messageThread.findUnique).mockResolvedValue({
         participant1Id: 'user-2',
         participant2Id: 'user-3',
@@ -176,7 +177,7 @@ describe('MessageService', () => {
 
       const result = await messageService.getThreadMessages('thread-1', 'user-1')
 
-      expect(result).toEqual([])
+      expect(result).toEqual({ messages: [], hasMore: false })
     })
   })
 })

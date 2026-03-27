@@ -7,9 +7,7 @@
 // If currentVersion > tokenVersion → the token predates the last sign-out
 // → reject it immediately, defeating Chrome bfcache restore attacks.
 //
-// Fail-open: if Redis is down, getSessionVersion returns 0 and all tokens
-// are considered valid.  The user's cookie is still cleared by Auth.js, so
-// the only window is a stolen-token scenario limited to the 1-hour JWT TTL.
+// Fail-open by default; fail-closed for admin operations via options.failClosed.
 
 import { getRedisClient } from '@/infrastructure/redis/client'
 import { logger } from '@/shared/logger'
@@ -19,15 +17,27 @@ const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
 
 /**
  * Get the current valid session version for a user.
- * Returns 0 if no version is set (all sessions valid by default) or if
- * Redis is unavailable (fail-open).
+ *
+ * @param userId - The user's ID
+ * @param options.failClosed - If true, return Infinity (force-invalidate all
+ *   sessions) when Redis is unavailable. Use for admin/privileged operations.
  */
-export async function getSessionVersion(userId: string): Promise<number> {
+export async function getSessionVersion(
+  userId: string,
+  options?: { failClosed?: boolean }
+): Promise<number> {
   try {
     const redis = getRedisClient()
     const version = await redis.get(`${SESSION_VERSION_PREFIX}${userId}`)
     return version ? parseInt(version as string, 10) : 0
   } catch (e) {
+    if (options?.failClosed) {
+      logger.warn('sessionStore: Redis unavailable, failing CLOSED for privileged operation', {
+        userId,
+        error: e instanceof Error ? e.message : String(e),
+      })
+      return Infinity // Force session invalid — blocks all tokens
+    }
     logger.warn('sessionStore.getVersion.failed', {
       userId,
       error: e instanceof Error ? e.message : String(e),

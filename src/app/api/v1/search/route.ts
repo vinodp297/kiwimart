@@ -1,23 +1,48 @@
 // src/app/api/v1/search/route.ts
 // ─── Public Search API ──────────────────────────────────────────────────────
 
+import { z } from 'zod'
 import { searchService } from '@/modules/listings/search.service'
-import { apiOk, handleApiError } from '../_helpers/response'
+import { apiOk, apiError, handleApiError, checkApiRateLimit } from '../_helpers/response'
+
+const SearchParamsSchema = z.object({
+  q: z.string().max(200).optional(),
+  category: z.string().max(100).optional(),
+  subcategory: z.string().max(100).optional(),
+  condition: z.string().max(50).optional(),
+  region: z.string().max(100).optional(),
+  priceMin: z.coerce.number().min(0).max(1000000).optional(),
+  priceMax: z.coerce.number().min(0).max(1000000).optional(),
+  sort: z.enum(['newest', 'oldest', 'price-asc', 'price-desc', 'most-watched']).optional(),
+  page: z.coerce.number().min(1).max(100).optional().default(1),
+  pageSize: z.coerce.number().min(1).max(48).optional().default(24),
+})
 
 export async function GET(request: Request) {
+  // Rate limit: 30 req/min for search
+  const rateLimited = await checkApiRateLimit(request, 'listing')
+  if (rateLimited) return rateLimited
+
   try {
     const { searchParams } = new URL(request.url)
+    const rawParams = Object.fromEntries(searchParams.entries())
+
+    const parsed = SearchParamsSchema.safeParse(rawParams)
+    if (!parsed.success) {
+      return apiError('Invalid search parameters', 400, 'VALIDATION_ERROR')
+    }
+
     const results = await searchService.searchListings({
-      query: searchParams.get('q') ?? undefined,
-      category: searchParams.get('category') ?? undefined,
-      subcategory: searchParams.get('subcategory') ?? undefined,
-      condition: searchParams.get('condition') ?? undefined,
-      region: searchParams.get('region') ?? undefined,
-      priceMin: searchParams.get('priceMin') ? Number(searchParams.get('priceMin')) : undefined,
-      priceMax: searchParams.get('priceMax') ? Number(searchParams.get('priceMax')) : undefined,
-      sort: (searchParams.get('sort') as 'newest' | 'oldest' | 'price-asc' | 'price-desc' | 'most-watched') ?? undefined,
-      page: searchParams.get('page') ? Number(searchParams.get('page')) : undefined,
-      pageSize: searchParams.get('pageSize') ? Number(searchParams.get('pageSize')) : undefined,
+      query: parsed.data.q,
+      category: parsed.data.category,
+      subcategory: parsed.data.subcategory,
+      condition: parsed.data.condition,
+      region: parsed.data.region,
+      priceMin: parsed.data.priceMin,
+      priceMax: parsed.data.priceMax,
+      sort: parsed.data.sort,
+      page: parsed.data.page,
+      pageSize: parsed.data.pageSize,
     })
     return apiOk(results)
   } catch (e) {

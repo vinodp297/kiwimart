@@ -55,9 +55,10 @@ export async function sendDeliveryReminders(): Promise<void> {
 
   logger.info('reminders.started', { day2: day2Orders.length, day3: day3Orders.length });
 
-  for (const order of day2Orders) {
-    try {
-      await sendDeliveryReminderEmail({
+  // Send all reminders in parallel with error isolation
+  const day2Results = await Promise.allSettled(
+    day2Orders.map(order =>
+      sendDeliveryReminderEmail({
         to: order.buyer.email,
         buyerName: order.buyer.displayName,
         listingTitle: order.listing.title,
@@ -65,15 +66,13 @@ export async function sendDeliveryReminders(): Promise<void> {
         orderId: order.id,
         daysRemaining: 2,
         confirmUrl: `${appUrl}/dashboard/buyer`,
-      });
-    } catch (err) {
-      logger.error('reminders.day2.failed', { orderId: order.id, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
+      })
+    )
+  );
 
-  for (const order of day3Orders) {
-    try {
-      await sendFinalDeliveryReminderEmail({
+  const day3Results = await Promise.allSettled(
+    day3Orders.map(order =>
+      sendFinalDeliveryReminderEmail({
         to: order.buyer.email,
         buyerName: order.buyer.displayName,
         listingTitle: order.listing.title,
@@ -81,9 +80,26 @@ export async function sendDeliveryReminders(): Promise<void> {
         orderId: order.id,
         daysRemaining: 1,
         confirmUrl: `${appUrl}/dashboard/buyer`,
-      });
-    } catch (err) {
-      logger.error('reminders.day3.failed', { orderId: order.id, error: err instanceof Error ? err.message : String(err) });
+      })
+    )
+  );
+
+  // Log failures without blocking
+  day2Results.forEach((result, i) => {
+    if (result.status === 'rejected') {
+      logger.error('reminders.day2.failed', { orderId: day2Orders[i].id, error: String(result.reason) });
     }
-  }
+  });
+  day3Results.forEach((result, i) => {
+    if (result.status === 'rejected') {
+      logger.error('reminders.day3.failed', { orderId: day3Orders[i].id, error: String(result.reason) });
+    }
+  });
+
+  const day2Succeeded = day2Results.filter(r => r.status === 'fulfilled').length;
+  const day3Succeeded = day3Results.filter(r => r.status === 'fulfilled').length;
+  logger.info('reminders.complete', {
+    day2: { total: day2Orders.length, sent: day2Succeeded },
+    day3: { total: day3Orders.length, sent: day3Succeeded },
+  });
 }

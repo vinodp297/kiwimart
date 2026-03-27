@@ -4,9 +4,7 @@
 // the token's remaining lifetime.  The jwt() callback checks this on every
 // request, so a stolen-but-not-yet-expired token is rejected immediately.
 //
-// Fail-open: if Redis is unavailable the app keeps working — the user's cookie
-// is still cleared by Auth.js, so only a stolen token would be a concern, and
-// only until it naturally expires (now capped at 1 hour).
+// Fail-open by default; fail-closed for admin operations via options.failClosed.
 
 import { getRedisClient } from '@/infrastructure/redis/client'
 import { logger } from '@/shared/logger'
@@ -36,15 +34,29 @@ export async function blockToken(jti: string, expiresAt: number): Promise<void> 
 
 /**
  * Returns true if the JWT has been blocklisted (i.e. the user signed out).
- * Returns false (fail-open) if Redis is unavailable.
+ *
+ * @param jti - The JWT's unique identifier
+ * @param options.failClosed - If true, return `true` (blocked) when Redis is
+ *   unavailable. Use for admin/privileged operations where a false negative
+ *   could lead to account compromise.
  */
-export async function isTokenBlocked(jti: string): Promise<boolean> {
+export async function isTokenBlocked(
+  jti: string,
+  options?: { failClosed?: boolean }
+): Promise<boolean> {
   try {
     const redis = getRedisClient()
     const result = await redis.get(`${BLOCKLIST_PREFIX}${jti}`)
     return result === '1'
-  } catch {
-    // Redis unavailable — allow the request (fail open)
+  } catch (err) {
+    if (options?.failClosed) {
+      logger.warn('jwt.blocklist: Redis unavailable, failing CLOSED for privileged operation', {
+        jti,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return true // Block the token to be safe
+    }
+    // Redis unavailable — allow the request (fail open for normal operations)
     return false
   }
 }

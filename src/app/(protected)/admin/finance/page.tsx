@@ -60,6 +60,7 @@ export default async function FinancePage() {
         },
       },
       orderBy: { createdAt: 'asc' },
+      take: 100,
     }),
     db.order.findMany({
       where: { status: 'REFUNDED' },

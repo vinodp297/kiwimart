@@ -1,10 +1,14 @@
 // src/app/api/v1/orders/route.ts
 // ─── Orders API ──────────────────────────────────────────────────────────────
 
-import { apiOk, handleApiError, requireApiUser } from '../_helpers/response'
+import { apiOk, handleApiError, requireApiUser, checkApiRateLimit } from '../_helpers/response'
 import db from '@/lib/db'
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Rate limit: reuse order limiter (5/hr)
+  const rateLimited = await checkApiRateLimit(request, 'order')
+  if (rateLimited) return rateLimited
+
   try {
     const user = await requireApiUser()
 
