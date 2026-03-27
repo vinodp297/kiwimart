@@ -4,6 +4,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { acceptSellerTerms, submitIdVerification } from '@/server/actions/seller'
 import type { SellerTier, SellerTierName } from '@/lib/sellerTiers'
 
@@ -27,11 +28,170 @@ interface Props {
 
 const TIER_ORDER: SellerTierName[] = ['basic', 'phone_verified', 'id_verified']
 
+// ─── Seller Terms Content ────────────────────────────────────────────────────
+
+const SELLER_TERMS = `KIWIMART SELLER TERMS & CONDITIONS
+Last updated: March 2026
+
+1. ELIGIBILITY
+You must be 18 years or older and a New Zealand resident or registered NZ business to sell on KiwiMart.
+
+2. LISTING REQUIREMENTS
+- All listings must accurately represent the item being sold
+- Photos must be of the actual item
+- Price must be in NZD
+- Condition must be accurately described
+- Prohibited items must not be listed
+
+3. PROHIBITED ITEMS
+The following are not permitted on KiwiMart:
+- Weapons and ammunition
+- Illegal goods or substances
+- Counterfeit or replica branded items
+- Adult content
+- Stolen goods
+- Items that violate intellectual property
+
+4. FEES & PAYMENTS
+- Listing is free
+- KiwiMart charges a transaction fee on completed sales
+- All payments are processed through KiwiMart's secure escrow system
+- Payouts are made within 3 business days of delivery confirmation
+
+5. ESCROW & DELIVERY
+- Payment is held in escrow until the buyer confirms receipt
+- You must dispatch within 5 business days of receiving an order
+- You must provide accurate tracking information
+
+6. DISPUTES
+- KiwiMart's dispute resolution decisions are final
+- You must respond to disputes within 48 hours
+- Failure to respond may result in automatic refund to the buyer
+
+7. SELLER CONDUCT
+- You must respond to buyer messages within a reasonable time
+- You may not solicit off-platform payments
+- You may not engage in price manipulation or fake listings
+
+8. ACCOUNT SUSPENSION
+KiwiMart reserves the right to suspend or terminate seller accounts for:
+- Policy violations
+- High dispute rates
+- Negative buyer feedback patterns
+- Fraudulent activity
+
+9. CHANGES TO TERMS
+KiwiMart may update these terms at any time. Continued use of the platform constitutes acceptance of updated terms.
+
+By accepting, you agree to all terms above and confirm you are eligible to sell on KiwiMart.`
+
+// ─── Terms Modal ─────────────────────────────────────────────────────────────
+
+function TermsModal({
+  onAccept,
+  onClose,
+  loading,
+}: {
+  onAccept: () => void
+  onClose: () => void
+  loading: boolean
+}) {
+  const [hasScrolled, setHasScrolled] = useState(false)
+  const [checked, setChecked] = useState(false)
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget
+    if (scrollTop + clientHeight >= scrollHeight - 30) {
+      setHasScrolled(true)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+        {/* Header */}
+        <div className="bg-[#141414] px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <h2 className="font-semibold text-white text-[16px]">
+            Seller Terms & Conditions
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-white/60 hover:text-white text-xl leading-none transition-colors"
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Scrollable terms */}
+        <div
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-6 text-[13px] text-[#73706A] leading-relaxed whitespace-pre-wrap bg-[#FAFAF8]"
+        >
+          {SELLER_TERMS}
+        </div>
+
+        {/* Scroll hint */}
+        {!hasScrolled && (
+          <div className="bg-[#FFF9EC] border-t border-[#E3E0D9] px-4 py-2 flex-shrink-0">
+            <p className="text-[11px] text-[#D4A843] text-center font-medium">
+              ↓ Scroll to the bottom to enable acceptance
+            </p>
+          </div>
+        )}
+
+        {/* Acceptance footer */}
+        <div className="border-t border-[#E3E0D9] p-5 flex-shrink-0 bg-white">
+          <label
+            className={`flex items-start gap-3 mb-4 cursor-pointer ${
+              !hasScrolled ? 'opacity-40 pointer-events-none' : ''
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => setChecked(e.target.checked)}
+              disabled={!hasScrolled}
+              className="mt-0.5 w-4 h-4 accent-[#D4A843] flex-shrink-0"
+            />
+            <span className="text-[13px] text-[#141414] leading-relaxed">
+              I have read and agree to KiwiMart&apos;s Seller Terms & Conditions
+            </span>
+          </label>
+
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 py-2.5 border border-[#E3E0D9] text-[#73706A] rounded-xl text-[13px] hover:bg-[#F2EFE8] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onAccept}
+              disabled={!checked || !hasScrolled || loading}
+              className="flex-[2] py-2.5 bg-[#D4A843] text-[#141414] rounded-xl font-semibold text-[13px] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#C49B35] transition-colors"
+            >
+              {loading ? 'Accepting...' : 'Accept Terms'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export default function SellerOnboardingClient({ user, currentTierName, tiers }: Props) {
+  const router = useRouter()
   const [termsAccepted, setTermsAccepted] = useState(!!user.sellerTermsAcceptedAt)
+  const [termsAcceptedAt, setTermsAcceptedAt] = useState(user.sellerTermsAcceptedAt)
   const [idSubmitted, setIdSubmitted] = useState(!!user.idSubmittedAt)
   const [loading, setLoading] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [showTermsModal, setShowTermsModal] = useState(false)
 
   async function handleAcceptTerms() {
     setLoading('terms')
@@ -40,7 +200,9 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
     setLoading(null)
     if (result.success) {
       setTermsAccepted(true)
-      setMessage({ type: 'success', text: 'Seller terms accepted.' })
+      setTermsAcceptedAt(new Date().toISOString())
+      setShowTermsModal(false)
+      setMessage({ type: 'success', text: 'Seller terms accepted! You can now create listings.' })
     } else {
       setMessage({ type: 'error', text: result.error ?? 'Something went wrong.' })
     }
@@ -53,7 +215,7 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
     setLoading(null)
     if (result.success) {
       setIdSubmitted(true)
-      setMessage({ type: 'success', text: 'ID verification request submitted. We\'ll review it within 1–2 business days.' })
+      setMessage({ type: 'success', text: 'ID verification request submitted. We\'ll review it within 1\u20132 business days.' })
     } else {
       setMessage({ type: 'error', text: result.error ?? 'Something went wrong.' })
     }
@@ -73,6 +235,63 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
           }`}
         >
           {message.text}
+        </div>
+      )}
+
+      {/* ── Seller Terms — shown at TOP ────────────────────────────────────── */}
+      {termsAccepted ? (
+        <div className="bg-[#F0FDF4] border border-[#16a34a]/20 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-[#16a34a] text-xl flex-shrink-0">✅</span>
+          <div className="flex-1">
+            <p className="font-semibold text-[14px] text-[#141414]">Seller terms accepted</p>
+            <p className="text-[12px] text-[#73706A] mt-0.5">
+              {termsAcceptedAt && (
+                <>
+                  Accepted on{' '}
+                  {new Date(termsAcceptedAt).toLocaleDateString('en-NZ', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                  {' · '}
+                </>
+              )}
+              <button
+                onClick={() => setShowTermsModal(true)}
+                className="text-[#D4A843] hover:underline text-[12px]"
+              >
+                View terms →
+              </button>
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white border-2 border-[#D4A843] rounded-2xl overflow-hidden">
+          <div className="bg-[#141414] px-5 py-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-white text-[15px]">📋 Seller Terms & Conditions</h2>
+              <p className="text-[#888] text-[12px] mt-0.5">Required before you can sell</p>
+            </div>
+            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">
+              Action required
+            </span>
+          </div>
+          <div className="p-5">
+            <p className="text-[13px] text-[#73706A] leading-relaxed mb-4">
+              Before listing items on KiwiMart, you must read and accept our seller terms.
+              These cover your obligations as a seller, fee structure, prohibited items,
+              and dispute resolution.
+            </p>
+            <button
+              onClick={() => setShowTermsModal(true)}
+              className="w-full border-2 border-[#141414] text-[#141414] py-2.5 rounded-xl font-medium text-[14px] hover:bg-[#141414] hover:text-white transition-colors mb-3"
+            >
+              📄 Read Seller Terms & Conditions
+            </button>
+            <p className="text-[11px] text-[#C9C5BC] text-center">
+              You must read the terms before you can accept them
+            </p>
+          </div>
         </div>
       )}
 
@@ -189,7 +408,7 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
                         {tier.name === 'id_verified' && (
                           <div>
                             {user.idVerified ? (
-                              <p className="text-[12.5px] text-green-700">ID verified on {user.idVerifiedAt ? new Date(user.idVerifiedAt).toLocaleDateString('en-NZ') : '—'}</p>
+                              <p className="text-[12.5px] text-green-700">ID verified on {user.idVerifiedAt ? new Date(user.idVerifiedAt).toLocaleDateString('en-NZ') : '\u2014'}</p>
                             ) : idSubmitted || user.idSubmittedAt ? (
                               <p className="text-[12.5px] text-amber-700">
                                 ID verification pending admin review.
@@ -209,7 +428,7 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
                                     hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed
                                     transition-colors"
                                 >
-                                  {loading === 'id' ? 'Submitting…' : 'Request ID Verification'}
+                                  {loading === 'id' ? 'Submitting\u2026' : 'Request ID Verification'}
                                 </button>
                               </div>
                             )}
@@ -224,53 +443,6 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
           })}
         </div>
       </div>
-
-      {/* Seller Terms */}
-      {!termsAccepted && (
-        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
-          <h3 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-3">
-            Seller Terms & Conditions
-          </h3>
-          <p className="text-[13px] text-[#73706A] mb-4">
-            To sell on KiwiMart you must accept our seller terms. This covers our fees (5% + Stripe
-            processing), payout schedule, prohibited items, and dispute resolution process.
-          </p>
-          <ul className="text-[12.5px] text-[#73706A] space-y-1.5 mb-5 list-none">
-            {[
-              'KiwiMart charges a 5% platform fee on each sale',
-              'Payouts are processed via Stripe Connect',
-              'You are responsible for accurate listing descriptions',
-              'Prohibited items may result in account suspension',
-              'Disputes are resolved by KiwiMart at our discretion',
-            ].map(term => (
-              <li key={term} className="flex items-start gap-2">
-                <span className="text-[#D4A843] font-bold mt-0.5">·</span>
-                {term}
-              </li>
-            ))}
-          </ul>
-          <button
-            onClick={handleAcceptTerms}
-            disabled={loading === 'terms'}
-            className="inline-flex items-center gap-2 bg-[#D4A843] text-white text-[13px]
-              font-semibold px-5 py-2.5 rounded-xl hover:bg-[#c49a38]
-              disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading === 'terms' ? 'Saving…' : 'Accept Seller Terms'}
-          </button>
-        </div>
-      )}
-
-      {termsAccepted && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-[13px] text-green-700">
-          ✓ Seller terms accepted
-          {user.sellerTermsAcceptedAt && (
-            <span className="text-green-600 ml-1">
-              on {new Date(user.sellerTermsAcceptedAt).toLocaleDateString('en-NZ')}
-            </span>
-          )}
-        </div>
-      )}
 
       {/* Stripe CTA */}
       {!user.stripeOnboarded && (
@@ -294,6 +466,15 @@ export default function SellerOnboardingClient({ user, currentTierName, tiers }:
             </div>
           </div>
         </div>
+      )}
+
+      {/* Terms Modal */}
+      {showTermsModal && (
+        <TermsModal
+          onAccept={handleAcceptTerms}
+          onClose={() => setShowTermsModal(false)}
+          loading={loading === 'terms'}
+        />
       )}
     </div>
   )
