@@ -8,6 +8,8 @@
 import db from '@/lib/db';
 import { audit } from '@/server/lib/audit';
 import { paymentService } from '@/modules/payments/payment.service';
+import { transitionOrder } from '@/modules/orders/order.transitions';
+import { acquireLock, releaseLock } from '@/server/lib/distributedLock';
 import { logger } from '@/shared/logger';
 
 /**
@@ -97,47 +99,63 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
       return false;
     }
 
-    // Stripe capture FIRST via PaymentService, then DB update
-    try {
-      await paymentService.capturePayment({
-        paymentIntentId: order.stripePaymentIntentId,
-        orderId: order.id,
-      });
-    } catch (captureErr) {
-      logger.error('escrow.auto_release.capture_failed', {
-        orderId: order.id,
-        error: captureErr instanceof Error ? captureErr.message : String(captureErr),
-        requiresManualReview: true,
-      });
-      audit({
-        userId: null,
-        action: 'ORDER_STATUS_CHANGED',
-        entityType: 'Order',
-        entityId: order.id,
-        metadata: {
-          trigger: 'AUTO_RELEASE_CAPTURE_FAILED',
-          error: captureErr instanceof Error ? captureErr.message : String(captureErr),
-          requiresManualReview: true,
-        },
-      });
-      return false;
+    // Distributed lock — prevents two cron runs from double-releasing the same order
+    const lockValue = await acquireLock(`order:release:${order.id}`, 60);
+    if (lockValue === null) {
+      // Lock held by concurrent process — already being processed
+      logger.info('escrow.auto_release.lock_skipped', { orderId: order.id });
+      return true; // Treat as already processed
     }
 
-    // DB update ONLY AFTER Stripe capture succeeds
-    await db.$transaction([
-      db.order.update({
-        where: { id: order.id },
-        data: { status: 'COMPLETED', completedAt: new Date() },
-      }),
-      db.payout.updateMany({
-        where: { orderId: order.id },
-        data: { status: 'PROCESSING', initiatedAt: new Date() },
-      }),
-      db.listing.update({
-        where: { id: order.listing.id },
-        data: { status: 'SOLD', soldAt: new Date() },
-      }),
-    ]);
+    try {
+      // Stripe capture FIRST via PaymentService, then DB update
+      try {
+        await paymentService.capturePayment({
+          paymentIntentId: order.stripePaymentIntentId,
+          orderId: order.id,
+        });
+      } catch (captureErr) {
+        logger.error('escrow.auto_release.capture_failed', {
+          orderId: order.id,
+          error: captureErr instanceof Error ? captureErr.message : String(captureErr),
+          requiresManualReview: true,
+        });
+        audit({
+          userId: null,
+          action: 'ORDER_STATUS_CHANGED',
+          entityType: 'Order',
+          entityId: order.id,
+          metadata: {
+            trigger: 'AUTO_RELEASE_CAPTURE_FAILED',
+            error: captureErr instanceof Error ? captureErr.message : String(captureErr),
+            requiresManualReview: true,
+          },
+        });
+        return false;
+      }
+
+      // DB update ONLY AFTER Stripe capture succeeds — callback form for transitionOrder
+      await db.$transaction(async (tx) => {
+        await transitionOrder(order.id, 'COMPLETED', { completedAt: new Date() }, { tx, fromStatus: 'DISPATCHED' });
+        await tx.payout.updateMany({
+          where: { orderId: order.id },
+          data: { status: 'PROCESSING', initiatedAt: new Date() },
+        });
+        await tx.listing.update({
+          where: { id: order.listing.id },
+          data: { status: 'SOLD', soldAt: new Date() },
+        });
+      });
+    } catch (err) {
+      // P2025 = optimistic lock conflict — another process already transitioned this order
+      if ((err as { code?: string }).code === 'P2025') {
+        logger.info('escrow.auto_release.already_processed', { orderId: order.id });
+        return true;
+      }
+      throw err;
+    } finally {
+      await releaseLock(`order:release:${order.id}`, lockValue);
+    }
 
     audit({
       userId: null,

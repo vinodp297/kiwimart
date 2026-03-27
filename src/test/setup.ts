@@ -10,12 +10,14 @@ import { vi } from 'vitest'
 const mockStripeCapture = vi.fn().mockResolvedValue({ id: 'pi_mock', status: 'succeeded' })
 const mockStripeCreate = vi.fn().mockResolvedValue({ id: 'pi_mock', client_secret: 'cs_mock' })
 const mockStripeRefund = vi.fn().mockResolvedValue({ id: 're_mock' })
+const mockStripeRetrieve = vi.fn().mockResolvedValue({ id: 'pi_mock', client_secret: 'cs_mock' })
 
 vi.mock('stripe', () => {
   class MockStripe {
     paymentIntents = {
       create: mockStripeCreate,
       capture: mockStripeCapture,
+      retrieve: mockStripeRetrieve,
     }
     refunds = {
       create: mockStripeRefund,
@@ -28,7 +30,7 @@ vi.mock('stripe', () => {
 })
 
 // Export for test access (tests can import from this file)
-export { mockStripeCapture, mockStripeCreate, mockStripeRefund }
+export { mockStripeCapture, mockStripeCreate, mockStripeRefund, mockStripeRetrieve }
 
 // ── Mock Prisma ──────────────────────────────────────────────────────────────
 vi.mock('@/lib/db', () => ({
@@ -52,6 +54,7 @@ vi.mock('@/lib/db', () => ({
       findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       create: vi.fn(),
       count: vi.fn(),
       aggregate: vi.fn(),

@@ -176,9 +176,9 @@ describe('AdminService', () => {
     it('refunds buyer when favour=buyer — DB first then Stripe', async () => {
       const callOrder: string[] = []
       vi.mocked(db.order.findUnique).mockResolvedValue(mockOrder as never)
-      vi.mocked(db.order.update).mockImplementation((() => {
+      vi.mocked(db.order.updateMany).mockImplementation((() => {
         callOrder.push('db')
-        return Promise.resolve({}) as never
+        return Promise.resolve({ count: 1 }) as never
       }) as never)
       mockStripeRefund.mockImplementation(async () => {
         callOrder.push('stripe')
@@ -211,15 +211,16 @@ describe('AdminService', () => {
 
     it('still updates DB even if Stripe refund fails (DB-first pattern)', async () => {
       vi.mocked(db.order.findUnique).mockResolvedValue(mockOrder as never)
-      vi.mocked(db.order.update).mockResolvedValue({} as never)
+      vi.mocked(db.order.updateMany).mockResolvedValue({ count: 1 } as never)
       mockStripeRefund.mockRejectedValueOnce(new Error('Refund declined'))
 
       // Should NOT throw — Stripe error is swallowed and logged for manual retry
       await adminService.resolveDispute('order-123', 'buyer', 'admin-1')
 
-      // DB IS updated (optimistic pattern)
-      expect(db.order.update).toHaveBeenCalledWith(
+      // DB IS updated via state machine (optimistic pattern)
+      expect(db.order.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: expect.objectContaining({ id: 'order-123', status: 'DISPUTED' }),
           data: expect.objectContaining({ status: 'REFUNDED' }),
         })
       )

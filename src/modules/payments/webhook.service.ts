@@ -7,6 +7,7 @@ import type { Stripe } from '@/infrastructure/stripe/client'
 import { logger } from '@/shared/logger'
 import { audit } from '@/server/lib/audit'
 import db from '@/lib/db'
+import { transitionOrder } from '@/modules/orders/order.transitions'
 
 export class WebhookService {
   /**
@@ -82,12 +83,9 @@ export class WebhookService {
       return // Return without error — Stripe should not retry this
     }
 
-    await db.$transaction([
-      db.order.update({
-        where: { id: orderId, stripePaymentIntentId: pi.id },
-        data: { status: 'PAYMENT_HELD', updatedAt: new Date() },
-      }),
-      db.payout.upsert({
+    await db.$transaction(async (tx) => {
+      await transitionOrder(orderId, 'PAYMENT_HELD', { updatedAt: new Date() }, { tx, fromStatus: currentOrder.status })
+      await tx.payout.upsert({
         where: { orderId },
         create: {
           orderId,
@@ -100,8 +98,8 @@ export class WebhookService {
           status: 'PENDING',
         },
         update: {},
-      }),
-    ])
+      })
+    })
 
     audit({
       action: 'PAYMENT_COMPLETED',
@@ -116,10 +114,23 @@ export class WebhookService {
     const orderId = pi.metadata?.orderId
     if (!orderId) return
 
-    await db.order.update({
-      where: { id: orderId, stripePaymentIntentId: pi.id },
-      data: { status: 'CANCELLED', updatedAt: new Date() },
+    // Fetch current status — only cancel AWAITING_PAYMENT orders.
+    // Guards against replayed webhooks reverting orders already past payment.
+    const currentOrder = await db.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
     })
+
+    if (!currentOrder || currentOrder.status !== 'AWAITING_PAYMENT') {
+      logger.warn('webhook.payment_intent_failed: unexpected order state', {
+        orderId,
+        currentStatus: currentOrder?.status ?? 'NOT_FOUND',
+        eventId: event.id,
+      })
+      return
+    }
+
+    await transitionOrder(orderId, 'CANCELLED', {}, { fromStatus: currentOrder.status })
 
     // Release listing reservation so other buyers can purchase it.
     // Guard: only release if still RESERVED — never overwrite SOLD/ACTIVE.

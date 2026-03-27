@@ -137,7 +137,7 @@ describe('OrderService', () => {
         buyer: { email: 'buyer@test.com', displayName: 'Buyer' },
       } as never)
 
-      vi.mocked(db.order.update).mockResolvedValue({} as never)
+      vi.mocked(db.order.updateMany).mockResolvedValue({ count: 1 } as never)
 
       await expect(
         orderService.markDispatched(
@@ -146,9 +146,9 @@ describe('OrderService', () => {
         )
       ).resolves.toBeUndefined()
 
-      expect(db.order.update).toHaveBeenCalledWith(
+      expect(db.order.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'order-1' },
+          where: expect.objectContaining({ id: 'order-1', status: 'PAYMENT_HELD' }),
           data: expect.objectContaining({ status: 'DISPATCHED' }),
         })
       )

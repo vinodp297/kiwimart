@@ -68,9 +68,18 @@ const orderLimiter = () =>
     analytics: true,
   });
 
+/** 3 disputes per day per user — prevent abuse of the dispute system */
+const disputeLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(3, '1 d'),
+    prefix: 'km:rl:disputes',
+    analytics: true,
+  });
+
 // ── Rate limit types ──────────────────────────────────────────────────────────
 
-export type RateLimitKey = 'auth' | 'register' | 'message' | 'listing' | 'offer' | 'order';
+export type RateLimitKey = 'auth' | 'register' | 'message' | 'listing' | 'offer' | 'order' | 'disputes';
 
 export interface RateLimitResult {
   success: boolean;
@@ -111,6 +120,7 @@ export async function rateLimit(
     listing:  listingLimiter,
     offer:    offerLimiter,
     order:    orderLimiter,
+    disputes: disputeLimiter,
   };
 
   const limiter = limiterFactories[type]();

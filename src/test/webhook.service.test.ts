@@ -102,7 +102,9 @@ describe('WebhookService', () => {
 
     it('processes payment_intent.payment_failed', async () => {
       vi.mocked(db.stripeEvent.create).mockResolvedValue({} as never)
-      vi.mocked(db.order.update).mockResolvedValue({} as never)
+      // handlePaymentIntentFailed now fetches current status before transitioning
+      vi.mocked(db.order.findUnique).mockResolvedValue({ status: 'AWAITING_PAYMENT' } as never)
+      vi.mocked(db.order.updateMany).mockResolvedValue({ count: 1 } as never)
 
       await webhookService.processEvent({
         id: 'evt_pi_fail',
@@ -117,9 +119,9 @@ describe('WebhookService', () => {
         },
       } as never)
 
-      expect(db.order.update).toHaveBeenCalledWith(
+      expect(db.order.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'order-fail', stripePaymentIntentId: 'pi_failed' },
+          where: expect.objectContaining({ id: 'order-fail', status: 'AWAITING_PAYMENT' }),
           data: expect.objectContaining({ status: 'CANCELLED' }),
         })
       )

@@ -6,6 +6,7 @@
 import db from '@/lib/db'
 import { audit } from '@/server/lib/audit'
 import { paymentService } from '@/modules/payments/payment.service'
+import { transitionOrder } from './order.transitions'
 import { logger } from '@/shared/logger'
 import { AppError } from '@/shared/errors'
 import { createNotification } from '@/modules/notifications/notification.service'
@@ -50,21 +51,18 @@ export class OrderService {
       orderId,
     })
 
-    // DB update ONLY after Stripe success
-    await db.$transaction([
-      db.order.update({
-        where: { id: orderId },
-        data: { status: 'COMPLETED', completedAt: new Date() },
-      }),
-      db.payout.updateMany({
+    // DB update ONLY after Stripe success — callback form for transitionOrder
+    await db.$transaction(async (tx) => {
+      await transitionOrder(orderId, 'COMPLETED', { completedAt: new Date() }, { tx, fromStatus: order.status })
+      await tx.payout.updateMany({
         where: { orderId },
         data: { status: 'PROCESSING', initiatedAt: new Date() },
-      }),
-      db.listing.update({
+      })
+      await tx.listing.update({
         where: { id: order.listingId },
         data: { status: 'SOLD', soldAt: new Date() },
-      }),
-    ])
+      })
+    })
 
     // Queue payout processing (3 business days delay)
     try {
@@ -144,15 +142,11 @@ export class OrderService {
       throw new AppError('ORDER_WRONG_STATE', 'Order must be in PAYMENT_HELD status to dispatch.', 400)
     }
 
-    await db.order.update({
-      where: { id: input.orderId },
-      data: {
-        status: 'DISPATCHED',
-        dispatchedAt: new Date(),
-        trackingNumber: input.trackingNumber ?? null,
-        trackingUrl: input.trackingUrl ?? null,
-      },
-    })
+    await transitionOrder(input.orderId, 'DISPATCHED', {
+      dispatchedAt: new Date(),
+      trackingNumber: input.trackingNumber ?? null,
+      trackingUrl: input.trackingUrl ?? null,
+    }, { fromStatus: order.status })
 
     // Notify buyer directly — BullMQ worker does not run on Vercel serverless
     try {
@@ -244,16 +238,13 @@ export class OrderService {
       }
     }
 
-    await db.order.update({
-      where: { id: input.orderId },
-      data: {
-        status: 'DISPUTED',
-        disputeReason: input.reason,
-        disputeOpenedAt: new Date(),
-        disputeNotes: input.description,
-        disputeEvidenceUrls: input.evidenceUrls ?? [],
-      },
-    })
+    await transitionOrder(input.orderId, 'DISPUTED', {
+      disputeReason: input.reason,
+      disputeOpenedAt: new Date(),
+      disputeNotes: input.description,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      disputeEvidenceUrls: input.evidenceUrls ?? [] as any,
+    }, { fromStatus: order.status })
 
     // Notify seller directly — BullMQ worker does not run on Vercel serverless
     try {
@@ -326,15 +317,11 @@ export class OrderService {
     }
 
     await db.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'CANCELLED',
-          cancelledBy: order.buyerId === userId ? 'BUYER' : 'SELLER',
-          cancelReason: reason ?? null,
-          cancelledAt: new Date(),
-        },
-      })
+      await transitionOrder(orderId, 'CANCELLED', {
+        cancelledBy: order.buyerId === userId ? 'BUYER' : 'SELLER',
+        cancelReason: reason ?? null,
+        cancelledAt: new Date(),
+      }, { tx, fromStatus: order.status })
 
       // Reactivate the listing
       if (order.listingId) {
