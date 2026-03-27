@@ -34,6 +34,10 @@ export interface OrderDetailData {
   shippingPrice: number;
   total: number;
   createdAt: string;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  completedAt: string | null;
+  disputeOpenedAt: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
   disputeReason: string | null;
@@ -43,6 +47,9 @@ export interface OrderDetailData {
   otherPartyName: string;
   otherPartyUsername: string;
   hasReview: boolean;
+  cancelledBy: string | null;
+  cancelReason: string | null;
+  cancelledAt: string | null;
 }
 
 export async function fetchOrderDetail(
@@ -63,6 +70,10 @@ export async function fetchOrderDetail(
         totalNzd: true,
         status: true,
         createdAt: true,
+        dispatchedAt: true,
+        deliveredAt: true,
+        completedAt: true,
+        disputeOpenedAt: true,
         trackingNumber: true,
         trackingUrl: true,
         disputeReason: true,
@@ -98,9 +109,16 @@ export async function fetchOrderDetail(
         shippingPrice: order.shippingNzd / 100,
         total: order.totalNzd / 100,
         createdAt: order.createdAt.toISOString(),
+        dispatchedAt: order.dispatchedAt?.toISOString() ?? null,
+        deliveredAt: order.deliveredAt?.toISOString() ?? null,
+        completedAt: order.completedAt?.toISOString() ?? null,
+        disputeOpenedAt: order.disputeOpenedAt?.toISOString() ?? null,
         trackingNumber: order.trackingNumber,
         trackingUrl: order.trackingUrl,
         disputeReason: order.disputeReason,
+        cancelledBy: null,
+        cancelReason: null,
+        cancelledAt: null,
         isBuyer,
         buyerId: order.buyerId,
         sellerId: order.sellerId,

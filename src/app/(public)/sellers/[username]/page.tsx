@@ -24,7 +24,7 @@ const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
 };
 
 async function getSellerByUsername(username: string) {
-  return db.user.findUnique({
+  return db.user.findFirst({
     where: { username, deletedAt: null, isBanned: false },
     select: {
       id: true,
@@ -68,13 +68,18 @@ export async function generateMetadata({
 }: {
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
-  const { username } = await params;
-  const user = await getSellerByUsername(username);
-  if (!user) return { title: 'Seller not found' };
-  return {
-    title: `${user.displayName} — Seller Profile`,
-    description: `${user.displayName} is a ${user.idVerified ? 'verified' : ''} NZ seller on KiwiMart with ${user._count.reviews} reviews.`,
-  };
+  try {
+    const { username } = await params;
+    const user = await getSellerByUsername(username);
+    if (!user) return { title: 'Seller not found' };
+    return {
+      title: `${user.displayName} — Seller Profile`,
+      description: `${user.displayName} is a ${user.idVerified ? 'verified' : ''} NZ seller on KiwiMart with ${user._count.reviews} reviews.`,
+    };
+  } catch (err) {
+    console.error('[SellerProfile] generateMetadata error:', err);
+    return { title: 'Seller Profile' };
+  }
 }
 
 export default async function SellerProfilePage({
@@ -83,10 +88,22 @@ export default async function SellerProfilePage({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  const [user, session] = await Promise.all([
-    getSellerByUsername(username),
-    auth(),
-  ]);
+
+  let user: Awaited<ReturnType<typeof getSellerByUsername>> = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let session: any = null;
+
+  try {
+    const [fetchedUser, fetchedSession] = await Promise.all([
+      getSellerByUsername(username),
+      auth(),
+    ]);
+    user = fetchedUser;
+    session = fetchedSession;
+  } catch (err) {
+    console.error('[SellerProfile] Failed to load seller data:', err);
+    notFound();
+  }
   if (!user) notFound();
 
   const currentUserId = session?.user?.id ?? null;

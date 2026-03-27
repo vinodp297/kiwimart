@@ -6,7 +6,7 @@ import { updateProfile } from '@/server/actions/account';
 
 const NZ_REGIONS = [
   'Auckland', 'Wellington', 'Canterbury', 'Waikato', 'Bay of Plenty',
-  'Otago', "Hawke's Bay", 'Manawatū-Whanganui', 'Northland', 'Tasman',
+  'Otago', "Hawke's Bay", 'Manawatu-Whanganui', 'Northland', 'Tasman',
   'Nelson', 'Marlborough', 'Southland', 'Taranaki', 'Gisborne', 'West Coast',
 ];
 
@@ -54,252 +54,307 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
     });
   }
 
+  // Calculate profile completeness
+  const fields = [
+    !!user.displayName,
+    !!user.email,
+    !!user.emailVerified,
+    !!region,
+    !!bio,
+  ];
+  const completePct = Math.round((fields.filter(Boolean).length / fields.length) * 100);
+
   return (
-    <div className="space-y-6">
-      {/* ── Section 1: Profile ─────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
-        <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
-          Profile settings
-        </h2>
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+      {/* ── Left column: Profile form (3/5) ──────────────────────────── */}
+      <div className="lg:col-span-3 space-y-6">
+        {/* ── Section 1: Profile ───────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+          <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
+            Profile settings
+          </h2>
 
-        {saveError && (
-          <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200
-            text-[13px] text-red-700">
-            {saveError}
-          </div>
-        )}
-        {saveSuccess && (
-          <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200
-            text-[13px] text-emerald-700">
-            Profile updated successfully.
-          </div>
-        )}
+          {saveError && (
+            <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200
+              text-[13px] text-red-700">
+              {saveError}
+            </div>
+          )}
+          {saveSuccess && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200
+              text-[13px] text-emerald-700">
+              Profile updated successfully.
+            </div>
+          )}
 
-        <form onSubmit={handleSave} className="space-y-4">
-          {/* Display name */}
-          <div>
-            <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
-              Display name
-            </label>
-            <input
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className={inputClass}
-              required
-              minLength={2}
-              maxLength={60}
-            />
-          </div>
-
-          {/* Username (read-only) */}
-          <div>
-            <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
-              Username
-            </label>
-            <input
-              type="text"
-              value={user.username}
-              className={`${inputClass} opacity-60 cursor-not-allowed`}
-              readOnly
-              disabled
-            />
-            <p className="text-[11.5px] text-[#9E9A91] mt-1">
-              Your username cannot be changed.
-            </p>
-          </div>
-
-          {/* Email (read-only + verified badge) */}
-          <div>
-            <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
-              Email address
-            </label>
-            <div className="relative">
+          <form onSubmit={handleSave} className="space-y-4">
+            {/* Display name */}
+            <div>
+              <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
+                Display name
+              </label>
               <input
-                type="email"
-                value={user.email}
-                className={`${inputClass} pr-24 opacity-60 cursor-not-allowed`}
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className={inputClass}
+                required
+                minLength={2}
+                maxLength={60}
+              />
+            </div>
+
+            {/* Username (read-only) */}
+            <div>
+              <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
+                Username
+              </label>
+              <input
+                type="text"
+                value={user.username}
+                className={`${inputClass} opacity-60 cursor-not-allowed`}
                 readOnly
                 disabled
               />
-              {user.emailVerified && (
-                <span
-                  className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5
-                    rounded-full bg-emerald-50 border border-emerald-200
-                    text-[11px] font-semibold text-emerald-700"
-                >
-                  ✓ Verified
-                </span>
-              )}
+              <p className="text-[11.5px] text-[#9E9A91] mt-1">
+                Your username cannot be changed.
+              </p>
             </div>
-          </div>
 
-          {/* Region */}
-          <div>
-            <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
-              Region
-            </label>
-            <select
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              className="w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8]
-                text-[14px] text-[#141414] focus:outline-none
-                focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition"
-            >
-              <option value="">Select your region</option>
-              {NZ_REGIONS.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Bio */}
-          <div>
-            <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
-              Bio{' '}
-              <span className="text-[#9E9A91] font-normal">(optional)</span>
-            </label>
-            <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell buyers a little about yourself..."
-              rows={3}
-              maxLength={500}
-              className="w-full px-4 py-3 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8]
-                text-[14px] text-[#141414] placeholder:text-[#C9C5BC]
-                focus:outline-none focus:ring-2 focus:ring-[#D4A843]/30
-                focus:border-[#D4A843] resize-none transition"
-            />
-            <p className="text-[11.5px] text-[#9E9A91] mt-1 text-right">
-              {bio.length}/500
-            </p>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isPending}
-            className="h-11 px-8 rounded-xl bg-[#D4A843] text-[#141414]
-              font-semibold text-[14px] hover:bg-[#B8912E] hover:text-white
-              transition-colors disabled:opacity-60"
-          >
-            {isPending ? 'Saving...' : 'Save changes'}
-          </button>
-        </form>
-      </div>
-
-      {/* ── Section 2: Notification preferences ───────────────────────── */}
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
-        <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
-          Notification preferences
-        </h2>
-        <div className="space-y-4">
-          {[
-            {
-              id: 'order-emails',
-              label: 'Email me when someone messages me',
-              value: orderEmails,
-              set: setOrderEmails,
-            },
-            {
-              id: 'offer-emails',
-              label: 'Email me about offers on my listings',
-              value: offerEmails,
-              set: setOfferEmails,
-            },
-            {
-              id: 'watchlist-emails',
-              label: 'Email me when items I watch go on sale',
-              value: watchlistEmails,
-              set: setWatchlistEmails,
-            },
-            {
-              id: 'marketing-emails',
-              label: 'Marketing emails',
-              value: marketingEmails,
-              set: setMarketingEmails,
-              optional: true,
-            },
-          ].map(({ id, label, value, set, optional }) => (
-            <div key={id} className="flex items-center justify-between gap-4">
-              <label htmlFor={id} className="text-[13.5px] text-[#141414] cursor-pointer">
-                {label}{' '}
-                {optional && (
-                  <span className="text-[#9E9A91] text-[12px]">(optional)</span>
-                )}
+            {/* Email (read-only + verified badge) */}
+            <div>
+              <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
+                Email address
               </label>
-              <button
-                id={id}
-                role="switch"
-                aria-checked={value}
-                onClick={() => set((v) => !v)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full
-                  transition-colors shrink-0
-                  ${value ? 'bg-[#D4A843]' : 'bg-[#E3E0D9]'}`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
-                    transition-transform ${value ? 'translate-x-6' : 'translate-x-1'}`}
+              <div className="relative">
+                <input
+                  type="email"
+                  value={user.email}
+                  className={`${inputClass} pr-24 opacity-60 cursor-not-allowed`}
+                  readOnly
+                  disabled
                 />
-              </button>
+                {user.emailVerified && (
+                  <span
+                    className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5
+                      rounded-full bg-emerald-50 border border-emerald-200
+                      text-[11px] font-semibold text-emerald-700"
+                  >
+                    Verified
+                  </span>
+                )}
+              </div>
             </div>
-          ))}
+
+            {/* Region */}
+            <div>
+              <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
+                Region
+              </label>
+              <select
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+                className="w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8]
+                  text-[14px] text-[#141414] focus:outline-none
+                  focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition"
+              >
+                <option value="">Select your region</option>
+                {NZ_REGIONS.map((r) => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Bio */}
+            <div>
+              <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
+                Bio{' '}
+                <span className="text-[#9E9A91] font-normal">(optional)</span>
+              </label>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Tell buyers a little about yourself..."
+                rows={3}
+                maxLength={500}
+                className="w-full px-4 py-3 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8]
+                  text-[14px] text-[#141414] placeholder:text-[#C9C5BC]
+                  focus:outline-none focus:ring-2 focus:ring-[#D4A843]/30
+                  focus:border-[#D4A843] resize-none transition"
+              />
+              <p className="text-[11.5px] text-[#9E9A91] mt-1 text-right">
+                {bio.length}/500
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isPending}
+              className="h-11 px-8 rounded-xl bg-[#D4A843] text-[#141414]
+                font-semibold text-[14px] hover:bg-[#B8912E] hover:text-white
+                transition-colors disabled:opacity-60"
+            >
+              {isPending ? 'Saving...' : 'Save changes'}
+            </button>
+          </form>
         </div>
       </div>
 
-      {/* ── Section 3: Account actions ────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
-        <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
-          Account actions
-        </h2>
-        <div className="space-y-3">
-          <Link
-            href="/account/security"
-            className="flex items-center justify-between px-4 py-3.5
-              rounded-xl border border-[#E3E0D9] hover:border-[#D4A843]
-              hover:bg-[#F5ECD4]/20 transition-colors group"
-          >
-            <span className="text-[13.5px] font-medium text-[#141414]">
-              Change password
-            </span>
-            <svg
-              className="text-[#9E9A91] group-hover:text-[#D4A843] transition-colors"
-              width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2.5"
-            >
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </Link>
+      {/* ── Right column: Progress + notifications + actions (2/5) ──── */}
+      <div className="lg:col-span-2 space-y-6">
+        {/* ── Profile completeness card ────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+          <h2 className="font-semibold text-[#141414] text-[16px] mb-4">
+            Profile completeness
+          </h2>
+          <div className="relative h-3 bg-[#F0EDE8] rounded-full overflow-hidden mb-3">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-[#D4A843] transition-all duration-500"
+              style={{ width: `${completePct}%` }}
+            />
+          </div>
+          <p className="text-[13px] text-[#73706A] mb-4">
+            <span className="font-semibold text-[#141414]">{completePct}%</span> complete
+          </p>
+          <ul className="space-y-2">
+            {[
+              { done: !!user.displayName, label: 'Display name' },
+              { done: !!user.emailVerified, label: 'Email verified' },
+              { done: !!region, label: 'Region selected' },
+              { done: !!bio, label: 'Bio written' },
+            ].map(({ done, label }) => (
+              <li key={label} className="flex items-center gap-2 text-[12.5px]">
+                {done ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9C5BC" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                  </svg>
+                )}
+                <span className={done ? 'text-[#141414]' : 'text-[#9E9A91]'}>
+                  {label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-          <Link
-            href="/account/verify"
-            className="flex items-center justify-between px-4 py-3.5
-              rounded-xl border border-[#E3E0D9] hover:border-[#D4A843]
-              hover:bg-[#F5ECD4]/20 transition-colors group"
-          >
-            <span className="text-[13.5px] font-medium text-[#141414]">
-              Verify your identity
-            </span>
-            <svg
-              className="text-[#9E9A91] group-hover:text-[#D4A843] transition-colors"
-              width="14" height="14" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2.5"
-            >
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </Link>
+        {/* ── Section 2: Notification preferences ──────────────────── */}
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+          <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
+            Notifications
+          </h2>
+          <div className="space-y-4">
+            {[
+              {
+                id: 'order-emails',
+                label: 'Message notifications',
+                value: orderEmails,
+                set: setOrderEmails,
+              },
+              {
+                id: 'offer-emails',
+                label: 'Offer notifications',
+                value: offerEmails,
+                set: setOfferEmails,
+              },
+              {
+                id: 'watchlist-emails',
+                label: 'Watchlist price drops',
+                value: watchlistEmails,
+                set: setWatchlistEmails,
+              },
+              {
+                id: 'marketing-emails',
+                label: 'Marketing emails',
+                value: marketingEmails,
+                set: setMarketingEmails,
+                optional: true,
+              },
+            ].map(({ id, label, value, set, optional }) => (
+              <div key={id} className="flex items-center justify-between gap-4">
+                <label htmlFor={id} className="text-[13px] text-[#141414] cursor-pointer">
+                  {label}{' '}
+                  {optional && (
+                    <span className="text-[#9E9A91] text-[11px]">(optional)</span>
+                  )}
+                </label>
+                <button
+                  id={id}
+                  role="switch"
+                  aria-checked={value}
+                  onClick={() => set((v: boolean) => !v)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full
+                    transition-colors shrink-0
+                    ${value ? 'bg-[#D4A843]' : 'bg-[#E3E0D9]'}`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
+                      transition-transform ${value ? 'translate-x-6' : 'translate-x-1'}`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
 
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            className="w-full flex items-center justify-between px-4 py-3.5
-              rounded-xl border border-red-200 text-red-500
-              hover:border-red-400 hover:bg-red-50 transition-colors"
-          >
-            <span className="text-[13.5px] font-medium">Delete my account</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-            </svg>
-          </button>
+        {/* ── Section 3: Account actions ────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+          <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
+            Account actions
+          </h2>
+          <div className="space-y-3">
+            <Link
+              href="/account/security"
+              className="flex items-center justify-between px-4 py-3.5
+                rounded-xl border border-[#E3E0D9] hover:border-[#D4A843]
+                hover:bg-[#F5ECD4]/20 transition-colors group"
+            >
+              <span className="text-[13.5px] font-medium text-[#141414]">
+                Change password
+              </span>
+              <svg
+                className="text-[#9E9A91] group-hover:text-[#D4A843] transition-colors"
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5"
+              >
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </Link>
+
+            <Link
+              href="/account/verify"
+              className="flex items-center justify-between px-4 py-3.5
+                rounded-xl border border-[#E3E0D9] hover:border-[#D4A843]
+                hover:bg-[#F5ECD4]/20 transition-colors group"
+            >
+              <span className="text-[13.5px] font-medium text-[#141414]">
+                Verify your identity
+              </span>
+              <svg
+                className="text-[#9E9A91] group-hover:text-[#D4A843] transition-colors"
+                width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5"
+              >
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </Link>
+
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="w-full flex items-center justify-between px-4 py-3.5
+                rounded-xl border border-red-200 text-red-500
+                hover:border-red-400 hover:bg-red-50 transition-colors"
+            >
+              <span className="text-[13.5px] font-medium">Delete my account</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
