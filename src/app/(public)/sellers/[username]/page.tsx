@@ -11,7 +11,7 @@ import { Avatar, StarRating, Breadcrumb } from '@/components/ui/primitives';
 import { relativeTime } from '@/lib/utils';
 import type { SellerBadge, NZRegion, Review, ListingCard as ListingCardType } from '@/types';
 import db from '@/lib/db';
-import { getImageUrl } from '@/lib/image';
+import { getImageUrl, getDefaultAvatar } from '@/lib/image';
 import { auth } from '@/lib/auth';
 import { BlockButton } from '@/components/seller/BlockButton';
 
@@ -31,6 +31,7 @@ async function getSellerByUsername(username: string) {
       username: true,
       displayName: true,
       avatarKey: true,
+      coverImageKey: true,
       bio: true,
       region: true,
       suburb: true,
@@ -123,7 +124,10 @@ export default async function SellerProfilePage({
     id: user.id,
     username: user.username,
     displayName: user.displayName,
-    avatarUrl: getImageUrl(user.avatarKey),
+    avatarUrl: user.avatarKey
+      ? getImageUrl(user.avatarKey)
+      : getDefaultAvatar(user.idVerified ? 'id_verified' : undefined),
+    coverImageUrl: user.coverImageKey ? getImageUrl(user.coverImageKey) : null,
     bio: user.bio,
     region: (user.region ?? 'Auckland') as NZRegion,
     suburb: user.suburb ?? '',
@@ -203,13 +207,29 @@ export default async function SellerProfilePage({
           <div
             className="relative mt-5 rounded-2xl overflow-hidden bg-[#141414]
               text-white p-6 sm:p-8"
+            style={seller.coverImageUrl ? {
+              backgroundImage: `url(${seller.coverImageUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            } : undefined}
           >
-            {/* Gold glow */}
-            <div
-              aria-hidden
-              className="absolute -top-20 -right-20 w-72 h-72 rounded-full
-                bg-[#D4A843]/15 blur-[80px] pointer-events-none"
-            />
+            {/* Overlay to keep text readable over cover images */}
+            {seller.coverImageUrl && (
+              <div
+                aria-hidden
+                className="absolute inset-0 bg-[#141414]/70 backdrop-blur-[1px]
+                  pointer-events-none"
+              />
+            )}
+
+            {/* Gold glow (only shown without cover image) */}
+            {!seller.coverImageUrl && (
+              <div
+                aria-hidden
+                className="absolute -top-20 -right-20 w-72 h-72 rounded-full
+                  bg-[#D4A843]/15 blur-[80px] pointer-events-none"
+              />
+            )}
 
             <div className="relative flex flex-col sm:flex-row items-start
               sm:items-center gap-5">
