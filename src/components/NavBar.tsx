@@ -405,6 +405,7 @@ export default function NavBar() {
                           <div className="border-b border-[#F0EDE8]">
                             <Link
                               href="/admin"
+                              onClick={() => setAccountOpen(false)}
                               className="flex items-center gap-3 px-4 py-2.5 text-[13px]
                                 text-[#D4A843] font-semibold hover:bg-[#F5ECD4]/40 transition-colors"
                             >
@@ -417,13 +418,14 @@ export default function NavBar() {
                         {/* Buyer links */}
                         <div className="py-1">
                           {[
-                            { href: '/dashboard/buyer', label: 'My orders & purchases', icon: '📦' },
+                            { href: '/dashboard/buyer?tab=orders', label: 'My orders & purchases', icon: '📦' },
                             { href: '/dashboard/buyer?tab=watchlist', label: 'Watchlist', icon: '❤️' },
                             { href: '/dashboard/buyer?tab=messages', label: 'Messages', icon: '💬' },
                           ].map(({ href, label, icon }) => (
                             <Link
                               key={href}
                               href={href}
+                              onClick={() => setAccountOpen(false)}
                               className="flex items-center gap-3 px-4 py-2.5 text-[13px]
                                 text-[#141414] hover:bg-[#F8F7F4] transition-colors"
                             >
@@ -441,13 +443,14 @@ export default function NavBar() {
                                 Selling
                               </p>
                               {[
-                                { href: '/dashboard/seller', label: 'Seller dashboard', icon: '📊' },
+                                { href: '/dashboard/seller?tab=overview', label: 'Seller dashboard', icon: '📊' },
                                 { href: '/sell', label: 'Create listing', icon: '➕' },
                                 { href: '/seller/onboarding', label: 'Seller Hub', icon: '🌿' },
                               ].map(({ href, label, icon }) => (
                                 <Link
                                   key={href}
                                   href={href}
+                                  onClick={() => setAccountOpen(false)}
                                   className="flex items-center gap-3 px-4 py-2.5 text-[13px]
                                     text-[#141414] hover:bg-[#F8F7F4] transition-colors"
                                 >
@@ -463,6 +466,7 @@ export default function NavBar() {
                         <div className="border-t border-[#F0EDE8] py-1">
                           <Link
                             href="/account/settings"
+                            onClick={() => setAccountOpen(false)}
                             className="flex items-center gap-3 px-4 py-2.5 text-[13px]
                               text-[#141414] hover:bg-[#F8F7F4] transition-colors"
                           >
