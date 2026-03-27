@@ -126,14 +126,21 @@ export async function rateLimit(
 
 /**
  * Extract client IP from Next.js request headers.
- * Handles Vercel, Cloudflare, and direct connections.
- * Returns 'unknown' if IP cannot be determined — still rate-limited.
+ *
+ * Priority order (most trusted → least trusted):
+ *   1. x-real-ip — set by Vercel infrastructure, cannot be spoofed by clients
+ *   2. cf-connecting-ip — set by Cloudflare, cannot be spoofed behind CF proxy
+ *   3. x-vercel-forwarded-for — Vercel-specific, more reliable than generic
+ *
+ * SECURITY: We intentionally do NOT fall back to x-forwarded-for because
+ * clients can inject arbitrary values. On Vercel and Cloudflare, the
+ * platform-specific headers are always set and trustworthy.
  */
 export function getClientIp(headers: Headers): string {
   return (
-    headers.get('cf-connecting-ip') ??        // Cloudflare (most accurate)
-    headers.get('x-real-ip') ??               // Nginx / load balancer
-    headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? // Proxied
+    headers.get('x-real-ip') ??               // Vercel (most trusted — set by infra)
+    headers.get('cf-connecting-ip') ??        // Cloudflare (set by edge, not spoofable)
+    headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() ?? // Vercel forwarded
     'unknown'
   );
 }

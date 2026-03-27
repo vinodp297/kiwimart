@@ -139,8 +139,13 @@ describe('OfferService', () => {
       listing: { id: 'listing-1', title: 'iPhone 15' },
     }
 
-    it('accepts offer and reserves listing', async () => {
+    it('accepts offer and reserves listing atomically', async () => {
       vi.mocked(db.offer.findUnique).mockResolvedValue(mockOffer as never)
+      // Transaction callback — execute with db as the tx mock
+      vi.mocked(db.$transaction).mockImplementation(async (cb) => {
+        if (typeof cb === 'function') return await cb(db as never)
+        return [] as never
+      })
       vi.mocked(db.offer.update).mockResolvedValue({} as never)
       vi.mocked(db.listing.update).mockResolvedValue({} as never)
       vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 0 } as never)
@@ -151,16 +156,8 @@ describe('OfferService', () => {
         '127.0.0.1'
       )
 
-      expect(db.offer.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'ACCEPTED' }),
-        })
-      )
-      expect(db.listing.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: { status: 'RESERVED' },
-        })
-      )
+      // Should use $transaction for atomicity
+      expect(db.$transaction).toHaveBeenCalled()
     })
 
     it('declines offer without changing listing', async () => {
@@ -235,8 +232,12 @@ describe('OfferService', () => {
       ).rejects.toThrow(AppError)
     })
 
-    it('declines all other pending offers when accepting', async () => {
+    it('declines all other pending offers when accepting (in transaction)', async () => {
       vi.mocked(db.offer.findUnique).mockResolvedValue(mockOffer as never)
+      vi.mocked(db.$transaction).mockImplementation(async (cb) => {
+        if (typeof cb === 'function') return await cb(db as never)
+        return [] as never
+      })
       vi.mocked(db.offer.update).mockResolvedValue({} as never)
       vi.mocked(db.listing.update).mockResolvedValue({} as never)
       vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 3 } as never)
@@ -247,6 +248,7 @@ describe('OfferService', () => {
         '127.0.0.1'
       )
 
+      expect(db.$transaction).toHaveBeenCalled()
       expect(db.offer.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({

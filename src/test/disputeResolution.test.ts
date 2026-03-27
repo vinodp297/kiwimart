@@ -71,22 +71,27 @@ describe('Dispute resolution atomicity', () => {
     expect(getError(result)).toContain('Order not found')
   })
 
-  it('does NOT update DB if Stripe refund fails (buyer favour)', async () => {
+  it('still updates DB even if Stripe refund fails — DB-first pattern (buyer favour)', async () => {
     vi.mocked(db.order.findUnique).mockResolvedValue({
       id: 'order-dispute-1',
       status: 'DISPUTED',
       stripePaymentIntentId: 'pi_refund_fail',
     } as never)
+    vi.mocked(db.order.update).mockResolvedValue({} as never)
 
     // Stripe refund will fail — use shared mock
     mockStripeRefund.mockRejectedValueOnce(new Error('Stripe: card_declined'))
 
+    // Should succeed — Stripe error is swallowed and logged for manual retry
     const result = await resolveDispute('order-dispute-1', 'buyer')
-    expect(result.success).toBe(false)
-    expect(getError(result)).toContain('Refund failed')
+    expect(result.success).toBe(true)
 
-    // DB should NOT be updated
-    expect(db.order.update).not.toHaveBeenCalled()
+    // DB IS updated (optimistic pattern — admin can retry Stripe manually)
+    expect(db.order.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'REFUNDED' }),
+      })
+    )
   })
 
   it('does NOT update DB if Stripe capture fails (seller favour)', async () => {

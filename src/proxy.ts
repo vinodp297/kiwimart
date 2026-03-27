@@ -14,9 +14,13 @@
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import crypto from 'crypto';
 import { auth } from '@/lib/auth';
 import { logger } from '@/shared/logger';
 import { getSessionVersion } from '@/server/lib/sessionStore';
+
+/** Generate a cryptographically random nonce for CSP per-request. */
+const generateNonce = () => crypto.randomBytes(16).toString('base64');
 
 // Paths that require a session. Matched with exact-segment logic so that
 // /sell blocks /sell and /sell/* but NOT /sellers/* (public seller profiles).
@@ -51,14 +55,22 @@ export const proxy = auth(async function proxyHandler(
   const { pathname } = request.nextUrl;
 
   // ── Security headers (applied to all responses) ───────────────────────────
-  const response = NextResponse.next();
+  const nonce = generateNonce();
+
+  const response = NextResponse.next({
+    request: {
+      headers: new Headers(request.headers),
+    },
+  });
+  // Pass nonce to server components via request header
+  response.headers.set('x-nonce', nonce);
 
   const csp = [
     "default-src 'self'",
-    // PostHog loads its main bundle from us-assets.i.posthog.com and app.posthog.com;
-    // Stripe and Cloudflare Turnstile also need script access.
-    `script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    // Nonce-based CSP: only scripts/styles with the correct nonce execute.
+    // 'strict-dynamic' allows nonce-approved scripts to load their own sub-resources.
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
+    `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`,
     "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://r2.kiwimart.co.nz https://*.stripe.com",
     "font-src 'self' https://fonts.gstatic.com",
     // PostHog sends analytics to us.i.posthog.com & us-assets; Pusher needs both WS and HTTPS.

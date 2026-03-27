@@ -5,19 +5,15 @@
 
 import { NextResponse } from 'next/server'
 import { expireListings, releaseExpiredOfferReservations } from '@/server/jobs/expireListings'
+import { verifyCronSecret } from '@/server/lib/verifyCronSecret'
 import { logger } from '@/shared/logger'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    logger.warn('cron.expire_listings.unauthorized')
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const authError = verifyCronSecret(request)
+  if (authError) return authError
 
   logger.info('cron.expire_listings.triggered')
 

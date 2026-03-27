@@ -125,31 +125,41 @@ export class OfferService {
     }
 
     const newStatus = input.action === 'ACCEPT' ? 'ACCEPTED' : 'DECLINED'
-    await db.offer.update({
-      where: { id: input.offerId },
-      data: {
-        status: newStatus,
-        respondedAt: new Date(),
-        declineNote: input.declineNote ?? null,
-        // Give buyer 24 hours to complete payment after acceptance
-        ...(input.action === 'ACCEPT' && {
-          paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        }),
-      },
-    })
 
     if (input.action === 'ACCEPT') {
-      await db.listing.update({
-        where: { id: offer.listingId },
-        data: { status: 'RESERVED' },
+      // Atomic: accept offer + reserve listing + decline competing offers
+      await db.$transaction(async (tx) => {
+        await tx.offer.update({
+          where: { id: input.offerId },
+          data: {
+            status: 'ACCEPTED',
+            respondedAt: new Date(),
+            paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        })
+
+        await tx.listing.update({
+          where: { id: offer.listingId },
+          data: { status: 'RESERVED' },
+        })
+
+        await tx.offer.updateMany({
+          where: {
+            listingId: offer.listingId,
+            id: { not: input.offerId },
+            status: 'PENDING',
+          },
+          data: { status: 'DECLINED', respondedAt: new Date() },
+        })
       })
-      await db.offer.updateMany({
-        where: {
-          listingId: offer.listingId,
-          id: { not: input.offerId },
-          status: 'PENDING',
+    } else {
+      await db.offer.update({
+        where: { id: input.offerId },
+        data: {
+          status: newStatus,
+          respondedAt: new Date(),
+          declineNote: input.declineNote ?? null,
         },
-        data: { status: 'DECLINED', respondedAt: new Date() },
       })
     }
 
