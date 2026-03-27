@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/sellerReviews.ts — thin wrapper
 // Business logic delegated to ReviewService.
 
@@ -22,6 +23,6 @@ export async function fetchSellerReviews(): Promise<ActionResult<SellerReviewRow
     const data = await reviewService.fetchSellerReviews(user.id);
     return { success: true, data };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

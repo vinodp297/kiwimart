@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/orders.ts
 // ─── Order Server Actions ─────────────────────────────────────────────────────
 // Escrow payment flow:
@@ -73,7 +74,7 @@ export async function createOrder(params: {
   try {
     user = await requireUser();
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Authentication required.' };
+    return { success: false, error: safeActionError(err, 'Authentication required.') };
   }
 
   // 2. Rate limit — 5 orders per hour per user
@@ -297,7 +298,7 @@ export async function confirmDelivery(
     await orderService.confirmDelivery(parsed.data.orderId, user.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -317,6 +318,6 @@ export async function markDispatched(params: {
     await orderService.markDispatched(parsed.data, user.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

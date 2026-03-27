@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/reports.ts
 // ─── Report Server Actions ───────────────────────────────────────────────────
 // Allows users to report listings or other users for violations.
@@ -46,7 +47,7 @@ export async function createReport(
   try {
     user = await requireUser();
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Sign in to report content.' };
+    return { success: false, error: safeActionError(err, 'Sign in to report content.') };
   }
 
   // 3. Validate

@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/stripe.ts
 // ─── Stripe Connect Server Actions ──────────────────────────────────────────
 // Seller onboarding for Stripe Connect Express accounts.
@@ -97,7 +98,7 @@ export async function createStripeConnectAccount(): Promise<
 
   return { success: true, data: { onboardingUrl: accountLink.url } };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -131,7 +132,7 @@ export async function getStripeOnboardingUrl(): Promise<
 
     return { success: true, data: { onboardingUrl: accountLink.url } };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
 
@@ -195,6 +196,6 @@ export async function getStripeAccountStatus(): Promise<
       },
     };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

@@ -14,6 +14,30 @@ import { confirmDelivery, markDispatched } from '@/server/actions/orders';
 import { openDispute } from '@/server/actions/disputes';
 import { fetchOrderDetail } from '@/server/actions/orderDetail';
 
+// ── Courier URL detection ────────────────────────────────────────────────────
+function getCourierUrl(trackingNumber: string): string {
+  const tn = trackingNumber.toUpperCase().trim();
+
+  // NZ Post international format (2 letters + 9 digits + 2 letters) or NZ prefix
+  if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(tn) || tn.startsWith('NZ')) {
+    return `https://www.nzpost.co.nz/tools/tracking?trackid=${encodeURIComponent(tn)}`;
+  }
+  // CourierPost
+  if (tn.startsWith('CP') || tn.startsWith('CPA')) {
+    return `https://www.courierpost.co.nz/track/?trackingid=${encodeURIComponent(tn)}`;
+  }
+  // Aramex (long numeric)
+  if (/^\d{10,}$/.test(tn)) {
+    return `https://www.aramex.co.nz/tools/track?l=${encodeURIComponent(tn)}`;
+  }
+  // DHL
+  if (tn.startsWith('DHL') || /^\d{10}$/.test(tn)) {
+    return `https://www.dhl.com/nz-en/home/tracking/tracking-parcel.html?submit=1&tracking-id=${encodeURIComponent(tn)}`;
+  }
+  // Default — NZ Post (most common NZ courier)
+  return `https://www.nzpost.co.nz/tools/tracking?trackid=${encodeURIComponent(tn)}`;
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = params.id as string;
@@ -93,6 +117,7 @@ export default function OrderDetailPage() {
       setError('Please select a reason and describe the issue (at least 20 characters).');
       return;
     }
+    setError(null);
     setActionLoading(true);
     const result = await openDispute({
       orderId,
@@ -100,6 +125,7 @@ export default function OrderDetailPage() {
       description: disputeDescription,
     });
     if (result.success) {
+      setError(null);
       setActionSuccess('Dispute opened. We will review your case within 48 hours.');
       setShowDispute(false);
       const updated = await fetchOrderDetail(orderId);
@@ -314,18 +340,19 @@ export default function OrderDetailPage() {
               {order.trackingNumber && (
                 <div className="mt-3 pt-3 border-t border-[#F0EDE8]">
                   <p className="text-[11.5px] font-semibold text-[#141414] mb-1">Tracking</p>
-                  {order.trackingUrl ? (
-                    <a
-                      href={order.trackingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[12px] text-[#D4A843] font-mono hover:underline"
-                    >
-                      {order.trackingNumber}
-                    </a>
-                  ) : (
-                    <span className="text-[12px] font-mono text-[#73706A]">{order.trackingNumber}</span>
-                  )}
+                  <a
+                    href={order.trackingUrl || getCourierUrl(order.trackingNumber)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[12px] text-[#D4A843] font-mono hover:underline inline-flex items-center gap-1"
+                  >
+                    {order.trackingNumber}
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
                 </div>
               )}
             </div>
@@ -362,7 +389,7 @@ export default function OrderDetailPage() {
             )}
 
             {/* Message */}
-            <Link href={`/messages?userId=${order.isBuyer ? order.sellerId : order.buyerId}`}>
+            <Link href={`/messages/new?listingId=${order.listingId}&sellerId=${order.isBuyer ? order.sellerId : order.buyerId}`}>
               <Button variant="secondary" size="md">
                 Message {order.isBuyer ? 'seller' : 'buyer'}
               </Button>

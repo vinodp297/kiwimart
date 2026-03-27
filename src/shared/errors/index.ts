@@ -89,3 +89,22 @@ export class AppError extends Error {
     )
   }
 }
+
+// ── Safe error message helper ─────────────────────────────────────────────
+// Returns the error message for user-facing AppErrors, and a generic safe
+// message for everything else (Prisma, system, network errors).  The full
+// error is always logged server-side so it can be investigated.
+
+export function safeActionError(
+  err: unknown,
+  fallback = 'Something went wrong. Please try again.',
+): string {
+  // AppError messages are designed to be user-facing — surface them.
+  if (err instanceof AppError) return err.message
+
+  // Everything else: log the real error server-side, return a safe generic.
+  // Use console.error here (not logger) so there's zero risk of a circular
+  // import — server actions import this file before logger is initialised.
+  console.error('[safeActionError]', err instanceof Error ? err.message : String(err))
+  return fallback
+}

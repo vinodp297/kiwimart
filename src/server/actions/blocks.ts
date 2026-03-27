@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/blocks.ts
 // ─── Block User Actions ───────────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ export async function blockUser(
   try {
     user = await requireUser();
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Sign in to block users.' };
+    return { success: false, error: safeActionError(err, 'Sign in to block users.') };
   }
 
   if (user.id === targetUserId) {
@@ -47,7 +48,7 @@ export async function unblockUser(
   try {
     user = await requireUser();
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Sign in to unblock users.' };
+    return { success: false, error: safeActionError(err, 'Sign in to unblock users.') };
   }
 
   await db.blockedUser.deleteMany({

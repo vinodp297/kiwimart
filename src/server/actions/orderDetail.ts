@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/orderDetail.ts
 // ─── Order Detail Server Action ─────────────────────────────────────────────
 
@@ -109,6 +110,6 @@ export async function fetchOrderDetail(
       },
     };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }

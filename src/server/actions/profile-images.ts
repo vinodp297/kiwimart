@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/profile-images.ts
 // ─── Profile Image Upload Server Actions ─────────────────────────────────────
 // Handles avatar and cover image uploads for user profiles.
@@ -71,7 +72,7 @@ export async function requestProfileImageUpload(params: {
 
     return { success: true, data: { uploadUrl, r2Key } };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Storage unavailable.';
+    const msg = safeActionError(err, 'Storage unavailable.');
     // Graceful degradation when R2 is not configured (dev)
     if (msg.includes('credentials') || msg.includes('not set') || msg.includes('PLACEHOLDER')) {
       return { success: false, error: 'Image storage is not configured in this environment.' };
@@ -125,7 +126,7 @@ export async function confirmProfileImageUpload(params: {
   } catch (err) {
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'An unexpected error occurred.',
+      error: safeActionError(err),
     };
   }
 }

@@ -1,4 +1,5 @@
 'use server';
+import { safeActionError } from '@/shared/errors'
 // src/server/actions/storage.ts  (Sprint 6 — storage monitoring)
 // ─── Storage Monitoring ─────────────────────────────────────────────────────
 
@@ -68,6 +69,6 @@ export async function getStorageStats(): Promise<ActionResult<StorageStats>> {
       },
     };
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'An unexpected error occurred.' };
+    return { success: false, error: safeActionError(err) };
   }
 }
