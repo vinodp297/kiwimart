@@ -1,9 +1,15 @@
-// src/server/workers/emailWorker.ts  (Sprint 4)
+// src/server/workers/emailWorker.ts
 // ─── Email Worker ────────────────────────────────────────────────────────────
-// Processes emailQueue jobs with 3 retries and exponential backoff.
-// Job types: welcome, passwordReset, offerReceived, offerResponse,
-//            orderDispatched, orderComplete
-// All jobs are idempotent — Resend deduplicates by MessageID.
+//
+// STATUS: INACTIVE on production Vercel.
+// BullMQ workers require a persistent process and do NOT run on Vercel serverless.
+// All emails are currently sent directly via Resend in server actions
+// (see src/server/email/transport.ts).
+//
+// To activate: Deploy a separate worker process (Railway, Render, or VPS)
+// that runs: node src/worker.ts
+//
+// Future: Consider Vercel Queues or Inngest for serverless-compatible queuing.
 
 import { Worker } from 'bullmq';
 import { getRedisConnection } from '@/lib/queue';
@@ -20,6 +26,10 @@ import { audit } from '@/server/lib/audit';
 import { logger } from '@/shared/logger';
 
 export function startEmailWorker() {
+  if (process.env.VERCEL) {
+    logger.error('worker.email: BullMQ workers cannot run on Vercel serverless. Use direct Resend calls instead.');
+    return;
+  }
   const worker = new Worker<EmailJobData>(
     'email',
     async (job) => {
@@ -66,8 +76,7 @@ export function startEmailWorker() {
       });
     },
     {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      connection: getRedisConnection() as any,
+      connection: getRedisConnection() as unknown as import('bullmq').ConnectionOptions,
       concurrency: 5,
       limiter: { max: 10, duration: 1000 }, // Max 10 emails/sec (Resend limit)
     }

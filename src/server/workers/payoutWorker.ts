@@ -1,5 +1,9 @@
-// src/server/workers/payoutWorker.ts  (Sprint 4)
+// src/server/workers/payoutWorker.ts
 // ─── Payout Processing Worker ────────────────────────────────────────────────
+// STATUS: INACTIVE on production Vercel. Requires persistent process.
+// Payouts are currently handled by auto-release cron + Stripe webhooks.
+// To activate: Deploy separately — see emailWorker.ts header for details.
+//
 // Processes payoutQueue jobs:
 //   After order.completedAt + 3 business days:
 //     1. Initiate Stripe transfer to seller's Connect account
@@ -17,6 +21,10 @@ import { stripe } from '@/infrastructure/stripe/client';
 import { logger } from '@/shared/logger';
 
 export function startPayoutWorker() {
+  if (process.env.VERCEL) {
+    console.error('worker.payout: BullMQ workers cannot run on Vercel serverless.');
+    return;
+  }
   const worker = new Worker<PayoutJobData>(
     'payout',
     async (job) => {
@@ -93,8 +101,7 @@ export function startPayoutWorker() {
       return { transferId: transfer.id };
     },
     {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      connection: getRedisConnection() as any,
+      connection: getRedisConnection() as unknown as import('bullmq').ConnectionOptions,
       concurrency: 2,
     }
   );

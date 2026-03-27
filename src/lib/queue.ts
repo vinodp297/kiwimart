@@ -17,8 +17,9 @@ export { getQueueConnection as getRedisConnection };
 // ── Queue instances ──────────────────────────────────────────────────────────
 
 const defaultOpts = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  connection: getQueueConnection() as any,
+  // BullMQ bundles its own ioredis types which conflict with the project's ioredis.
+  // The runtime connection works correctly — this cast bridges the type mismatch.
+  connection: getQueueConnection() as unknown as import('bullmq').ConnectionOptions,
   defaultJobOptions: {
     removeOnComplete: 100,
     removeOnFail: 50,

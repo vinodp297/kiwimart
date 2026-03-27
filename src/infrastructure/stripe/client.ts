@@ -5,9 +5,10 @@
 
 import Stripe from 'stripe'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Stripe API version: cast required because the beta clover version string is
+// not in the SDK's union type. This is the correct version for Stripe 2026.
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-02-25.clover' as any,
+  apiVersion: '2026-02-25.clover' as Stripe.LatestApiVersion,
   typescript: true,
   appInfo: {
     name: 'KiwiMart',

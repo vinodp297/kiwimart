@@ -503,6 +503,16 @@ export default function SellPage() {
             </p>
           </div>
 
+          {/* NZ CGA seller obligation notice */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-6 text-[12px] text-amber-800">
+            <p className="font-semibold mb-0.5">Your obligations as a seller</p>
+            <p>
+              Your listing must accurately represent the item. Under the NZ Consumer Guarantees Act,
+              buyers have the right to a remedy if items don&apos;t match their description.
+              Misrepresentation may result in account suspension.
+            </p>
+          </div>
+
           {/* Step indicator */}
           <div className="flex items-center gap-0 mb-8" role="list" aria-label="Listing steps">
             {STEPS.map((s, i) => (

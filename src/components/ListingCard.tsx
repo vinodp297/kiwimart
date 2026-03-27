@@ -8,7 +8,7 @@
 //   • offersEnabled chip
 //   • Graceful fallback for listings without sellerUsername
 
-import { useState } from 'react';
+import { useState, memo, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import type { ListingCard as ListingCardType } from '@/types';
@@ -34,7 +34,7 @@ function priceDrop(current: number, previous: number | null): number {
   return Math.round(((previous - current) / previous) * 100);
 }
 
-export default function ListingCard({ listing, priority = false }: Props) {
+export default memo(function ListingCard({ listing, priority = false }: Props) {
   const [watched, setWatched] = useState(false);
 
   const isSold = listing.status === 'sold';
@@ -276,5 +276,5 @@ export default function ListingCard({ listing, priority = false }: Props) {
       </div>
     </article>
   );
-}
+})
 

@@ -155,6 +155,19 @@ export default async function CheckoutPage(props: {
               </Link>
             </div>
           ) : (
+            <>
+            {/* NZ Consumer Guarantees Act notice */}
+            <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 mb-6 text-[12.5px] text-sky-800">
+              <h4 className="font-semibold mb-1">Your consumer rights</h4>
+              <p>
+                Under the NZ Consumer Guarantees Act, sellers must ensure items match their
+                description and are fit for purpose. KiwiMart&apos;s $3,000 buyer protection
+                covers you if something goes wrong.{' '}
+                <Link href="/consumer-law" className="underline font-semibold hover:text-sky-900">
+                  Learn more
+                </Link>
+              </p>
+            </div>
             <CheckoutForm
               listing={{
                 id: listing.id,
@@ -170,6 +183,7 @@ export default async function CheckoutPage(props: {
                 sellerUsername: listing.seller.username,
               }}
             />
+            </>
           )}
         </div>
       </main>
