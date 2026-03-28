@@ -127,6 +127,7 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
 
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
+    if (!t) return;
     touchRef.current = {
       sx: t.clientX,
       sy: t.clientY,
@@ -138,6 +139,7 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
   const onTouchMove = (e: React.TouchEvent) => {
     if (!touchRef.current) return;
     const t = e.touches[0];
+    if (!t) return;
     const { sx, sy, ox, oy } = touchRef.current;
     setOffset(
       clamp(ox + (t.clientX - sx), oy + (t.clientY - sy), zoom, natW, natH),

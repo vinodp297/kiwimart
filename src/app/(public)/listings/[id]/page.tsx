@@ -1,36 +1,53 @@
 // src/app/(public)/listings/[id]/page.tsx
 // ─── Listing Detail Page ──────────────────────────────────────────────────────
 
-import { notFound } from 'next/navigation';
-import type { Metadata } from 'next';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import ListingCard from '@/components/ListingCard';
-import { Breadcrumb } from '@/components/ui/primitives';
-import { formatPrice, CONDITION_LABELS, relativeTime } from '@/lib/utils';
-import ListingGallery from './ListingGallery';
-import ListingActions from './ListingActions';
-import SellerPanel from './SellerPanel';
-import ShippingEstimate from './ShippingEstimate';
-import { getListingById } from '@/server/actions/listings';
-import { searchListings } from '@/server/actions/search';
-import { getSellerResponseTime } from '@/modules/listings/seller-response.service';
-import { getSellerTrustProfile } from '@/modules/sellers/trust-score.service';
-import { getListingSocialProof } from '@/modules/listings/social-proof.service';
-import { getListingPriceHistory } from '@/modules/listings/price-history.service';
-import { getMoreFromSeller, getSimilarListings } from '@/modules/listings/recommendations.service';
-import SafetyBanner from '@/components/SafetyBanner';
-import PriceHistoryChart from '@/components/PriceHistoryChart';
-import type { ListingDetail, SellerPublic, ListingImage, ListingAttribute, Condition, NZRegion, SellerBadge } from '@/types';
-import { getImageUrl as r2Url } from '@/lib/image';
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import ListingCard from "@/components/ListingCard";
+import { Breadcrumb } from "@/components/ui/primitives";
+import { formatPrice, CONDITION_LABELS, relativeTime } from "@/lib/utils";
+import ListingGallery from "./ListingGallery";
+import ListingActions from "./ListingActions";
+import SellerPanel from "./SellerPanel";
+import ShippingEstimate from "./ShippingEstimate";
+import { getListingById } from "@/server/actions/listings";
+import { searchListings } from "@/server/actions/search";
+import { getSellerResponseTime } from "@/modules/listings/seller-response.service";
+import { getSellerTrustProfile } from "@/modules/sellers/trust-score.service";
+import { getListingSocialProof } from "@/modules/listings/social-proof.service";
+import { getListingPriceHistory } from "@/modules/listings/price-history.service";
+import {
+  getMoreFromSeller,
+  getSimilarListings,
+} from "@/modules/listings/recommendations.service";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import SafetyBanner from "@/components/SafetyBanner";
+import PriceHistoryChart from "@/components/PriceHistoryChart";
+import type {
+  ListingDetail,
+  SellerPublic,
+  ListingImage,
+  ListingAttribute,
+  Condition,
+  NZRegion,
+  SellerBadge,
+} from "@/types";
+import { getImageUrl as r2Url } from "@/lib/image";
 
 export const revalidate = 60;
 
 function mapCondition(c: string): Condition {
   const map: Record<string, Condition> = {
-    NEW: 'new', LIKE_NEW: 'like-new', GOOD: 'good', FAIR: 'fair', PARTS: 'parts',
+    NEW: "new",
+    LIKE_NEW: "like-new",
+    GOOD: "good",
+    FAIR: "fair",
+    PARTS: "parts",
   };
-  return map[c] ?? 'good';
+  return map[c] ?? "good";
 }
 
 // ── Metadata ──────────────────────────────────────────────────────────────────
@@ -41,11 +58,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { id } = await params;
   const listing = await getListingById(id);
-  if (!listing) return { title: 'Listing not found' };
+  if (!listing) return { title: "Listing not found" };
 
   const price = listing.priceNzd / 100;
   const condition = mapCondition(listing.condition);
-  const thumb = listing.images[0]?.r2Key ? r2Url(listing.images[0].r2Key) : undefined;
+  const thumb = listing.images[0]?.r2Key
+    ? r2Url(listing.images[0].r2Key)
+    : undefined;
 
   return {
     title: listing.title,
@@ -73,49 +92,91 @@ export default async function ListingDetailPage({
   const condition = mapCondition(listing.condition);
   const price = listing.priceNzd / 100;
 
-  const images: ListingImage[] = listing.images.length > 0
-    ? listing.images.map((img) => ({
-        id: img.id,
-        url: r2Url(img.r2Key),
-        altText: listing.title,
-        order: img.order,
-      }))
-    : [{ id: `${id}-img0`, url: r2Url(null), altText: listing.title, order: 0 }];
+  const images: ListingImage[] =
+    listing.images.length > 0
+      ? listing.images.map((img) => ({
+          id: img.id,
+          url: r2Url(img.r2Key),
+          altText: listing.title,
+          order: img.order,
+        }))
+      : [
+          {
+            id: `${id}-img0`,
+            url: r2Url(null),
+            altText: listing.title,
+            order: 0,
+          },
+        ];
 
   const attributes: ListingAttribute[] = listing.attrs.map((a) => ({
     label: a.label,
     value: a.value,
   }));
   // Always include condition + category in attributes if not already present
-  if (!attributes.find((a) => a.label === 'Condition')) {
-    attributes.unshift({ label: 'Condition', value: CONDITION_LABELS[condition] });
+  if (!attributes.find((a) => a.label === "Condition")) {
+    attributes.unshift({
+      label: "Condition",
+      value: CONDITION_LABELS[condition],
+    });
   }
 
-  const [responseTimeLabel, trustProfile, socialProof, priceHistory] = await Promise.all([
-    getSellerResponseTime(listing.seller.id).then((r) => r ?? 'Response time unknown'),
-    getSellerTrustProfile(listing.seller.id).catch(() => null),
-    getListingSocialProof(listing.id).catch(() => ({ viewCount: 0, watcherCount: 0, pendingOfferCount: 0 })),
-    getListingPriceHistory(listing.id).catch(() => []),
-  ]);
+  const session = await auth().catch(() => null);
+
+  const [responseTimeLabel, trustProfile, rawSocialProof, priceHistory] =
+    await Promise.all([
+      getSellerResponseTime(listing.seller.id).then(
+        (r) => r ?? "Response time unknown",
+      ),
+      getSellerTrustProfile(listing.seller.id).catch(() => null),
+      getListingSocialProof(listing.id).catch(() => ({
+        viewCount: 0,
+        watcherCount: 0,
+        pendingOfferCount: 0,
+      })),
+      getListingPriceHistory(listing.id).catch(() => []),
+    ]);
+
+  // Exclude current viewer from watcher count (if they're watching)
+  let adjustedWatcherCount = rawSocialProof.watcherCount;
+  if (session?.user?.id) {
+    const isWatching = await db.watchlistItem
+      .findFirst({
+        where: { userId: session.user.id, listingId: listing.id },
+        select: { id: true },
+      })
+      .catch(() => null);
+    if (isWatching)
+      adjustedWatcherCount = Math.max(0, adjustedWatcherCount - 1);
+  }
+  const socialProof = { ...rawSocialProof, watcherCount: adjustedWatcherCount };
 
   const seller: SellerPublic = {
     id: listing.seller.id,
     username: listing.seller.username,
     displayName: listing.seller.displayName,
-    avatarUrl: listing.seller.avatarKey ? r2Url(listing.seller.avatarKey) : null,
+    avatarUrl: listing.seller.avatarKey
+      ? r2Url(listing.seller.avatarKey)
+      : null,
     bio: listing.seller.bio,
     region: (listing.seller.region ?? listing.region) as NZRegion,
     suburb: listing.seller.suburb ?? listing.suburb,
-    rating: listing.seller.reviews.length > 0
-      ? listing.seller.reviews.reduce((sum: number, r: { rating: number }) => sum + r.rating, 0) / listing.seller.reviews.length / 10
-      : 0,
+    rating:
+      listing.seller.reviews.length > 0
+        ? listing.seller.reviews.reduce(
+            (sum: number, r: { rating: number }) => sum + r.rating,
+            0,
+          ) /
+          listing.seller.reviews.length /
+          10
+        : 0,
     reviewCount: listing.seller._count.reviews,
     verified: listing.seller.idVerified,
     memberSince: listing.seller.createdAt.toISOString(),
     activeListingCount: listing.seller._count.listings,
     soldCount: listing.seller._count.sellerOrders,
     responseTimeLabel,
-    badges: (listing.seller.idVerified ? ['verified_id'] : []) as SellerBadge[],
+    badges: (listing.seller.idVerified ? ["verified_id"] : []) as SellerBadge[],
   };
 
   const detail: ListingDetail = {
@@ -124,10 +185,10 @@ export default async function ListingDetailPage({
     price,
     condition,
     categoryName: listing.categoryId,
-    subcategoryName: listing.subcategoryName ?? '',
+    subcategoryName: listing.subcategoryName ?? "",
     region: listing.region as NZRegion,
     suburb: listing.suburb,
-    thumbnailUrl: images[0].url,
+    thumbnailUrl: images[0]?.url ?? "",
     sellerName: listing.seller.displayName,
     sellerUsername: listing.seller.username,
     sellerRating: seller.rating,
@@ -135,11 +196,13 @@ export default async function ListingDetailPage({
     viewCount: listing.viewCount,
     watcherCount: listing.watcherCount,
     createdAt: listing.createdAt.toISOString(),
-    status: listing.status.toLowerCase() as ListingDetail['status'],
-    shippingOption: listing.shippingOption.toLowerCase() as ListingDetail['shippingOption'],
-    shippingPrice: listing.shippingNzd != null ? listing.shippingNzd / 100 : null,
+    status: listing.status.toLowerCase() as ListingDetail["status"],
+    shippingOption:
+      listing.shippingOption.toLowerCase() as ListingDetail["shippingOption"],
+    shippingPrice:
+      listing.shippingNzd != null ? listing.shippingNzd / 100 : null,
     offersEnabled: listing.offersEnabled,
-    description: listing.description ?? 'No description provided.',
+    description: listing.description ?? "No description provided.",
     images,
     attributes,
     seller,
@@ -155,9 +218,18 @@ export default async function ListingDetailPage({
   let similarListings: typeof relatedListings = [];
   try {
     const [related, fromSeller, similar] = await Promise.all([
-      searchListings({ category: listing.categoryId, pageSize: 5, sort: 'most-watched' }),
+      searchListings({
+        category: listing.categoryId,
+        pageSize: 5,
+        sort: "most-watched",
+      }),
       getMoreFromSeller(listing.seller.id, listing.id).catch(() => []),
-      getSimilarListings(listing.id, listing.categoryId, listing.priceNzd, listing.seller.id).catch(() => []),
+      getSimilarListings(
+        listing.id,
+        listing.categoryId,
+        listing.priceNzd,
+        listing.seller.id,
+      ).catch(() => []),
     ]);
     relatedListings = related.listings.filter((l) => l.id !== id).slice(0, 4);
     moreFromSeller = fromSeller;
@@ -167,29 +239,40 @@ export default async function ListingDetailPage({
   }
 
   const breadcrumbs = [
-    { label: 'Home', href: '/' },
-    { label: 'Browse', href: '/search' },
-    { label: detail.categoryName, href: `/search?category=${detail.categoryName.toLowerCase().replace(/\s+&\s+|-/g, '-').replace(/\s+/g, '-')}` },
-    { label: detail.title.length > 40 ? detail.title.slice(0, 40) + '…' : detail.title },
+    { label: "Home", href: "/" },
+    { label: "Browse", href: "/search" },
+    {
+      label: detail.categoryName,
+      href: `/search?category=${detail.categoryName
+        .toLowerCase()
+        .replace(/\s+&\s+|-/g, "-")
+        .replace(/\s+/g, "-")}`,
+    },
+    {
+      label:
+        detail.title.length > 40
+          ? detail.title.slice(0, 40) + "…"
+          : detail.title,
+    },
   ];
 
   // JSON-LD structured data for Google rich results
   const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
+    "@context": "https://schema.org",
+    "@type": "Product",
     name: listing.title,
     description: listing.description ?? listing.title,
     image: images[0]?.url,
     offers: {
-      '@type': 'Offer',
+      "@type": "Offer",
       price: price.toFixed(2),
-      priceCurrency: 'NZD',
+      priceCurrency: "NZD",
       availability:
-        listing.status === 'ACTIVE'
-          ? 'https://schema.org/InStock'
-          : 'https://schema.org/OutOfStock',
+        listing.status === "ACTIVE"
+          ? "https://schema.org/InStock"
+          : "https://schema.org/OutOfStock",
       seller: {
-        '@type': 'Person',
+        "@type": "Person",
         name: listing.seller.displayName,
       },
     },
@@ -210,42 +293,67 @@ export default async function ListingDetailPage({
 
           {/* ── Main 2-col layout ─────────────────────────────────────────── */}
           <div className="mt-5 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
-
             {/* ── Left column ────────────────────────────────────────────── */}
             <div className="min-w-0">
-
               {/* Image gallery (client component — handles lightbox + swipe) */}
               <ListingGallery images={detail.images} title={detail.title} />
 
               {/* Social proof bar */}
-              {(socialProof.viewCount > 0 || socialProof.watcherCount > 0 || socialProof.pendingOfferCount > 0) && (
+              {(socialProof.viewCount > 0 ||
+                socialProof.watcherCount > 0 ||
+                socialProof.pendingOfferCount > 0) && (
                 <div className="mt-3 flex items-center gap-4 text-[12px] text-[#73706A]">
                   {socialProof.viewCount > 0 && (
                     <span className="flex items-center gap-1">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
                       </svg>
-                      {socialProof.viewCount.toLocaleString('en-NZ')} views
+                      {socialProof.viewCount.toLocaleString("en-NZ")} views
                     </span>
                   )}
                   {socialProof.watcherCount > 0 && (
                     <span className="flex items-center gap-1">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                       </svg>
                       {socialProof.watcherCount} watching
                     </span>
                   )}
                   {socialProof.pendingOfferCount > 0 && (
                     <span className="flex items-center gap-1 text-amber-600 font-medium">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                       </svg>
-                      {socialProof.pendingOfferCount} pending {socialProof.pendingOfferCount === 1 ? 'offer' : 'offers'}
+                      {socialProof.pendingOfferCount} pending{" "}
+                      {socialProof.pendingOfferCount === 1 ? "offer" : "offers"}
                     </span>
                   )}
                   {socialProof.watcherCount >= 5 && (
-                    <span className="text-orange-500 font-semibold">Popular</span>
+                    <span className="text-orange-500 font-semibold">
+                      Popular
+                    </span>
                   )}
                 </div>
               )}
@@ -263,7 +371,7 @@ export default async function ListingDetailPage({
                   Description
                 </h2>
                 <div className="prose prose-sm max-w-none text-[#141414]">
-                  {detail.description.split('\n').map((para, i) =>
+                  {detail.description.split("\n").map((para, i) =>
                     para.trim() ? (
                       <p
                         key={i}
@@ -273,7 +381,7 @@ export default async function ListingDetailPage({
                       </p>
                     ) : (
                       <br key={i} />
-                    )
+                    ),
                   )}
                 </div>
               </section>
@@ -355,10 +463,7 @@ export default async function ListingDetailPage({
 
               {/* ── Related listings ────────────────────────────────────── */}
               {relatedListings.length > 0 && (
-                <section
-                  aria-labelledby="related-heading"
-                  className="mt-10"
-                >
+                <section aria-labelledby="related-heading" className="mt-10">
                   <h2
                     id="related-heading"
                     className="font-[family-name:var(--font-playfair)] text-[1.25rem]
@@ -399,34 +504,38 @@ export default async function ListingDetailPage({
                 <div className="flex items-center justify-between">
                   <span>Listed</span>
                   <span className="font-medium text-[#141414]">
-                    {new Date(detail.createdAt).toLocaleDateString('en-NZ', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
+                    {new Date(detail.createdAt).toLocaleDateString("en-NZ", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
                     })}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Views</span>
                   <span className="font-medium text-[#141414]">
-                    {detail.viewCount.toLocaleString('en-NZ')}
+                    {detail.viewCount.toLocaleString("en-NZ")}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Watchers</span>
                   <span className="font-medium text-[#141414]">
-                    {detail.watcherCount.toLocaleString('en-NZ')}
+                    {detail.watcherCount.toLocaleString("en-NZ")}
                   </span>
                 </div>
                 {detail.offerCount > 0 && (
                   <div className="flex items-center justify-between">
                     <span>Offers received</span>
-                    <span className="font-medium text-[#141414]">{detail.offerCount}</span>
+                    <span className="font-medium text-[#141414]">
+                      {detail.offerCount}
+                    </span>
                   </div>
                 )}
                 <div className="flex items-center justify-between">
                   <span>Listing ID</span>
-                  <span className="font-mono text-[11px] text-[#141414]">{detail.id}</span>
+                  <span className="font-mono text-[11px] text-[#141414]">
+                    {detail.id}
+                  </span>
                 </div>
               </div>
 
@@ -447,4 +556,3 @@ export default async function ListingDetailPage({
     </>
   );
 }
-

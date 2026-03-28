@@ -1,10 +1,11 @@
 // src/app/api/cart/route.ts
+// @deprecated — use /api/v1/cart going forward
 // ─── Cart Count API — lightweight endpoint for NavBar badge polling ──────────
 
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import { logger } from '@/shared/logger';
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { logger } from "@/shared/logger";
 
 export async function GET() {
   try {
@@ -27,7 +28,10 @@ export async function GET() {
 
     return NextResponse.json({ count: cart._count.items });
   } catch (err) {
-    logger.error('api.error', { path: '/api/cart', error: err instanceof Error ? err.message : String(err) });
+    logger.error("api.error", {
+      path: "/api/cart",
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ count: 0 });
   }
 }

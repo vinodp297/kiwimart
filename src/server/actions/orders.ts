@@ -1,5 +1,5 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/orders.ts
 // ─── Order Server Actions ─────────────────────────────────────────────────────
 // Escrow payment flow:
@@ -16,42 +16,44 @@ import { safeActionError } from '@/shared/errors'
 //   • Zod validation on all inputs
 //   • Orphan order cleanup on Stripe failure (FIX 7)
 
-import { headers } from 'next/headers';
-import db from '@/lib/db';
-import { audit } from '@/server/lib/audit';
-import { requireUser } from '@/server/lib/requireUser';
-import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
-import type { ActionResult } from '@/types';
-import { paymentService } from '@/modules/payments/payment.service';
-import { stripe } from '@/infrastructure/stripe/client';
-import { logger } from '@/shared/logger';
-import { orderService } from '@/modules/orders/order.service';
-import { createNotification } from '@/modules/notifications/notification.service';
-import { sendOrderConfirmationEmail } from '@/server/email';
-import { z } from 'zod';
-import { transitionOrder } from '@/modules/orders/order.transitions';
+import { headers } from "next/headers";
+import db from "@/lib/db";
+import { audit } from "@/server/lib/audit";
+import { requireUser } from "@/server/lib/requireUser";
+import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
+import type { ActionResult } from "@/types";
+import { paymentService } from "@/modules/payments/payment.service";
+import { stripe } from "@/infrastructure/stripe/client";
+import { logger } from "@/shared/logger";
+import { orderService } from "@/modules/orders/order.service";
+import { createNotification } from "@/modules/notifications/notification.service";
+import { sendOrderConfirmationEmail } from "@/server/email";
+import { z } from "zod";
+import { transitionOrder } from "@/modules/orders/order.transitions";
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
 
 const CreateOrderSchema = z.object({
-  listingId: z.string().min(1, 'Listing ID is required'),
+  listingId: z.string().min(1, "Listing ID is required"),
   idempotencyKey: z.string().max(128).optional(),
-  shippingAddress: z.object({
-    name: z.string().min(2, 'Name is required').max(100),
-    line1: z.string().min(5, 'Street address is required').max(200),
-    line2: z.string().max(200).optional(),
-    city: z.string().min(2, 'City is required').max(100),
-    region: z.string().min(2, 'Region is required').max(100),
-    postcode: z.string().regex(/^\d{4}$/, 'Invalid NZ postcode'),
-  }).optional(),
+  shippingAddress: z
+    .object({
+      name: z.string().min(2, "Name is required").max(100),
+      line1: z.string().min(5, "Street address is required").max(200),
+      line2: z.string().max(200).optional(),
+      city: z.string().min(2, "City is required").max(100),
+      region: z.string().min(2, "Region is required").max(100),
+      postcode: z.string().regex(/^\d{4}$/, "Invalid NZ postcode"),
+    })
+    .optional(),
 });
 
 const ConfirmDeliverySchema = z.object({
-  orderId: z.string().min(1, 'Order ID is required'),
+  orderId: z.string().min(1, "Order ID is required"),
 });
 
 const MarkDispatchedSchema = z.object({
-  orderId: z.string().min(1, 'Order ID is required'),
+  orderId: z.string().min(1, "Order ID is required"),
   trackingNumber: z.string().max(100).optional(),
   trackingUrl: z.string().max(500).optional(),
 });
@@ -78,47 +80,66 @@ export async function createOrder(params: {
   try {
     user = await requireUser();
   } catch (err) {
-    return { success: false, error: safeActionError(err, 'Authentication required.') };
+    return {
+      success: false,
+      error: safeActionError(err, "Authentication required."),
+    };
   }
 
   // 2. Rate limit — 5 orders per hour per user
-  const limit = await rateLimit('order', user.id);
+  const limit = await rateLimit("order", user.id);
   if (!limit.success) {
-    return { success: false, error: 'Too many orders placed. Please wait before trying again.' };
+    return {
+      success: false,
+      error: "Too many orders placed. Please wait before trying again.",
+    };
   }
 
   // 3. Validate input
   const parsed = CreateOrderSchema.safeParse(params);
   if (!parsed.success) {
-    return { success: false, error: parsed.error.issues[0].message };
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Validation failed",
+    };
   }
 
   // 4. Idempotency check — return existing order if same key already created one.
   // Prevents duplicate orders from double-clicks or retried form submissions.
   // SECURITY: Lookup MUST include buyerId to prevent another user from
   // retrieving a victim's orderId + clientSecret by knowing their key.
-  const idempotencyKey = parsed.data.idempotencyKey
+  const idempotencyKey = parsed.data.idempotencyKey;
   if (idempotencyKey) {
     const existingOrder = await db.order.findFirst({
       where: { idempotencyKey, buyerId: user.id },
-      select: { id: true, status: true, stripePaymentIntentId: true, listingId: true },
-    })
+      select: {
+        id: true,
+        status: true,
+        stripePaymentIntentId: true,
+        listingId: true,
+      },
+    });
     if (
       existingOrder &&
-      existingOrder.status === 'AWAITING_PAYMENT' &&
+      existingOrder.status === "AWAITING_PAYMENT" &&
       existingOrder.stripePaymentIntentId &&
       existingOrder.listingId === parsed.data.listingId
     ) {
-      const clientSecret = await paymentService.getClientSecret(existingOrder.stripePaymentIntentId)
+      const clientSecret = await paymentService.getClientSecret(
+        existingOrder.stripePaymentIntentId,
+      );
       if (clientSecret) {
-        return { success: true, data: { orderId: existingOrder.id, clientSecret } }
+        return {
+          success: true,
+          data: { orderId: existingOrder.id, clientSecret },
+        };
       }
     }
   }
 
   // 5a. Load listing — prices ALWAYS read from DB
   const listing = await db.listing.findUnique({
-    where: { id: parsed.data.listingId, status: 'ACTIVE', deletedAt: null },
+    where: { id: parsed.data.listingId, status: "ACTIVE", deletedAt: null },
     select: {
       id: true,
       title: true,
@@ -126,21 +147,29 @@ export async function createOrder(params: {
       shippingNzd: true,
       shippingOption: true,
       sellerId: true,
-      seller: { select: { stripeAccountId: true, stripeOnboarded: true, displayName: true, email: true } },
+      seller: {
+        select: {
+          stripeAccountId: true,
+          stripeOnboarded: true,
+          displayName: true,
+          email: true,
+        },
+      },
     },
   });
 
-  if (!listing) return { success: false, error: 'Listing not available.' };
+  if (!listing) return { success: false, error: "Listing not available." };
 
   // 2. Authorise — cannot buy own listing
   if (listing.sellerId === user.id) {
-    return { success: false, error: 'You cannot purchase your own listing.' };
+    return { success: false, error: "You cannot purchase your own listing." };
   }
 
   if (!listing.seller.stripeAccountId || !listing.seller.stripeOnboarded) {
     return {
       success: false,
-      error: 'This seller has not completed payment setup. Contact them directly.',
+      error:
+        "This seller has not completed payment setup. Contact them directly.",
     };
   }
 
@@ -148,16 +177,16 @@ export async function createOrder(params: {
   // Two buyers both seeing status=ACTIVE will race here; only one updateMany wins
   // (count === 1). The loser gets count === 0 and bails out before touching the DB.
   const reservation = await db.listing.updateMany({
-    where: { id: parsed.data.listingId, status: 'ACTIVE' },
-    data: { status: 'RESERVED' },
+    where: { id: parsed.data.listingId, status: "ACTIVE" },
+    data: { status: "RESERVED" },
   });
   if (reservation.count === 0) {
-    return { success: false, error: 'This listing is no longer available.' };
+    return { success: false, error: "This listing is no longer available." };
   }
 
   // 5b. Calculate totals (server-side — never trust client prices)
   const shippingNzd =
-    listing.shippingOption === 'PICKUP' ? 0 : (listing.shippingNzd ?? 0);
+    listing.shippingOption === "PICKUP" ? 0 : (listing.shippingNzd ?? 0);
   const totalNzd = listing.priceNzd + shippingNzd;
 
   // 5c. Create order row (status: AWAITING_PAYMENT until Stripe confirms)
@@ -169,7 +198,7 @@ export async function createOrder(params: {
       itemNzd: listing.priceNzd,
       shippingNzd,
       totalNzd,
-      status: 'AWAITING_PAYMENT',
+      status: "AWAITING_PAYMENT",
       ...(idempotencyKey ? { idempotencyKey } : {}),
       ...(parsed.data.shippingAddress
         ? {
@@ -190,28 +219,33 @@ export async function createOrder(params: {
   // Never silently omit transfer_data — that would send money to the platform
   // instead of the seller.
   const isRealConnectAccount =
-    typeof listing.seller.stripeAccountId === 'string' &&
+    typeof listing.seller.stripeAccountId === "string" &&
     /^acct_[A-Za-z0-9]{16,}$/.test(listing.seller.stripeAccountId);
 
   if (!isRealConnectAccount) {
     // BUG-1 FIX: Atomically cancel orphan order AND restore listing to ACTIVE.
     // Previously the listing was left RESERVED permanently on this early return.
     await db.$transaction(async (tx) => {
-      await transitionOrder(order.id, 'CANCELLED', {}, { tx, fromStatus: 'AWAITING_PAYMENT' });
+      await transitionOrder(
+        order.id,
+        "CANCELLED",
+        {},
+        { tx, fromStatus: "AWAITING_PAYMENT" },
+      );
       // Restore listing so other buyers can purchase it
       await tx.listing.updateMany({
-        where: { id: parsed.data.listingId, status: 'RESERVED' },
-        data: { status: 'ACTIVE' },
+        where: { id: parsed.data.listingId, status: "RESERVED" },
+        data: { status: "ACTIVE" },
       });
     });
 
     audit({
       userId: user.id,
-      action: 'ORDER_STATUS_CHANGED',
-      entityType: 'Order',
+      action: "ORDER_STATUS_CHANGED",
+      entityType: "Order",
       entityId: order.id,
       metadata: {
-        trigger: 'INVALID_CONNECT_ACCOUNT',
+        trigger: "INVALID_CONNECT_ACCOUNT",
         sellerStripeAccountId: listing.seller.stripeAccountId,
       },
       ip,
@@ -219,7 +253,8 @@ export async function createOrder(params: {
 
     return {
       success: false,
-      error: 'Seller payment account is not properly configured. Please contact the seller.',
+      error:
+        "Seller payment account is not properly configured. Please contact the seller.",
     };
   }
 
@@ -248,34 +283,36 @@ export async function createOrder(params: {
     // 6. Audit
     audit({
       userId: user.id,
-      action: 'ORDER_CREATED',
-      entityType: 'Order',
+      action: "ORDER_CREATED",
+      entityType: "Order",
       entityId: order.id,
       metadata: { listingId: listing.id, totalNzd },
       ip,
     });
 
     // Notify seller of new order + send buyer confirmation (fire-and-forget)
-    db.user.findUnique({ where: { id: user.id }, select: { displayName: true } })
+    db.user
+      .findUnique({ where: { id: user.id }, select: { displayName: true } })
       .then((buyer) => {
-        const buyerName = buyer?.displayName ?? user.email.split('@')[0];
+        const buyerName =
+          buyer?.displayName ?? user.email.split("@")[0] ?? "Buyer";
         createNotification({
-          userId:    listing.sellerId,
-          type:      'ORDER_PLACED',
-          title:     'New order received! 🎉',
-          body:      `${buyerName} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
+          userId: listing.sellerId,
+          type: "ORDER_PLACED",
+          title: "New order received! 🎉",
+          body: `${buyerName} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
           listingId: listing.id,
-          orderId:   order.id,
-          link:      '/dashboard/seller?tab=orders',
+          orderId: order.id,
+          link: "/dashboard/seller?tab=orders",
         }).catch(() => {});
         sendOrderConfirmationEmail({
-          to:           user.email,
+          to: user.email,
           buyerName,
-          sellerName:   listing.seller.displayName ?? 'the seller',
+          sellerName: listing.seller.displayName ?? "the seller",
           listingTitle: listing.title,
           totalNzd,
-          orderId:      order.id,
-          listingId:    listing.id,
+          orderId: order.id,
+          listingId: listing.id,
         }).catch(() => {});
       })
       .catch(() => {});
@@ -293,46 +330,55 @@ export async function createOrder(params: {
       const orphanOrder = await db.order.findUnique({
         where: { id: order.id },
         select: { stripePaymentIntentId: true },
-      })
+      });
       if (orphanOrder?.stripePaymentIntentId) {
-        await stripe.paymentIntents.cancel(orphanOrder.stripePaymentIntentId)
-        logger.info('order.orphan_pi.cancelled', {
+        await stripe.paymentIntents.cancel(orphanOrder.stripePaymentIntentId);
+        logger.info("order.orphan_pi.cancelled", {
           orderId: order.id,
           paymentIntentId: orphanOrder.stripePaymentIntentId,
-        })
+        });
       }
     } catch (cancelErr) {
       // PI may not exist yet, or may be in a non-cancellable state — that's fine
-      logger.warn('order.orphan_pi.cancel_failed', {
+      logger.warn("order.orphan_pi.cancel_failed", {
         orderId: order.id,
-        error: cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
-      })
+        error:
+          cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
+      });
     }
 
     // Cancel the orphan order and restore the listing so other buyers can purchase.
-    await transitionOrder(order.id, 'CANCELLED', {}, { fromStatus: 'AWAITING_PAYMENT' });
+    await transitionOrder(
+      order.id,
+      "CANCELLED",
+      {},
+      { fromStatus: "AWAITING_PAYMENT" },
+    );
 
     // Release reservation — only if still RESERVED (guard against races)
-    await db.listing.updateMany({
-      where: { id: parsed.data.listingId, status: 'RESERVED' },
-      data: { status: 'ACTIVE' },
-    }).catch(() => {});
+    await db.listing
+      .updateMany({
+        where: { id: parsed.data.listingId, status: "RESERVED" },
+        data: { status: "ACTIVE" },
+      })
+      .catch(() => {});
 
     audit({
       userId: user.id,
-      action: 'ORDER_STATUS_CHANGED',
-      entityType: 'Order',
+      action: "ORDER_STATUS_CHANGED",
+      entityType: "Order",
       entityId: order.id,
       metadata: {
-        trigger: 'STRIPE_CREATION_FAILED',
-        error: stripeErr instanceof Error ? stripeErr.message : String(stripeErr),
+        trigger: "STRIPE_CREATION_FAILED",
+        error:
+          stripeErr instanceof Error ? stripeErr.message : String(stripeErr),
       },
       ip,
     });
 
     return {
       success: false,
-      error: 'Payment setup failed. Please try again.',
+      error: "Payment setup failed. Please try again.",
     };
   }
 }
@@ -340,13 +386,16 @@ export async function createOrder(params: {
 // ── confirmDelivery — releases escrow ────────────────────────────────────────
 
 export async function confirmDelivery(
-  orderId: string
+  orderId: string,
 ): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
     const parsed = ConfirmDeliverySchema.safeParse({ orderId });
     if (!parsed.success) {
-      return { success: false, error: parsed.error.issues[0].message };
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? "Validation failed",
+      };
     }
     await orderService.confirmDelivery(parsed.data.orderId, user.id);
     return { success: true, data: undefined };
@@ -358,7 +407,7 @@ export async function confirmDelivery(
 // ── cancelOrder — buyer/seller cancels order within time window ──────────────
 
 const CancelOrderSchema = z.object({
-  orderId: z.string().min(1, 'Order ID is required'),
+  orderId: z.string().min(1, "Order ID is required"),
   reason: z.string().max(500).optional(),
 });
 
@@ -370,9 +419,16 @@ export async function cancelOrder(params: {
     const user = await requireUser();
     const parsed = CancelOrderSchema.safeParse(params);
     if (!parsed.success) {
-      return { success: false, error: parsed.error.issues[0].message };
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? "Validation failed",
+      };
     }
-    await orderService.cancelOrder(parsed.data.orderId, user.id, parsed.data.reason);
+    await orderService.cancelOrder(
+      parsed.data.orderId,
+      user.id,
+      parsed.data.reason,
+    );
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: safeActionError(err) };
@@ -390,7 +446,10 @@ export async function markDispatched(params: {
     const user = await requireUser();
     const parsed = MarkDispatchedSchema.safeParse(params);
     if (!parsed.success) {
-      return { success: false, error: parsed.error.issues[0].message };
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? "Validation failed",
+      };
     }
     await orderService.markDispatched(parsed.data, user.id);
     return { success: true, data: undefined };

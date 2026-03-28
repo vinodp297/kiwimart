@@ -425,6 +425,7 @@ model Listing {
   @@index([createdAt])
   @@index([searchVector], type: Gin)
   @@index([locationLat, locationLng])
+  @@index([sellerId, createdAt(sort: Desc)])
 }
 
 model ListingImage {
@@ -447,6 +448,7 @@ model ListingImage {
   listing Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@index([listingId])
+  @@index([listingId, order])
 }
 
 model ListingAttribute {
@@ -530,6 +532,8 @@ model Order {
   @@index([createdAt])
   @@index([status, dispatchedAt])
   @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@index([sellerId, completedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
