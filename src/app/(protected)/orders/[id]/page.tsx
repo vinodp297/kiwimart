@@ -11,7 +11,7 @@ import { Button, OrderStatusBadge, Alert } from '@/components/ui/primitives';
 import { formatPrice, relativeTime } from '@/lib/utils';
 import type { OrderStatus } from '@/types';
 import { confirmDelivery, markDispatched } from '@/server/actions/orders';
-import { openDispute, uploadDisputeEvidence } from '@/server/actions/disputes';
+import { openDispute, uploadDisputeEvidence, respondToDispute } from '@/server/actions/disputes';
 import { fetchOrderDetail } from '@/server/actions/orderDetail';
 
 // ── Courier URL detection ────────────────────────────────────────────────────
@@ -169,6 +169,10 @@ export default function OrderDetailPage() {
   const [disputeDescription, setDisputeDescription] = useState('');
   const [disputePhotos, setDisputePhotos] = useState<File[]>([]);
 
+  // Seller dispute response
+  const [sellerResponseText, setSellerResponseText] = useState('');
+  const [showSellerResponse, setShowSellerResponse] = useState(false);
+
   useEffect(() => {
     async function load() {
       try {
@@ -254,6 +258,32 @@ export default function OrderDetailPage() {
         setError(null);
         setActionSuccess('Dispute opened. We will review your case within 48 hours.');
         setShowDispute(false);
+        const updated = await fetchOrderDetail(orderId);
+        if (updated.success) setOrder(updated.data);
+      } else {
+        setError(result.error);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleSellerResponse() {
+    if (sellerResponseText.trim().length < 20) {
+      setError('Please provide at least 20 characters in your response.');
+      return;
+    }
+    setError(null);
+    setActionLoading(true);
+    try {
+      const result = await respondToDispute({
+        orderId,
+        response: sellerResponseText,
+      });
+      if (result.success) {
+        setActionSuccess('Your response has been submitted. The buyer and our team have been notified.');
+        setShowSellerResponse(false);
+        setSellerResponseText('');
         const updated = await fetchOrderDetail(orderId);
         if (updated.success) setOrder(updated.data);
       } else {
@@ -485,14 +515,82 @@ export default function OrderDetailPage() {
 
             {/* Dispute details if disputed (Fix 3) */}
             {isDisputed && (
-              <div className="mt-5 p-3 rounded-xl bg-red-50 border border-red-200 text-[12.5px] text-red-800">
-                <p className="font-semibold mb-1">Dispute details</p>
-                {order.disputeReason && (
-                  <p>Reason: {order.disputeReason.replace(/_/g, ' ').toLowerCase()}</p>
+              <div className="mt-5 space-y-3">
+                {/* Buyer's dispute claim */}
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-[12.5px] text-red-800">
+                  <p className="font-semibold mb-1">Dispute details</p>
+                  {order.disputeReason && (
+                    <p>Reason: {order.disputeReason.replace(/_/g, ' ').toLowerCase()}</p>
+                  )}
+                  {order.disputeNotes && (
+                    <p className="mt-1.5 whitespace-pre-wrap">{order.disputeNotes}</p>
+                  )}
+                  <p className="mt-1.5 text-[11.5px] opacity-75">
+                    Our Trust &amp; Safety team will review and respond within 48 hours.
+                  </p>
+                </div>
+
+                {/* Seller's response (if submitted) */}
+                {order.sellerResponse && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900">
+                    <p className="font-semibold mb-1 flex items-center gap-1.5">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      </svg>
+                      Seller response
+                    </p>
+                    <p className="whitespace-pre-wrap">{order.sellerResponse}</p>
+                    {order.sellerRespondedAt && (
+                      <p className="mt-1.5 text-[11px] opacity-60">
+                        Responded {fmtDate(order.sellerRespondedAt)}
+                      </p>
+                    )}
+                  </div>
                 )}
-                <p className="mt-1 text-[11.5px] opacity-75">
-                  Our Trust &amp; Safety team will review and respond within 48 hours.
-                </p>
+
+                {/* Seller response form (if seller hasn't responded yet) */}
+                {!order.isBuyer && !order.sellerResponse && !showSellerResponse && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSellerResponse(true)}
+                    className="w-full p-3 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/50
+                      text-[12.5px] text-amber-800 font-semibold hover:bg-amber-50 transition-colors"
+                  >
+                    Respond to this dispute →
+                  </button>
+                )}
+
+                {!order.isBuyer && !order.sellerResponse && showSellerResponse && (
+                  <div className="p-4 rounded-xl bg-white border border-[#E3E0D9]">
+                    <label className="text-[12.5px] font-semibold text-[#141414] mb-1.5 block">
+                      Your response
+                    </label>
+                    <textarea
+                      value={sellerResponseText}
+                      onChange={(e) => setSellerResponseText(e.target.value)}
+                      placeholder="Explain your side of the situation (min 20 characters)..."
+                      rows={4}
+                      maxLength={2000}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                        text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                        focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+                    />
+                    <p className="text-[11px] text-[#9E9A91] mt-1 mb-3">
+                      {sellerResponseText.length}/2000 characters
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button variant="gold" size="sm" onClick={handleSellerResponse} loading={actionLoading}>
+                        Submit response
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setShowSellerResponse(false); setSellerResponseText(''); }}>
+                        Cancel
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-[#9E9A91] mt-2">
+                      Your response will be shared with the buyer and our Trust &amp; Safety team.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -847,6 +945,9 @@ interface OrderDetailData {
   trackingNumber: string | null;
   trackingUrl: string | null;
   disputeReason: string | null;
+  disputeNotes: string | null;
+  sellerResponse: string | null;
+  sellerRespondedAt: string | null;
   isBuyer: boolean;
   buyerId: string;
   sellerId: string;

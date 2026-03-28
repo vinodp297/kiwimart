@@ -111,6 +111,7 @@ enum AuditAction {
   SELLER_TERMS_ACCEPTED
   ID_VERIFICATION_SUBMITTED
   ID_VERIFICATION_APPROVED
+  DISPUTE_SELLER_RESPONDED
 }
 
 enum ReportReason {
@@ -458,11 +459,13 @@ model Order {
   completedAt    DateTime?
   
   // Dispute
-  disputeReason    DisputeReason?
-  disputeOpenedAt  DateTime?
-  disputeNotes     String?       @db.Text
-  disputeResolvedAt DateTime?
+  disputeReason       DisputeReason?
+  disputeOpenedAt     DateTime?
+  disputeNotes        String?       @db.Text
+  disputeResolvedAt   DateTime?
   disputeEvidenceUrls String[]  @default([])
+  sellerResponse      String?       @db.Text
+  sellerRespondedAt   DateTime?
 
   // Cancellation
   cancelledBy  String?    // 'BUYER' | 'SELLER' | 'SYSTEM'
