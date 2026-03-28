@@ -28,22 +28,24 @@ export async function inviteAdmin(
       return { success: false, error: 'This user is already an admin' };
     }
 
-    const token = crypto.randomBytes(32).toString('hex');
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-    // Upsert — replace any existing pending invitation for this email
+    // Upsert — replace any existing pending invitation for this email.
+    // Store SHA-256 hash of the token; raw token sent in email only, never persisted.
     await db.adminInvitation.upsert({
       where: { email },
-      create: { email, adminRole: role, invitedBy: admin.id, token, expiresAt },
-      update: { adminRole: role, invitedBy: admin.id, token, expiresAt, acceptedAt: null },
+      create: { email, adminRole: role, invitedBy: admin.id, tokenHash, expiresAt },
+      update: { adminRole: role, invitedBy: admin.id, tokenHash, expiresAt, acceptedAt: null },
     });
 
-    // Send invitation email (non-blocking)
+    // Send invitation email (non-blocking) — raw token in the URL, never stored in DB
     sendInvitationEmail({
       to: email,
       inviterName: admin.displayName,
       role,
-      token,
+      token: rawToken,
       expiresAt,
     }).catch((err) => logger.error('admin.invitation.email.failed', { err, email }));
 

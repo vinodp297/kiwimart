@@ -3,6 +3,7 @@
 
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import crypto from 'crypto';
 import db from '@/lib/db';
 import { auth } from '@/lib/auth';
 import { getRoleDisplayName } from '@/lib/permissions';
@@ -22,8 +23,12 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
     return <ErrorPage message="Invalid or missing invitation token." />;
   }
 
+  // Hash the raw token from the URL to look up the stored hash.
+  // The raw token is never stored in the DB — only the SHA-256 hash.
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
   const invitation = await db.adminInvitation.findUnique({
-    where: { token },
+    where: { tokenHash },
     select: {
       id: true,
       email: true,

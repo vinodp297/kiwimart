@@ -9,7 +9,9 @@ import { requireUser } from '@/server/lib/requireUser';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { validateImageFile } from '@/server/lib/fileValidation';
 import { orderService } from '@/modules/orders/order.service';
-import { r2, R2_BUCKET, R2_PUBLIC_URL } from '@/infrastructure/storage/r2';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { r2, R2_BUCKET } from '@/infrastructure/storage/r2';
 import { logger } from '@/shared/logger';
 import db from '@/lib/db';
 import type { ActionResult } from '@/types';
@@ -29,7 +31,7 @@ const openDisputeSchema = z.object({
     'OTHER',
   ]),
   description: z.string().min(20, 'Please describe the issue in at least 20 characters.').max(2000).trim(),
-  evidenceUrls: z.array(z.string().url()).max(3).optional(),
+  evidenceUrls: z.array(z.string().min(1)).max(3).optional(),
 });
 
 export type OpenDisputeInput = z.infer<typeof openDisputeSchema>;
@@ -85,6 +87,9 @@ export async function openDispute(
 }
 
 // ── Dispute evidence photo upload ──────────────────────────────────────────
+// SECURITY: Evidence is stored as R2 keys (NOT public URLs). Signed URLs are
+// generated on-demand via getDisputeEvidenceUrls() for display in the UI.
+// This prevents dispute evidence from being publicly accessible.
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_FILES = 3;
@@ -95,6 +100,12 @@ export async function uploadDisputeEvidence(
   try {
     const user = await requireUser();
 
+    // Rate limit — 10 upload calls per hour per user
+    const uploadLimit = await rateLimit('disputes', user.id);
+    if (!uploadLimit.success) {
+      return { success: false, error: 'Too many uploads. Please try again later.' };
+    }
+
     const files = formData.getAll('files') as File[];
 
     if (files.length === 0) {
@@ -104,7 +115,7 @@ export async function uploadDisputeEvidence(
       return { success: false, error: `Maximum ${MAX_FILES} photos allowed.` };
     }
 
-    const uploadedUrls: string[] = [];
+    const uploadedKeys: string[] = [];
 
     for (const file of files) {
       const buffer = Buffer.from(await file.arrayBuffer());
@@ -136,20 +147,42 @@ export async function uploadDisputeEvidence(
         })
       );
 
-      const url = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${key}` : key;
-      uploadedUrls.push(url);
+      // Store the R2 key (NOT a public URL) — signed URLs generated at serve time
+      uploadedKeys.push(key);
     }
 
     logger.info('dispute.evidence.uploaded', {
       userId: user.id,
-      count: uploadedUrls.length,
+      count: uploadedKeys.length,
     });
 
-    return { success: true, data: { urls: uploadedUrls } };
+    // Return keys in the `urls` field for backward-compat with the client
+    return { success: true, data: { urls: uploadedKeys } };
   } catch (err) {
     logger.error('dispute.evidence.upload.failed', {
       error: err instanceof Error ? err.message : String(err),
     });
     return { success: false, error: 'Failed to upload photos. Please try again.' };
   }
+}
+
+// ── Generate signed URLs for dispute evidence display ─────────────────────
+// Called by server components / admin pages to display evidence securely.
+// Each signed URL is valid for 1 hour.
+
+export async function getDisputeEvidenceUrls(
+  r2Keys: string[]
+): Promise<string[]> {
+  return Promise.all(
+    r2Keys.map(async (key) => {
+      // If the stored value is already a full URL (legacy data), pass through
+      if (key.startsWith('http')) return key
+
+      const command = new GetObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: key,
+      })
+      return getSignedUrl(r2, command, { expiresIn: 3600 })
+    })
+  )
 }

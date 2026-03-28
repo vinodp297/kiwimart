@@ -119,9 +119,12 @@ export class PaymentService {
     })
 
     try {
-      await stripe.refunds.create({
-        payment_intent: input.paymentIntentId,
-      })
+      await stripe.refunds.create(
+        { payment_intent: input.paymentIntentId },
+        // Idempotency key prevents duplicate refund records on network retry.
+        // Scoped to orderId — each order can only be refunded once.
+        { idempotencyKey: `refund-${input.orderId}` }
+      )
       logger.info('payment.refunded', {
         orderId: input.orderId,
         paymentIntentId: input.paymentIntentId,

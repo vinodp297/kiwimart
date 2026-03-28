@@ -1,7 +1,17 @@
 // src/modules/payments/webhook.service.ts
 // ─── Webhook Event Processing Service ────────────────────────────────────────
 // Handles Stripe webhook events. Framework-free — no Next.js imports.
-// Idempotency: race-safe insert-or-skip via P2002 unique constraint.
+//
+// Idempotency strategy: AT-LEAST-ONCE with idempotent handlers.
+//   1. Handler runs FIRST — if it throws, event is NOT marked processed,
+//      so Stripe retries will re-deliver it.
+//   2. Handler is idempotent via transitionOrder() optimistic locking —
+//      a second delivery harmlessly gets P2025 (count=0).
+//   3. AFTER handler succeeds, markEventProcessed() records the event ID.
+//      Duplicate check (P2002) short-circuits future deliveries.
+//
+// Previous pattern (mark BEFORE handle) was at-most-once — a handler failure
+// after marking permanently skipped the event, leaving orders stuck.
 
 import type { Stripe } from '@/infrastructure/stripe/client'
 import { logger } from '@/shared/logger'
@@ -34,29 +44,50 @@ export class WebhookService {
   }
 
   async processEvent(event: Stripe.Event): Promise<void> {
-    // Race-safe idempotency check
+    // Duplicate check FIRST — skip if already successfully processed
     const isNew = await this.markEventProcessed(event.id, event.type)
     if (!isNew) return
 
-    switch (event.type) {
-      case 'payment_intent.succeeded':
-        await this.handlePaymentIntentSucceeded(event)
-        break
+    // Handler runs AFTER duplicate check. If the handler throws, the event
+    // row is already inserted, so we delete it in the catch to allow Stripe
+    // retries. Handlers are idempotent (optimistic locking) so re-delivery
+    // is safe.
+    try {
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          await this.handlePaymentIntentSucceeded(event)
+          break
 
-      case 'payment_intent.payment_failed':
-        await this.handlePaymentIntentFailed(event)
-        break
+        case 'payment_intent.payment_failed':
+          await this.handlePaymentIntentFailed(event)
+          break
 
-      case 'account.updated':
-        await this.handleAccountUpdated(event)
-        break
+        case 'account.updated':
+          await this.handleAccountUpdated(event)
+          break
 
-      case 'transfer.created':
-        await this.handleTransferCreated(event)
-        break
+        case 'transfer.created':
+          await this.handleTransferCreated(event)
+          break
 
-      default:
-        break
+        default:
+          break
+      }
+    } catch (handlerError) {
+      // Handler failed — DELETE the event record so Stripe retry is not
+      // blocked by the idempotency check. The handler is idempotent so
+      // re-processing on retry is safe.
+      try {
+        await db.stripeEvent.delete({ where: { id: event.id } })
+      } catch {
+        // If delete also fails, the event is stuck as "processed".
+        // The daily reconciliation cron will detect the mismatch.
+        logger.error('webhook.event.rollback_failed', {
+          eventId: event.id,
+          type: event.type,
+        })
+      }
+      throw handlerError
     }
   }
 

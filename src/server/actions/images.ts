@@ -28,7 +28,10 @@ import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '@/infrastructure/storage/r2';
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+// TODO: Add HEIC support after testing magic byte validation with libheif.
+// HEIC is excluded because fileValidation.ts does not have HEIC magic bytes,
+// so presigned uploads of HEIC files would bypass all content validation.
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_SIZE_BYTES = 8 * 1024 * 1024; // 8MB
 const MAX_IMAGES_PER_LISTING = 10;
 
@@ -75,7 +78,7 @@ export async function requestImageUpload(params: {
   }
 
   // 4. Check max images per listing
-  if (params.listingId && params.listingId !== 'pending') {
+  if (params.listingId) {
     const existingCount = await db.listingImage.count({
       where: { listingId: params.listingId },
     });
@@ -86,10 +89,11 @@ export async function requestImageUpload(params: {
       };
     }
   } else {
-    // For new listings (pending), count pending images by this user
+    // For new listings (pending), count pending images by this user.
+    // listingId is null for uploads not yet associated with a listing.
     const pendingCount = await db.listingImage.count({
       where: {
-        listingId: 'pending',
+        listingId: null,
         r2Key: { startsWith: `listings/${user.id}/` },
       },
     });
@@ -116,7 +120,7 @@ export async function requestImageUpload(params: {
   // 7. Create a DB record (status: pending/not-scanned)
   const image = await db.listingImage.create({
     data: {
-      listingId: params.listingId ?? 'pending',
+      listingId: params.listingId ?? null,
       r2Key,
       order: 0,
       sizeBytes: params.sizeBytes,

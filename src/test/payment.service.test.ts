@@ -160,9 +160,10 @@ describe('PaymentService', () => {
         })
       ).resolves.toBeUndefined()
 
-      expect(mockStripeRefund).toHaveBeenCalledWith({
-        payment_intent: 'pi_to_refund',
-      })
+      expect(mockStripeRefund).toHaveBeenCalledWith(
+        { payment_intent: 'pi_to_refund' },
+        { idempotencyKey: 'refund-order-1' }
+      )
     })
 
     it('throws AppError on refund failure', async () => {
