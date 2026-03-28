@@ -13,7 +13,7 @@ import { auth } from '@/lib/auth';
 export const metadata: Metadata = {
   title: {
     template: '%s | KiwiMart',
-    default: "KiwiMart — New Zealand's Trusted Marketplace",
+    default: 'Sign In',
   },
   // Auth pages must not be indexed by search engines
   robots: { index: false, follow: false },

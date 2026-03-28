@@ -20,7 +20,7 @@ export const revalidate = 0;
 export const metadata: Metadata = {
   title: {
     template: '%s | KiwiMart',
-    default: 'My Account | KiwiMart',
+    default: 'My Account',
   },
   // Dashboard pages must not be indexed
   robots: { index: false, follow: false },

@@ -8,6 +8,7 @@ import db from '@/lib/db'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { logger } from '@/shared/logger'
+import { getThumbUrl } from '@/lib/image'
 import type { ListingCard } from '@/types'
 import type { SearchParams, SearchResult } from './listing.types'
 
@@ -180,12 +181,7 @@ export class SearchService {
       subcategoryName: row.subcategoryName ?? '',
       region: row.region as ListingCard['region'],
       suburb: row.suburb,
-      thumbnailUrl: (() => {
-        const img = row.images[0]
-        if (!img) return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop'
-        const key = img.thumbnailKey ?? img.r2Key
-        return key.startsWith('http') ? key : `https://r2.kiwimart.co.nz/${key}`
-      })(),
+      thumbnailUrl: getThumbUrl(row.images[0] ?? null),
       sellerName: row.seller.displayName,
       sellerUsername: row.seller.username,
       sellerRating: (() => {
