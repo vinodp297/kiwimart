@@ -10,29 +10,34 @@ import db from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const session = await auth();
+  try {
+    const session = await auth();
 
-  if (!session?.user?.id) {
-    return NextResponse.json({
-      authenticated: false,
-      stripeOnboarded: false,
-      sellerEnabled: false,
+    if (!session?.user?.id) {
+      return NextResponse.json({
+        authenticated: false,
+        stripeOnboarded: false,
+        sellerEnabled: false,
+      });
+    }
+
+    const user = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        stripeOnboarded: true,
+        stripeAccountId: true,
+        sellerEnabled: true,
+      },
     });
+
+    return NextResponse.json({
+      authenticated: true,
+      stripeOnboarded: user?.stripeOnboarded ?? false,
+      hasStripeAccount: !!user?.stripeAccountId,
+      sellerEnabled: user?.sellerEnabled ?? false,
+    });
+  } catch (e) {
+    console.error('[seller/status:GET]', e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
   }
-
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      stripeOnboarded: true,
-      stripeAccountId: true,
-      sellerEnabled: true,
-    },
-  });
-
-  return NextResponse.json({
-    authenticated: true,
-    stripeOnboarded: user?.stripeOnboarded ?? false,
-    hasStripeAccount: !!user?.stripeAccountId,
-    sellerEnabled: user?.sellerEnabled ?? false,
-  });
 }

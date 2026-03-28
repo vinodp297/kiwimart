@@ -2,7 +2,7 @@
 // src/app/(protected)/dashboard/buyer/page.tsx
 // ─── Buyer Dashboard ──────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import NavBar from '@/components/NavBar';
@@ -37,6 +37,7 @@ export default function BuyerDashboardPage() {
   const [activeThread, setActiveThread] = useState<ThreadRow | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
+  const tabPanelRef = useRef<HTMLDivElement>(null);
 
   // Sync tab from URL changes
   useEffect(() => {
@@ -49,6 +50,10 @@ export default function BuyerDashboardPage() {
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
     router.replace(`/dashboard/buyer?tab=${tab}`, { scroll: false });
+    // Scroll tab panel into view so content is the main focus
+    requestAnimationFrame(() => {
+      tabPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }, [router]);
 
   // Fetch real data on mount
@@ -285,6 +290,7 @@ export default function BuyerDashboardPage() {
 
           {/* ── Tab bar ────────────────────────────────────────────────── */}
           <div
+            ref={tabPanelRef}
             className="flex border-b border-[#E3E0D9] mb-6 bg-white rounded-t-2xl
               overflow-hidden border border-[#E3E0D9]"
             role="tablist"

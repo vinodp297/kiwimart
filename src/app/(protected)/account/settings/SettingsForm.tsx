@@ -171,7 +171,7 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
             </div>
 
             {/* Bio */}
-            <div>
+            <div id="bio">
               <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
                 Bio{' '}
                 <span className="text-[#9E9A91] font-normal">(optional)</span>
@@ -247,7 +247,7 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
         </div>
 
         {/* ── Section 2: Notification preferences ──────────────────── */}
-        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+        <div id="notifications" className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
           <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
             Notifications
           </h2>
@@ -306,7 +306,7 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
         </div>
 
         {/* ── Section 3: Account actions ────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+        <div id="security" className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
           <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
             Account actions
           </h2>
