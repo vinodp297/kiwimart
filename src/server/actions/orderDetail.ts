@@ -41,6 +41,9 @@ export interface OrderDetailData {
   trackingNumber: string | null;
   trackingUrl: string | null;
   disputeReason: string | null;
+  disputeNotes: string | null;
+  sellerResponse: string | null;
+  sellerRespondedAt: string | null;
   isBuyer: boolean;
   buyerId: string;
   sellerId: string;
@@ -77,6 +80,9 @@ export async function fetchOrderDetail(
         trackingNumber: true,
         trackingUrl: true,
         disputeReason: true,
+        disputeNotes: true,
+        sellerResponse: true,
+        sellerRespondedAt: true,
         listing: {
           select: {
             title: true,
@@ -116,6 +122,9 @@ export async function fetchOrderDetail(
         trackingNumber: order.trackingNumber,
         trackingUrl: order.trackingUrl,
         disputeReason: order.disputeReason,
+        disputeNotes: order.disputeNotes,
+        sellerResponse: order.sellerResponse,
+        sellerRespondedAt: order.sellerRespondedAt?.toISOString() ?? null,
         cancelledBy: null,
         cancelReason: null,
         cancelledAt: null,

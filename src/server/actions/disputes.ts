@@ -13,6 +13,8 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '@/infrastructure/storage/r2';
 import { logger } from '@/shared/logger';
+import { audit } from '@/server/lib/audit';
+import { createNotification } from '@/modules/notifications/notification.service';
 import db from '@/lib/db';
 import type { ActionResult } from '@/types';
 import { z } from 'zod';
@@ -163,6 +165,98 @@ export async function uploadDisputeEvidence(
       error: err instanceof Error ? err.message : String(err),
     });
     return { success: false, error: 'Failed to upload photos. Please try again.' };
+  }
+}
+
+// ── Seller dispute response ──────────────────────────────────────────���───
+// Allows the seller to submit a written response to a buyer-opened dispute.
+// Sets sellerResponse + sellerRespondedAt and notifies the buyer.
+
+const respondToDisputeSchema = z.object({
+  orderId: z.string().min(1),
+  response: z
+    .string()
+    .min(20, 'Please describe your response in at least 20 characters.')
+    .max(2000)
+    .trim(),
+});
+
+export async function respondToDispute(
+  raw: unknown
+): Promise<ActionResult<void>> {
+  try {
+    const user = await requireUser();
+
+    const parsed = respondToDisputeSchema.safeParse(raw);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: 'Invalid response.',
+        fieldErrors: parsed.error.flatten().fieldErrors,
+      };
+    }
+
+    const order = await db.order.findUnique({
+      where: { id: parsed.data.orderId },
+      select: {
+        id: true,
+        sellerId: true,
+        buyerId: true,
+        status: true,
+        sellerResponse: true,
+        listing: { select: { title: true } },
+        seller: { select: { displayName: true } },
+      },
+    });
+
+    if (!order) {
+      return { success: false, error: 'Order not found.' };
+    }
+    if (order.sellerId !== user.id) {
+      return { success: false, error: 'Only the seller can respond to a dispute.' };
+    }
+    if (order.status !== 'DISPUTED') {
+      return { success: false, error: 'This order is not in a disputed state.' };
+    }
+    if (order.sellerResponse) {
+      return { success: false, error: 'You have already responded to this dispute.' };
+    }
+
+    await db.order.update({
+      where: { id: parsed.data.orderId },
+      data: {
+        sellerResponse: parsed.data.response,
+        sellerRespondedAt: new Date(),
+      },
+    });
+
+    // Notify buyer that the seller has responded
+    createNotification({
+      userId: order.buyerId,
+      type: 'ORDER_DISPUTED',
+      title: 'Seller responded to your dispute',
+      body: `${order.seller.displayName} has responded to your dispute on "${order.listing.title}".`,
+      orderId: order.id,
+      link: `/orders/${order.id}`,
+    }).catch(() => {});
+
+    // Audit trail (fire-and-forget)
+    audit({
+      userId: user.id,
+      action: 'DISPUTE_SELLER_RESPONDED',
+      entityType: 'Order',
+      entityId: order.id,
+      metadata: { response: parsed.data.response.slice(0, 100) },
+    });
+
+    logger.info('dispute.seller_responded', {
+      orderId: order.id,
+      sellerId: user.id,
+    });
+
+    return { success: true, data: undefined };
+  } catch (err) {
+    return { success: false, error: safeActionError(err) };
   }
 }
 
