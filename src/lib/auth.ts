@@ -66,17 +66,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { email, password, turnstileToken } = parsed.data;
 
         // 2. Verify Cloudflare Turnstile token (bot protection) — fail CLOSED.
-        // verifyTurnstile() handles: non-production skip, test key warning, and
-        // fail-closed on network error. If token is absent, reject immediately.
-        // TODO: Switch to real Cloudflare Turnstile keys — see login/page.tsx for steps.
+        // verifyTurnstile() handles: non-production skip, test/0x key warning,
+        // empty token, and fail-closed on network error.
+        // We pass the token (possibly empty) directly — verifyTurnstile decides.
         if (process.env.NODE_ENV === 'production') {
-          if (!turnstileToken) {
-            // No challenge token — reject silently (bot or direct API call)
-            return null;
-          }
-          const turnstileOk = await verifyTurnstile(turnstileToken);
+          const turnstileOk = await verifyTurnstile(turnstileToken ?? '');
           if (!turnstileOk) {
-            // Turnstile verification failed — silent return null
             return null;
           }
         }
