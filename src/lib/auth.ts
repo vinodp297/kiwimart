@@ -83,26 +83,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // empty token, and fail-closed on network error.
         // We pass the token (possibly empty) directly — verifyTurnstile decides.
         if (process.env.NODE_ENV === "production") {
-          const secretKeyPrefix = (
-            process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ??
-            process.env.TURNSTILE_SECRET_KEY ??
-            ""
-          ).slice(0, 4);
-          const siteKeyPrefix = (
-            process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""
-          ).slice(0, 4);
-          const tokenLen = turnstileToken?.length ?? 0;
-
           const turnstileOk = await verifyTurnstile(turnstileToken ?? "");
           if (!turnstileOk) {
             logger.warn("authorize:fail", {
               reason: "turnstile",
-              tokenPresent: tokenLen > 0,
-              tokenLen,
-              secretKeyPrefix,
-              siteKeyPrefix,
-              secretKeySet: !!process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY,
-              siteKeySet: !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+              tokenPresent: !!turnstileToken,
             });
             return null;
           }
