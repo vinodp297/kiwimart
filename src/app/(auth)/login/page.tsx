@@ -80,6 +80,14 @@ export default function LoginPage() {
   })();
 
   useEffect(() => {
+    // DEBUG: log Turnstile config at mount
+    console.log(
+      "[Turnstile] mount — isTurnstileActive:",
+      isTurnstileActive,
+      "siteKey:",
+      process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.slice(0, 8) ?? "NOT SET",
+    );
+
     if (!isTurnstileActive) return;
     const script = document.createElement("script");
     script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
@@ -90,8 +98,18 @@ export default function LoginPage() {
       .querySelector('meta[name="csp-nonce"]')
       ?.getAttribute("content");
     if (cspNonce) script.nonce = cspNonce;
+    console.log(
+      "[Turnstile] loading script, nonce:",
+      cspNonce ? "present" : "missing",
+    );
     document.head.appendChild(script);
     script.onload = () => {
+      console.log(
+        "[Turnstile] script loaded, window.turnstile:",
+        !!window.turnstile,
+        "turnstileRef:",
+        !!turnstileRef.current,
+      );
       if (turnstileRef.current && window.turnstile) {
         widgetId.current = window.turnstile.render(turnstileRef.current, {
           sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
@@ -103,6 +121,10 @@ export default function LoginPage() {
           appearance: "interaction-only",
           // Resolve the per-submit Promise when the challenge succeeds.
           callback: (token: string) => {
+            console.log(
+              "[Turnstile] callback fired, token length:",
+              token.length,
+            );
             if (tokenResolverRef.current) {
               tokenResolverRef.current(token);
               tokenResolverRef.current = null;
@@ -110,6 +132,7 @@ export default function LoginPage() {
           },
           // Reject the per-submit Promise on widget error (network failure, etc.)
           "error-callback": () => {
+            console.log("[Turnstile] error-callback fired");
             if (tokenResolverRef.current) {
               tokenResolverRef.current(null);
               tokenResolverRef.current = null;
@@ -118,10 +141,14 @@ export default function LoginPage() {
           // Token expired between renders — no active submit in progress so
           // nothing to resolve; the next execute() will obtain a fresh token.
           "expired-callback": () => {
-            /* no-op in execute mode */
+            console.log("[Turnstile] expired-callback fired");
           },
         });
+        console.log("[Turnstile] widget rendered, widgetId:", widgetId.current);
       }
+    };
+    script.onerror = (err) => {
+      console.error("[Turnstile] script FAILED to load:", err);
     };
     return () => {
       document.head.removeChild(script);
@@ -154,24 +181,39 @@ export default function LoginPage() {
     // Reset is only used in error/cleanup paths after a failed attempt.
     let challengeToken = "";
 
+    console.log(
+      "[Login] handleSubmit called, isTurnstileActive:",
+      isTurnstileActive,
+      "widgetId:",
+      widgetId.current,
+    );
+
     if (isTurnstileActive) {
       if (!widgetId.current) {
+        console.log("[Login] widgetId is null — widget not ready");
         setError("Security check not ready — please try again in a moment.");
         setLoading(false);
         return;
       }
 
+      console.log("[Login] calling execute on widgetId:", widgetId.current);
       const token = await new Promise<string | null>((resolve) => {
         tokenResolverRef.current = resolve;
         window.turnstile?.execute(widgetId.current!);
         // 10-second hard timeout — covers stalled challenges and slow networks.
         setTimeout(() => {
           if (tokenResolverRef.current) {
+            console.log("[Login] 10s timeout — callback never fired");
             tokenResolverRef.current = null;
             resolve(null);
           }
         }, 10_000);
       });
+
+      console.log(
+        "[Login] token result:",
+        token ? `received (${token.length} chars)` : "null/timeout",
+      );
 
       if (!token) {
         setError("Security check failed or timed out — please try again.");
