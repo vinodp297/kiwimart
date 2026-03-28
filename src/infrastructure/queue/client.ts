@@ -3,49 +3,61 @@
 // Single ioredis connection used by all BullMQ queues and workers.
 // (This is separate from @upstash/redis — BullMQ requires native TCP Redis)
 
-import IORedis from 'ioredis'
+import IORedis from "ioredis";
+import { logger } from "@/shared/logger";
 
-let _connection: IORedis | null = null
+let _connection: IORedis | null = null;
 
 export function getQueueConnection(): IORedis {
-  if (_connection) return _connection
+  if (_connection) return _connection;
 
-  const redisUrl = process.env.REDIS_URL
+  const redisUrl = process.env.REDIS_URL;
 
   if (
     !redisUrl ||
-    redisUrl.includes('PLACEHOLDER') ||
-    redisUrl.includes('placeholder')
+    redisUrl.includes("PLACEHOLDER") ||
+    redisUrl.includes("placeholder")
   ) {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === "production") {
       throw new Error(
-        'REDIS_URL is required in production. ' +
-        'Configure a real Upstash Redis URL.'
-      )
+        "REDIS_URL is required in production. " +
+          "Configure a real Upstash Redis URL.",
+      );
     }
     // Development fallback — local Redis
     _connection = new IORedis({
-      host: 'localhost',
+      host: "localhost",
       port: 6379,
       maxRetriesPerRequest: null,
       lazyConnect: true,
-    })
-    return _connection
+    });
+    return _connection;
   }
 
   _connection = new IORedis(redisUrl, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    tls: redisUrl.startsWith('rediss://') ? {} : undefined,
+    tls: redisUrl.startsWith("rediss://") ? {} : undefined,
     retryStrategy: (times: number) => {
-      if (times > 3) return null
-      return Math.min(times * 200, 2000)
+      if (times > 3) return null;
+      return Math.min(times * 200, 2000);
     },
-  })
+  });
 
-  _connection.on('error', (err) => {
-    // Redis connection error — non-fatal, BullMQ reconnects automatically
-  })
+  _connection.on("error", (err) => {
+    logger.error("queue:connection-error", {
+      error: err.message,
+      stack: process.env.NODE_ENV !== "production" ? err.stack : undefined,
+    });
+  });
 
-  return _connection
+  _connection.on("close", () => {
+    logger.warn("queue:connection-closed");
+  });
+
+  _connection.on("reconnecting", () => {
+    logger.warn("queue:reconnecting");
+  });
+
+  return _connection;
 }

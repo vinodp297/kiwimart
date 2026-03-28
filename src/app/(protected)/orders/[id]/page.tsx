@@ -1,29 +1,33 @@
-'use client';
+"use client";
 // src/app/(protected)/orders/[id]/page.tsx
 // ─── Order Detail Page ──────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import { Button, OrderStatusBadge, Alert } from '@/components/ui/primitives';
-import { formatPrice, relativeTime } from '@/lib/utils';
-import type { OrderStatus } from '@/types';
-import { confirmDelivery, markDispatched } from '@/server/actions/orders';
-import { openDispute, uploadDisputeEvidence, respondToDispute } from '@/server/actions/disputes';
-import { fetchOrderDetail } from '@/server/actions/orderDetail';
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import { Button, OrderStatusBadge, Alert } from "@/components/ui/primitives";
+import { formatPrice, relativeTime } from "@/lib/utils";
+import type { OrderStatus } from "@/types";
+import { confirmDelivery, markDispatched } from "@/server/actions/orders";
+import {
+  openDispute,
+  uploadDisputeEvidence,
+  respondToDispute,
+} from "@/server/actions/disputes";
+import { fetchOrderDetail } from "@/server/actions/orderDetail";
 
 // ── Courier URL detection ────────────────────────────────────────────────────
 function getCourierUrl(trackingNumber: string): string {
   const tn = trackingNumber.toUpperCase().trim();
 
   // NZ Post international format (2 letters + 9 digits + 2 letters) or NZ prefix
-  if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(tn) || tn.startsWith('NZ')) {
+  if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(tn) || tn.startsWith("NZ")) {
     return `https://www.nzpost.co.nz/tools/tracking?trackid=${encodeURIComponent(tn)}`;
   }
   // CourierPost
-  if (tn.startsWith('CP') || tn.startsWith('CPA')) {
+  if (tn.startsWith("CP") || tn.startsWith("CPA")) {
     return `https://www.courierpost.co.nz/track/?trackingid=${encodeURIComponent(tn)}`;
   }
   // Aramex (long numeric)
@@ -31,7 +35,7 @@ function getCourierUrl(trackingNumber: string): string {
     return `https://www.aramex.co.nz/tools/track?l=${encodeURIComponent(tn)}`;
   }
   // DHL
-  if (tn.startsWith('DHL') || /^\d{10}$/.test(tn)) {
+  if (tn.startsWith("DHL") || /^\d{10}$/.test(tn)) {
     return `https://www.dhl.com/nz-en/home/tracking/tracking-parcel.html?submit=1&tracking-id=${encodeURIComponent(tn)}`;
   }
   // Default — NZ Post (most common NZ courier)
@@ -43,101 +47,116 @@ function fmtDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   const day = d.getDate();
-  const month = d.toLocaleDateString('en-NZ', { month: 'short' });
+  const month = d.toLocaleDateString("en-NZ", { month: "short" });
   const year = d.getFullYear();
-  const time = d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  const time = d
+    .toLocaleTimeString("en-NZ", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .toLowerCase();
   return `${day} ${month} ${year}, ${time}`;
 }
 
 // ── Status info messages (Fix 8) ─────────────────────────────────────────────
 function getStatusInfo(order: OrderDetailData): {
-  icon: React.ReactNode; title: string; message: string; colour: string;
+  icon: React.ReactNode;
+  title: string;
+  message: string;
+  colour: string;
 } | null {
   const isBuyer = order.isBuyer;
 
   switch (order.status) {
-    case 'awaiting_payment':
+    case "awaiting_payment":
       return {
         icon: <CreditCardIcon />,
-        title: 'Awaiting payment',
-        message: 'Your payment is being processed. This usually takes a few seconds.',
-        colour: 'bg-amber-50 border-amber-200 text-amber-800',
+        title: "Awaiting payment",
+        message:
+          "Your payment is being processed. This usually takes a few seconds.",
+        colour: "bg-amber-50 border-amber-200 text-amber-800",
       };
-    case 'payment_held':
+    case "payment_held":
       return isBuyer
         ? {
             icon: <ShieldIcon />,
-            title: 'Payment secured',
+            title: "Payment secured",
             message: `Your payment of ${formatPrice(order.total)} is held safely. It will be released to the seller once you confirm delivery.`,
-            colour: 'bg-sky-50 border-sky-200 text-sky-800',
+            colour: "bg-sky-50 border-sky-200 text-sky-800",
           }
         : {
             icon: <PackageIcon />,
-            title: 'Payment received — time to ship!',
+            title: "Payment received — time to ship!",
             message: `The buyer has paid ${formatPrice(order.total)}. Please dispatch the item and add a tracking number.`,
-            colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+            colour: "bg-emerald-50 border-emerald-200 text-emerald-800",
           };
-    case 'dispatched':
+    case "dispatched":
       return isBuyer
         ? {
             icon: <TruckIcon />,
-            title: 'Item on its way',
-            message: 'The seller has dispatched your item. Please confirm delivery once it arrives.',
-            colour: 'bg-sky-50 border-sky-200 text-sky-800',
+            title: "Item on its way",
+            message:
+              "The seller has dispatched your item. Please confirm delivery once it arrives.",
+            colour: "bg-sky-50 border-sky-200 text-sky-800",
           }
         : {
             icon: <TruckIcon />,
-            title: 'Item dispatched',
-            message: 'Waiting for the buyer to confirm delivery. Payment will be released once confirmed.',
-            colour: 'bg-sky-50 border-sky-200 text-sky-800',
+            title: "Item dispatched",
+            message:
+              "Waiting for the buyer to confirm delivery. Payment will be released once confirmed.",
+            colour: "bg-sky-50 border-sky-200 text-sky-800",
           };
-    case 'delivered':
+    case "delivered":
       return isBuyer
         ? {
             icon: <CheckCircleIcon />,
-            title: 'Item delivered',
-            message: 'Your item has been marked as delivered. Please confirm receipt to release payment.',
-            colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+            title: "Item delivered",
+            message:
+              "Your item has been marked as delivered. Please confirm receipt to release payment.",
+            colour: "bg-emerald-50 border-emerald-200 text-emerald-800",
           }
         : {
             icon: <CheckCircleIcon />,
-            title: 'Delivered',
-            message: 'The item has been delivered. Waiting for buyer confirmation to release your payment.',
-            colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+            title: "Delivered",
+            message:
+              "The item has been delivered. Waiting for buyer confirmation to release your payment.",
+            colour: "bg-emerald-50 border-emerald-200 text-emerald-800",
           };
-    case 'completed':
+    case "completed":
       return {
         icon: <CheckCircleIcon />,
-        title: 'Order complete',
+        title: "Order complete",
         message: isBuyer
-          ? 'This order is complete. Payment has been released to the seller.'
+          ? "This order is complete. Payment has been released to the seller."
           : `This order is complete. ${formatPrice(order.total)} has been released to your account.`,
-        colour: 'bg-emerald-50 border-emerald-200 text-emerald-800',
+        colour: "bg-emerald-50 border-emerald-200 text-emerald-800",
       };
-    case 'disputed':
+    case "disputed":
       return {
         icon: <AlertTriangleIcon />,
-        title: 'Dispute in progress',
-        message: 'Our Trust & Safety team is reviewing this case. We aim to resolve disputes within 48 hours.',
-        colour: 'bg-red-50 border-red-200 text-red-800',
+        title: "Dispute in progress",
+        message:
+          "Our Trust & Safety team is reviewing this case. We aim to resolve disputes within 48 hours.",
+        colour: "bg-red-50 border-red-200 text-red-800",
       };
-    case 'refunded':
+    case "refunded":
       return {
         icon: <RefundIcon />,
-        title: 'Refunded',
+        title: "Refunded",
         message: isBuyer
           ? `A refund of ${formatPrice(order.total)} has been issued to your original payment method.`
-          : 'This order has been refunded to the buyer.',
-        colour: 'bg-violet-50 border-violet-200 text-violet-800',
+          : "This order has been refunded to the buyer.",
+        colour: "bg-violet-50 border-violet-200 text-violet-800",
       };
-    case 'cancelled':
+    case "cancelled":
       return {
         icon: <XCircleIcon />,
-        title: 'Order cancelled',
+        title: "Order cancelled",
         message: order.cancelReason
           ? `This order was cancelled. Reason: ${order.cancelReason}`
-          : 'This order has been cancelled.',
-        colour: 'bg-neutral-50 border-neutral-200 text-neutral-700',
+          : "This order has been cancelled.",
+        colour: "bg-neutral-50 border-neutral-200 text-neutral-700",
       };
     default:
       return null;
@@ -156,21 +175,21 @@ export default function OrderDetailPage() {
 
   // Dispatch modal
   const [showDispatch, setShowDispatch] = useState(false);
-  const [courierService, setCourierService] = useState('');
-  const [trackingNumber, setTrackingNumber] = useState('');
-  const [trackingUrl, setTrackingUrl] = useState('');
+  const [courierService, setCourierService] = useState("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
 
   // Confirm delivery modal
   const [showConfirm, setShowConfirm] = useState(false);
 
   // Dispute modal
   const [showDispute, setShowDispute] = useState(false);
-  const [disputeReason, setDisputeReason] = useState('');
-  const [disputeDescription, setDisputeDescription] = useState('');
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeDescription, setDisputeDescription] = useState("");
   const [disputePhotos, setDisputePhotos] = useState<File[]>([]);
 
   // Seller dispute response
-  const [sellerResponseText, setSellerResponseText] = useState('');
+  const [sellerResponseText, setSellerResponseText] = useState("");
   const [showSellerResponse, setShowSellerResponse] = useState(false);
 
   useEffect(() => {
@@ -183,7 +202,7 @@ export default function OrderDetailPage() {
           setError(result.error);
         }
       } catch {
-        setError('Failed to load order details.');
+        setError("Failed to load order details.");
       } finally {
         setLoading(false);
       }
@@ -199,7 +218,7 @@ export default function OrderDetailPage() {
       trackingUrl: trackingUrl || undefined,
     });
     if (result.success) {
-      setActionSuccess('Order marked as dispatched.');
+      setActionSuccess("Order marked as dispatched.");
       setShowDispatch(false);
       // Reload order
       const updated = await fetchOrderDetail(orderId);
@@ -214,7 +233,7 @@ export default function OrderDetailPage() {
     setActionLoading(true);
     const result = await confirmDelivery(orderId);
     if (result.success) {
-      setActionSuccess('Delivery confirmed. Payment released to seller.');
+      setActionSuccess("Delivery confirmed. Payment released to seller.");
       setShowConfirm(false);
       const updated = await fetchOrderDetail(orderId);
       if (updated.success) setOrder(updated.data);
@@ -226,7 +245,9 @@ export default function OrderDetailPage() {
 
   async function handleOpenDispute() {
     if (!disputeReason || disputeDescription.length < 20) {
-      setError('Please select a reason and describe the issue (at least 20 characters).');
+      setError(
+        "Please select a reason and describe the issue (at least 20 characters).",
+      );
       return;
     }
     setError(null);
@@ -238,7 +259,7 @@ export default function OrderDetailPage() {
       // Upload photos first if any selected
       if (disputePhotos.length > 0) {
         const formData = new FormData();
-        disputePhotos.forEach(photo => formData.append('files', photo));
+        disputePhotos.forEach((photo) => formData.append("files", photo));
         const uploadResult = await uploadDisputeEvidence(formData);
         if (!uploadResult.success) {
           setError(uploadResult.error);
@@ -256,7 +277,9 @@ export default function OrderDetailPage() {
       });
       if (result.success) {
         setError(null);
-        setActionSuccess('Dispute opened. We will review your case within 48 hours.');
+        setActionSuccess(
+          "Dispute opened. We will review your case within 48 hours.",
+        );
         setShowDispute(false);
         const updated = await fetchOrderDetail(orderId);
         if (updated.success) setOrder(updated.data);
@@ -270,7 +293,7 @@ export default function OrderDetailPage() {
 
   async function handleSellerResponse() {
     if (sellerResponseText.trim().length < 20) {
-      setError('Please provide at least 20 characters in your response.');
+      setError("Please provide at least 20 characters in your response.");
       return;
     }
     setError(null);
@@ -281,9 +304,11 @@ export default function OrderDetailPage() {
         response: sellerResponseText,
       });
       if (result.success) {
-        setActionSuccess('Your response has been submitted. The buyer and our team have been notified.');
+        setActionSuccess(
+          "Your response has been submitted. The buyer and our team have been notified.",
+        );
         setShowSellerResponse(false);
-        setSellerResponseText('');
+        setSellerResponseText("");
         const updated = await fetchOrderDetail(orderId);
         if (updated.success) setOrder(updated.data);
       } else {
@@ -319,7 +344,9 @@ export default function OrderDetailPage() {
           <div className="text-center">
             <p className="text-[14px] text-[#9E9A91]">{error}</p>
             <Link href="/dashboard/buyer" className="mt-3 inline-block">
-              <Button variant="secondary" size="sm">Back to dashboard</Button>
+              <Button variant="secondary" size="sm">
+                Back to dashboard
+              </Button>
             </Link>
           </div>
         </main>
@@ -331,58 +358,74 @@ export default function OrderDetailPage() {
   if (!order) return null;
 
   // ── Timeline steps with dates (Fix 2 + Fix 3) ─────────────────────────────
-  const isDisputed = order.status === 'disputed';
-  const isCancelled = order.status === 'cancelled';
+  const isDisputed = order.status === "disputed";
+  const isCancelled = order.status === "cancelled";
 
-  const statusSteps: { label: string; done: boolean; active: boolean; date: string | null; variant?: 'warning' | 'danger' }[] = [
+  const statusSteps: {
+    label: string;
+    done: boolean;
+    active: boolean;
+    date: string | null;
+    variant?: "warning" | "danger";
+  }[] = [
     {
-      label: 'Order placed',
+      label: "Order placed",
       done: true,
       active: false,
       date: fmtDate(order.createdAt),
     },
     {
-      label: 'Payment received',
-      done: ['payment_held', 'dispatched', 'delivered', 'completed'].includes(order.status) || isDisputed,
-      active: order.status === 'payment_held',
+      label: "Payment received",
+      done:
+        ["payment_held", "dispatched", "delivered", "completed"].includes(
+          order.status,
+        ) || isDisputed,
+      active: order.status === "payment_held",
       date: fmtDate(order.createdAt), // payment happens at order creation
     },
     {
-      label: 'Dispatched',
-      done: ['dispatched', 'delivered', 'completed'].includes(order.status) || isDisputed,
-      active: order.status === 'dispatched',
+      label: "Dispatched",
+      done:
+        ["dispatched", "delivered", "completed"].includes(order.status) ||
+        isDisputed,
+      active: order.status === "dispatched",
       date: fmtDate(order.dispatchedAt),
     },
     {
-      label: 'Delivered',
-      done: ['delivered', 'completed'].includes(order.status),
-      active: order.status === 'delivered',
+      label: "Delivered",
+      done: ["delivered", "completed"].includes(order.status),
+      active: order.status === "delivered",
       date: fmtDate(order.deliveredAt),
     },
     // Show dispute milestone if disputed (Fix 3)
     ...(isDisputed
-      ? [{
-          label: 'Disputed',
-          done: true,
-          active: true,
-          date: fmtDate(order.disputeOpenedAt),
-          variant: 'danger' as const,
-        }]
-      : isCancelled
-        ? [{
-            label: 'Cancelled',
+      ? [
+          {
+            label: "Disputed",
             done: true,
             active: true,
-            date: fmtDate(order.cancelledAt),
-            variant: 'danger' as const,
-          }]
-        : [{
-            label: 'Completed',
-            done: order.status === 'completed',
-            active: order.status === 'completed',
-            date: fmtDate(order.completedAt),
-          }]
-    ),
+            date: fmtDate(order.disputeOpenedAt),
+            variant: "danger" as const,
+          },
+        ]
+      : isCancelled
+        ? [
+            {
+              label: "Cancelled",
+              done: true,
+              active: true,
+              date: fmtDate(order.cancelledAt),
+              variant: "danger" as const,
+            },
+          ]
+        : [
+            {
+              label: "Completed",
+              done: order.status === "completed",
+              active: order.status === "completed",
+              date: fmtDate(order.completedAt),
+            },
+          ]),
   ];
 
   const statusInfo = getStatusInfo(order);
@@ -394,25 +437,33 @@ export default function OrderDetailPage() {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-[12.5px] text-[#9E9A91] mb-6">
-            <Link href={order.isBuyer ? '/dashboard/buyer' : '/dashboard/seller'} className="hover:text-[#D4A843] transition-colors">
+            <Link
+              href={order.isBuyer ? "/dashboard/buyer" : "/dashboard/seller"}
+              className="hover:text-[#D4A843] transition-colors"
+            >
               Dashboard
             </Link>
             <span>/</span>
-            <span className="text-[#141414] font-medium">Order {order.id.slice(0, 8)}…</span>
+            <span className="text-[#141414] font-medium">
+              Order {order.id.slice(0, 8)}…
+            </span>
           </nav>
 
           {actionSuccess && (
-            <Alert variant="success" className="mb-4">{actionSuccess}</Alert>
+            <Alert variant="success" className="mb-4">
+              {actionSuccess}
+            </Alert>
           )}
           {error && (
-            <Alert variant="error" className="mb-4">{error}</Alert>
+            <Alert variant="error" className="mb-4">
+              {error}
+            </Alert>
           )}
 
           {/* Order header */}
           <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6 mb-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <Link href={`/listings/${order.listingId}`} className="shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={order.listingThumbnail}
                   alt={order.listingTitle}
@@ -429,8 +480,10 @@ export default function OrderDetailPage() {
                 <div className="flex flex-wrap items-center gap-3 mt-2">
                   <OrderStatusBadge status={order.status as OrderStatus} />
                   <span className="text-[12px] text-[#9E9A91]">
-                    {new Date(order.createdAt).toLocaleDateString('en-NZ', {
-                      day: 'numeric', month: 'long', year: 'numeric',
+                    {new Date(order.createdAt).toLocaleDateString("en-NZ", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
                     })}
                   </span>
                 </div>
@@ -446,11 +499,17 @@ export default function OrderDetailPage() {
 
           {/* ── Status info box (Fix 8) ───────────────────────────────────── */}
           {statusInfo && (
-            <div className={`rounded-2xl border p-4 mb-6 flex items-start gap-3 ${statusInfo.colour}`}>
+            <div
+              className={`rounded-2xl border p-4 mb-6 flex items-start gap-3 ${statusInfo.colour}`}
+            >
               <div className="shrink-0 mt-0.5">{statusInfo.icon}</div>
               <div>
-                <p className="text-[13.5px] font-semibold mb-0.5">{statusInfo.title}</p>
-                <p className="text-[12.5px] leading-relaxed opacity-80">{statusInfo.message}</p>
+                <p className="text-[13.5px] font-semibold mb-0.5">
+                  {statusInfo.title}
+                </p>
+                <p className="text-[12.5px] leading-relaxed opacity-80">
+                  {statusInfo.message}
+                </p>
               </div>
             </div>
           )}
@@ -465,40 +524,63 @@ export default function OrderDetailPage() {
               <div className="absolute top-3 left-3 right-3 h-0.5 bg-[#E3E0D9]" />
               <div
                 className={`absolute top-3 left-3 h-0.5 transition-all duration-500 ${
-                  isDisputed || isCancelled ? 'bg-red-400' : 'bg-[#D4A843]'
+                  isDisputed || isCancelled ? "bg-red-400" : "bg-[#D4A843]"
                 }`}
                 style={{
-                  width: `${(statusSteps.filter((s) => s.done).length - 1) / (statusSteps.length - 1) * 100}%`,
+                  width: `${((statusSteps.filter((s) => s.done).length - 1) / (statusSteps.length - 1)) * 100}%`,
                 }}
               />
 
               {statusSteps.map((step) => (
-                <div key={step.label} className="relative flex flex-col items-center z-10" style={{ flex: 1 }}>
+                <div
+                  key={step.label}
+                  className="relative flex flex-col items-center z-10"
+                  style={{ flex: 1 }}
+                >
                   <div
                     className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
-                      ${step.variant === 'danger'
-                        ? 'bg-red-500 border-red-500'
-                        : step.done
-                        ? 'bg-[#D4A843] border-[#D4A843]'
-                        : step.active
-                        ? 'bg-white border-[#D4A843]'
-                        : 'bg-[#F8F7F4] border-[#E3E0D9]'
+                      ${
+                        step.variant === "danger"
+                          ? "bg-red-500 border-red-500"
+                          : step.done
+                            ? "bg-[#D4A843] border-[#D4A843]"
+                            : step.active
+                              ? "bg-white border-[#D4A843]"
+                              : "bg-[#F8F7F4] border-[#E3E0D9]"
                       }`}
                   >
-                    {step.variant === 'danger' && step.done ? (
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                    {step.variant === "danger" && step.done ? (
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="3"
+                      >
                         <path d="M18 6 6 18M6 6l12 12" />
                       </svg>
                     ) : step.done ? (
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="white"
+                        strokeWidth="3"
+                      >
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
                     ) : null}
                   </div>
-                  <span className={`text-[10.5px] mt-2 text-center whitespace-nowrap
-                    ${step.variant === 'danger'
-                      ? 'text-red-600 font-semibold'
-                      : step.done || step.active ? 'text-[#141414] font-medium' : 'text-[#9E9A91]'
+                  <span
+                    className={`text-[10.5px] mt-2 text-center whitespace-nowrap
+                    ${
+                      step.variant === "danger"
+                        ? "text-red-600 font-semibold"
+                        : step.done || step.active
+                          ? "text-[#141414] font-medium"
+                          : "text-[#9E9A91]"
                     }`}
                   >
                     {step.label}
@@ -520,13 +602,19 @@ export default function OrderDetailPage() {
                 <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-[12.5px] text-red-800">
                   <p className="font-semibold mb-1">Dispute details</p>
                   {order.disputeReason && (
-                    <p>Reason: {order.disputeReason.replace(/_/g, ' ').toLowerCase()}</p>
+                    <p>
+                      Reason:{" "}
+                      {order.disputeReason.replace(/_/g, " ").toLowerCase()}
+                    </p>
                   )}
                   {order.disputeNotes && (
-                    <p className="mt-1.5 whitespace-pre-wrap">{order.disputeNotes}</p>
+                    <p className="mt-1.5 whitespace-pre-wrap">
+                      {order.disputeNotes}
+                    </p>
                   )}
                   <p className="mt-1.5 text-[11.5px] opacity-75">
-                    Our Trust &amp; Safety team will review and respond within 48 hours.
+                    Our Trust &amp; Safety team will review and respond within
+                    48 hours.
                   </p>
                 </div>
 
@@ -534,12 +622,21 @@ export default function OrderDetailPage() {
                 {order.sellerResponse && (
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900">
                     <p className="font-semibold mb-1 flex items-center gap-1.5">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                      >
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                       </svg>
                       Seller response
                     </p>
-                    <p className="whitespace-pre-wrap">{order.sellerResponse}</p>
+                    <p className="whitespace-pre-wrap">
+                      {order.sellerResponse}
+                    </p>
                     {order.sellerRespondedAt && (
                       <p className="mt-1.5 text-[11px] opacity-60">
                         Responded {fmtDate(order.sellerRespondedAt)}
@@ -549,48 +646,65 @@ export default function OrderDetailPage() {
                 )}
 
                 {/* Seller response form (if seller hasn't responded yet) */}
-                {!order.isBuyer && !order.sellerResponse && !showSellerResponse && (
-                  <button
-                    type="button"
-                    onClick={() => setShowSellerResponse(true)}
-                    className="w-full p-3 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/50
+                {!order.isBuyer &&
+                  !order.sellerResponse &&
+                  !showSellerResponse && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSellerResponse(true)}
+                      className="w-full p-3 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/50
                       text-[12.5px] text-amber-800 font-semibold hover:bg-amber-50 transition-colors"
-                  >
-                    Respond to this dispute →
-                  </button>
-                )}
+                    >
+                      Respond to this dispute →
+                    </button>
+                  )}
 
-                {!order.isBuyer && !order.sellerResponse && showSellerResponse && (
-                  <div className="p-4 rounded-xl bg-white border border-[#E3E0D9]">
-                    <label className="text-[12.5px] font-semibold text-[#141414] mb-1.5 block">
-                      Your response
-                    </label>
-                    <textarea
-                      value={sellerResponseText}
-                      onChange={(e) => setSellerResponseText(e.target.value)}
-                      placeholder="Explain your side of the situation (min 20 characters)..."
-                      rows={4}
-                      maxLength={2000}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                {!order.isBuyer &&
+                  !order.sellerResponse &&
+                  showSellerResponse && (
+                    <div className="p-4 rounded-xl bg-white border border-[#E3E0D9]">
+                      <label className="text-[12.5px] font-semibold text-[#141414] mb-1.5 block">
+                        Your response
+                      </label>
+                      <textarea
+                        value={sellerResponseText}
+                        onChange={(e) => setSellerResponseText(e.target.value)}
+                        placeholder="Explain your side of the situation (min 20 characters)..."
+                        rows={4}
+                        maxLength={2000}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
                         text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
                         focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
-                    />
-                    <p className="text-[11px] text-[#9E9A91] mt-1 mb-3">
-                      {sellerResponseText.length}/2000 characters
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button variant="gold" size="sm" onClick={handleSellerResponse} loading={actionLoading}>
-                        Submit response
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => { setShowSellerResponse(false); setSellerResponseText(''); }}>
-                        Cancel
-                      </Button>
+                      />
+                      <p className="text-[11px] text-[#9E9A91] mt-1 mb-3">
+                        {sellerResponseText.length}/2000 characters
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="gold"
+                          size="sm"
+                          onClick={handleSellerResponse}
+                          loading={actionLoading}
+                        >
+                          Submit response
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowSellerResponse(false);
+                            setSellerResponseText("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-[#9E9A91] mt-2">
+                        Your response will be shared with the buyer and our
+                        Trust &amp; Safety team.
+                      </p>
                     </div>
-                    <p className="text-[11px] text-[#9E9A91] mt-2">
-                      Your response will be shared with the buyer and our Trust &amp; Safety team.
-                    </p>
-                  </div>
-                )}
+                  )}
               </div>
             )}
           </div>
@@ -598,45 +712,70 @@ export default function OrderDetailPage() {
           {/* Price breakdown + details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
-              <h3 className="text-[13px] font-semibold text-[#141414] mb-3">Price breakdown</h3>
+              <h3 className="text-[13px] font-semibold text-[#141414] mb-3">
+                Price breakdown
+              </h3>
               <div className="space-y-2">
                 <div className="flex justify-between text-[13px]">
                   <span className="text-[#73706A]">Item</span>
-                  <span className="text-[#141414]">{formatPrice(order.itemPrice)}</span>
+                  <span className="text-[#141414]">
+                    {formatPrice(order.itemPrice)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-[13px]">
                   <span className="text-[#73706A]">Shipping</span>
-                  <span className="text-[#141414]">{order.shippingPrice === 0 ? 'Free' : formatPrice(order.shippingPrice)}</span>
+                  <span className="text-[#141414]">
+                    {order.shippingPrice === 0
+                      ? "Free"
+                      : formatPrice(order.shippingPrice)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-[14px] font-semibold pt-2 border-t border-[#F0EDE8]">
                   <span className="text-[#141414]">Total</span>
-                  <span className="text-[#141414]">{formatPrice(order.total)}</span>
+                  <span className="text-[#141414]">
+                    {formatPrice(order.total)}
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
               <h3 className="text-[13px] font-semibold text-[#141414] mb-3">
-                {order.isBuyer ? 'Seller' : 'Buyer'}
+                {order.isBuyer ? "Seller" : "Buyer"}
               </h3>
-              <p className="text-[13px] text-[#141414] font-medium">{order.otherPartyName}</p>
+              <p className="text-[13px] text-[#141414] font-medium">
+                {order.otherPartyName}
+              </p>
               <Link
-                href={order.isBuyer ? `/sellers/${order.otherPartyUsername}` : '#'}
+                href={
+                  order.isBuyer ? `/sellers/${order.otherPartyUsername}` : "#"
+                }
                 className="text-[12px] text-[#D4A843] hover:text-[#B8912E] transition-colors"
               >
                 @{order.otherPartyUsername}
               </Link>
               {order.trackingNumber && (
                 <div className="mt-3 pt-3 border-t border-[#F0EDE8]">
-                  <p className="text-[11.5px] font-semibold text-[#141414] mb-1">Tracking</p>
+                  <p className="text-[11.5px] font-semibold text-[#141414] mb-1">
+                    Tracking
+                  </p>
                   <a
-                    href={order.trackingUrl || getCourierUrl(order.trackingNumber)}
+                    href={
+                      order.trackingUrl || getCourierUrl(order.trackingNumber)
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[12px] text-[#D4A843] font-mono hover:underline inline-flex items-center gap-1"
                   >
                     {order.trackingNumber}
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                       <polyline points="15 3 21 3 21 9" />
                       <line x1="10" y1="14" x2="21" y2="3" />
@@ -656,16 +795,28 @@ export default function OrderDetailPage() {
               </h3>
               <div className="space-y-1.5 text-[12.5px] text-[#73706A]">
                 {order.cancelledAt && (
-                  <p>Cancelled on: {new Date(order.cancelledAt).toLocaleDateString('en-NZ', {
-                    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                  })}</p>
+                  <p>
+                    Cancelled on:{" "}
+                    {new Date(order.cancelledAt).toLocaleDateString("en-NZ", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
                 )}
                 {order.cancelledBy && (
-                  <p>Cancelled by: {order.cancelledBy === 'BUYER' ? 'Buyer' : order.cancelledBy === 'SELLER' ? 'Seller' : 'System'}</p>
+                  <p>
+                    Cancelled by:{" "}
+                    {order.cancelledBy === "BUYER"
+                      ? "Buyer"
+                      : order.cancelledBy === "SELLER"
+                        ? "Seller"
+                        : "System"}
+                  </p>
                 )}
-                {order.cancelReason && (
-                  <p>Reason: {order.cancelReason}</p>
-                )}
+                {order.cancelReason && <p>Reason: {order.cancelReason}</p>}
               </div>
             </div>
           )}
@@ -673,37 +824,59 @@ export default function OrderDetailPage() {
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3">
             {/* Seller: mark dispatched */}
-            {!order.isBuyer && order.status === 'payment_held' && (
-              <Button variant="gold" size="md" onClick={() => setShowDispatch(true)}>
+            {!order.isBuyer && order.status === "payment_held" && (
+              <Button
+                variant="gold"
+                size="md"
+                onClick={() => setShowDispatch(true)}
+              >
                 Mark as dispatched
               </Button>
             )}
 
             {/* Buyer: confirm delivery */}
-            {order.isBuyer && (order.status === 'dispatched' || order.status === 'delivered') && (
-              <Button variant="gold" size="md" onClick={() => setShowConfirm(true)}>
-                Confirm delivery
-              </Button>
-            )}
+            {order.isBuyer &&
+              (order.status === "dispatched" ||
+                order.status === "delivered") && (
+                <Button
+                  variant="gold"
+                  size="md"
+                  onClick={() => setShowConfirm(true)}
+                >
+                  Confirm delivery
+                </Button>
+              )}
 
             {/* Buyer: open dispute */}
-            {order.isBuyer && (order.status === 'dispatched' || order.status === 'delivered') && !order.disputeReason && (
-              <Button variant="ghost" size="md" onClick={() => setShowDispute(true)}>
-                Open a dispute
-              </Button>
-            )}
+            {order.isBuyer &&
+              (order.status === "dispatched" || order.status === "delivered") &&
+              !order.disputeReason && (
+                <Button
+                  variant="ghost"
+                  size="md"
+                  onClick={() => setShowDispute(true)}
+                >
+                  Open a dispute
+                </Button>
+              )}
 
             {/* Buyer: leave review */}
-            {order.isBuyer && order.status === 'completed' && !order.hasReview && (
-              <Link href={`/reviews/new?orderId=${order.id}`}>
-                <Button variant="secondary" size="md">Leave a review</Button>
-              </Link>
-            )}
+            {order.isBuyer &&
+              order.status === "completed" &&
+              !order.hasReview && (
+                <Link href={`/reviews/new?orderId=${order.id}`}>
+                  <Button variant="secondary" size="md">
+                    Leave a review
+                  </Button>
+                </Link>
+              )}
 
             {/* Message */}
-            <Link href={`/messages/new?listingId=${order.listingId}&sellerId=${order.isBuyer ? order.sellerId : order.buyerId}`}>
+            <Link
+              href={`/messages/new?listingId=${order.listingId}&sellerId=${order.isBuyer ? order.sellerId : order.buyerId}`}
+            >
               <Button variant="secondary" size="md">
-                Message {order.isBuyer ? 'seller' : 'buyer'}
+                Message {order.isBuyer ? "seller" : "buyer"}
               </Button>
             </Link>
           </div>
@@ -761,7 +934,8 @@ export default function OrderDetailPage() {
             </div>
             <div>
               <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                Tracking URL <span className="text-[#9E9A91] font-normal">(optional)</span>
+                Tracking URL{" "}
+                <span className="text-[#9E9A91] font-normal">(optional)</span>
               </label>
               <input
                 value={trackingUrl}
@@ -772,7 +946,13 @@ export default function OrderDetailPage() {
                   focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
               />
             </div>
-            <Button variant="gold" fullWidth size="md" onClick={handleDispatch} loading={actionLoading}>
+            <Button
+              variant="gold"
+              fullWidth
+              size="md"
+              onClick={handleDispatch}
+              loading={actionLoading}
+            >
               Confirm dispatch
             </Button>
             <p className="text-[11px] text-[#9E9A91] text-center">
@@ -787,7 +967,14 @@ export default function OrderDetailPage() {
         <ModalOverlay onClose={() => setShowConfirm(false)}>
           <div className="text-center">
             <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#d97706"
+                strokeWidth="2"
+              >
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -797,32 +984,61 @@ export default function OrderDetailPage() {
               Confirm delivery
             </h2>
             <p className="text-[13px] text-[#73706A] mb-2">
-              Confirming delivery will release <span className="font-semibold text-[#141414]">{formatPrice(order.total)}</span> to{' '}
-              <span className="font-semibold text-[#141414]">{order.otherPartyName}</span>.
+              Confirming delivery will release{" "}
+              <span className="font-semibold text-[#141414]">
+                {formatPrice(order.total)}
+              </span>{" "}
+              to{" "}
+              <span className="font-semibold text-[#141414]">
+                {order.otherPartyName}
+              </span>
+              .
             </p>
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 mb-4 text-left">
               <p className="text-[12px] text-amber-800 font-semibold flex items-center gap-1.5">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                  <line x1="12" y1="9" x2="12" y2="13"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
                 This action cannot be undone
               </p>
               <p className="text-[11.5px] text-amber-700 mt-1">
-                Only confirm if you have received the item and are satisfied with it.
+                Only confirm if you have received the item and are satisfied
+                with it.
               </p>
             </div>
             <div className="flex flex-col gap-2">
-              <Button variant="gold" fullWidth size="md" onClick={handleConfirmDelivery} loading={actionLoading}>
+              <Button
+                variant="gold"
+                fullWidth
+                size="md"
+                onClick={handleConfirmDelivery}
+                loading={actionLoading}
+              >
                 Yes, I received it — release {formatPrice(order.total)}
               </Button>
-              <Button variant="ghost" fullWidth size="md" onClick={() => setShowConfirm(false)}>
+              <Button
+                variant="ghost"
+                fullWidth
+                size="md"
+                onClick={() => setShowConfirm(false)}
+              >
                 Cancel
               </Button>
               <button
                 type="button"
-                onClick={() => { setShowConfirm(false); setShowDispute(true); }}
+                onClick={() => {
+                  setShowConfirm(false);
+                  setShowDispute(true);
+                }}
                 className="text-[12px] text-red-500 hover:text-red-600 font-medium mt-1 transition-colors"
               >
                 Something wrong? Open a dispute instead
@@ -840,7 +1056,9 @@ export default function OrderDetailPage() {
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">Reason</label>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Reason
+              </label>
               <select
                 value={disputeReason}
                 onChange={(e) => setDisputeReason(e.target.value)}
@@ -850,13 +1068,19 @@ export default function OrderDetailPage() {
               >
                 <option value="">Select a reason</option>
                 <option value="ITEM_NOT_RECEIVED">Item not received</option>
-                <option value="ITEM_NOT_AS_DESCRIBED">Item not as described</option>
+                <option value="ITEM_NOT_AS_DESCRIBED">
+                  Item not as described
+                </option>
                 <option value="ITEM_DAMAGED">Item damaged in transit</option>
                 <option value="WRONG_ITEM_SENT">Wrong item sent</option>
                 <option value="COUNTERFEIT_ITEM">Suspected counterfeit</option>
                 <option value="SELLER_UNRESPONSIVE">Seller unresponsive</option>
-                <option value="SELLER_CANCELLED">Seller cancelled after payment</option>
-                <option value="REFUND_NOT_PROCESSED">Refund not processed</option>
+                <option value="SELLER_CANCELLED">
+                  Seller cancelled after payment
+                </option>
+                <option value="REFUND_NOT_PROCESSED">
+                  Refund not processed
+                </option>
                 <option value="OTHER">Other</option>
               </select>
             </div>
@@ -880,16 +1104,28 @@ export default function OrderDetailPage() {
             </div>
             <div>
               <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                Photos <span className="text-[#9E9A91] font-normal">(optional, up to 3)</span>
+                Photos{" "}
+                <span className="text-[#9E9A91] font-normal">
+                  (optional, up to 3)
+                </span>
               </label>
               <div className="flex items-center gap-2">
-                <label className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed
+                <label
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed
                   border-[#C9C5BC] bg-[#FAFAF8] text-[12.5px] text-[#73706A] cursor-pointer
-                  hover:border-[#D4A843] hover:bg-[#F5ECD4]/20 transition-colors">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
+                  hover:border-[#D4A843] hover:bg-[#F5ECD4]/20 transition-colors"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
                   </svg>
                   Add photos
                   <input
@@ -898,25 +1134,37 @@ export default function OrderDetailPage() {
                     multiple
                     className="hidden"
                     onChange={(e) => {
-                      const files = Array.from(e.target.files ?? []).slice(0, 3);
+                      const files = Array.from(e.target.files ?? []).slice(
+                        0,
+                        3,
+                      );
                       setDisputePhotos(files);
                     }}
                   />
                 </label>
                 {disputePhotos.length > 0 ? (
                   <span className="text-[11px] text-emerald-600 font-medium">
-                    {disputePhotos.length} photo{disputePhotos.length !== 1 ? 's' : ''} selected
+                    {disputePhotos.length} photo
+                    {disputePhotos.length !== 1 ? "s" : ""} selected
                   </span>
                 ) : (
-                  <span className="text-[11px] text-[#9E9A91]">JPG, PNG, WebP up to 5MB each</span>
+                  <span className="text-[11px] text-[#9E9A91]">
+                    JPG, PNG, WebP up to 5MB each
+                  </span>
                 )}
               </div>
             </div>
             <Alert variant="info">
-              Our team will review your dispute within 48 hours. The seller will be
-              notified and given an opportunity to respond.
+              Our team will review your dispute within 48 hours. The seller will
+              be notified and given an opportunity to respond.
             </Alert>
-            <Button variant="danger" fullWidth size="md" onClick={handleOpenDispute} loading={actionLoading}>
+            <Button
+              variant="danger"
+              fullWidth
+              size="md"
+              onClick={handleOpenDispute}
+              loading={actionLoading}
+            >
               Submit dispute
             </Button>
           </div>
@@ -973,7 +1221,9 @@ function ModalOverlay({
       className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
         <button
@@ -982,7 +1232,14 @@ function ModalOverlay({
           className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#F8F7F4] flex items-center
             justify-center hover:bg-[#EFEDE8] transition-colors"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          >
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
@@ -996,57 +1253,126 @@ function ModalOverlay({
 
 function CreditCardIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+      <line x1="1" y1="10" x2="23" y2="10" />
     </svg>
   );
 }
 function ShieldIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
     </svg>
   );
 }
 function PackageIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <line x1="16.5" y1="9.4" x2="7.5" y2="4.21" />
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
     </svg>
   );
 }
 function TruckIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <rect x="1" y="3" width="15" height="13" />
+      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
     </svg>
   );
 }
 function CheckCircleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
     </svg>
   );
 }
 function AlertTriangleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   );
 }
 function RefundIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
     </svg>
   );
 }
 function XCircleIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <line x1="15" y1="9" x2="9" y2="15" />
+      <line x1="9" y1="9" x2="15" y2="15" />
     </svg>
   );
 }
