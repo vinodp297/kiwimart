@@ -86,13 +86,16 @@ export async function releaseLock(
  * Throws if the lock is currently held by another process (lockValue === null).
  * Callers should catch this and treat it as "already processing".
  *
- * If Redis is unavailable, proceeds without locking (sentinel path).
+ * When Redis is unavailable:
+ *   - failOpen: false (default) — throws in production, warns and proceeds in dev/test
+ *   - failOpen: true — proceeds without lock (use only for non-critical operations)
  */
 export async function withLock<T>(
   resource: string,
   fn: () => Promise<T>,
-  ttlSeconds = 30
+  options?: { failOpen?: boolean; ttlSeconds?: number }
 ): Promise<T> {
+  const { failOpen = false, ttlSeconds = 30 } = options ?? {}
   const lockValue = await acquireLock(resource, ttlSeconds)
 
   if (lockValue === null) {
@@ -100,27 +103,36 @@ export async function withLock<T>(
   }
 
   // Redis unavailable — sentinel returned.
-  // PRODUCTION: fail closed — no money operation should proceed without
-  // concurrency protection. Callers catch and surface a retry message.
-  // DEV/TEST: proceed without lock so the app works without Redis.
   if (lockValue === NO_REDIS_LOCK) {
-    if (process.env.NODE_ENV === 'production') {
-      logger.error('distributedLock.redis_unavailable_production', {
+    if (failOpen) {
+      // Caller explicitly opted in to fail-open (non-critical operation)
+      logger.warn('distributedLock.redis_unavailable_failopen', {
         resource,
-        message:
-          'Redis unavailable in PRODUCTION — failing CLOSED. ' +
-          'Check Redis connectivity immediately.',
+        message: 'Proceeding without lock (failOpen: true)',
       })
-      throw new Error(
-        'Service temporarily unavailable. Please try again in a moment.'
-      )
+      return await fn()
     }
-    // Dev/test — proceed without lock
-    logger.warn('distributedLock.redis_unavailable_dev', {
+
+    if (process.env.NODE_ENV !== 'production') {
+      // Dev/test — proceed without lock so the app works without Redis
+      logger.warn('distributedLock.redis_unavailable_dev', {
+        resource,
+        message: 'Proceeding without lock (dev/test only)',
+      })
+      return await fn()
+    }
+
+    // PRODUCTION fail-closed — no money operation should proceed without
+    // concurrency protection.
+    logger.error('distributedLock.redis_unavailable_production', {
       resource,
-      message: 'Proceeding without lock (dev/test only)',
+      message:
+        'Redis unavailable in PRODUCTION — failing CLOSED. ' +
+        'Check Redis connectivity immediately.',
     })
-    return await fn()
+    throw new Error(
+      'Lock unavailable — Redis is down. Operation rejected to prevent concurrent mutations.'
+    )
   }
 
   try {
