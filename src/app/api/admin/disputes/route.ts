@@ -11,15 +11,20 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 403 });
   }
 
-  const disputes = await db.order.findMany({
-    where: { status: 'DISPUTED' },
-    include: {
-      buyer: { select: { username: true, email: true } },
-      seller: { select: { username: true, email: true } },
-      listing: { select: { title: true } },
-    },
-    orderBy: { updatedAt: 'asc' },
-  });
+  try {
+    const disputes = await db.order.findMany({
+      where: { status: 'DISPUTED' },
+      include: {
+        buyer: { select: { username: true, email: true } },
+        seller: { select: { username: true, email: true } },
+        listing: { select: { title: true } },
+      },
+      orderBy: { updatedAt: 'asc' },
+    });
 
-  return NextResponse.json({ disputes });
+    return NextResponse.json({ disputes });
+  } catch (e) {
+    console.error('[admin/disputes:GET]', e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+  }
 }
