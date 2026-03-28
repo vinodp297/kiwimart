@@ -1,5 +1,7 @@
 // src/app/(protected)/admin/finance/page.tsx
 // ─── Finance Admin Dashboard ──────────────────────────────────────────────────
+// TODO POST-LAUNCH: Move aggregates to dedicated metrics service with caching.
+// See architectural review 27-Mar-2026.
 import Link from 'next/link';
 import { requirePermission } from '@/shared/auth/requirePermission';
 import db from '@/lib/db';

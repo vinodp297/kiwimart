@@ -1,16 +1,35 @@
 // src/app/api/workers/health/route.ts
-// ─── Worker Health Check ──────────────────────────────────────────────────────
+// ─── Worker Health Check ────────────────────────────────────────────────────
 // Verifies the Redis queue connection is reachable.
 // Returns 200 when healthy, 503 when the queue is unreachable.
 //
-// Used by Better Uptime and Railway health checks.
+// Requires either:
+//   1. WORKER_SECRET in Authorization header, OR
+//   2. Active session with VIEW_SYSTEM_HEALTH permission (admin panel)
 
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { getQueueConnection } from '@/infrastructure/queue/client'
+import { verifyBearerSecret } from '@/server/lib/verifyBearerSecret'
+import { requirePermission } from '@/shared/auth/requirePermission'
+import { logger } from '@/shared/logger'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Auth: WORKER_SECRET bearer token OR admin session with VIEW_SYSTEM_HEALTH
+  const authHeader = request.headers.get('authorization')
+  const hasWorkerSecret = verifyBearerSecret(authHeader, process.env.WORKER_SECRET, 'workers/health')
+
+  if (!hasWorkerSecret) {
+    // Fall back to admin session auth (does fresh DB lookup + permission check)
+    try {
+      await requirePermission('VIEW_SYSTEM_HEALTH')
+    } catch {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+  }
+
   try {
     await getQueueConnection().ping()
 
@@ -20,10 +39,13 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     })
   } catch (err) {
+    logger.error('workers.health.failed', {
+      error: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json(
       {
         status: 'error',
-        error: err instanceof Error ? err.message : 'Queue connection failed',
+        error: 'Queue connection failed',
         timestamp: new Date().toISOString(),
       },
       { status: 503 }
