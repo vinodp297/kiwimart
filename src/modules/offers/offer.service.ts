@@ -130,33 +130,41 @@ export class OfferService {
     if (input.action === 'ACCEPT') {
       // Lock on listingId — prevents two concurrent ACCEPT calls reserving the same listing
       // (e.g. seller double-clicks, or two admins accept simultaneously)
-      await withLock(`listing:purchase:${offer.listingId}`, async () => {
-        // Atomic: accept offer + reserve listing + decline competing offers
-        await db.$transaction(async (tx) => {
-          await tx.offer.update({
-            where: { id: input.offerId },
-            data: {
-              status: 'ACCEPTED',
-              respondedAt: new Date(),
-              paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            },
-          })
+      try {
+        await withLock(`listing:purchase:${offer.listingId}`, async () => {
+          // Atomic: accept offer + reserve listing + decline competing offers
+          await db.$transaction(async (tx) => {
+            await tx.offer.update({
+              where: { id: input.offerId },
+              data: {
+                status: 'ACCEPTED',
+                respondedAt: new Date(),
+                paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              },
+            })
 
-          await tx.listing.update({
-            where: { id: offer.listingId },
-            data: { status: 'RESERVED' },
-          })
+            await tx.listing.update({
+              where: { id: offer.listingId },
+              data: { status: 'RESERVED' },
+            })
 
-          await tx.offer.updateMany({
-            where: {
-              listingId: offer.listingId,
-              id: { not: input.offerId },
-              status: 'PENDING',
-            },
-            data: { status: 'DECLINED', respondedAt: new Date() },
+            await tx.offer.updateMany({
+              where: {
+                listingId: offer.listingId,
+                id: { not: input.offerId },
+                status: 'PENDING',
+              },
+              data: { status: 'DECLINED', respondedAt: new Date() },
+            })
           })
         })
-      })
+      } catch (lockErr) {
+        // Fail-closed: Redis unavailable in production → surface retry message
+        if (lockErr instanceof Error && lockErr.message.includes('temporarily unavailable')) {
+          throw new AppError('STRIPE_ERROR', 'Service temporarily unavailable. Please try again in a moment.', 503)
+        }
+        throw lockErr
+      }
     } else {
       await db.offer.update({
         where: { id: input.offerId },

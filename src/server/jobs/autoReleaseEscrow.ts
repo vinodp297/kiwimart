@@ -107,6 +107,16 @@ export async function processAutoReleases(): Promise<{ processed: number; errors
       return true; // Treat as already processed
     }
 
+    // Fail-closed in production: if Redis is unavailable, skip this order
+    // and let the next cron run retry once Redis recovers.
+    if (lockValue === 'NO_REDIS_LOCK' && process.env.NODE_ENV === 'production') {
+      logger.error('escrow.auto_release.redis_unavailable', {
+        orderId: order.id,
+        message: 'Redis unavailable in production — skipping order. Will retry next cron run.',
+      });
+      return false;
+    }
+
     try {
       // Stripe capture FIRST via PaymentService, then DB update
       try {
