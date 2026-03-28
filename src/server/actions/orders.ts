@@ -23,6 +23,8 @@ import { requireUser } from '@/server/lib/requireUser';
 import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
 import { paymentService } from '@/modules/payments/payment.service';
+import { stripe } from '@/infrastructure/stripe/client';
+import { logger } from '@/shared/logger';
 import { orderService } from '@/modules/orders/order.service';
 import { createNotification } from '@/modules/notifications/notification.service';
 import { sendOrderConfirmationEmail } from '@/server/email';
@@ -93,13 +95,20 @@ export async function createOrder(params: {
 
   // 4. Idempotency check — return existing order if same key already created one.
   // Prevents duplicate orders from double-clicks or retried form submissions.
+  // SECURITY: Lookup MUST include buyerId to prevent another user from
+  // retrieving a victim's orderId + clientSecret by knowing their key.
   const idempotencyKey = parsed.data.idempotencyKey
   if (idempotencyKey) {
-    const existingOrder = await db.order.findUnique({
-      where: { idempotencyKey },
-      select: { id: true, status: true, stripePaymentIntentId: true },
+    const existingOrder = await db.order.findFirst({
+      where: { idempotencyKey, buyerId: user.id },
+      select: { id: true, status: true, stripePaymentIntentId: true, listingId: true },
     })
-    if (existingOrder && existingOrder.status === 'AWAITING_PAYMENT' && existingOrder.stripePaymentIntentId) {
+    if (
+      existingOrder &&
+      existingOrder.status === 'AWAITING_PAYMENT' &&
+      existingOrder.stripePaymentIntentId &&
+      existingOrder.listingId === parsed.data.listingId
+    ) {
       const clientSecret = await paymentService.getClientSecret(existingOrder.stripePaymentIntentId)
       if (clientSecret) {
         return { success: true, data: { orderId: existingOrder.id, clientSecret } }
@@ -276,8 +285,31 @@ export async function createOrder(params: {
       data: { orderId: order.id, clientSecret: paymentResult.clientSecret },
     };
   } catch (stripeErr) {
-    // Stripe (via paymentService) failed — cancel the orphan order and
-    // restore the listing so other buyers can still purchase it.
+    // Cancel any orphaned Stripe PI that was created before the failure.
+    // If createPaymentIntent() succeeded but db.order.update() failed,
+    // the PI exists in Stripe but the order doesn't reference it.
+    // Look up the order to check if a PI was persisted.
+    try {
+      const orphanOrder = await db.order.findUnique({
+        where: { id: order.id },
+        select: { stripePaymentIntentId: true },
+      })
+      if (orphanOrder?.stripePaymentIntentId) {
+        await stripe.paymentIntents.cancel(orphanOrder.stripePaymentIntentId)
+        logger.info('order.orphan_pi.cancelled', {
+          orderId: order.id,
+          paymentIntentId: orphanOrder.stripePaymentIntentId,
+        })
+      }
+    } catch (cancelErr) {
+      // PI may not exist yet, or may be in a non-cancellable state — that's fine
+      logger.warn('order.orphan_pi.cancel_failed', {
+        orderId: order.id,
+        error: cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
+      })
+    }
+
+    // Cancel the orphan order and restore the listing so other buyers can purchase.
     await transitionOrder(order.id, 'CANCELLED', {}, { fromStatus: 'AWAITING_PAYMENT' });
 
     // Release reservation — only if still RESERVED (guard against races)

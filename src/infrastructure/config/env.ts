@@ -61,23 +61,25 @@ function validateEnv(): Env {
     )
   }
 
-  // ── Turnstile test key warning ───────────────────────────────────────────
+  // ── Turnstile production enforcement ────────────────────────────────────
   // Cloudflare test keys (1x/2x prefix) auto-pass all challenges — zero bot
-  // protection. Warn loudly in production.
-  const turnstileSiteKey = result.data.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''
-  if (
-    result.data.NODE_ENV === 'production' &&
-    (!turnstileSiteKey ||
-     turnstileSiteKey.startsWith('1x') ||
-     turnstileSiteKey.startsWith('2x'))
-  ) {
-    // Use console.error directly — logger may not be initialised yet
-    console.error(
-      '\n🚨 SECURITY WARNING: Turnstile is using test keys in production!\n' +
-      '   Bot protection is DISABLED. Login/register forms are unprotected.\n' +
-      '   Get real keys at: https://dash.cloudflare.com/turnstile\n' +
-      '   Set NEXT_PUBLIC_TURNSTILE_SITE_KEY and CLOUDFLARE_TURNSTILE_SECRET_KEY\n'
-    )
+  // protection. Hard-fail in production so test keys can never ship.
+  if (result.data.NODE_ENV === 'production') {
+    const turnstileSiteKey = result.data.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''
+    const turnstileSecretKey = result.data.CLOUDFLARE_TURNSTILE_SECRET_KEY ?? ''
+
+    const siteKeyBad = !turnstileSiteKey || turnstileSiteKey.startsWith('1x') || turnstileSiteKey.startsWith('2x')
+    const secretKeyBad = !turnstileSecretKey || turnstileSecretKey.startsWith('1x') || turnstileSecretKey.startsWith('2x')
+
+    if (siteKeyBad || secretKeyBad) {
+      throw new Error(
+        '\n❌ PRODUCTION DEPLOYMENT BLOCKED: Turnstile keys are missing or using test keys!\n' +
+        '   Bot protection would be completely DISABLED in production.\n' +
+        '   Get real keys at: https://dash.cloudflare.com/turnstile\n' +
+        '   Set NEXT_PUBLIC_TURNSTILE_SITE_KEY and CLOUDFLARE_TURNSTILE_SECRET_KEY\n' +
+        `   Site key bad: ${siteKeyBad} | Secret key bad: ${secretKeyBad}\n`
+      )
+    }
   }
 
   return result.data

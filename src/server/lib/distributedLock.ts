@@ -98,6 +98,25 @@ export async function withLock<T>(
     throw new Error(`Failed to acquire lock for resource: ${resource}`)
   }
 
+  // Redis unavailable — sentinel returned, proceeding without lock.
+  // transitionOrder() optimistic locking still prevents double-mutations,
+  // but the distributed lock guarantee is violated.
+  if (lockValue === NO_REDIS_LOCK) {
+    if (process.env.NODE_ENV === 'production') {
+      // ERROR level so monitoring/alerting picks this up immediately.
+      // A Redis outage in production means dispute resolution, escrow release,
+      // and offer acceptance lose their distributed concurrency guarantee.
+      logger.error('distributedLock.redis_unavailable_production', {
+        resource,
+        message:
+          'Redis unavailable in PRODUCTION — distributed lock bypassed. ' +
+          'Concurrent operations may proceed without mutual exclusion. ' +
+          'Check Redis connectivity immediately.',
+      })
+    }
+    return await fn()
+  }
+
   try {
     return await fn()
   } finally {

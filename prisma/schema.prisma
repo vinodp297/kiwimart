@@ -397,8 +397,8 @@ model Listing {
 
 model ListingImage {
   id        String  @id @default(cuid())
-  listingId String
-  r2Key     String  // Cloudflare R2 object key
+  listingId String?  // null = pending upload (not yet associated with a listing)
+  r2Key     String   // Cloudflare R2 object key
   altText   String?
   order     Int     @default(0)
   width     Int?
@@ -412,10 +412,9 @@ model ListingImage {
   safe      Boolean @default(false)
   scannedAt DateTime?
 
-  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listing Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
   @@index([listingId])
-  @@unique([listingId, order])
 }
 
 model ListingAttribute {
@@ -771,12 +770,12 @@ model AdminInvitation {
   adminRole   AdminRole
   invitedBy   String
   inviter     User       @relation("InvitedBy", fields: [invitedBy], references: [id])
-  token       String     @unique
+  tokenHash   String     @unique  // SHA-256 hash of the raw token (raw sent in email, never stored)
   expiresAt   DateTime
   acceptedAt  DateTime?
   createdAt   DateTime   @default(now())
 
-  @@index([token])
+  @@index([tokenHash])
   @@index([email])
 }
 

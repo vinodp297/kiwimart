@@ -18,8 +18,10 @@ import db from '@/lib/db';
 import { rateLimit } from '@/server/lib/rateLimit';
 import type { ActionResult } from '@/types';
 import crypto from 'crypto';
-import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { validateMagicBytes } from '@/server/lib/fileValidation';
+import { logger } from '@/shared/logger';
 
 export type ProfileImageType = 'avatar' | 'cover';
 
@@ -96,6 +98,53 @@ export async function confirmProfileImageUpload(params: {
       return { success: false, error: 'Unauthorised image key.' };
     }
 
+    // Post-upload validation: read the first bytes from R2 and verify magic bytes.
+    // Presigned uploads bypass the server, so this is our only chance to validate
+    // that the uploaded file is actually an image (not a malformed/malicious file).
+    try {
+      const { r2: r2Client, R2_BUCKET: bucket } = await import('@/infrastructure/storage/r2');
+      const getCmd = new GetObjectCommand({ Bucket: bucket, Key: params.r2Key });
+      const s3Obj = await r2Client.send(getCmd);
+
+      // Read just enough bytes for magic byte detection (first 16 bytes)
+      const reader = s3Obj.Body as AsyncIterable<Uint8Array>;
+      const chunks: Buffer[] = [];
+      let totalRead = 0;
+      for await (const chunk of reader) {
+        chunks.push(Buffer.from(chunk));
+        totalRead += chunk.length;
+        if (totalRead >= 16) break;
+      }
+      const headerBytes = Buffer.concat(chunks).subarray(0, 16);
+
+      // Determine expected MIME type from file extension
+      const claimedType = params.r2Key.endsWith('.png')
+        ? 'image/png'
+        : params.r2Key.endsWith('.webp')
+          ? 'image/webp'
+          : 'image/jpeg';
+
+      if (!validateMagicBytes(headerBytes, claimedType)) {
+        // Invalid file — delete from R2 and reject
+        await r2Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: params.r2Key }));
+        logger.warn('profile.image.invalid_magic_bytes', {
+          userId: user.id,
+          r2Key: params.r2Key,
+          claimedType,
+        });
+        return { success: false, error: 'Invalid image file. Please upload a valid JPEG, PNG or WebP.' };
+      }
+    } catch (validationErr) {
+      // If R2 is unreachable (dev without credentials), log and proceed.
+      // In production, R2 is always available, so this is only a dev concern.
+      const msg = validationErr instanceof Error ? validationErr.message : String(validationErr);
+      if (msg.includes('getaddrinfo') || msg.includes('ENOTFOUND') || msg.includes('credentials') || msg.includes('not set')) {
+        logger.warn('profile.image.validation_skipped_no_r2', { userId: user.id });
+      } else {
+        throw validationErr;
+      }
+    }
+
     // Fetch old key for cleanup
     const current = await db.user.findUnique({
       where: { id: user.id },
@@ -104,7 +153,7 @@ export async function confirmProfileImageUpload(params: {
     const oldKey =
       params.imageType === 'avatar' ? current?.avatarKey : current?.coverImageKey;
 
-    // Update user record
+    // Update user record — only after validation passes
     await db.user.update({
       where: { id: user.id },
       data:
