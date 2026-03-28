@@ -4,6 +4,14 @@
 // Uses Auth.js signIn('credentials') for form submission.
 // Cloudflare Turnstile widget rendered via script tag.
 // All validation mirrors the loginSchema Zod validator (single source of truth).
+//
+// Turnstile flow (execution="execute", appearance="interaction-only"):
+//   1. Widget is rendered on mount but does NOT auto-execute.
+//   2. On form submit, we call turnstile.execute() to trigger the challenge.
+//   3. A Promise waits for the callback to fire with the token (10 s timeout).
+//   4. Token is passed to signIn(); widget is reset on any failure path.
+//   This eliminates the race where the invisible challenge callback fires too
+//   late and the form submission sees an empty token.
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
@@ -14,9 +22,10 @@ import { Button, Input, Alert, Divider } from '@/components/ui/primitives';
 declare global {
   interface Window {
     turnstile?: {
-      render: (el: HTMLElement, opts: Record<string, unknown>) => string;
+      render:      (el: HTMLElement, opts: Record<string, unknown>) => string;
+      reset:       (widgetId: string) => void;
+      execute:     (widgetId: string) => void;
       getResponse: (widgetId: string) => string | undefined;
-      reset: (widgetId: string) => void;
     };
   }
 }
@@ -34,7 +43,6 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState('');
   const [error, setError] = useState(
     errorParam === 'CredentialsSignin'
       ? 'Incorrect email or password. Please try again.'
@@ -43,8 +51,12 @@ export default function LoginPage() {
       : ''
   );
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
+  // Resolver for the per-submit challenge Promise. Set just before execute(),
+  // consumed by the callback/error-callback, nulled after resolution.
+  const tokenResolverRef = useRef<((token: string | null) => void) | null>(null);
 
   // Load Turnstile script.
   // Test keys (1x… / 2x…) always show a red "For testing only" banner — skip
@@ -72,15 +84,30 @@ export default function LoginPage() {
     script.onload = () => {
       if (turnstileRef.current && window.turnstile) {
         widgetId.current = window.turnstile.render(turnstileRef.current, {
-          sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-          theme: 'light',
-          // Capture the token as soon as the invisible challenge auto-completes.
-          // For 0x invisible keys this fires automatically within a few seconds.
-          callback: (token: string) => setTurnstileToken(token),
-          // Clear the token when it expires (~5 min TTL) so we never send a stale one.
-          'expired-callback': () => setTurnstileToken(''),
-          // Clear on widget error (network failure, blocked, etc.)
-          'error-callback': () => setTurnstileToken(''),
+          sitekey:    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+          theme:      'light',
+          // Do not auto-execute on render — we call execute() manually at submit.
+          execution:  'execute',
+          // Only show the challenge UI if Cloudflare deems interaction necessary;
+          // normal users see nothing.
+          appearance: 'interaction-only',
+          // Resolve the per-submit Promise when the challenge succeeds.
+          callback: (token: string) => {
+            if (tokenResolverRef.current) {
+              tokenResolverRef.current(token);
+              tokenResolverRef.current = null;
+            }
+          },
+          // Reject the per-submit Promise on widget error (network failure, etc.)
+          'error-callback': () => {
+            if (tokenResolverRef.current) {
+              tokenResolverRef.current(null);
+              tokenResolverRef.current = null;
+            }
+          },
+          // Token expired between renders — no active submit in progress so
+          // nothing to resolve; the next execute() will obtain a fresh token.
+          'expired-callback': () => { /* no-op in execute mode */ },
         });
       }
     };
@@ -103,20 +130,49 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    // If Turnstile is active but the invisible challenge hasn't completed yet
-    // (callback hasn't fired), block submission and reset so it retries.
-    if (isTurnstileActive && !turnstileToken) {
-      if (widgetId.current) window.turnstile?.reset(widgetId.current);
-      setError('Security check still in progress — please wait a moment and try again.');
-      setLoading(false);
-      return;
+    // ── Turnstile: execute challenge at submit time ────────────────────────────
+    // We reset the widget first (clears any stale state from a previous attempt),
+    // then call execute() and wait for the callback Promise to resolve.
+    // If the widget isn't ready yet (script still loading) we fail gracefully.
+    let challengeToken = '';
+
+    if (isTurnstileActive) {
+      if (!widgetId.current) {
+        setError('Security check not ready — please try again in a moment.');
+        setLoading(false);
+        return;
+      }
+
+      window.turnstile?.reset(widgetId.current);
+
+      const token = await new Promise<string | null>((resolve) => {
+        tokenResolverRef.current = resolve;
+        window.turnstile?.execute(widgetId.current!);
+        // 10-second hard timeout — covers stalled challenges and slow networks.
+        setTimeout(() => {
+          if (tokenResolverRef.current) {
+            tokenResolverRef.current = null;
+            resolve(null);
+          }
+        }, 10_000);
+      });
+
+      if (!token) {
+        setError('Security check failed or timed out — please try again.');
+        if (widgetId.current) window.turnstile?.reset(widgetId.current);
+        setLoading(false);
+        return;
+      }
+
+      challengeToken = token;
     }
+    // ─────────────────────────────────────────────────────────────────────────
 
     try {
       const result = await signIn('credentials', {
         email: email.toLowerCase().trim(),
         password,
-        turnstileToken,
+        turnstileToken: challengeToken,
         rememberMe: String(rememberMe),
         redirect: false,
       });
@@ -127,7 +183,6 @@ export default function LoginPage() {
       if (!result?.ok || result?.error) {
         setError('Incorrect email or password. Please try again.');
         if (widgetId.current) window.turnstile?.reset(widgetId.current);
-        setTurnstileToken('');
         setLoading(false);
         return;
       }
@@ -145,7 +200,6 @@ export default function LoginPage() {
       // signIn can throw on network error or unexpected Auth.js exception.
       setError('Something went wrong. Please try again.');
       if (widgetId.current) window.turnstile?.reset(widgetId.current);
-      setTurnstileToken('');
       setLoading(false);
     }
   }
@@ -227,7 +281,9 @@ export default function LoginPage() {
               <span className="text-[13px] text-[#73706A]">Keep me signed in for 30 days</span>
             </label>
 
-            {/* Cloudflare Turnstile — only rendered when a real (non-test) key is set */}
+            {/* Cloudflare Turnstile — only rendered when a real (non-test) key is set.
+                The widget is invisible until execute() is called; appearance="interaction-only"
+                means the challenge UI only surfaces if Cloudflare requires it. */}
             {isTurnstileActive && (
               <div ref={turnstileRef} className="mt-1" />
             )}
@@ -262,4 +318,3 @@ export default function LoginPage() {
     </main>
   );
 }
-
