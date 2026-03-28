@@ -85,6 +85,11 @@ export default function LoginPage() {
     script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
     script.async = true;
     script.defer = true;
+    // Apply CSP nonce so strict-dynamic allows the script to execute
+    const cspNonce = document
+      .querySelector('meta[name="csp-nonce"]')
+      ?.getAttribute("content");
+    if (cspNonce) script.nonce = cspNonce;
     document.head.appendChild(script);
     script.onload = () => {
       if (turnstileRef.current && window.turnstile) {
