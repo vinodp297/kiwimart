@@ -14,6 +14,8 @@ import db from '@/lib/db';
 import { getImageUrl, getDefaultAvatar } from '@/lib/image';
 import { auth } from '@/lib/auth';
 import { BlockButton } from '@/components/seller/BlockButton';
+import { getSellerTrustProfile } from '@/modules/sellers/trust-score.service';
+import { getResponseLabel, getResponseColour } from '@/modules/sellers/response-metrics.service';
 
 const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
   top_seller:     { label: '🏆 Top Seller',      colour: 'bg-amber-50 text-amber-700 ring-amber-200' },
@@ -36,6 +38,9 @@ async function getSellerByUsername(username: string) {
       region: true,
       suburb: true,
       idVerified: true,
+      isVerifiedSeller: true,
+      avgResponseTimeMinutes: true,
+      responseRate: true,
       createdAt: true,
       _count: {
         select: {
@@ -99,7 +104,7 @@ export default async function SellerProfilePage({
       auth(),
     ]);
     user = fetchedUser;
-    session = fetchedSession;
+    session = fetchedSession as { user?: { id?: string } } | null;
   } catch (err) {
     console.error('[SellerProfile] Failed to load seller data:', err);
     notFound();
@@ -120,6 +125,14 @@ export default async function SellerProfilePage({
     } catch {
       // Fail-safe: block check failure → treat as not blocked, page still loads
     }
+  }
+
+  // Fetch trust profile (trust score + tier + response metrics)
+  let trustProfile: Awaited<ReturnType<typeof getSellerTrustProfile>> | null = null;
+  try {
+    trustProfile = await getSellerTrustProfile(user.id);
+  } catch {
+    // Non-critical — page still renders without trust data
   }
 
   // Compute avg rating from reviews
@@ -160,7 +173,11 @@ export default async function SellerProfilePage({
     memberSince: user.createdAt.toISOString(),
     activeListingCount: user._count.listings,
     soldCount: user._count.sellerOrders,
-    responseTimeLabel: user._count.sellerOrders >= 5 ? 'Usually replies within 1 hour' : null,
+    responseTimeLabel: getResponseLabel(user.avgResponseTimeMinutes),
+    responseRate: user.responseRate,
+    trustScore: trustProfile?.trustScore ?? null,
+    tier: trustProfile?.tier ?? null,
+    isVerifiedSeller: user.isVerifiedSeller,
     badges: (user.idVerified ? ['verified_id'] : []) as SellerBadge[],
   };
 
@@ -271,7 +288,20 @@ export default async function SellerProfilePage({
                     font-semibold leading-tight">
                     {seller.displayName}
                   </h1>
-                  {seller.verified && (
+                  {seller.isVerifiedSeller && (
+                    <span
+                      className="inline-flex items-center gap-1 px-2.5 py-0.5
+                        bg-blue-500/20 text-blue-300 text-[11px] font-semibold
+                        rounded-full ring-1 ring-blue-400/30"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M22 12L20.56 10.39L20.78 8.21L18.64 7.73L17.5 5.83L15.47 6.71L13.5 5.5L11.53 6.71L9.5 5.83L8.36 7.73L6.22 8.21L6.44 10.39L5 12L6.44 13.61L6.22 15.79L8.36 16.27L9.5 18.17L11.53 17.29L13.5 18.5L15.47 17.29L17.5 18.17L18.64 16.27L20.78 15.79L20.56 13.61L22 12Z"/>
+                        <path d="M10 12L12 14L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                      </svg>
+                      Verified Seller
+                    </span>
+                  )}
+                  {seller.verified && !seller.isVerifiedSeller && (
                     <span
                       className="inline-flex items-center gap-1 px-2.5 py-0.5
                         bg-[#D4A843]/20 text-[#D4A843] text-[11px] font-semibold
@@ -281,7 +311,22 @@ export default async function SellerProfilePage({
                         <path d="M22 12L20.56 10.39L20.78 8.21L18.64 7.73L17.5 5.83L15.47 6.71L13.5 5.5L11.53 6.71L9.5 5.83L8.36 7.73L6.22 8.21L6.44 10.39L5 12L6.44 13.61L6.22 15.79L8.36 16.27L9.5 18.17L11.53 17.29L13.5 18.5L15.47 17.29L17.5 18.17L18.64 16.27L20.78 15.79L20.56 13.61L22 12Z"/>
                         <path d="M10 12L12 14L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                       </svg>
-                      Verified
+                      Verified ID
+                    </span>
+                  )}
+                  {seller.tier && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5
+                        text-[11px] font-semibold rounded-full ring-1 ${
+                          seller.tier === 'GOLD'
+                            ? 'bg-amber-400/20 text-amber-300 ring-amber-400/30'
+                            : seller.tier === 'SILVER'
+                            ? 'bg-gray-300/20 text-gray-300 ring-gray-400/30'
+                            : 'bg-orange-400/20 text-orange-300 ring-orange-400/30'
+                        }`}
+                    >
+                      {seller.tier === 'GOLD' ? '🥇' : seller.tier === 'SILVER' ? '🥈' : '🥉'}{' '}
+                      {seller.tier.charAt(0) + seller.tier.slice(1).toLowerCase()} Seller
                     </span>
                   )}
                 </div>
@@ -294,13 +339,14 @@ export default async function SellerProfilePage({
                 {/* Stats row */}
                 <div className="flex flex-wrap gap-6">
                   {[
+                    ...(seller.trustScore != null ? [{ value: `${seller.trustScore}/100`, label: 'Trust score' }] : []),
                     { value: seller.soldCount.toLocaleString('en-NZ'), label: 'Items sold' },
                     { value: seller.activeListingCount.toString(), label: 'Active listings' },
                     seller.reviewCount > 0
                       ? { value: `${seller.rating.toFixed(1)} ★`, label: `${seller.reviewCount} reviews` }
                       : { value: '—', label: 'No reviews yet' },
                     seller.responseTimeLabel
-                      ? { value: seller.responseTimeLabel.replace('Usually replies ', ''), label: 'Response time' }
+                      ? { value: seller.responseTimeLabel.replace('Usually replies ', '').replace('Replies ', ''), label: seller.responseRate != null ? `Response (${Math.round(seller.responseRate)}%)` : 'Response time' }
                       : { value: '—', label: 'New seller' },
                   ].map(({ value, label }) => (
                     <div key={label}>

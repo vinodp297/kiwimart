@@ -113,6 +113,15 @@ enum AuditAction {
   ID_VERIFICATION_APPROVED
   DISPUTE_SELLER_RESPONDED
   CART_CHECKOUT
+  SELLER_VERIFICATION_APPLIED
+  SELLER_VERIFICATION_APPROVED
+  SELLER_VERIFICATION_REJECTED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum ReportReason {
@@ -194,6 +203,18 @@ model User {
   /// Populated from Stripe external_account data via account.updated webhook.
   payoutBankAccount   String?
 
+  // Seller verification & trust (Feature P1-1, P1-2, P1-4)
+  isVerifiedSeller       Boolean   @default(false)
+  verifiedSellerAt       DateTime?
+  avgResponseTimeMinutes Int?       // rolling average response time
+  responseRate           Float?     // % of threads replied to within 24hrs
+  lastResponseCalcAt     DateTime?
+
+  // Radius search (Feature P2-1)
+  searchLat    Float?
+  searchLng    Float?
+  searchRadius Int?    @default(50)
+
   // Flags
   isBanned      Boolean  @default(false)
   bannedAt      DateTime?
@@ -236,6 +257,7 @@ model User {
   blocksGiven     BlockedUser[]  @relation("UserBlocks")
   blocksReceived  BlockedUser[]  @relation("UserBlockedBy")
   cart            Cart?
+  verificationApplication VerificationApplication?
 
   @@index([email])
   @@index([username])
@@ -368,6 +390,10 @@ model Listing {
   viewCount    Int @default(0)
   watcherCount Int @default(0)
   
+  // Location coordinates for radius search (Feature P2-1)
+  locationLat  Float?
+  locationLng  Float?
+
   // Full-text search vector (maintained by Postgres trigger)
   searchVector Unsupported("tsvector")?
   
@@ -387,8 +413,9 @@ model Listing {
   attrs     ListingAttribute[]
   orders    Order[]
   offers    Offer[]
-  watchers  WatchlistItem[]
-  cartItems CartItem[]
+  watchers     WatchlistItem[]
+  cartItems    CartItem[]
+  priceHistory ListingPriceHistory[]
 
   @@index([sellerId])
   @@index([status])
@@ -397,6 +424,7 @@ model Listing {
   @@index([priceNzd])
   @@index([createdAt])
   @@index([searchVector], type: Gin)
+  @@index([locationLat, locationLng])
 }
 
 model ListingImage {
@@ -633,6 +661,10 @@ model WatchlistItem {
   userId    String
   listingId String
   createdAt DateTime @default(now())
+
+  // Price drop alerts (Feature P1-3)
+  priceAlertEnabled Boolean @default(true)
+  priceAtWatch      Int?    // price in NZD cents at time of watch
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
@@ -918,5 +950,36 @@ model OrderItem {
 
   @@index([orderId])
   @@index([listingId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seller Verification Applications (Feature P1-4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model VerificationApplication {
+  id         String             @id @default(cuid())
+  sellerId   String             @unique
+  seller     User               @relation(fields: [sellerId], references: [id])
+  status     VerificationStatus @default(PENDING)
+  appliedAt  DateTime           @default(now())
+  reviewedAt DateTime?
+  reviewedBy String?
+  adminNotes String?
+
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Listing Price History (Feature P2-2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ListingPriceHistory {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  priceNzd  Int      // price in NZD cents
+  changedAt DateTime @default(now())
+
+  @@index([listingId, changedAt])
 }
 
