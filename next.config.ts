@@ -21,24 +21,32 @@ const nextConfig: NextConfig = {
   async headers() {
     const allowedOrigins =
       process.env.ALLOWED_ORIGINS || "https://kiwimart.vercel.app";
-    return [
+    const corsHeaders = [
+      { key: "Access-Control-Allow-Origin", value: allowedOrigins },
       {
-        // CORS headers for API routes (excluding Stripe webhook)
-        source: "/api/((?!webhooks/stripe).*)",
-        headers: [
-          { key: "Access-Control-Allow-Origin", value: allowedOrigins },
-          {
-            key: "Access-Control-Allow-Methods",
-            value: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-          },
-          {
-            key: "Access-Control-Allow-Headers",
-            value: "Content-Type, Authorization, X-Request-ID",
-          },
-          { key: "Access-Control-Allow-Credentials", value: "true" },
-          { key: "Access-Control-Max-Age", value: "86400" },
-        ],
+        key: "Access-Control-Allow-Methods",
+        value: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
       },
+      {
+        key: "Access-Control-Allow-Headers",
+        value: "Content-Type, Authorization, X-Request-ID",
+      },
+      { key: "Access-Control-Allow-Credentials", value: "true" },
+      { key: "Access-Control-Max-Age", value: "86400" },
+    ];
+    return [
+      // CORS for versioned public API — safe for external consumers
+      { source: "/api/v1/:path*", headers: corsHeaders },
+      // CORS for non-auth API routes (health, cart, notifications, etc.)
+      // Exclude /api/auth/* — Auth.js manages its own headers/cookies
+      // Exclude /api/webhooks/* — server-to-server, no CORS needed
+      { source: "/api/docs/:path*", headers: corsHeaders },
+      { source: "/api/health", headers: corsHeaders },
+      { source: "/api/cart", headers: corsHeaders },
+      { source: "/api/notifications", headers: corsHeaders },
+      { source: "/api/seller/:path*", headers: corsHeaders },
+      { source: "/api/metrics", headers: corsHeaders },
+      { source: "/api/pusher/:path*", headers: corsHeaders },
     ];
   },
   images: {

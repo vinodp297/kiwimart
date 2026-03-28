@@ -14,7 +14,7 @@
 //
 // Non-production always returns true — no real bot challenges in dev/test.
 
-import { logger } from '@/shared/logger'
+import { logger } from "@/shared/logger";
 
 /**
  * Verify a Cloudflare Turnstile challenge token server-side.
@@ -28,64 +28,84 @@ import { logger } from '@/shared/logger'
  */
 export async function verifyTurnstile(token: string): Promise<boolean> {
   // Always pass in non-production — no real challenges in dev/test
-  if (process.env.NODE_ENV !== 'production') {
-    return true
+  if (process.env.NODE_ENV !== "production") {
+    return true;
   }
 
   const secretKey =
     process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ??
-    process.env.TURNSTILE_SECRET_KEY
+    process.env.TURNSTILE_SECRET_KEY;
 
   // Fail closed in production when key is missing
   if (!secretKey) {
     logger.error(
-      'turnstile: secret key MISSING in production — rejecting request. ' +
-        'Set CLOUDFLARE_TURNSTILE_SECRET_KEY in environment variables.'
-    )
-    return false
+      "turnstile: secret key MISSING in production — rejecting request. " +
+        "Set CLOUDFLARE_TURNSTILE_SECRET_KEY in environment variables. " +
+        `CLOUDFLARE_TURNSTILE_SECRET_KEY set: ${!!process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY}, ` +
+        `TURNSTILE_SECRET_KEY set: ${!!process.env.TURNSTILE_SECRET_KEY}`,
+    );
+    return false;
   }
 
   // Fail closed in production when using test keys (1x/2x prefix)
-  if (secretKey.startsWith('1x') || secretKey.startsWith('2x')) {
+  if (secretKey.startsWith("1x") || secretKey.startsWith("2x")) {
     logger.error(
-      'turnstile: Production Turnstile key is a test key — bot protection is disabled. ' +
-        'Configure real keys at https://dash.cloudflare.com/turnstile'
-    )
-    return false
+      "turnstile: Production Turnstile key is a test key — bot protection is disabled. " +
+        `Key prefix: ${secretKey.slice(0, 4)}. ` +
+        "Configure real keys at https://dash.cloudflare.com/turnstile",
+    );
+    return false;
+  }
+
+  // Log the token length for debugging — never log the actual token
+  if (!token || token.length === 0) {
+    logger.warn(
+      "turnstile: empty token received — client may not have Turnstile widget active",
+      {
+        siteKeySet: !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+        siteKeyPrefix: (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "").slice(
+          0,
+          4,
+        ),
+      },
+    );
   }
 
   try {
     const response = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret: secretKey, response: token }),
         // 5-second timeout — Turnstile API is normally <200ms
         signal: AbortSignal.timeout(5000),
-      }
-    )
+      },
+    );
 
     if (!response.ok) {
-      logger.warn('turnstile: Cloudflare API returned non-2xx status', {
+      logger.warn("turnstile: Cloudflare API returned non-2xx status", {
         status: response.status,
-      })
-      return false // Fail closed on API error
+      });
+      return false; // Fail closed on API error
     }
 
-    const data = (await response.json()) as { success: boolean; 'error-codes'?: string[] }
+    const data = (await response.json()) as {
+      success: boolean;
+      "error-codes"?: string[];
+    };
     if (!data.success) {
-      logger.warn('turnstile: Cloudflare rejected the token', {
-        errorCodes: data['error-codes'] ?? [],
-      })
-      return false
+      logger.warn("turnstile: Cloudflare rejected the token", {
+        errorCodes: data["error-codes"] ?? [],
+      });
+      return false;
     }
-    return true
+    return true;
   } catch (e) {
     // Network error, DNS failure, or AbortError (5s timeout) — fail CLOSED
-    logger.warn('turnstile: verification request failed (network/timeout)', {
+    logger.warn("turnstile: verification request failed (network/timeout)", {
       error: e instanceof Error ? e.message : String(e),
-    })
-    return false
+    });
+    return false;
   }
 }
