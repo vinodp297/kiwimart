@@ -41,10 +41,11 @@ async function getSellerByUsername(username: string) {
         select: {
           sellerOrders: { where: { status: 'COMPLETED' } },
           listings: { where: { status: 'ACTIVE', deletedAt: null } },
-          reviews: true,
+          reviews: { where: { approved: true } },
         },
       },
       reviews: {
+        where: { approved: true },
         orderBy: { createdAt: 'desc' },
         take: 20,
         select: {

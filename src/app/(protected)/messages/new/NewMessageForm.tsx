@@ -8,15 +8,17 @@ import { useRouter } from 'next/navigation';
 import { sendMessage } from '@/server/actions/messages';
 
 interface Props {
-  listingId: string;
+  listingId: string | null;
   sellerId: string;
-  listingTitle: string;
+  listingTitle: string | null;
 }
 
 export function NewMessageForm({ listingId, sellerId, listingTitle }: Props) {
   const router = useRouter();
   const [message, setMessage] = useState(
-    `Hi, is "${listingTitle}" still available?`
+    listingTitle
+      ? `Hi, is "${listingTitle}" still available?`
+      : 'Hi, I have a question for you.'
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function NewMessageForm({ listingId, sellerId, listingTitle }: Props) {
       // recipientId = sellerId (the other participant).
       const result = await sendMessage({
         recipientId: sellerId,
-        listingId,
+        ...(listingId ? { listingId } : {}),
         body,
       });
 
