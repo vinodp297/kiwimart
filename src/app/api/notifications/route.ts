@@ -1,14 +1,15 @@
 // src/app/api/notifications/route.ts
+// @deprecated — use /api/v1/notifications going forward
 // ─── Notifications API ────────────────────────────────────────────────────────
 // GET  /api/notifications   — latest 10 for NavBar dropdown
 // PATCH /api/notifications  — mark all as read
 
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import { logger } from '@/shared/logger';
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { logger } from "@/shared/logger";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
@@ -19,7 +20,7 @@ export async function GET() {
 
     const notifications = await db.notification.findMany({
       where: { userId: session.user.id },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 10,
       select: {
         id: true,
@@ -34,10 +35,16 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ notifications });
+    return NextResponse.json({ success: true, data: { notifications } });
   } catch (e) {
-    logger.error('api.error', { path: '/api/notifications', error: e instanceof Error ? e.message : e });
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+    logger.error("api.error", {
+      path: "/api/notifications",
+      error: e instanceof Error ? e.message : e,
+    });
+    return NextResponse.json(
+      { success: false, error: "Something went wrong" },
+      { status: 500 },
+    );
   }
 }
 
@@ -45,7 +52,10 @@ export async function PATCH() {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ ok: false }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "Unauthorised" },
+        { status: 401 },
+      );
     }
 
     await db.notification.updateMany({
@@ -53,9 +63,15 @@ export async function PATCH() {
       data: { read: true },
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ success: true, data: null });
   } catch (e) {
-    logger.error('api.error', { path: '/api/notifications', error: e instanceof Error ? e.message : e });
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+    logger.error("api.error", {
+      path: "/api/notifications",
+      error: e instanceof Error ? e.message : e,
+    });
+    return NextResponse.json(
+      { success: false, error: "Something went wrong" },
+      { status: 500 },
+    );
   }
 }

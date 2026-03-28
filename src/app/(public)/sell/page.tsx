@@ -350,7 +350,7 @@ export default function SellPage() {
     setImages((prev) => {
       const next = [...prev];
       const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
+      if (moved) next.splice(to, 0, moved);
       return next;
     });
   }
@@ -1405,7 +1405,9 @@ export default function SellPage() {
                   </p>
                   <p className="text-[12px] text-[#9E9A91]">
                     {images.filter((i) => i.uploaded).length} photo
-                    {images.filter((i) => i.uploaded).length !== 1 ? "s" : ""}{" "}
+                    {images.filter((i) => i.uploaded).length !== 1
+                      ? "s"
+                      : ""}{" "}
                     uploaded
                   </p>
                 </div>

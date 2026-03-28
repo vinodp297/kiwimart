@@ -1,8 +1,8 @@
-'use client';
+"use client";
 // src/components/PriceHistoryChart.tsx
 // ─── Collapsible Price History Line Chart ────────────────────────────────────
 
-import { useState } from 'react';
+import { useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -11,7 +11,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-} from 'recharts';
+} from "recharts";
 
 interface PricePoint {
   priceNzd: number; // cents
@@ -29,9 +29,9 @@ export default function PriceHistoryChart({ history, currentPriceNzd }: Props) {
   if (history.length < 2) return null;
 
   const data = history.map((p) => ({
-    date: new Date(p.changedAt).toLocaleDateString('en-NZ', {
-      day: 'numeric',
-      month: 'short',
+    date: new Date(p.changedAt).toLocaleDateString("en-NZ", {
+      day: "numeric",
+      month: "short",
     }),
     price: p.priceNzd / 100,
   }));
@@ -41,7 +41,7 @@ export default function PriceHistoryChart({ history, currentPriceNzd }: Props) {
   const yMin = Math.floor(minPrice * 0.9);
   const yMax = Math.ceil(maxPrice * 1.1);
 
-  const firstPrice = history[0].priceNzd;
+  const firstPrice = history[0]?.priceNzd ?? 0;
   const change = currentPriceNzd - firstPrice;
   const changePct =
     firstPrice > 0 ? Math.round((change / firstPrice) * 100) : 0;
@@ -71,11 +71,11 @@ export default function PriceHistoryChart({ history, currentPriceNzd }: Props) {
             <span
               className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                 changePct < 0
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-red-50 text-red-600'
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-red-50 text-red-600"
               }`}
             >
-              {changePct > 0 ? '+' : ''}
+              {changePct > 0 ? "+" : ""}
               {changePct}%
             </span>
           )}
@@ -87,7 +87,7 @@ export default function PriceHistoryChart({ history, currentPriceNzd }: Props) {
           fill="none"
           stroke="#9E9A91"
           strokeWidth="2"
-          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
         >
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -101,23 +101,26 @@ export default function PriceHistoryChart({ history, currentPriceNzd }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#EFEDE8" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 11, fill: '#9E9A91' }}
+                  tick={{ fontSize: 11, fill: "#9E9A91" }}
                   tickLine={false}
-                  axisLine={{ stroke: '#E3E0D9' }}
+                  axisLine={{ stroke: "#E3E0D9" }}
                 />
                 <YAxis
                   domain={[yMin, yMax]}
-                  tick={{ fontSize: 11, fill: '#9E9A91' }}
+                  tick={{ fontSize: 11, fill: "#9E9A91" }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v: number) => `$${v}`}
                   width={50}
                 />
                 <Tooltip
-                  formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Price']}
+                  formatter={(value) => [
+                    `$${Number(value).toFixed(2)}`,
+                    "Price",
+                  ]}
                   contentStyle={{
                     borderRadius: 12,
-                    border: '1px solid #E3E0D9',
+                    border: "1px solid #E3E0D9",
                     fontSize: 12,
                   }}
                 />
@@ -126,14 +129,15 @@ export default function PriceHistoryChart({ history, currentPriceNzd }: Props) {
                   dataKey="price"
                   stroke="#D4A843"
                   strokeWidth={2}
-                  dot={{ fill: '#D4A843', r: 3 }}
-                  activeDot={{ r: 5, fill: '#D4A843' }}
+                  dot={{ fill: "#D4A843", r: 3 }}
+                  activeDot={{ r: 5, fill: "#D4A843" }}
                 />
               </LineChart>
             </ResponsiveContainer>
           </div>
           <p className="text-[11px] text-[#9E9A91] mt-2">
-            {history.length} price {history.length === 1 ? 'point' : 'points'} recorded
+            {history.length} price {history.length === 1 ? "point" : "points"}{" "}
+            recorded
           </p>
         </div>
       )}

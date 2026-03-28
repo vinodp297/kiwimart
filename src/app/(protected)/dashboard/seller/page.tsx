@@ -70,7 +70,7 @@ function TierProgress({
 
   if (nextTierKey === null) {
     // Already Gold
-    const cfg = TIER_CONFIG["GOLD"];
+    const cfg = TIER_CONFIG["GOLD"] ?? { icon: "", label: "", colour: "" };
     return (
       <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
         <div className="flex items-center gap-2 mb-2">
@@ -86,8 +86,8 @@ function TierProgress({
     );
   }
 
-  const req = TIER_REQUIREMENTS[nextTierKey];
-  const cfg = TIER_CONFIG[nextTierKey];
+  const req = TIER_REQUIREMENTS[nextTierKey] ?? { sales: 0, rating: 0 };
+  const cfg = TIER_CONFIG[nextTierKey] ?? { icon: "", label: "", colour: "" };
 
   const salesPct = Math.min(
     100,
@@ -797,7 +797,8 @@ export default function SellerDashboardPage() {
                 ))}
               </div>
 
-              {/* Seller tier progress */}
+              {/* Seller tier progress — uses all-time sales for display; actual tier
+                 is calculated from last 12 months of sales in trust-score.service */}
               <TierProgress
                 completedSales={stats.totalSales}
                 avgRating={stats.avgRating}

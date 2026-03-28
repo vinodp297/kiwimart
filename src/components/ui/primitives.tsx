@@ -680,11 +680,11 @@ export function PasswordStrength({ password }: { password: string }) {
           <div
             key={i}
             className={`h-1 flex-1 rounded-full transition-all duration-300
-              ${i <= score ? level.colour : "bg-[#E3E0D9]"}`}
+              ${i <= score ? (level?.colour ?? "") : "bg-[#E3E0D9]"}`}
           />
         ))}
       </div>
-      {level.label && (
+      {level?.label && (
         <p
           className={`text-[11px] font-semibold ${
             score === 1
@@ -696,7 +696,7 @@ export function PasswordStrength({ password }: { password: string }) {
                   : "text-emerald-600"
           }`}
         >
-          {level.label} password
+          {level?.label} password
         </p>
       )}
     </div>

@@ -87,7 +87,7 @@ export default function BuyerDashboardPage() {
           setWatchlist(result.data.watchlist);
           setThreads(result.data.threads);
           if (result.data.threads.length > 0) {
-            setActiveThread(result.data.threads[0]);
+            setActiveThread(result.data.threads[0] ?? null);
           }
         } else {
           setError(result.error);

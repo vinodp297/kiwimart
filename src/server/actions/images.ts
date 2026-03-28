@@ -119,7 +119,10 @@ export async function requestImageUpload(params: {
 
     // 6. Generate a scoped, collision-resistant R2 key
     // Format: listings/{userId}/{uuid}.{ext}
-    const ext = params.contentType.split("/")[1].replace("jpeg", "jpg");
+    const ext = (params.contentType.split("/")[1] ?? "bin").replace(
+      "jpeg",
+      "jpg",
+    );
     const uuid = crypto.randomUUID();
     const r2Key = `listings/${user.id}/${uuid}.${ext}`;
 
