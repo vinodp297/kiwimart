@@ -12,18 +12,25 @@
 // References:
 //   https://authjs.dev/getting-started/installation?framework=next.js
 
-import NextAuth from 'next-auth';
-import { PrismaAdapter } from '@auth/prisma-adapter';
-import Credentials from 'next-auth/providers/credentials';
-import Google from 'next-auth/providers/google';
-import db from '@/lib/db';
-import { verifyPassword, needsRehash, hashPassword } from '@/server/lib/password';
-import { audit } from '@/server/lib/audit';
-import { loginSchema } from '@/server/validators';
-import { blockToken, isTokenBlocked } from '@/server/lib/jwtBlocklist';
-import { getSessionVersion, invalidateAllSessions } from '@/server/lib/sessionStore';
-import { verifyTurnstile } from '@/server/lib/turnstile';
-import { logger } from '@/shared/logger';
+import NextAuth from "next-auth";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
+import db from "@/lib/db";
+import {
+  verifyPassword,
+  needsRehash,
+  hashPassword,
+} from "@/server/lib/password";
+import { audit } from "@/server/lib/audit";
+import { loginSchema } from "@/server/validators";
+import { blockToken, isTokenBlocked } from "@/server/lib/jwtBlocklist";
+import {
+  getSessionVersion,
+  invalidateAllSessions,
+} from "@/server/lib/sessionStore";
+import { verifyTurnstile } from "@/server/lib/turnstile";
+import { logger } from "@/shared/logger";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -33,7 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Auth.js v5 uses JWT for all session types when strategy: 'jwt' is set.
     // The PrismaAdapter is still used to persist users/accounts for OAuth
     // provider linking (Account + User rows) but session data lives in the JWT.
-    strategy: 'jwt',
+    strategy: "jwt",
     // 1-hour expiry — short window limits exposure if Redis is unavailable
     // and a token can't be blocklisted after sign-out.
     maxAge: 60 * 60,
@@ -44,25 +51,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   pages: {
-    signIn: '/login',
-    error: '/login',
-    verifyRequest: '/verify-email',
+    signIn: "/login",
+    error: "/login",
+    verifyRequest: "/verify-email",
   },
 
   providers: [
     // ── Credentials (email + password) ───────────────────────────────────────
     Credentials({
       credentials: {
-        email: { type: 'email' },
-        password: { type: 'password' },
-        turnstileToken: { type: 'text' }, // Cloudflare Turnstile
+        email: { type: "email" },
+        password: { type: "password" },
+        turnstileToken: { type: "text" }, // Cloudflare Turnstile
       },
 
       async authorize(credentials) {
         // 1. Validate input shape with Zod
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) {
-          logger.warn('authorize:fail', { reason: 'zod_parse_failed', issues: parsed.error.issues.map((i) => i.message) });
+          logger.warn("authorize:fail", {
+            reason: "zod_parse_failed",
+            issues: parsed.error.issues.map((i) => i.message),
+          });
           return null;
         }
 
@@ -72,10 +82,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // verifyTurnstile() handles: non-production skip, test/0x key warning,
         // empty token, and fail-closed on network error.
         // We pass the token (possibly empty) directly — verifyTurnstile decides.
-        if (process.env.NODE_ENV === 'production') {
-          const turnstileOk = await verifyTurnstile(turnstileToken ?? '');
+        if (process.env.NODE_ENV === "production") {
+          const secretKeyPrefix = (
+            process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ??
+            process.env.TURNSTILE_SECRET_KEY ??
+            ""
+          ).slice(0, 4);
+          const siteKeyPrefix = (
+            process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ""
+          ).slice(0, 4);
+          const tokenLen = turnstileToken?.length ?? 0;
+
+          const turnstileOk = await verifyTurnstile(turnstileToken ?? "");
           if (!turnstileOk) {
-            logger.warn('authorize:fail', { reason: 'turnstile', tokenPresent: !!(turnstileToken) });
+            logger.warn("authorize:fail", {
+              reason: "turnstile",
+              tokenPresent: tokenLen > 0,
+              tokenLen,
+              secretKeyPrefix,
+              siteKeyPrefix,
+              secretKeySet: !!process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY,
+              siteKeySet: !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+            });
             return null;
           }
         }
@@ -98,28 +126,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // 4. Dummy hash compare if user not found (prevent user enumeration via timing)
         const DUMMY_HASH =
-          '$argon2id$v=19$m=65536,t=3,p=1$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG';
+          "$argon2id$v=19$m=65536,t=3,p=1$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG";
         const hashToVerify = user?.passwordHash ?? DUMMY_HASH;
         const passwordValid = await verifyPassword(hashToVerify, password);
 
         if (!user || !passwordValid) {
-          logger.warn('authorize:fail', { reason: 'invalid_credentials', userFound: !!user, passwordValid });
+          logger.warn("authorize:fail", {
+            reason: "invalid_credentials",
+            userFound: !!user,
+            passwordValid,
+          });
           // Audit failed attempt (without the password)
           audit({
             userId: user?.id ?? null,
-            action: 'USER_LOGIN',
-            metadata: { success: false, reason: 'invalid_credentials', email },
+            action: "USER_LOGIN",
+            metadata: { success: false, reason: "invalid_credentials", email },
           });
           return null;
         }
 
         // 5. Check bans
         if (user.isBanned) {
-          logger.warn('authorize:fail', { reason: 'banned', userId: user.id });
+          logger.warn("authorize:fail", { reason: "banned", userId: user.id });
           audit({
             userId: user.id,
-            action: 'USER_LOGIN',
-            metadata: { success: false, reason: 'banned' },
+            action: "USER_LOGIN",
+            metadata: { success: false, reason: "banned" },
           });
           return null;
         }
@@ -136,7 +168,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // 7. Audit successful login
         audit({
           userId: user.id,
-          action: 'USER_LOGIN',
+          action: "USER_LOGIN",
           metadata: { success: true },
         });
 
@@ -167,26 +199,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // ── Blocklist + session version checks (every request) ─────────────────
       // For admin tokens, fail CLOSED if Redis is unavailable — a Redis outage
       // must NOT grant admin access with a stolen/revoked JWT.
-      const isAdminToken = !!(token?.isAdmin);
+      const isAdminToken = !!token?.isAdmin;
 
       if (token?.jti) {
-        const blocked = await isTokenBlocked(
-          token.jti as string,
-          { failClosed: isAdminToken }
-        );
+        const blocked = await isTokenBlocked(token.jti as string, {
+          failClosed: isAdminToken,
+        });
         if (blocked) return null; // invalidate session
       }
 
       // If the server's version for this user is higher than the one baked into
       // the token, the user signed out (or was force-logged-out) after this
       // token was issued → reject it.
-      if (token.sub && typeof token.sessionVersion === 'number') {
-        const currentVersion = await getSessionVersion(
-          token.sub,
-          { failClosed: isAdminToken }
-        );
+      if (token.sub && typeof token.sessionVersion === "number") {
+        const currentVersion = await getSessionVersion(token.sub, {
+          failClosed: isAdminToken,
+        });
         if (currentVersion > token.sessionVersion) {
-          logger.info('jwt.session_version_mismatch', {
+          logger.info("jwt.session_version_mismatch", {
             userId: token.sub,
             tokenVersion: token.sessionVersion,
             currentVersion,
@@ -251,10 +281,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.user.id = token.id as string;
           session.user.isAdmin = (token.isAdmin as boolean) ?? false;
           session.user.isBanned = (token.isBanned as boolean) ?? false;
-          session.user.sellerEnabled = (token.sellerEnabled as boolean) ?? false;
-          session.user.stripeOnboarded = (token.stripeOnboarded as boolean) ?? false;
-          session.user.displayName = (token.displayName as string) ?? '';
-          session.user.username = (token.username as string) ?? '';
+          session.user.sellerEnabled =
+            (token.sellerEnabled as boolean) ?? false;
+          session.user.stripeOnboarded =
+            (token.stripeOnboarded as boolean) ?? false;
+          session.user.displayName = (token.displayName as string) ?? "";
+          session.user.username = (token.username as string) ?? "";
           session.user.avatarUrl = (token.avatarUrl as string | null) ?? null;
           session.user.emailVerified = token.emailVerified
             ? new Date(token.emailVerified as string)
@@ -291,7 +323,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Control sign-in flow
     async signIn({ user, account }) {
       // Block banned users at the OAuth level too
-      if (account?.provider !== 'credentials') {
+      if (account?.provider !== "credentials") {
         const dbUser = await db.user.findUnique({
           where: { email: user.email! },
           select: { isBanned: true },
@@ -309,13 +341,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // Database strategy: receives { session }
     async signOut(params) {
       const userId =
-        'token' in params && params.token
-          ? (params.token as { sub?: string }).sub ?? null
-          : 'session' in params && params.session
-          ? (params.session as { userId?: string }).userId ?? null
-          : null;
+        "token" in params && params.token
+          ? ((params.token as { sub?: string }).sub ?? null)
+          : "session" in params && params.session
+            ? ((params.session as { userId?: string }).userId ?? null)
+            : null;
       if (userId) {
-        audit({ userId, action: 'USER_LOGOUT' });
+        audit({ userId, action: "USER_LOGOUT" });
         // Increment session version — every existing JWT for this user
         // (including bfcache-restored ones) becomes invalid on the next
         // jwt() callback check.
@@ -323,7 +355,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       // Also blocklist this specific token as defence-in-depth
-      if ('token' in params && params.token) {
+      if ("token" in params && params.token) {
         const t = params.token as { jti?: string; exp?: number };
         if (t.jti && t.exp) {
           await blockToken(t.jti, t.exp);
