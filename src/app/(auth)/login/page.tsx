@@ -93,6 +93,7 @@ export default function LoginPage() {
           appearance: 'interaction-only',
           // Resolve the per-submit Promise when the challenge succeeds.
           callback: (token: string) => {
+            console.log('[Turnstile] callback fired, token length:', token?.length);
             if (tokenResolverRef.current) {
               tokenResolverRef.current(token);
               tokenResolverRef.current = null;
@@ -100,6 +101,7 @@ export default function LoginPage() {
           },
           // Reject the per-submit Promise on widget error (network failure, etc.)
           'error-callback': () => {
+            console.log('[Turnstile] error-callback fired');
             if (tokenResolverRef.current) {
               tokenResolverRef.current(null);
               tokenResolverRef.current = null;
@@ -131,9 +133,9 @@ export default function LoginPage() {
     setLoading(true);
 
     // ── Turnstile: execute challenge at submit time ────────────────────────────
-    // We reset the widget first (clears any stale state from a previous attempt),
-    // then call execute() and wait for the callback Promise to resolve.
-    // If the widget isn't ready yet (script still loading) we fail gracefully.
+    // Call execute() directly — do NOT reset() first, as reset destroys the
+    // widget's ready state and causes execute() to silently fail.
+    // Reset is only used in error/cleanup paths after a failed attempt.
     let challengeToken = '';
 
     if (isTurnstileActive) {
@@ -143,7 +145,7 @@ export default function LoginPage() {
         return;
       }
 
-      window.turnstile?.reset(widgetId.current);
+      console.log('[Turnstile] calling execute(), widgetId:', widgetId.current);
 
       const token = await new Promise<string | null>((resolve) => {
         tokenResolverRef.current = resolve;
