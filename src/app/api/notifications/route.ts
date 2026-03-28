@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
+import { logger } from '@/shared/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export async function GET() {
 
     return NextResponse.json({ notifications });
   } catch (e) {
-    console.error('[notifications:GET]', e instanceof Error ? e.message : e);
+    logger.error('api.error', { path: '/api/notifications', error: e instanceof Error ? e.message : e });
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
   }
 }
@@ -54,7 +55,7 @@ export async function PATCH() {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error('[notifications:PATCH]', e instanceof Error ? e.message : e);
+    logger.error('api.error', { path: '/api/notifications', error: e instanceof Error ? e.message : e });
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
   }
 }

@@ -58,47 +58,52 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const start = Date.now()
+  try {
+    const start = Date.now()
 
-  const checks = await Promise.allSettled([
-    checkService('database', async () => {
-      await db.$queryRaw`SELECT 1`
-    }),
-    checkService('redis', async () => {
-      await getRedisClient().ping()
-    }),
-    checkService('stripe', async () => {
-      // Lightweight check — just verify the API key is accepted
-      await stripe.balance.retrieve()
-    }),
-  ])
+    const checks = await Promise.allSettled([
+      checkService('database', async () => {
+        await db.$queryRaw`SELECT 1`
+      }),
+      checkService('redis', async () => {
+        await getRedisClient().ping()
+      }),
+      checkService('stripe', async () => {
+        // Lightweight check — just verify the API key is accepted
+        await stripe.balance.retrieve()
+      }),
+    ])
 
-  const services: ServiceCheck[] = checks.map((result) =>
-    result.status === 'fulfilled'
-      ? result.value
-      : {
-          name: 'unknown',
-          status: 'error' as const,
-          error: 'Check failed',
-        }
-  )
+    const services: ServiceCheck[] = checks.map((result) =>
+      result.status === 'fulfilled'
+        ? result.value
+        : {
+            name: 'unknown',
+            status: 'error' as const,
+            error: 'Check failed',
+          }
+    )
 
-  const allHealthy = services.every((s) => s.status === 'ok')
-  const totalLatencyMs = Date.now() - start
+    const allHealthy = services.every((s) => s.status === 'ok')
+    const totalLatencyMs = Date.now() - start
 
-  if (!allHealthy) {
-    logger.error('health.check.degraded', {
-      services: services.filter((s) => s.status === 'error'),
-    })
+    if (!allHealthy) {
+      logger.error('health.check.degraded', {
+        services: services.filter((s) => s.status === 'error'),
+      })
+    }
+
+    return NextResponse.json(
+      {
+        status: allHealthy ? 'ok' : 'degraded',
+        timestamp: new Date().toISOString(),
+        totalLatencyMs,
+        services,
+      },
+      { status: allHealthy ? 200 : 503 }
+    )
+  } catch (e) {
+    logger.error('api.error', { path: '/api/admin/health', error: e instanceof Error ? e.message : e })
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
   }
-
-  return NextResponse.json(
-    {
-      status: allHealthy ? 'ok' : 'degraded',
-      timestamp: new Date().toISOString(),
-      totalLatencyMs,
-      services,
-    },
-    { status: allHealthy ? 200 : 503 }
-  )
 }

@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.redirect(new URL('/login?verified=true', request.url));
   } catch (e) {
-    console.error('[verify-email:GET]', e instanceof Error ? e.message : e);
+    logger.error('api.error', { path: '/api/verify-email', error: e instanceof Error ? e.message : e });
     return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
   }
 }

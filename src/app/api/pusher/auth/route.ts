@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getPusherServer } from '@/lib/pusher';
+import { logger } from '@/shared/logger';
 
 export const runtime = 'nodejs';
 
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(authResponse);
   } catch (e) {
-    console.error('[pusher/auth:POST]', e instanceof Error ? e.message : e);
+    logger.error('api.error', { path: '/api/pusher/auth', error: e instanceof Error ? e.message : e });
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
   }
 }

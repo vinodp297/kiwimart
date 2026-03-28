@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/shared/auth/requirePermission';
 import db from '@/lib/db';
+import { logger } from '@/shared/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export async function GET() {
 
     return NextResponse.json({ reports });
   } catch (e) {
-    console.error('[admin/reports:GET]', e instanceof Error ? e.message : e);
+    logger.error('api.error', { path: '/api/admin/reports', error: e instanceof Error ? e.message : e });
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
   }
 }
