@@ -16,6 +16,8 @@ import {
 } from '@/components/ui/primitives';
 import { formatPrice, relativeTime } from '@/lib/utils';
 import { getImageUrl, getDefaultAvatar } from '@/lib/image';
+import { calculateSellerTier, TIER_REQUIREMENTS, TIER_CONFIG } from '@/lib/seller-tiers';
+import type { SellerTier } from '@/lib/seller-tiers';
 import type { OrderStatus, Condition } from '@/types';
 import { fetchSellerDashboard } from '@/server/actions/dashboard';
 import type {
@@ -38,6 +40,79 @@ import {
 type Tab = 'overview' | 'listings' | 'orders' | 'payouts' | 'reviews';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Tier Progress ────────────────────────────────────────────────────────────
+function TierProgress({
+  completedSales,
+  avgRating,
+}: {
+  completedSales: number;
+  avgRating: number;
+}) {
+  // Assume 100% completion rate for dashboard display (we don't have raw order counts here)
+  const currentTier = calculateSellerTier({ completedSales, avgRating, completionRate: 100 });
+
+  const nextTierKey = currentTier === null ? 'BRONZE' : currentTier === 'BRONZE' ? 'SILVER' : currentTier === 'SILVER' ? 'GOLD' : null;
+
+  if (nextTierKey === null) {
+    // Already Gold
+    const cfg = TIER_CONFIG['GOLD'];
+    return (
+      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-lg">{cfg.icon}</span>
+          <h3 className="text-[14px] font-semibold text-[#141414]">{cfg.label}</h3>
+        </div>
+        <p className="text-[12.5px] text-[#73706A]">
+          You have reached the highest seller tier. Keep up the great work!
+        </p>
+      </div>
+    );
+  }
+
+  const req = TIER_REQUIREMENTS[nextTierKey];
+  const cfg = TIER_CONFIG[nextTierKey];
+
+  const salesPct = Math.min(100, Math.round((completedSales / req.sales) * 100));
+  const ratingPct = Math.min(100, Math.round((avgRating / req.rating) * 100));
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-lg">{cfg.icon}</span>
+        <h3 className="text-[14px] font-semibold text-[#141414]">
+          {currentTier ? `Next: ${cfg.label}` : `Unlock ${cfg.label}`}
+        </h3>
+      </div>
+      <div className="space-y-3">
+        <div>
+          <div className="flex justify-between text-[12px] mb-1">
+            <span className="text-[#73706A]">Sales ({completedSales}/{req.sales})</span>
+            <span className="font-medium text-[#141414]">{salesPct}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-[#F0EDE8] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[#D4A843] transition-all duration-500"
+              style={{ width: `${salesPct}%` }}
+            />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-[12px] mb-1">
+            <span className="text-[#73706A]">Rating ({avgRating.toFixed(1)}/{req.rating})</span>
+            <span className="font-medium text-[#141414]">{ratingPct}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-[#F0EDE8] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[#D4A843] transition-all duration-500"
+              style={{ width: `${ratingPct}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SellerDashboardPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -608,6 +683,12 @@ export default function SellerDashboardPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Seller tier progress */}
+              <TierProgress
+                completedSales={stats.totalSales}
+                avgRating={stats.avgRating}
+              />
             </div>
           )}
 

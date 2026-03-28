@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { logger } from '@/shared/logger'
 import { getThumbUrl } from '@/lib/image'
+import { haversineKm } from '@/lib/geocoding'
 import type { ListingCard } from '@/types'
 import type { SearchParams, SearchResult } from './listing.types'
 
@@ -28,6 +29,10 @@ const SearchParamsSchema = z.object({
   isNegotiable: z.boolean().optional(),
   shipsNationwide: z.boolean().optional(),
   verifiedOnly: z.boolean().optional(),
+  // Radius search
+  searchLat: z.number().min(-90).max(90).optional(),
+  searchLng: z.number().min(-180).max(180).optional(),
+  radiusKm: z.number().min(1).max(500).optional(),
 })
 
 function mapCondition(c: string): ListingCard['condition'] {
@@ -61,6 +66,9 @@ export class SearchService {
       isNegotiable,
       shipsNationwide,
       verifiedOnly,
+      searchLat,
+      searchLng,
+      radiusKm,
     } = params
 
     const trimmedQuery = query?.trim() || ''
@@ -87,7 +95,13 @@ export class SearchService {
       ...(shipsNationwide ? { shipsNationwide: true } : {}),
       // Verified seller filter
       ...(verifiedOnly ? { seller: { idVerified: true } } : {}),
+      // Radius search — require listings to have coordinates
+      ...(searchLat != null && searchLng != null && radiusKm
+        ? { locationLat: { not: null }, locationLng: { not: null } }
+        : {}),
     }
+
+    const useRadiusFilter = searchLat != null && searchLng != null && radiusKm != null
 
     if (useFts) {
       try {
@@ -123,13 +137,16 @@ export class SearchService {
 
     const skip = (page - 1) * pageSize
 
-    const [totalCount, rows] = await Promise.all([
+    // When using radius filter, overfetch to allow post-query distance filtering
+    const fetchLimit = useRadiusFilter ? Math.min(pageSize * 5, 200) : pageSize
+
+    const [totalCountRaw, rowsRaw] = await Promise.all([
       db.listing.count({ where }),
       db.listing.findMany({
         where,
         orderBy,
-        skip,
-        take: pageSize,
+        skip: useRadiusFilter ? 0 : skip,
+        take: useRadiusFilter ? fetchLimit : pageSize,
         select: {
           id: true,
           title: true,
@@ -151,6 +168,8 @@ export class SearchService {
           viewCount: true,
           watcherCount: true,
           createdAt: true,
+          locationLat: true,
+          locationLng: true,
           images: {
             where: { order: 0, safe: true },
             select: { r2Key: true, thumbnailKey: true },
@@ -171,6 +190,18 @@ export class SearchService {
         },
       }),
     ])
+
+    // Apply Haversine distance filter if radius search is active
+    let rows = rowsRaw
+    let totalCount = totalCountRaw
+    if (useRadiusFilter && searchLat != null && searchLng != null && radiusKm != null) {
+      rows = rowsRaw.filter((row) => {
+        if (row.locationLat == null || row.locationLng == null) return false
+        return haversineKm(searchLat, searchLng, row.locationLat, row.locationLng) <= radiusKm
+      })
+      totalCount = rows.length
+      rows = rows.slice(skip, skip + pageSize)
+    }
 
     const listings: ListingCard[] = rows.map((row) => ({
       id: row.id,

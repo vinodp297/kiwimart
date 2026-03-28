@@ -41,7 +41,17 @@ type FilterState = {
   isNegotiable: boolean;
   shipsNationwide: boolean;
   verifiedOnly: boolean;
+  radiusKm: string;
 };
+
+const RADIUS_OPTIONS = [
+  { value: '', label: 'Any distance' },
+  { value: '10', label: '10 km' },
+  { value: '25', label: '25 km' },
+  { value: '50', label: '50 km' },
+  { value: '100', label: '100 km' },
+  { value: '200', label: '200 km' },
+];
 
 // ── Build URL from filter state ───────────────────────────────────────────────
 function buildSearchUrl(f: FilterState, page?: number): string {
@@ -58,6 +68,7 @@ function buildSearchUrl(f: FilterState, page?: number): string {
   if (f.isNegotiable)    params.set('isNegotiable',     'true');
   if (f.shipsNationwide) params.set('shipsNationwide',  'true');
   if (f.verifiedOnly)    params.set('verifiedOnly',     'true');
+  if (f.radiusKm)        params.set('radiusKm',         f.radiusKm);
   if (page && page > 1)  params.set('page',             String(page));
   const qs = params.toString();
   return qs ? `/search?${qs}` : '/search';
@@ -196,6 +207,7 @@ export default function SearchPageClient({
     isNegotiable:    searchParams.get('isNegotiable')    === 'true',
     shipsNationwide: searchParams.get('shipsNationwide') === 'true',
     verifiedOnly:    searchParams.get('verifiedOnly')    === 'true',
+    radiusKm:        searchParams.get('radiusKm')        ?? '',
   });
 
   // Debounce timer for URL sync
@@ -227,7 +239,7 @@ export default function SearchPageClient({
     const empty: FilterState = {
       query: '', category: '', subcategory: '', condition: '', region: '',
       priceMin: '', priceMax: '', sort: 'newest',
-      isUrgent: false, isNegotiable: false, shipsNationwide: false, verifiedOnly: false,
+      isUrgent: false, isNegotiable: false, shipsNationwide: false, verifiedOnly: false, radiusKm: '',
     };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setFilters(empty);
@@ -263,6 +275,7 @@ export default function SearchPageClient({
     filters.isNegotiable,
     filters.shipsNationwide,
     filters.verifiedOnly,
+    filters.radiusKm,
   ].filter(Boolean).length;
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -376,6 +389,20 @@ export default function SearchPageClient({
             <option key={r} value={r}>{r}</option>
           ))}
         </FilterSelect>
+
+        {/* Radius — only shown when a region is selected */}
+        {filters.region && (
+          <FilterSelect
+            label="Distance"
+            value={filters.radiusKm}
+            onChange={(v) => updateFilter({ radiusKm: v })}
+            className="min-w-[120px]"
+          >
+            {RADIUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </FilterSelect>
+        )}
 
         {/* Price range — 400ms debounce while typing */}
         <div className="flex items-center gap-1.5 min-w-[160px]">
@@ -519,8 +546,14 @@ export default function SearchPageClient({
           )}
           {filters.verifiedOnly && (
             <FilterPill
-              label="✅ Verified sellers"
+              label="Verified sellers"
               onRemove={() => updateFilter({ verifiedOnly: false })}
+            />
+          )}
+          {filters.radiusKm && (
+            <FilterPill
+              label={`Within ${filters.radiusKm} km`}
+              onRemove={() => updateFilter({ radiusKm: '' })}
             />
           )}
 
