@@ -15,7 +15,12 @@ import ShippingEstimate from './ShippingEstimate';
 import { getListingById } from '@/server/actions/listings';
 import { searchListings } from '@/server/actions/search';
 import { getSellerResponseTime } from '@/modules/listings/seller-response.service';
+import { getSellerTrustProfile } from '@/modules/sellers/trust-score.service';
+import { getListingSocialProof } from '@/modules/listings/social-proof.service';
+import { getListingPriceHistory } from '@/modules/listings/price-history.service';
+import { getMoreFromSeller, getSimilarListings } from '@/modules/listings/recommendations.service';
 import SafetyBanner from '@/components/SafetyBanner';
+import PriceHistoryChart from '@/components/PriceHistoryChart';
 import type { ListingDetail, SellerPublic, ListingImage, ListingAttribute, Condition, NZRegion, SellerBadge } from '@/types';
 import { getImageUrl as r2Url } from '@/lib/image';
 
@@ -86,8 +91,12 @@ export default async function ListingDetailPage({
     attributes.unshift({ label: 'Condition', value: CONDITION_LABELS[condition] });
   }
 
-  const responseTimeLabel =
-    (await getSellerResponseTime(listing.seller.id)) ?? 'Response time unknown';
+  const [responseTimeLabel, trustProfile, socialProof, priceHistory] = await Promise.all([
+    getSellerResponseTime(listing.seller.id).then((r) => r ?? 'Response time unknown'),
+    getSellerTrustProfile(listing.seller.id).catch(() => null),
+    getListingSocialProof(listing.id).catch(() => ({ viewCount: 0, watcherCount: 0, pendingOfferCount: 0 })),
+    getListingPriceHistory(listing.id).catch(() => []),
+  ]);
 
   const seller: SellerPublic = {
     id: listing.seller.id,
@@ -140,15 +149,19 @@ export default async function ListingDetailPage({
     pickupAddress: listing.pickupAddress,
   };
 
-  // Fetch related listings from same category
+  // Fetch recommendations + related listings
   let relatedListings = detail.relatedListings;
+  let moreFromSeller: typeof relatedListings = [];
+  let similarListings: typeof relatedListings = [];
   try {
-    const related = await searchListings({
-      category: listing.categoryId,
-      pageSize: 5,
-      sort: 'most-watched',
-    });
+    const [related, fromSeller, similar] = await Promise.all([
+      searchListings({ category: listing.categoryId, pageSize: 5, sort: 'most-watched' }),
+      getMoreFromSeller(listing.seller.id, listing.id).catch(() => []),
+      getSimilarListings(listing.id, listing.categoryId, listing.priceNzd, listing.seller.id).catch(() => []),
+    ]);
     relatedListings = related.listings.filter((l) => l.id !== id).slice(0, 4);
+    moreFromSeller = fromSeller;
+    similarListings = similar.filter((l) => l.id !== id).slice(0, 4);
   } catch {
     // Fallback to empty
   }
@@ -203,6 +216,39 @@ export default async function ListingDetailPage({
 
               {/* Image gallery (client component — handles lightbox + swipe) */}
               <ListingGallery images={detail.images} title={detail.title} />
+
+              {/* Social proof bar */}
+              {(socialProof.viewCount > 0 || socialProof.watcherCount > 0 || socialProof.pendingOfferCount > 0) && (
+                <div className="mt-3 flex items-center gap-4 text-[12px] text-[#73706A]">
+                  {socialProof.viewCount > 0 && (
+                    <span className="flex items-center gap-1">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      {socialProof.viewCount.toLocaleString('en-NZ')} views
+                    </span>
+                  )}
+                  {socialProof.watcherCount > 0 && (
+                    <span className="flex items-center gap-1">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                      </svg>
+                      {socialProof.watcherCount} watching
+                    </span>
+                  )}
+                  {socialProof.pendingOfferCount > 0 && (
+                    <span className="flex items-center gap-1 text-amber-600 font-medium">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                      </svg>
+                      {socialProof.pendingOfferCount} pending {socialProof.pendingOfferCount === 1 ? 'offer' : 'offers'}
+                    </span>
+                  )}
+                  {socialProof.watcherCount >= 5 && (
+                    <span className="text-orange-500 font-semibold">Popular</span>
+                  )}
+                </div>
+              )}
 
               {/* ── Description ─────────────────────────────────────────── */}
               <section
@@ -264,8 +310,48 @@ export default async function ListingDetailPage({
                 </section>
               )}
 
+              {/* ── Price history ────────────────────────────────────── */}
+              <PriceHistoryChart
+                history={priceHistory}
+                currentPriceNzd={listing.priceNzd}
+              />
+
               {/* ── Safety banner ──────────────────────────────────────── */}
               <SafetyBanner />
+
+              {/* ── More from this seller ────────────────────────────── */}
+              {moreFromSeller.length > 0 && (
+                <section className="mt-10">
+                  <h2
+                    className="font-[family-name:var(--font-playfair)] text-[1.25rem]
+                      font-semibold text-[#141414] mb-5"
+                  >
+                    More from {detail.sellerName}
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {moreFromSeller.map((l) => (
+                      <ListingCard key={l.id} listing={l} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* ── Similar listings ──────────────────────────────────── */}
+              {similarListings.length > 0 && (
+                <section className="mt-10">
+                  <h2
+                    className="font-[family-name:var(--font-playfair)] text-[1.25rem]
+                      font-semibold text-[#141414] mb-5"
+                  >
+                    Similar listings
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {similarListings.map((l) => (
+                      <ListingCard key={l.id} listing={l} />
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* ── Related listings ────────────────────────────────────── */}
               {relatedListings.length > 0 && (
@@ -298,7 +384,12 @@ export default async function ListingDetailPage({
               <ShippingEstimate sellerRegion={detail.region} />
 
               {/* Seller panel */}
-              <SellerPanel seller={detail.seller} listingId={detail.id} />
+              <SellerPanel
+                seller={detail.seller}
+                listingId={detail.id}
+                trustScore={trustProfile?.trustScore}
+                tier={trustProfile?.tier}
+              />
 
               {/* Meta info */}
               <div

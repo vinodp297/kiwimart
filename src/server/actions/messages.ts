@@ -8,6 +8,7 @@ import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
 import { requireUser } from '@/server/lib/requireUser';
 import { messageService } from '@/modules/messaging/message.service';
 import { sendMessageSchema } from '@/server/validators';
+import { updateSellerResponseMetrics } from '@/modules/sellers/response-metrics.service';
 import type { ActionResult } from '@/types';
 
 export async function sendMessage(
@@ -37,6 +38,10 @@ export async function sendMessage(
     }
 
     const result = await messageService.sendMessage(parsed.data, user.id, user.email);
+
+    // Update seller response metrics (fire-and-forget)
+    updateSellerResponseMetrics(user.id).catch(() => {});
+
     return { success: true, data: result };
   } catch (err) {
     return { success: false, error: safeActionError(err) };

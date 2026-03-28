@@ -82,9 +82,14 @@ export default memo(function ListingCard({ listing, priority = false }: Props) {
 
           {/* Status badges — top-left stack */}
           <div className="absolute top-2 left-2 flex flex-col gap-1">
+            {listing.watcherCount >= 5 && !isSold && (
+              <span className="bg-orange-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full leading-tight">
+                Popular
+              </span>
+            )}
             {urgent && (
               <span className="bg-red-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full leading-tight">
-                🔥 URGENT
+                URGENT
               </span>
             )}
             {justListed && !urgent && (

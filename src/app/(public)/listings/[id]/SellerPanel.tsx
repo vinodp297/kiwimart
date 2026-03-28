@@ -14,12 +14,16 @@ const BADGE_CONFIG: Record<SellerBadge, { label: string; icon: string; colour: s
   nz_business:     { label: 'NZ Business',      icon: '🥝', colour: 'bg-[#F5ECD4] text-[#8B6914] ring-[#D4A843]/40' },
 };
 
+type SellerTier = 'BRONZE' | 'SILVER' | 'GOLD' | null;
+
 interface Props {
   seller: SellerPublic;
   listingId: string;
+  trustScore?: number | null;
+  tier?: SellerTier;
 }
 
-export default function SellerPanel({ seller, listingId }: Props) {
+export default function SellerPanel({ seller, listingId, trustScore, tier }: Props) {
   const memberSince = new Date(seller.memberSince).getFullYear();
 
   return (
@@ -58,6 +62,44 @@ export default function SellerPanel({ seller, listingId }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Trust score + tier */}
+      {(trustScore != null || tier) && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {trustScore != null && (
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                text-[10.5px] font-semibold ring-1 ${
+                  trustScore >= 80
+                    ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                    : trustScore >= 50
+                    ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                    : 'bg-red-50 text-red-600 ring-red-200'
+                }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              Trust {trustScore}/100
+            </span>
+          )}
+          {tier && (
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full
+                text-[10.5px] font-semibold ring-1 ${
+                  tier === 'GOLD'
+                    ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                    : tier === 'SILVER'
+                    ? 'bg-gray-100 text-gray-600 ring-gray-300'
+                    : 'bg-orange-50 text-orange-700 ring-orange-200'
+                }`}
+            >
+              {tier === 'GOLD' ? '🥇' : tier === 'SILVER' ? '🥈' : '🥉'}
+              {tier.charAt(0) + tier.slice(1).toLowerCase()}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Badges */}
       {seller.badges.length > 0 && (

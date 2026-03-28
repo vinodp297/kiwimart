@@ -158,6 +158,11 @@ export async function createListing(
     return created;
   });
 
+  // 5d. Record initial price history point
+  db.listingPriceHistory.create({
+    data: { listingId: listing.id, priceNzd: Math.round(data.price * 100) },
+  }).catch(() => {});
+
   // 6. Audit (fire-and-forget)
   audit({
     userId: authedUser.id,
@@ -243,15 +248,23 @@ export async function updateListing(
     },
   });
 
-  // Notify watchlist users of price drop (fire-and-forget)
+  // Price history tracking + notify watchlist users of price drop (fire-and-forget)
+  if (newPriceNzd != null && newPriceNzd !== existing.priceNzd) {
+    // Record price change in history
+    db.listingPriceHistory.create({
+      data: { listingId, priceNzd: newPriceNzd },
+    }).catch(() => {});
+  }
+
   if (newPriceNzd != null && newPriceNzd < existing.priceNzd) {
     const listingTitle = data.title ?? existing.title;
     const priceDrop = Math.round(((existing.priceNzd - newPriceNzd) / existing.priceNzd) * 100);
     const newPriceFormatted = `$${(newPriceNzd / 100).toFixed(2)}`;
     const oldPriceFormatted = `$${(existing.priceNzd / 100).toFixed(2)}`;
+    const savings = `$${((existing.priceNzd - newPriceNzd) / 100).toFixed(2)}`;
 
     db.watchlistItem.findMany({
-      where: { listingId },
+      where: { listingId, priceAlertEnabled: true },
       select: { userId: true },
     }).then((watchers) => {
       for (const watcher of watchers) {
@@ -260,7 +273,7 @@ export async function updateListing(
           userId:    watcher.userId,
           type:      'PRICE_DROP',
           title:     `Price dropped ${priceDrop}%! 📉`,
-          body:      `"${listingTitle}" dropped from ${oldPriceFormatted} to ${newPriceFormatted}`,
+          body:      `"${listingTitle}" dropped from ${oldPriceFormatted} to ${newPriceFormatted} — ${savings} savings!`,
           listingId,
           link:      `/listings/${listingId}`,
         }).catch(() => {});
