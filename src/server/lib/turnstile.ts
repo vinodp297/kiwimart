@@ -6,7 +6,7 @@
 //
 // Fail behaviour (in production with a real key):
 //   • Token absent/empty   → callers must reject before even calling here
-//   • Test keys (1x/2x)    → warn loudly, allow through (test environments)
+//   • Test keys (1x/2x)    → fail closed in production
 //   • Network error/timeout → return false — FAIL CLOSED
 //   • API returns !ok       → return false — FAIL CLOSED
 //   • API returns success:false → return false
@@ -40,9 +40,7 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
   if (!secretKey) {
     logger.error(
       "turnstile: secret key MISSING in production — rejecting request. " +
-        "Set CLOUDFLARE_TURNSTILE_SECRET_KEY in environment variables. " +
-        `CLOUDFLARE_TURNSTILE_SECRET_KEY set: ${!!process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY}, ` +
-        `TURNSTILE_SECRET_KEY set: ${!!process.env.TURNSTILE_SECRET_KEY}`,
+        "Set CLOUDFLARE_TURNSTILE_SECRET_KEY in environment variables.",
     );
     return false;
   }
@@ -51,33 +49,22 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
   if (secretKey.startsWith("1x") || secretKey.startsWith("2x")) {
     logger.error(
       "turnstile: Production Turnstile key is a test key — bot protection is disabled. " +
-        `Key prefix: ${secretKey.slice(0, 4)}. ` +
         "Configure real keys at https://dash.cloudflare.com/turnstile",
     );
     return false;
   }
 
-  // Log the token length for debugging — never log the actual token
-  if (!token || token.length === 0) {
-    logger.warn(
-      "turnstile: empty token received — client may not have Turnstile widget active",
-      {
-        siteKeySet: !!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-        siteKeyPrefix: (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "").slice(
-          0,
-          4,
-        ),
-      },
-    );
-  }
-
   try {
+    // Cloudflare siteverify expects application/x-www-form-urlencoded
+    const formData = new URLSearchParams();
+    formData.append("secret", secretKey);
+    formData.append("response", token);
+
     const response = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: secretKey, response: token }),
+        body: formData,
         // 5-second timeout — Turnstile API is normally <200ms
         signal: AbortSignal.timeout(5000),
       },
