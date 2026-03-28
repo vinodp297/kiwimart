@@ -65,8 +65,14 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
       return false // Fail closed on API error
     }
 
-    const data = (await response.json()) as { success: boolean }
-    return data.success === true
+    const data = (await response.json()) as { success: boolean; 'error-codes'?: string[] }
+    if (!data.success) {
+      logger.warn('turnstile: Cloudflare rejected the token', {
+        errorCodes: data['error-codes'] ?? [],
+      })
+      return false
+    }
+    return true
   } catch (e) {
     // Network error, DNS failure, or AbortError (5s timeout) — fail CLOSED
     logger.warn('turnstile: verification request failed (network/timeout)', {
