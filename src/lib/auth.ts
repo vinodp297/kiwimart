@@ -61,7 +61,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         // 1. Validate input shape with Zod
         const parsed = loginSchema.safeParse(credentials);
-        if (!parsed.success) return null;
+        if (!parsed.success) {
+          logger.warn('authorize:fail', { reason: 'zod_parse_failed', issues: parsed.error.issues.map((i) => i.message) });
+          return null;
+        }
 
         const { email, password, turnstileToken } = parsed.data;
 
@@ -72,6 +75,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (process.env.NODE_ENV === 'production') {
           const turnstileOk = await verifyTurnstile(turnstileToken ?? '');
           if (!turnstileOk) {
+            logger.warn('authorize:fail', { reason: 'turnstile', tokenPresent: !!(turnstileToken) });
             return null;
           }
         }
@@ -99,6 +103,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const passwordValid = await verifyPassword(hashToVerify, password);
 
         if (!user || !passwordValid) {
+          logger.warn('authorize:fail', { reason: 'invalid_credentials', userFound: !!user, passwordValid });
           // Audit failed attempt (without the password)
           audit({
             userId: user?.id ?? null,
@@ -110,6 +115,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         // 5. Check bans
         if (user.isBanned) {
+          logger.warn('authorize:fail', { reason: 'banned', userId: user.id });
           audit({
             userId: user.id,
             action: 'USER_LOGIN',
