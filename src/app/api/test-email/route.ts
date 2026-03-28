@@ -23,40 +23,38 @@ export async function GET() {
   }
 
   try {
-    const results: Record<string, unknown> = {}
-
-    // ── Configuration checks (reduced — no secrets or values) ──────────────────
-    results.resend_api_key_exists = !!process.env.RESEND_API_KEY
-    results.resend_api_key_length = process.env.RESEND_API_KEY?.length ?? 0
-    results.email_from_configured = !!process.env.EMAIL_FROM
-    results.node_env = process.env.NODE_ENV
-
-    // ── Client initialization ────────────────────────────────────────────────
     const resend = getEmailClient()
-    results.client_initialised = !!resend
 
     if (!resend) {
-      results.client_null_reason =
-        'getEmailClient() returned null — RESEND_API_KEY is missing or set to a placeholder value'
-      return NextResponse.json(results, { headers: { 'Cache-Control': 'no-store' } })
+      logger.info('test-email: client not initialised', {
+        resendKeyExists: !!process.env.RESEND_API_KEY,
+        emailFromConfigured: !!process.env.EMAIL_FROM,
+      })
+      return NextResponse.json(
+        { success: false, message: 'Email client not configured.', emailSentTo: null },
+        { headers: { 'Cache-Control': 'no-store' } }
+      )
     }
 
     // ── Test 1: raw Resend client ────────────────────────────────────────────
+    let rawSuccess = false
     try {
-      const { data, error } = await resend.emails.send({
+      const { error } = await resend.emails.send({
         from: EMAIL_FROM,
         to: 'delivered@resend.dev',
         subject: 'KiwiMart — raw client test',
         html: `<p>Raw transport test sent at ${new Date().toISOString()}</p>`,
       })
-      results.raw_send_success = !error
-      results.raw_send_id = data?.id ?? null
-      results.raw_send_error = error ? String(error) : null
+      rawSuccess = !error
+      if (error) {
+        logger.info('test-email: raw send failed', { error: String(error) })
+      }
     } catch (err) {
-      results.raw_send_exception = err instanceof Error ? err.message : String(err)
+      logger.info('test-email: raw send exception', { error: err instanceof Error ? err.message : String(err) })
     }
 
     // ── Test 2: sendPasswordResetEmail() template ────────────────────────────
+    let templateSuccess = false
     try {
       await sendPasswordResetEmail({
         to: 'delivered@resend.dev',
@@ -64,16 +62,25 @@ export async function GET() {
         resetUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app'}/reset-password?token=test_diagnostic_token`,
         expiresInMinutes: 60,
       })
-      results.template_send_success = true
-      results.template_send_error = null
+      templateSuccess = true
     } catch (err) {
-      results.template_send_success = false
-      results.template_send_error = err instanceof Error ? err.message : String(err)
+      logger.info('test-email: template send failed', { error: err instanceof Error ? err.message : String(err) })
     }
 
-    return NextResponse.json(results, {
-      headers: { 'Cache-Control': 'no-store' },
-    })
+    return NextResponse.json(
+      {
+        success: rawSuccess && templateSuccess,
+        message: rawSuccess && templateSuccess
+          ? 'Both test emails sent successfully.'
+          : rawSuccess
+          ? 'Raw send OK, template send failed.'
+          : templateSuccess
+          ? 'Template send OK, raw send failed.'
+          : 'Both test emails failed.',
+        emailSentTo: 'delivered@resend.dev',
+      },
+      { headers: { 'Cache-Control': 'no-store' } }
+    )
   } catch (e) {
     logger.error('api.error', { path: '/api/test-email', error: e instanceof Error ? e.message : e })
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })

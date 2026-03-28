@@ -36,20 +36,22 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
     process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ??
     process.env.TURNSTILE_SECRET_KEY
 
-  // TODO: Remove this debug log once Turnstile domain config is confirmed working.
-  logger.info('turnstile:debug', {
-    secretKeyPrefix: secretKey?.slice(0, 6) ?? 'missing',
-    tokenLength: token?.length ?? 0,
-  })
+  // Fail closed in production when key is missing
+  if (!secretKey) {
+    logger.error(
+      'turnstile: secret key MISSING in production — rejecting request. ' +
+        'Set CLOUDFLARE_TURNSTILE_SECRET_KEY in environment variables.'
+    )
+    return false
+  }
 
-  // Test keys (1x/2x prefix) auto-pass all challenges — zero bot protection.
-  // Warn loudly and allow through; operators must configure real keys before launch.
-  if (!secretKey || secretKey.startsWith('1x') || secretKey.startsWith('2x')) {
-    logger.warn(
-      'turnstile: test/missing key in production — bot verification is DISABLED. ' +
+  // Fail closed in production when using test keys (1x/2x prefix)
+  if (secretKey.startsWith('1x') || secretKey.startsWith('2x')) {
+    logger.error(
+      'turnstile: Production Turnstile key is a test key — bot protection is disabled. ' +
         'Configure real keys at https://dash.cloudflare.com/turnstile'
     )
-    return true
+    return false
   }
 
   try {
