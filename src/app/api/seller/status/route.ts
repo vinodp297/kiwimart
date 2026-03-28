@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import db from '@/lib/db';
+import { logger } from '@/shared/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +38,7 @@ export async function GET() {
       sellerEnabled: user?.sellerEnabled ?? false,
     });
   } catch (e) {
-    console.error('[seller/status:GET]', e instanceof Error ? e.message : e);
+    logger.error('api.error', { path: '/api/seller/status', error: e instanceof Error ? e.message : e });
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
   }
 }

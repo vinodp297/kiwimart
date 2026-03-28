@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
     })
   } catch (e) {
-    console.error('[cron/expire-listings:GET]', e instanceof Error ? e.message : e)
+    logger.error('api.error', { path: '/api/cron/expire-listings', error: e instanceof Error ? e.message : e })
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
   }
 }

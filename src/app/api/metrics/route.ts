@@ -102,7 +102,7 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (e) {
-    console.error('[metrics:GET]', e instanceof Error ? e.message : e);
+    logger.error('api.error', { path: '/api/metrics', error: e instanceof Error ? e.message : e });
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
   }
 }
