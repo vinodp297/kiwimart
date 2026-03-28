@@ -20,6 +20,7 @@ export default function NavBar() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [showSellBanner, setShowSellBanner] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
 
   // ── Sign out ───────────────────────────────────────────────────────────────
   // Auth.js v5 (beta.30): use redirectTo (callbackUrl is deprecated).
@@ -130,6 +131,15 @@ export default function NavBar() {
     fetch('/api/notifications')
       .then((r) => r.json())
       .then((data) => setNotifications(data.notifications ?? []))
+      .catch(() => {});
+  }, [user]);
+
+  // Fetch cart count when user is logged in
+  useEffect(() => {
+    if (!user) { setCartCount(0); return; }
+    fetch('/api/cart')
+      .then((r) => r.json())
+      .then((data) => setCartCount(data.count ?? 0))
       .catch(() => {});
   }, [user]);
 
@@ -254,6 +264,33 @@ export default function NavBar() {
 
               {user ? (
                 <>
+                  {/* Cart */}
+                  <Link
+                    href="/cart"
+                    className="relative w-9 h-9 rounded-xl flex items-center justify-center
+                      text-[#73706A] hover:text-[#141414] hover:bg-[#F8F7F4]
+                      transition-colors"
+                    aria-label={`Shopping cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
+                  >
+                    <svg
+                      width="17" height="17" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" strokeWidth="1.8"
+                    >
+                      <circle cx="9" cy="21" r="1" />
+                      <circle cx="20" cy="21" r="1" />
+                      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                    </svg>
+                    {cartCount > 0 && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full
+                          bg-[#D4A843] text-[10px] font-bold text-white flex items-center
+                          justify-center px-1 ring-2 ring-white"
+                      >
+                        {cartCount > 9 ? '9+' : cartCount}
+                      </span>
+                    )}
+                  </Link>
+
                   {/* Notifications */}
                   <div ref={notifRef} className="relative">
                     <button

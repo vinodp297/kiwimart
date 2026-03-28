@@ -6,9 +6,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { ListingDetail } from '@/types';
 import { formatPrice } from '@/lib/utils';
 import { Button, ConditionBadge, Alert, Input } from '@/components/ui/primitives';
+import { addToCart } from '@/server/actions/cart';
 
 interface Props {
   listing: ListingDetail;
@@ -22,6 +24,9 @@ export default function ListingActions({ listing }: Props) {
   const [offerSubmitted, setOfferSubmitted] = useState(false);
   const [offerError, setOfferError] = useState('');
   const [shareTooltip, setShareTooltip] = useState(false);
+  const [cartLoading, setCartLoading] = useState(false);
+  const [cartMessage, setCartMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const router = useRouter();
 
   const isSold = listing.status === 'sold';
   const shipping = listing.shippingPrice;
@@ -54,6 +59,30 @@ export default function ListingActions({ listing }: Props) {
       await navigator.clipboard.writeText(url);
       setShareTooltip(true);
       setTimeout(() => setShareTooltip(false), 2000);
+    }
+  }
+
+  async function handleAddToCart() {
+    setCartLoading(true);
+    setCartMessage(null);
+    try {
+      const result = await addToCart({ listingId: listing.id });
+      if (result.success) {
+        setCartMessage({ type: 'success', text: 'Added to cart!' });
+        // Refresh NavBar cart count
+        router.refresh();
+      } else if (result.error === 'SELLER_MISMATCH') {
+        setCartMessage({
+          type: 'error',
+          text: 'Your cart contains items from a different seller. Clear your cart first or checkout the existing items.',
+        });
+      } else {
+        setCartMessage({ type: 'error', text: result.error });
+      }
+    } catch {
+      setCartMessage({ type: 'error', text: 'Something went wrong. Please try again.' });
+    } finally {
+      setCartLoading(false);
     }
   }
 
@@ -149,6 +178,30 @@ export default function ListingActions({ listing }: Props) {
                 Buy now — {formatPrice(listing.price)}
               </button>
             </Link>
+
+            {/* Add to Cart */}
+            <button
+              onClick={handleAddToCart}
+              disabled={cartLoading}
+              className="w-full min-h-[52px] border-2 border-[#C9C5BC]
+                hover:border-[#141414] text-[#141414] font-semibold text-[15px]
+                rounded-xl flex items-center justify-center gap-2 transition-colors
+                bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="9" cy="21" r="1" />
+                <circle cx="20" cy="21" r="1" />
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+              </svg>
+              {cartLoading ? 'Adding...' : 'Add to cart'}
+            </button>
+
+            {/* Cart feedback message */}
+            {cartMessage && (
+              <Alert variant={cartMessage.type === 'success' ? 'success' : 'error'}>
+                {cartMessage.text}
+              </Alert>
+            )}
 
             {/* Make Offer */}
             {listing.offersEnabled && (
