@@ -1,42 +1,35 @@
 // src/app/api/test-email/route.ts
-// ─── Email System Diagnostic Endpoint ────────────────────────────────────────
+// ─── Email System Diagnostic Endpoint ──────────────────────────────────────
 // Returns configuration status and sends two test emails to Resend's safe test
 // addresses (delivered@resend.dev / bounced@resend.dev).
 //
-// SECURITY: Requires SUPER_ADMIN authentication. Exposes API key prefix
-// and email config for diagnostic purposes.
+// SECURITY: Requires SUPER_ADMIN authentication (via requireSuperAdmin).
+// Reduced metadata — no API key prefix or app URL exposed.
 
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
-import { requireAnyAdmin } from '@/shared/auth/requirePermission'
+import { requireSuperAdmin } from '@/shared/auth/requirePermission'
 import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client'
 import { sendPasswordResetEmail } from '@/server/email'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  // ── Auth guard — admin only ────────────────────────────────────────────────
+  // ── Auth guard — SUPER_ADMIN only ──────────────────────────────────────────
   try {
-    const session = await auth()
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    await requireAnyAdmin()
+    await requireSuperAdmin()
   } catch {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const results: Record<string, unknown> = {}
 
-  // ── Configuration checks ───────────────────────────────────────────────────
+  // ── Configuration checks (reduced — no secrets or values) ──────────────────
   results.resend_api_key_exists = !!process.env.RESEND_API_KEY
   results.resend_api_key_length = process.env.RESEND_API_KEY?.length ?? 0
-  results.resend_api_key_prefix = process.env.RESEND_API_KEY?.slice(0, 10) ?? 'NOT SET'
-  results.email_from = process.env.EMAIL_FROM ?? 'NOT SET (will use onboarding@resend.dev)'
+  results.email_from_configured = !!process.env.EMAIL_FROM
   results.node_env = process.env.NODE_ENV
-  results.next_public_app_url = process.env.NEXT_PUBLIC_APP_URL ?? 'NOT SET'
 
-  // ── Client initialization ──────────────────────────────────────────────────
+  // ── Client initialization ────────────────────────────────────────────────
   const resend = getEmailClient()
   results.client_initialised = !!resend
 
@@ -46,7 +39,7 @@ export async function GET() {
     return NextResponse.json(results, { headers: { 'Cache-Control': 'no-store' } })
   }
 
-  // ── Test 1: raw Resend client ──────────────────────────────────────────────
+  // ── Test 1: raw Resend client ────────────────────────────────────────────
   try {
     const { data, error } = await resend.emails.send({
       from: EMAIL_FROM,
@@ -61,7 +54,7 @@ export async function GET() {
     results.raw_send_exception = err instanceof Error ? err.message : String(err)
   }
 
-  // ── Test 2: sendPasswordResetEmail() template ──────────────────────────────
+  // ── Test 2: sendPasswordResetEmail() template ────────────────────────────
   try {
     await sendPasswordResetEmail({
       to: 'delivered@resend.dev',

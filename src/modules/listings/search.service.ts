@@ -1,6 +1,8 @@
 // src/modules/listings/search.service.ts
 // ─── Search Service ──────────────────────────────────────────────────────────
 // Full-text search using Postgres tsvector. Framework-free.
+// TODO POST-LAUNCH: Move review aggregate computation to DB level.
+// See architectural review 27-Mar-2026.
 
 import db from '@/lib/db'
 import { Prisma } from '@prisma/client'

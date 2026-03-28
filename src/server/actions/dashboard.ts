@@ -3,6 +3,8 @@ import { safeActionError } from '@/shared/errors'
 // src/server/actions/dashboard.ts
 // ─── Dashboard Data Server Actions ───────────────────────────────────────────
 // Secure data-fetching for buyer and seller dashboards.
+// TODO POST-LAUNCH: Split into buyer/seller query services + mappers.
+// See architectural review 27-Mar-2026.
 // All queries are scoped to the authenticated user's ID.
 
 import { requireUser } from '@/server/lib/requireUser';

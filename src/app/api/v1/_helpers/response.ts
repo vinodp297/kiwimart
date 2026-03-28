@@ -3,6 +3,7 @@
 
 import { AppError } from '@/shared/errors'
 import { auth } from '@/lib/auth'
+import db from '@/lib/db'
 import { rateLimit, getClientIp, type RateLimitKey } from '@/server/lib/rateLimit'
 
 export function apiOk<T>(data: T, status = 200): Response {
@@ -40,10 +41,33 @@ export async function requireApiUser() {
   if (!session?.user?.id) {
     throw AppError.unauthenticated()
   }
-  if (session.user.isBanned) {
+
+  // Fresh DB lookup — same pattern as requireUser().
+  // Session tokens may be stale: soft-deleted or banned users must be rejected.
+  const user = await db.user.findUnique({
+    where: {
+      id: session.user.id,
+      deletedAt: null, // Reject soft-deleted accounts
+    },
+    select: {
+      id: true,
+      email: true,
+      isAdmin: true,
+      isBanned: true,
+      sellerEnabled: true,
+      stripeOnboarded: true,
+    },
+  })
+
+  if (!user) {
+    throw AppError.unauthenticated()
+  }
+
+  if (user.isBanned) {
     throw AppError.banned()
   }
-  return session.user
+
+  return user
 }
 
 /**

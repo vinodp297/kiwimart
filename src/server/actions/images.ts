@@ -1,6 +1,8 @@
 'use server';
 import { safeActionError } from '@/shared/errors'
 // src/server/actions/images.ts  (Sprint 4 + Sprint 6 — real Cloudflare R2)
+// TODO POST-LAUNCH: Centralize listing lifecycle (reserve/release/markSold)
+// into listingLifecycleService. See architectural review 27-Mar-2026.
 // ─── Image Upload Server Actions ─────────────────────────────────────────────
 // Two-phase upload flow:
 //   Phase 1: Client requests a presigned upload URL (this action)
@@ -208,10 +210,23 @@ export async function confirmImageUpload(params: {
       },
     };
   } catch (err) {
-    // If R2 is not configured (dev with placeholders), mark safe directly
     const msg = safeActionError(err, 'Processing failed.');
-    if (msg.includes('Failed to download') || msg.includes('getaddrinfo') || msg.includes('ENOTFOUND')) {
-      // R2 unavailable — marking image as safe directly
+    const isStorageUnavailable = msg.includes('Failed to download') || msg.includes('getaddrinfo') || msg.includes('ENOTFOUND');
+
+    if (isStorageUnavailable && process.env.NODE_ENV === 'production') {
+      // Production: NEVER mark safe on storage failure — image stays unsafe.
+      // Reconciliation/retry job can handle this later.
+      const { logger } = await import('@/shared/logger');
+      logger.error('images: R2 download failed in production — image remains unsafe', {
+        imageId: params.imageId,
+        r2Key: params.r2Key,
+        error: msg,
+      });
+      return { success: false, error: 'Image processing failed. Please try uploading again.' };
+    }
+
+    if (isStorageUnavailable) {
+      // Dev/test only — allow bypass for local development without R2
       await db.listingImage.update({
         where: { id: params.imageId, r2Key: params.r2Key },
         data: {
