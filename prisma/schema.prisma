@@ -112,6 +112,7 @@ enum AuditAction {
   ID_VERIFICATION_SUBMITTED
   ID_VERIFICATION_APPROVED
   DISPUTE_SELLER_RESPONDED
+  CART_CHECKOUT
 }
 
 enum ReportReason {
@@ -234,6 +235,7 @@ model User {
   notifications   Notification[]
   blocksGiven     BlockedUser[]  @relation("UserBlocks")
   blocksReceived  BlockedUser[]  @relation("UserBlockedBy")
+  cart            Cart?
 
   @@index([email])
   @@index([username])
@@ -380,12 +382,13 @@ model Listing {
   deletedAt DateTime? // Soft delete
 
   // Relations
-  seller   User            @relation(fields: [sellerId], references: [id])
-  images   ListingImage[]
-  attrs    ListingAttribute[]
-  orders   Order[]
-  offers   Offer[]
-  watchers WatchlistItem[]
+  seller    User            @relation(fields: [sellerId], references: [id])
+  images    ListingImage[]
+  attrs     ListingAttribute[]
+  orders    Order[]
+  offers    Offer[]
+  watchers  WatchlistItem[]
+  cartItems CartItem[]
 
   @@index([sellerId])
   @@index([status])
@@ -490,6 +493,7 @@ model Order {
   listing Listing @relation(fields: [listingId], references: [id])
   review  Review?
   payout  Payout?
+  items   OrderItem[]
 
   @@index([buyerId])
   @@index([sellerId])
@@ -853,5 +857,66 @@ model Report {
   @@index([listingId])
   @@index([status])
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shopping Cart — single-seller constraint, DB-persisted
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Cart {
+  id       String @id @default(cuid())
+  userId   String @unique  // One cart per user
+  sellerId String          // All items must belong to this seller
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime        // 48 hours after last update
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model CartItem {
+  id        String @id @default(cuid())
+  cartId    String
+  listingId String
+
+  // Price snapshot at time of add (NZD cents) — re-validated at checkout
+  priceNzd    Int
+  shippingNzd Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id])
+
+  @@unique([cartId, listingId])  // No duplicate items
+  @@index([cartId])
+  @@index([listingId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Order Items — line items for multi-item orders (cart checkout)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model OrderItem {
+  id        String @id @default(cuid())
+  orderId   String
+  listingId String
+
+  // Price snapshot at time of purchase (NZD cents)
+  priceNzd    Int
+  shippingNzd Int @default(0)
+  title       String  // Denormalised — listing may change/delete
+
+  createdAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([listingId])
 }
 

@@ -77,9 +77,18 @@ const disputeLimiter = () =>
     analytics: true,
   });
 
+/** 20 cart actions per minute per user — prevent cart abuse */
+const cartLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(20, '1 m'),
+    prefix: 'km:rl:cart',
+    analytics: true,
+  });
+
 // ── Rate limit types ──────────────────────────────────────────────────────────
 
-export type RateLimitKey = 'auth' | 'register' | 'message' | 'listing' | 'offer' | 'order' | 'disputes';
+export type RateLimitKey = 'auth' | 'register' | 'message' | 'listing' | 'offer' | 'order' | 'disputes' | 'cart';
 
 export interface RateLimitResult {
   success: boolean;
@@ -121,6 +130,7 @@ export async function rateLimit(
     offer:    offerLimiter,
     order:    orderLimiter,
     disputes: disputeLimiter,
+    cart:     cartLimiter,
   };
 
   const limiter = limiterFactories[type]();
