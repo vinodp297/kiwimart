@@ -616,20 +616,22 @@ export default function SellerDashboardPage() {
           ════════════════════════════════════════════════════════════ */}
           {activeTab === 'listings' && (
             <div role="tabpanel" aria-label="My Listings" className="space-y-3">
-              {/* Header actions */}
-              <div className="flex items-center justify-between">
-                <p className="text-[13px] text-[#9E9A91]">
-                  {listings.length} active listing{listings.length !== 1 ? 's' : ''}
-                </p>
-                <Link href="/sell">
-                  <Button variant="primary" size="sm">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                      <path d="M12 5v14M5 12h14" />
-                    </svg>
-                    New listing
-                  </Button>
-                </Link>
-              </div>
+              {/* Header actions — hidden in empty state to avoid duplicate CTA */}
+              {listings.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] text-[#9E9A91]">
+                    {listings.length} active listing{listings.length !== 1 ? 's' : ''}
+                  </p>
+                  <Link href="/sell">
+                    <Button variant="primary" size="sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      New listing
+                    </Button>
+                  </Link>
+                </div>
+              )}
 
               {listings.length === 0 ? (
                 <div

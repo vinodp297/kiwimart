@@ -113,8 +113,8 @@ function TermsModal({
       className="fixed inset-0 z-50 bg-black/60 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="flex min-h-full items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-2xl my-8">
+      <div className="flex min-h-full items-center justify-center p-4 pt-8">
+      <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-2xl my-4 max-h-[90vh]">
         {/* Header */}
         <div className="bg-[#141414] px-6 py-4 flex items-center justify-between flex-shrink-0">
           <h2 className="font-semibold text-white text-[16px]">

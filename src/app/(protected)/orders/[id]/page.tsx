@@ -41,9 +41,12 @@ function getCourierUrl(trackingNumber: string): string {
 // ── Format a date/time string for timeline display ───────────────────────────
 function fmtDate(iso: string | null): string | null {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString('en-NZ', {
-    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-  });
+  const d = new Date(iso);
+  const day = d.getDate();
+  const month = d.toLocaleDateString('en-NZ', { month: 'short' });
+  const year = d.getFullYear();
+  const time = d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+  return `${day} ${month} ${year}, ${time}`;
 }
 
 // ── Status info messages (Fix 8) ─────────────────────────────────────────────

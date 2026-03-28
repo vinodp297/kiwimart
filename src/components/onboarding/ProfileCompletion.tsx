@@ -46,7 +46,7 @@ export default function ProfileCompletion({
     {
       label: 'Write a short bio',
       done: !!bio && bio.trim().length >= 10,
-      href: '/account/settings',
+      href: '/account/settings#bio',
     },
   ];
 
@@ -56,53 +56,43 @@ export default function ProfileCompletion({
   // Hide widget once 100 % complete
   if (pct === 100) return null;
 
-  const nextStep = steps.find((s) => !s.done);
+  const incompleteSteps = steps.filter((s) => !s.done);
+  const nextStep = incompleteSteps[0];
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-[15px] text-[#141414]">Complete your profile</h3>
-        <span className="text-[13px] font-semibold text-[#D4A843]">{pct}%</span>
+    <div className="bg-white rounded-xl border border-[#E3E0D9] px-4 py-3 flex flex-wrap items-center gap-3">
+      {/* Progress bar — slim inline */}
+      <div className="flex items-center gap-2.5 shrink-0">
+        <div className="w-20 h-1.5 bg-[#F0EDE8] rounded-full overflow-hidden">
+          <div
+            className="h-full bg-[#D4A843] rounded-full transition-all duration-500"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="text-[12px] font-semibold text-[#D4A843]">{pct}%</span>
       </div>
 
-      {/* Progress bar */}
-      <div className="h-2 bg-[#F0EDE8] rounded-full mb-4 overflow-hidden">
-        <div
-          className="h-full bg-[#D4A843] rounded-full transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-
-      {/* Steps list */}
-      <ul className="space-y-2.5 mb-4">
-        {steps.map((step) => (
-          <li key={step.label} className="flex items-center gap-3">
-            <span
-              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[11px] ${
-                step.done
-                  ? 'bg-emerald-100 text-emerald-600'
-                  : 'bg-[#F0EDE8] text-[#C9C5BC]'
-              }`}
-            >
-              {step.done ? '✓' : '○'}
-            </span>
-            <span
-              className={`text-[13px] ${
-                step.done ? 'line-through text-[#9E9A91]' : 'text-[#141414]'
-              }`}
-            >
-              {step.label}
-            </span>
-          </li>
+      {/* Uncompleted items only — inline chips */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {incompleteSteps.map((step) => (
+          <Link
+            key={step.label}
+            href={step.href}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full
+              bg-[#F8F7F4] text-[11.5px] text-[#73706A] hover:text-[#141414]
+              hover:bg-[#F0EDE8] transition-colors whitespace-nowrap"
+          >
+            <span className="w-3.5 h-3.5 rounded-full bg-[#E3E0D9] text-[#9E9A91] flex items-center justify-center text-[8px]">○</span>
+            {step.label}
+          </Link>
         ))}
-      </ul>
+      </div>
 
-      {/* CTA to next incomplete step */}
+      {/* CTA */}
       {nextStep && (
         <Link
           href={nextStep.href}
-          className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#D4A843] hover:text-[#B8912E] transition-colors"
+          className="ml-auto text-[12px] font-semibold text-[#D4A843] hover:text-[#B8912E] transition-colors whitespace-nowrap shrink-0"
         >
           {nextStep.label} →
         </Link>
