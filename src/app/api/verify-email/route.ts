@@ -11,60 +11,65 @@ import { logger } from '@/shared/logger';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const token = request.nextUrl.searchParams.get('token');
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  try {
+    const token = request.nextUrl.searchParams.get('token');
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
 
-  if (!token) {
-    return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
-  }
+    if (!token) {
+      return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
+    }
 
-  // Look up user by token (also check not expired)
-  const user = await db.user.findFirst({
-    where: {
-      emailVerifyToken: token,
-      emailVerifyExpires: { gt: new Date() },
-    },
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      emailVerified: true,
-    },
-  });
+    // Look up user by token (also check not expired)
+    const user = await db.user.findFirst({
+      where: {
+        emailVerifyToken: token,
+        emailVerifyExpires: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        emailVerified: true,
+      },
+    });
 
-  if (!user) {
-    return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
-  }
+    if (!user) {
+      return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
+    }
 
-  if (user.emailVerified) {
-    // Already verified — just send them to login
+    if (user.emailVerified) {
+      // Already verified — just send them to login
+      return NextResponse.redirect(new URL('/login?verified=true', request.url));
+    }
+
+    // Mark email as verified and clear the token
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: new Date(),
+        emailVerifyToken: null,
+        emailVerifyExpires: null,
+      },
+    });
+
+    // Send welcome email (fire-and-forget; don't block the redirect)
+    const resend = getEmailClient();
+    if (resend) {
+      resend.emails
+        .send({
+          from: EMAIL_FROM,
+          to: user.email ?? '',
+          subject: `Welcome to KiwiMart, ${user.displayName}! 🥝`,
+          html: buildWelcomeEmail({ name: user.displayName ?? 'there', appUrl }),
+        })
+        .catch((err) => logger.error('email.welcome.failed', { error: err }));
+    }
+
     return NextResponse.redirect(new URL('/login?verified=true', request.url));
+  } catch (e) {
+    console.error('[verify-email:GET]', e instanceof Error ? e.message : e);
+    return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
   }
-
-  // Mark email as verified and clear the token
-  await db.user.update({
-    where: { id: user.id },
-    data: {
-      emailVerified: new Date(),
-      emailVerifyToken: null,
-      emailVerifyExpires: null,
-    },
-  });
-
-  // Send welcome email (fire-and-forget; don't block the redirect)
-  const resend = getEmailClient();
-  if (resend) {
-    resend.emails
-      .send({
-        from: EMAIL_FROM,
-        to: user.email ?? '',
-        subject: `Welcome to KiwiMart, ${user.displayName}! 🥝`,
-        html: buildWelcomeEmail({ name: user.displayName ?? 'there', appUrl }),
-      })
-      .catch((err) => logger.error('email.welcome.failed', { error: err }));
-  }
-
-  return NextResponse.redirect(new URL('/login?verified=true', request.url));
 }
 
 function buildWelcomeEmail({ name, appUrl }: { name: string; appUrl: string }) {

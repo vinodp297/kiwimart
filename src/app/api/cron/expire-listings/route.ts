@@ -15,17 +15,22 @@ export async function GET(request: Request) {
   const authError = verifyCronSecret(request)
   if (authError) return authError
 
-  logger.info('cron.expire_listings.triggered')
+  try {
+    logger.info('cron.expire_listings.triggered')
 
-  const [listingResult, offerResult] = await Promise.all([
-    expireListings(),
-    releaseExpiredOfferReservations(),
-  ])
+    const [listingResult, offerResult] = await Promise.all([
+      expireListings(),
+      releaseExpiredOfferReservations(),
+    ])
 
-  return NextResponse.json({
-    success: true,
-    listings: listingResult,
-    offers: offerResult,
-    timestamp: new Date().toISOString(),
-  })
+    return NextResponse.json({
+      success: true,
+      listings: listingResult,
+      offers: offerResult,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (e) {
+    console.error('[cron/expire-listings:GET]', e instanceof Error ? e.message : e)
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+  }
 }

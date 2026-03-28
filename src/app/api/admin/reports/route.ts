@@ -11,13 +11,18 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 403 });
   }
 
-  const reports = await db.report.findMany({
-    where: { status: 'OPEN' },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      reporter: { select: { username: true } },
-    },
-  });
+  try {
+    const reports = await db.report.findMany({
+      where: { status: 'OPEN' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        reporter: { select: { username: true } },
+      },
+    });
 
-  return NextResponse.json({ reports });
+    return NextResponse.json({ reports });
+  } catch (e) {
+    console.error('[admin/reports:GET]', e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+  }
 }
