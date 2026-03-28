@@ -1,29 +1,42 @@
-'use client';
+"use client";
 // src/app/(public)/checkout/[listingId]/CheckoutForm.tsx
 // ─── Checkout Form with Stripe Elements ─────────────────────────────────────
 // Handles payment form, shipping address, and order creation.
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { loadStripe } from '@stripe/stripe-js';
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
   PaymentElement,
   useStripe,
   useElements,
-} from '@stripe/react-stripe-js';
-import { Button, Input, Select, Alert } from '@/components/ui/primitives';
-import { formatPrice } from '@/lib/utils';
-import { createOrder } from '@/server/actions/orders';
+} from "@stripe/react-stripe-js";
+import { Button, Input, Select, Alert } from "@/components/ui/primitives";
+import { formatPrice } from "@/lib/utils";
+import { createOrder } from "@/server/actions/orders";
 
 const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
 );
 
 const NZ_REGIONS = [
-  'Auckland', 'Wellington', 'Canterbury', 'Waikato', 'Bay of Plenty',
-  'Otago', "Hawke's Bay", 'Manawatū-Whanganui', 'Northland', 'Tasman',
-  'Nelson', 'Marlborough', 'Southland', 'Taranaki', 'Gisborne', 'West Coast',
+  "Auckland",
+  "Wellington",
+  "Canterbury",
+  "Waikato",
+  "Bay of Plenty",
+  "Otago",
+  "Hawke's Bay",
+  "Manawatū-Whanganui",
+  "Northland",
+  "Tasman",
+  "Nelson",
+  "Marlborough",
+  "Southland",
+  "Taranaki",
+  "Gisborne",
+  "West Coast",
 ] as const;
 
 interface CheckoutListing {
@@ -31,7 +44,7 @@ interface CheckoutListing {
   title: string;
   priceNzd: number;
   shippingNzd: number;
-  shippingOption: 'pickup' | 'courier' | 'both';
+  shippingOption: "pickup" | "courier" | "both";
   condition: string;
   region: string;
   suburb: string;
@@ -53,25 +66,31 @@ export default function CheckoutForm({ listing }: Props) {
   // Stable idempotency key — generated once per checkout mount, never changes.
   // Prevents duplicate orders from double-clicks or retried submissions.
   const idempotencyKey = useRef(
-    `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
   );
 
   // Shipping address state
-  const [name, setName] = useState('');
-  const [line1, setLine1] = useState('');
-  const [line2, setLine2] = useState('');
-  const [city, setCity] = useState('');
-  const [region, setRegion] = useState('');
-  const [postcode, setPostcode] = useState('');
+  const [name, setName] = useState("");
+  const [line1, setLine1] = useState("");
+  const [line2, setLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [region, setRegion] = useState("");
+  const [postcode, setPostcode] = useState("");
 
-  const isPickup = listing.shippingOption === 'pickup';
+  const isPickup = listing.shippingOption === "pickup";
   const totalNzd = listing.priceNzd + listing.shippingNzd;
 
   async function handleCreateOrder() {
     // Validate shipping address for non-pickup orders
     if (!isPickup) {
-      if (!name.trim() || !line1.trim() || !city.trim() || !region || !postcode.trim()) {
-        setError('Please fill in all shipping address fields.');
+      if (
+        !name.trim() ||
+        !line1.trim() ||
+        !city.trim() ||
+        !region ||
+        !postcode.trim()
+      ) {
+        setError("Please fill in all shipping address fields.");
         return;
       }
     }
@@ -111,7 +130,6 @@ export default function CheckoutForm({ listing }: Props) {
     if (isPickup && !clientSecret && !loading) {
       handleCreateOrder();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (clientSecret) {
@@ -121,12 +139,12 @@ export default function CheckoutForm({ listing }: Props) {
         options={{
           clientSecret,
           appearance: {
-            theme: 'stripe',
+            theme: "stripe",
             variables: {
-              colorPrimary: '#D4A843',
-              colorBackground: '#ffffff',
-              fontFamily: 'DM Sans, sans-serif',
-              borderRadius: '12px',
+              colorPrimary: "#D4A843",
+              colorBackground: "#ffffff",
+              fontFamily: "DM Sans, sans-serif",
+              borderRadius: "12px",
             },
           },
         }}
@@ -187,7 +205,9 @@ export default function CheckoutForm({ listing }: Props) {
                 >
                   <option value="">Select region</option>
                   {NZ_REGIONS.map((r) => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
                   ))}
                 </Select>
               </div>
@@ -214,9 +234,7 @@ export default function CheckoutForm({ listing }: Props) {
           </div>
         )}
 
-        {error && (
-          <Alert variant="error">{error}</Alert>
-        )}
+        {error && <Alert variant="error">{error}</Alert>}
 
         {!isPickup && (
           <Button
@@ -267,7 +285,7 @@ function PaymentStep({
 
     const { error: submitError } = await elements.submit();
     if (submitError) {
-      setError(submitError.message ?? 'Payment submission failed.');
+      setError(submitError.message ?? "Payment submission failed.");
       setProcessing(false);
       return;
     }
@@ -282,9 +300,10 @@ function PaymentStep({
 
     if (confirmError) {
       setError(
-        confirmError.type === 'card_error' || confirmError.type === 'validation_error'
-          ? confirmError.message ?? 'Payment failed. Please try again.'
-          : 'Something went wrong. Please try again.'
+        confirmError.type === "card_error" ||
+          confirmError.type === "validation_error"
+          ? (confirmError.message ?? "Payment failed. Please try again.")
+          : "Something went wrong. Please try again.",
       );
       setProcessing(false);
     }
@@ -301,13 +320,15 @@ function PaymentStep({
             </h2>
             <PaymentElement
               options={{
-                layout: 'tabs',
+                layout: "tabs",
               }}
             />
           </div>
 
           {error && (
-            <Alert variant="error" className="mt-4">{error}</Alert>
+            <Alert variant="error" className="mt-4">
+              {error}
+            </Alert>
           )}
 
           <div className="mt-4 space-y-3">
@@ -325,15 +346,19 @@ function PaymentStep({
             <div className="flex items-start gap-2.5 px-1">
               <svg
                 className="shrink-0 mt-0.5 text-[#D4A843]"
-                width="13" height="13" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2"
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
               >
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 <path d="m9 12 2 2 4-4" />
               </svg>
               <p className="text-[11.5px] text-[#73706A] leading-relaxed">
-                Your payment is held securely in escrow until you confirm delivery.
-                Protected by KiwiMart&apos;s Buyer Protection.
+                Your payment is held securely in escrow until you confirm
+                delivery. Protected by KiwiMart&apos;s Buyer Protection.
               </p>
             </div>
           </div>
@@ -364,7 +389,6 @@ function OrderSummary({
 
       {/* Item */}
       <div className="flex items-start gap-3 mb-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={listing.thumbnailUrl}
           alt={listing.title}
@@ -384,15 +408,17 @@ function OrderSummary({
       <div className="space-y-2 py-3 border-t border-[#F0EDE8]">
         <div className="flex justify-between text-[13px]">
           <span className="text-[#73706A]">Item price</span>
-          <span className="text-[#141414] font-medium">{formatPrice(listing.priceNzd / 100)}</span>
+          <span className="text-[#141414] font-medium">
+            {formatPrice(listing.priceNzd / 100)}
+          </span>
         </div>
         <div className="flex justify-between text-[13px]">
           <span className="text-[#73706A]">Shipping</span>
           <span className="text-[#141414] font-medium">
             {listing.shippingNzd === 0
-              ? listing.shippingOption === 'pickup'
-                ? 'Pickup'
-                : 'Free'
+              ? listing.shippingOption === "pickup"
+                ? "Pickup"
+                : "Free"
               : formatPrice(listing.shippingNzd / 100)}
           </span>
         </div>
@@ -403,7 +429,9 @@ function OrderSummary({
         <span className="text-[14px] font-semibold text-[#141414]">Total</span>
         <span className="font-[family-name:var(--font-playfair)] text-[1.25rem] font-bold text-[#141414]">
           {formatPrice(totalNzd / 100)}
-          <span className="text-[12px] font-normal text-[#9E9A91] ml-1">NZD</span>
+          <span className="text-[12px] font-normal text-[#9E9A91] ml-1">
+            NZD
+          </span>
         </span>
       </div>
 
@@ -412,8 +440,12 @@ function OrderSummary({
         <div className="flex items-start gap-2">
           <svg
             className="shrink-0 mt-0.5 text-[#D4A843]"
-            width="12" height="12" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
           >
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>

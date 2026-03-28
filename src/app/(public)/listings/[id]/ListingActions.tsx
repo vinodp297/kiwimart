@@ -1,16 +1,21 @@
-'use client';
+"use client";
 // src/app/(public)/listings/[id]/ListingActions.tsx
 // Price + CTA panel. Handles: Buy Now, Make Offer modal, watchlist toggle, share.
 // Sprint 3: calls will be replaced with server actions (createOrder, createOffer,
 // toggleWatch) — component API stays identical.
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import type { ListingDetail } from '@/types';
-import { formatPrice } from '@/lib/utils';
-import { Button, ConditionBadge, Alert, Input } from '@/components/ui/primitives';
-import { addToCart } from '@/server/actions/cart';
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import type { ListingDetail } from "@/types";
+import { formatPrice } from "@/lib/utils";
+import {
+  Button,
+  ConditionBadge,
+  Alert,
+  Input,
+} from "@/components/ui/primitives";
+import { addToCart } from "@/server/actions/cart";
 
 interface Props {
   listing: ListingDetail;
@@ -19,34 +24,39 @@ interface Props {
 export default function ListingActions({ listing }: Props) {
   const [watched, setWatched] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
-  const [offerAmount, setOfferAmount] = useState('');
-  const [offerNote, setOfferNote] = useState('');
+  const [offerAmount, setOfferAmount] = useState("");
+  const [offerNote, setOfferNote] = useState("");
   const [offerSubmitted, setOfferSubmitted] = useState(false);
-  const [offerError, setOfferError] = useState('');
+  const [offerError, setOfferError] = useState("");
   const [shareTooltip, setShareTooltip] = useState(false);
   const [cartLoading, setCartLoading] = useState(false);
-  const [cartMessage, setCartMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [cartMessage, setCartMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const router = useRouter();
 
-  const isSold = listing.status === 'sold';
+  const isSold = listing.status === "sold";
   const shipping = listing.shippingPrice;
 
   function handleOfferSubmit(e: React.FormEvent) {
     e.preventDefault();
     const amount = Number(offerAmount);
     if (!amount || amount <= 0) {
-      setOfferError('Please enter a valid offer amount.');
+      setOfferError("Please enter a valid offer amount.");
       return;
     }
     if (amount >= listing.price) {
-      setOfferError('Your offer must be less than the asking price. Use "Buy Now" instead.');
+      setOfferError(
+        'Your offer must be less than the asking price. Use "Buy Now" instead.',
+      );
       return;
     }
     if (amount < listing.price * 0.5) {
-      setOfferError('Offers below 50% of the asking price are not accepted.');
+      setOfferError("Offers below 50% of the asking price are not accepted.");
       return;
     }
-    setOfferError('');
+    setOfferError("");
     // Sprint 3: await createOffer({ listingId: listing.id, amount, note: offerNote })
     setOfferSubmitted(true);
   }
@@ -68,19 +78,22 @@ export default function ListingActions({ listing }: Props) {
     try {
       const result = await addToCart({ listingId: listing.id });
       if (result.success) {
-        setCartMessage({ type: 'success', text: 'Added to cart!' });
+        setCartMessage({ type: "success", text: "Added to cart!" });
         // Refresh NavBar cart count
         router.refresh();
-      } else if (result.error === 'SELLER_MISMATCH') {
+      } else if (result.error === "SELLER_MISMATCH") {
         setCartMessage({
-          type: 'error',
-          text: 'Your cart contains items from a different seller. Clear your cart first or checkout the existing items.',
+          type: "error",
+          text: "Your cart contains items from a different seller. Clear your cart first or checkout the existing items.",
         });
       } else {
-        setCartMessage({ type: 'error', text: result.error });
+        setCartMessage({ type: "error", text: result.error });
       }
     } catch {
-      setCartMessage({ type: 'error', text: 'Something went wrong. Please try again.' });
+      setCartMessage({
+        type: "error",
+        text: "Something went wrong. Please try again.",
+      });
     } finally {
       setCartLoading(false);
     }
@@ -97,7 +110,9 @@ export default function ListingActions({ listing }: Props) {
                 font-bold text-[#141414] leading-none tracking-tight"
             >
               {formatPrice(listing.price)}
-              <span className="text-[14px] font-normal text-[#9E9A91] ml-1.5">NZD</span>
+              <span className="text-[14px] font-normal text-[#9E9A91] ml-1.5">
+                NZD
+              </span>
             </p>
             {listing.gstIncluded && (
               <p className="text-[11px] text-[#9E9A91] mt-1">GST included</p>
@@ -108,13 +123,28 @@ export default function ListingActions({ listing }: Props) {
 
         {/* Shipping info */}
         <div className="flex items-center gap-2 mb-4 text-[12.5px] text-[#73706A]">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <rect x="1" y="3" width="15" height="13" />
+            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+            <circle cx="5.5" cy="18.5" r="2.5" />
+            <circle cx="18.5" cy="18.5" r="2.5" />
           </svg>
-          {listing.shippingOption === 'pickup' ? (
-            <span>Pickup only · {listing.pickupAddress ?? `${listing.suburb}, ${listing.region}`}</span>
+          {listing.shippingOption === "pickup" ? (
+            <span>
+              Pickup only ·{" "}
+              {listing.pickupAddress ?? `${listing.suburb}, ${listing.region}`}
+            </span>
           ) : shipping === 0 || shipping === null ? (
-            <span className="text-emerald-600 font-semibold">Free shipping</span>
+            <span className="text-emerald-600 font-semibold">
+              Free shipping
+            </span>
           ) : (
             <span>+{formatPrice(shipping)} shipping</span>
           )}
@@ -122,16 +152,26 @@ export default function ListingActions({ listing }: Props) {
 
         {/* Location */}
         <div className="flex items-center gap-2 mb-5 text-[12.5px] text-[#9E9A91]">
-          <svg width="12" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+          <svg
+            width="12"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+            <circle cx="12" cy="10" r="3" />
           </svg>
           {listing.suburb}, {listing.region}
         </div>
 
         {isSold ? (
           <div className="space-y-3">
-            <div className="w-full py-3 rounded-xl bg-[#F8F7F4] border border-[#E3E0D9]
-              text-center text-[13.5px] font-semibold text-[#9E9A91]">
+            <div
+              className="w-full py-3 rounded-xl bg-[#F8F7F4] border border-[#E3E0D9]
+              text-center text-[13.5px] font-semibold text-[#9E9A91]"
+            >
               This item has been sold
             </div>
             <Link href={`/search?category=${listing.categoryName}`}>
@@ -143,15 +183,21 @@ export default function ListingActions({ listing }: Props) {
         ) : (
           <div className="flex flex-col gap-3">
             {/* Buyer Protection Badge */}
-            <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200
-              rounded-xl px-4 py-2.5">
+            <div
+              className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200
+              rounded-xl px-4 py-2.5"
+            >
               <svg
                 className="shrink-0 text-emerald-600"
-                width="18" height="18" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
               >
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                <path d="m9 12 2 2 4-4"/>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <path d="m9 12 2 2 4-4" />
               </svg>
               <div>
                 <p className="text-[12.5px] font-bold text-emerald-800 leading-tight">
@@ -170,10 +216,17 @@ export default function ListingActions({ listing }: Props) {
                   text-[#141414] font-semibold text-[15px] rounded-xl flex items-center
                   justify-center gap-2 transition-colors"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
-                  <line x1="3" y1="6" x2="21" y2="6"/>
-                  <path d="M16 10a4 4 0 0 1-8 0"/>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <path d="M16 10a4 4 0 0 1-8 0" />
                 </svg>
                 Buy now — {formatPrice(listing.price)}
               </button>
@@ -188,17 +241,26 @@ export default function ListingActions({ listing }: Props) {
                 rounded-xl flex items-center justify-center gap-2 transition-colors
                 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <circle cx="9" cy="21" r="1" />
                 <circle cx="20" cy="21" r="1" />
                 <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
               </svg>
-              {cartLoading ? 'Adding...' : 'Add to cart'}
+              {cartLoading ? "Adding..." : "Add to cart"}
             </button>
 
             {/* Cart feedback message */}
             {cartMessage && (
-              <Alert variant={cartMessage.type === 'success' ? 'success' : 'error'}>
+              <Alert
+                variant={cartMessage.type === "success" ? "success" : "error"}
+              >
                 {cartMessage.text}
               </Alert>
             )}
@@ -225,14 +287,16 @@ export default function ListingActions({ listing }: Props) {
                     hover:text-[#141414] transition-colors text-[14px] font-medium"
                 >
                   <svg
-                    width="16" height="16" viewBox="0 0 24 24"
-                    fill={watched ? '#D4A843' : 'none'}
-                    stroke={watched ? '#D4A843' : 'currentColor'}
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill={watched ? "#D4A843" : "none"}
+                    stroke={watched ? "#D4A843" : "currentColor"}
                     strokeWidth="2"
                   >
-                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                   </svg>
-                  {watched ? 'Watching' : 'Watch'}
+                  {watched ? "Watching" : "Watch"}
                 </button>
 
                 <div className="relative">
@@ -242,17 +306,28 @@ export default function ListingActions({ listing }: Props) {
                     className="flex items-center gap-2 px-6 py-3 text-[#73706A]
                       hover:text-[#141414] transition-colors text-[14px] font-medium"
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <circle cx="18" cy="5" r="3" />
+                      <circle cx="6" cy="12" r="3" />
+                      <circle cx="18" cy="19" r="3" />
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                     </svg>
                     Share
                   </button>
                   {shareTooltip && (
-                    <div className="absolute -top-9 left-1/2 -translate-x-1/2
+                    <div
+                      className="absolute -top-9 left-1/2 -translate-x-1/2
                       bg-[#141414] text-white text-[11px] px-2.5 py-1.5 rounded-lg
-                      whitespace-nowrap shadow-lg">
+                      whitespace-nowrap shadow-lg"
+                    >
                       Link copied!
                     </div>
                   )}
@@ -261,7 +336,6 @@ export default function ListingActions({ listing }: Props) {
             </div>
           </div>
         )}
-
       </div>
 
       {/* ── Make Offer Modal ───────────────────────────────────────────────── */}
@@ -272,7 +346,9 @@ export default function ListingActions({ listing }: Props) {
           role="dialog"
           aria-modal="true"
           aria-labelledby="offer-modal-title"
-          onClick={(e) => { if (e.target === e.currentTarget) setOfferOpen(false); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setOfferOpen(false);
+          }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             {/* Header */}
@@ -285,13 +361,24 @@ export default function ListingActions({ listing }: Props) {
                 Make an offer
               </h2>
               <button
-                onClick={() => { setOfferOpen(false); setOfferSubmitted(false); setOfferError(''); }}
+                onClick={() => {
+                  setOfferOpen(false);
+                  setOfferSubmitted(false);
+                  setOfferError("");
+                }}
                 aria-label="Close"
                 className="w-8 h-8 rounded-full bg-[#F8F7F4] flex items-center
                   justify-center hover:bg-[#EFEDE8] transition-colors"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M18 6 6 18M6 6l12 12"/>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                >
+                  <path d="M18 6 6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
@@ -303,22 +390,37 @@ export default function ListingActions({ listing }: Props) {
                     className="w-14 h-14 rounded-full bg-emerald-50 flex items-center
                       justify-center mx-auto mb-4"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
-                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                      <polyline points="22 4 12 14.01 9 11.01"/>
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#16a34a"
+                      strokeWidth="2.5"
+                    >
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
                     </svg>
                   </div>
-                  <h3 className="font-semibold text-[#141414] mb-1.5">Offer sent!</h3>
+                  <h3 className="font-semibold text-[#141414] mb-1.5">
+                    Offer sent!
+                  </h3>
                   <p className="text-[13px] text-[#73706A] max-w-xs mx-auto">
-                    Your offer of{' '}
-                    <strong className="text-[#141414]">{formatPrice(Number(offerAmount))}</strong> has
-                    been sent to the seller. You&apos;ll be notified when they respond.
+                    Your offer of{" "}
+                    <strong className="text-[#141414]">
+                      {formatPrice(Number(offerAmount))}
+                    </strong>{" "}
+                    has been sent to the seller. You&apos;ll be notified when
+                    they respond.
                   </p>
                   <Button
                     variant="secondary"
                     size="md"
                     className="mt-5"
-                    onClick={() => { setOfferOpen(false); setOfferSubmitted(false); }}
+                    onClick={() => {
+                      setOfferOpen(false);
+                      setOfferSubmitted(false);
+                    }}
                   >
                     Done
                   </Button>
@@ -327,7 +429,6 @@ export default function ListingActions({ listing }: Props) {
                 <form onSubmit={handleOfferSubmit} noValidate>
                   {/* Listing summary */}
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-[#F8F7F4] border border-[#E3E0D9] mb-5">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={listing.thumbnailUrl}
                       alt={listing.title}
@@ -338,7 +439,8 @@ export default function ListingActions({ listing }: Props) {
                         {listing.title}
                       </p>
                       <p className="text-[12px] text-[#9E9A91]">
-                        Asking price: <strong>{formatPrice(listing.price)}</strong>
+                        Asking price:{" "}
+                        <strong>{formatPrice(listing.price)}</strong>
                       </p>
                     </div>
                   </div>
@@ -348,7 +450,10 @@ export default function ListingActions({ listing }: Props) {
                       label="Your offer"
                       type="number"
                       value={offerAmount}
-                      onChange={(e) => { setOfferAmount(e.target.value); setOfferError(''); }}
+                      onChange={(e) => {
+                        setOfferAmount(e.target.value);
+                        setOfferError("");
+                      }}
                       placeholder={Math.round(listing.price * 0.9).toString()}
                       min={1}
                       max={listing.price - 1}
@@ -360,8 +465,10 @@ export default function ListingActions({ listing }: Props) {
 
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[12.5px] font-semibold text-[#141414]">
-                        Note to seller{' '}
-                        <span className="text-[#9E9A91] font-normal">(optional)</span>
+                        Note to seller{" "}
+                        <span className="text-[#9E9A91] font-normal">
+                          (optional)
+                        </span>
                       </label>
                       <textarea
                         value={offerNote}
@@ -377,8 +484,9 @@ export default function ListingActions({ listing }: Props) {
                     </div>
 
                     <Alert variant="info">
-                      Your offer is binding if accepted. You&apos;ll have 24 hours to complete
-                      payment via KiwiMart&apos;s secure escrow.
+                      Your offer is binding if accepted. You&apos;ll have 24
+                      hours to complete payment via KiwiMart&apos;s secure
+                      escrow.
                     </Alert>
 
                     <Button type="submit" variant="gold" fullWidth size="md">
@@ -394,4 +502,3 @@ export default function ListingActions({ listing }: Props) {
     </>
   );
 }
-

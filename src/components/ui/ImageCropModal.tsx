@@ -1,4 +1,4 @@
-'use client';
+"use client";
 // src/components/ui/ImageCropModal.tsx
 // ─── Image Crop Modal ─────────────────────────────────────────────────────────
 // Lightweight canvas-based crop editor — no external dependencies.
@@ -11,9 +11,9 @@
 //   • Scroll wheel / slider to zoom (1× – 3×)
 //   • Touch drag supported for mobile
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from "react";
 
-export type CropMode = 'avatar' | 'cover';
+export type CropMode = "avatar" | "cover";
 
 interface Props {
   file: File;
@@ -25,23 +25,33 @@ interface Props {
 
 // Preview container dimensions and canvas output size for each mode
 const CONFIG = {
-  avatar: { cW: 320, cH: 320, outW: 400, outH: 400, label: 'Profile photo' },
-  cover:  { cW: 560, cH: 186, outW: 1200, outH: 400, label: 'Cover image' },
+  avatar: { cW: 320, cH: 320, outW: 400, outH: 400, label: "Profile photo" },
+  cover: { cW: 560, cH: 186, outW: 1200, outH: 400, label: "Cover image" },
 };
 
 export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
   const { cW, cH, outW, outH, label } = CONFIG[mode];
 
-  const [imgSrc, setImgSrc]         = useState('');
-  const [natW,   setNatW]           = useState(1);
-  const [natH,   setNatH]           = useState(1);
-  const [zoom,   setZoom]           = useState(1);
-  const [offset, setOffset]         = useState({ x: 0, y: 0 });
-  const [imgLoaded, setImgLoaded]   = useState(false);
+  const [imgSrc, setImgSrc] = useState("");
+  const [natW, setNatW] = useState(1);
+  const [natH, setNatH] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [imgLoaded, setImgLoaded] = useState(false);
 
-  const imgRef       = useRef<HTMLImageElement | null>(null);
-  const dragRef      = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
-  const touchRef     = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const dragRef = useRef<{
+    sx: number;
+    sy: number;
+    ox: number;
+    oy: number;
+  } | null>(null);
+  const touchRef = useRef<{
+    sx: number;
+    sy: number;
+    ox: number;
+    oy: number;
+  } | null>(null);
 
   // Create an object URL for the chosen file
   useEffect(() => {
@@ -64,11 +74,11 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
   /** Clamp pan offset so no white space appears at the edges */
   const clamp = useCallback(
     (ox: number, oy: number, z: number, nw: number, nh: number) => {
-      const bs   = baseScale(nw, nh);
+      const bs = baseScale(nw, nh);
       const dispW = nw * bs * z;
       const dispH = nh * bs * z;
-      const maxX  = Math.max(0, (dispW - cW) / 2);
-      const maxY  = Math.max(0, (dispH - cH) / 2);
+      const maxX = Math.max(0, (dispW - cW) / 2);
+      const maxY = Math.max(0, (dispH - cH) / 2);
       return {
         x: Math.max(-maxX, Math.min(maxX, ox)),
         y: Math.max(-maxY, Math.min(maxY, oy)),
@@ -81,26 +91,35 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
 
   const onMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: offset.x, oy: offset.y };
+    dragRef.current = {
+      sx: e.clientX,
+      sy: e.clientY,
+      ox: offset.x,
+      oy: offset.y,
+    };
   };
 
   const onMouseMove = useCallback(
     (e: MouseEvent) => {
       if (!dragRef.current) return;
       const { sx, sy, ox, oy } = dragRef.current;
-      setOffset(clamp(ox + (e.clientX - sx), oy + (e.clientY - sy), zoom, natW, natH));
+      setOffset(
+        clamp(ox + (e.clientX - sx), oy + (e.clientY - sy), zoom, natW, natH),
+      );
     },
     [zoom, natW, natH, clamp],
   );
 
-  const onMouseUp = useCallback(() => { dragRef.current = null; }, []);
+  const onMouseUp = useCallback(() => {
+    dragRef.current = null;
+  }, []);
 
   useEffect(() => {
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup',   onMouseUp);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup',   onMouseUp);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
     };
   }, [onMouseMove, onMouseUp]);
 
@@ -108,17 +127,26 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
 
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
-    touchRef.current = { sx: t.clientX, sy: t.clientY, ox: offset.x, oy: offset.y };
+    touchRef.current = {
+      sx: t.clientX,
+      sy: t.clientY,
+      ox: offset.x,
+      oy: offset.y,
+    };
   };
 
   const onTouchMove = (e: React.TouchEvent) => {
     if (!touchRef.current) return;
     const t = e.touches[0];
     const { sx, sy, ox, oy } = touchRef.current;
-    setOffset(clamp(ox + (t.clientX - sx), oy + (t.clientY - sy), zoom, natW, natH));
+    setOffset(
+      clamp(ox + (t.clientX - sx), oy + (t.clientY - sy), zoom, natW, natH),
+    );
   };
 
-  const onTouchEnd = () => { touchRef.current = null; };
+  const onTouchEnd = () => {
+    touchRef.current = null;
+  };
 
   // ── Scroll-to-zoom ───────────────────────────────────────────────────────────
 
@@ -144,52 +172,57 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
     const img = imgRef.current;
     if (!img || !natW || !natH) return;
 
-    const bs    = baseScale(natW, natH);
+    const bs = baseScale(natW, natH);
     const dispW = natW * bs * zoom;
     const dispH = natH * bs * zoom;
 
     // Top-left of the displayed image inside the preview container
     const imgLeft = cW / 2 + offset.x - dispW / 2;
-    const imgTop  = cH / 2 + offset.y - dispH / 2;
+    const imgTop = cH / 2 + offset.y - dispH / 2;
 
     // Corresponding source rectangle in natural-image coordinates
     const scaleX = natW / dispW;
     const scaleY = natH / dispH;
-    const srcX   = -imgLeft * scaleX;
-    const srcY   = -imgTop  * scaleY;
-    const srcW   = cW * scaleX;
-    const srcH   = cH * scaleY;
+    const srcX = -imgLeft * scaleX;
+    const srcY = -imgTop * scaleY;
+    const srcW = cW * scaleX;
+    const srcH = cH * scaleY;
 
-    const canvas = document.createElement('canvas');
-    canvas.width  = outW;
+    const canvas = document.createElement("canvas");
+    canvas.width = outW;
     canvas.height = outH;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
     canvas.toBlob(
-      (blob) => { if (blob) onAccept(blob); },
-      'image/jpeg',
+      (blob) => {
+        if (blob) onAccept(blob);
+      },
+      "image/jpeg",
       0.92,
     );
   };
 
   // ── Computed display values ───────────────────────────────────────────────────
 
-  const bs    = baseScale(natW, natH);
+  const bs = baseScale(natW, natH);
   const dispW = natW * bs * zoom;
   const dispH = natH * bs * zoom;
   const imgLeft = cW / 2 + offset.x - dispW / 2;
-  const imgTop  = cH / 2 + offset.y - dispH / 2;
+  const imgTop = cH / 2 + offset.y - dispH / 2;
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div
       className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
-      <div className="bg-white rounded-2xl w-full overflow-hidden shadow-2xl"
+      <div
+        className="bg-white rounded-2xl w-full overflow-hidden shadow-2xl"
         style={{ maxWidth: Math.max(cW + 40, 400) }}
       >
         {/* Header */}
@@ -203,9 +236,15 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
               text-[#9E9A91] hover:text-[#141414] hover:bg-[#F2EFE8] transition-colors"
             aria-label="Close"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" strokeWidth="2.5">
-              <path d="M18 6L6 18M6 6l12 12"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -218,9 +257,9 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
             style={{
               width: cW,
               height: cH,
-              borderRadius: mode === 'avatar' ? '50%' : '10px',
-              outline: '3px solid #D4A843',
-              outlineOffset: '2px',
+              borderRadius: mode === "avatar" ? "50%" : "10px",
+              outline: "3px solid #D4A843",
+              outlineOffset: "2px",
               flexShrink: 0,
             }}
             onMouseDown={onMouseDown}
@@ -235,22 +274,21 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
             )}
 
             {imgSrc && (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 ref={imgRef}
                 src={imgSrc}
                 alt="Crop preview"
                 draggable={false}
                 style={{
-                  position: 'absolute',
-                  width:  dispW,
+                  position: "absolute",
+                  width: dispW,
                   height: dispH,
-                  left:   imgLeft,
-                  top:    imgTop,
-                  userSelect: 'none',
-                  pointerEvents: 'none',
+                  left: imgLeft,
+                  top: imgTop,
+                  userSelect: "none",
+                  pointerEvents: "none",
                   opacity: imgLoaded ? 1 : 0,
-                  transition: 'opacity 0.2s',
+                  transition: "opacity 0.2s",
                 }}
                 onLoad={(e) => {
                   const el = e.currentTarget;
@@ -259,7 +297,13 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
                   setImgLoaded(true);
                   // Re-clamp after we have real dimensions
                   setOffset((prev) =>
-                    clamp(prev.x, prev.y, zoom, el.naturalWidth, el.naturalHeight)
+                    clamp(
+                      prev.x,
+                      prev.y,
+                      zoom,
+                      el.naturalWidth,
+                      el.naturalHeight,
+                    ),
                   );
                 }}
               />
@@ -267,12 +311,21 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
           </div>
 
           {/* Zoom slider */}
-          <div className="flex items-center gap-3 w-full" style={{ maxWidth: cW }}>
+          <div
+            className="flex items-center gap-3 w-full"
+            style={{ maxWidth: cW }}
+          >
             {/* Minus icon */}
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="#9E9A91" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35M8 11h6"/>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#9E9A91"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35M8 11h6" />
             </svg>
             <input
               type="range"
@@ -285,10 +338,16 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
               aria-label="Zoom"
             />
             {/* Plus icon */}
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-              stroke="#9E9A91" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.35-4.35M8 11h6M11 8v6"/>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#9E9A91"
+              strokeWidth="2"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35M8 11h6M11 8v6" />
             </svg>
           </div>
 

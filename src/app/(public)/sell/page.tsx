@@ -1,4 +1,4 @@
-'use client';
+"use client";
 // src/app/(public)/sell/page.tsx  (Sprint 4 — real R2 uploads)
 // ─── Create Listing — 4-Step Wizard ──────────────────────────────────────────
 // Step 1: Photos   Step 2: Details   Step 3: Pricing   Step 4: Shipping
@@ -9,36 +9,66 @@
 //  - Submission → createListing() server action (auth-guarded, Zod validated)
 //  - User must be authenticated (proxy redirects to /login?from=/sell)
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import { Button, Input, Textarea, Select, Alert } from '@/components/ui/primitives';
-import CATEGORIES from '@/data/categories';
-import { requestImageUpload, confirmImageUpload } from '@/server/actions/images';
-import { createListing } from '@/server/actions/listings';
-import type { Condition, ShippingOption, NZRegion } from '@/types';
+import { useState, useRef, useCallback, useEffect } from "react";
+import Link from "next/link";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import {
+  Button,
+  Input,
+  Textarea,
+  Select,
+  Alert,
+} from "@/components/ui/primitives";
+import CATEGORIES from "@/data/categories";
+import {
+  requestImageUpload,
+  confirmImageUpload,
+} from "@/server/actions/images";
+import { createListing } from "@/server/actions/listings";
+import type { Condition, ShippingOption, NZRegion } from "@/types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CONDITIONS: { value: Condition; label: string; hint: string }[] = [
-  { value: 'new',       label: 'Brand New',  hint: 'Unused, in original packaging.' },
-  { value: 'like-new',  label: 'Like New',   hint: 'Used briefly, no visible wear.' },
-  { value: 'good',      label: 'Good',       hint: 'Used, minor wear, fully functional.' },
-  { value: 'fair',      label: 'Fair',       hint: 'Visible wear, works as described.' },
-  { value: 'parts',     label: 'Parts Only', hint: 'Non-functional, sold for parts.' },
+  { value: "new", label: "Brand New", hint: "Unused, in original packaging." },
+  {
+    value: "like-new",
+    label: "Like New",
+    hint: "Used briefly, no visible wear.",
+  },
+  { value: "good", label: "Good", hint: "Used, minor wear, fully functional." },
+  { value: "fair", label: "Fair", hint: "Visible wear, works as described." },
+  {
+    value: "parts",
+    label: "Parts Only",
+    hint: "Non-functional, sold for parts.",
+  },
 ];
 
 const NZ_REGIONS: NZRegion[] = [
-  'Auckland','Wellington','Canterbury','Waikato','Bay of Plenty',
-  'Otago',"Hawke's Bay",'Manawatū-Whanganui','Northland','Tasman',
-  'Nelson','Marlborough','Southland','Taranaki','Gisborne','West Coast',
+  "Auckland",
+  "Wellington",
+  "Canterbury",
+  "Waikato",
+  "Bay of Plenty",
+  "Otago",
+  "Hawke's Bay",
+  "Manawatū-Whanganui",
+  "Northland",
+  "Tasman",
+  "Nelson",
+  "Marlborough",
+  "Southland",
+  "Taranaki",
+  "Gisborne",
+  "West Coast",
 ];
 
 const STEPS = [
-  { number: 1, label: 'Photos' },
-  { number: 2, label: 'Details' },
-  { number: 3, label: 'Pricing' },
-  { number: 4, label: 'Shipping' },
+  { number: 1, label: "Photos" },
+  { number: 2, label: "Details" },
+  { number: 3, label: "Pricing" },
+  { number: 4, label: "Shipping" },
 ];
 
 // ── Image preview type ────────────────────────────────────────────────────────
@@ -71,7 +101,7 @@ export default function SellPage() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    fetch('/api/seller/status', { signal: controller.signal })
+    fetch("/api/seller/status", { signal: controller.signal })
       .then((r) => r.json())
       .then((data) => {
         clearTimeout(timeoutId);
@@ -83,16 +113,23 @@ export default function SellPage() {
       })
       .catch(() => {
         clearTimeout(timeoutId);
-        setSellerStatus({ loading: false, stripeOnboarded: false, authenticated: false });
+        setSellerStatus({
+          loading: false,
+          stripeOnboarded: false,
+          authenticated: false,
+        });
       });
 
-    return () => { clearTimeout(timeoutId); controller.abort(); };
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, []);
 
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [submitError, setSubmitError] = useState("");
 
   // Step 1 — Photos
   const [images, setImages] = useState<ImagePreview[]>([]);
@@ -100,14 +137,14 @@ export default function SellPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Step 2 — Details
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [subcategory, setSubcategory] = useState('');
-  const [condition, setCondition] = useState<Condition | ''>('');
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [subcategory, setSubcategory] = useState("");
+  const [condition, setCondition] = useState<Condition | "">("");
 
   // Step 3 — Pricing
-  const [price, setPrice] = useState('');
+  const [price, setPrice] = useState("");
   const [offersEnabled, setOffersEnabled] = useState(true);
   const [gstIncluded, setGstIncluded] = useState(false);
   const [isUrgent, setIsUrgent] = useState(false);
@@ -115,10 +152,10 @@ export default function SellPage() {
   const [shipsNationwide, setShipsNationwide] = useState(false);
 
   // Step 4 — Shipping
-  const [shippingOption, setShippingOption] = useState<ShippingOption | ''>('');
-  const [shippingPrice, setShippingPrice] = useState('');
-  const [region, setRegion] = useState<NZRegion | ''>('');
-  const [suburb, setSuburb] = useState('');
+  const [shippingOption, setShippingOption] = useState<ShippingOption | "">("");
+  const [shippingPrice, setShippingPrice] = useState("");
+  const [region, setRegion] = useState<NZRegion | "">("");
+  const [suburb, setSuburb] = useState("");
 
   // Validation errors per step
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -129,20 +166,38 @@ export default function SellPage() {
   // ── Upload a single file to R2 via presigned URL ───────────────────────
   async function uploadFileToR2(img: ImagePreview): Promise<void> {
     setImages((prev) =>
-      prev.map((i) => (i.id === img.id ? { ...i, uploading: true, processing: false, progress: 0, error: null } : i))
+      prev.map((i) =>
+        i.id === img.id
+          ? {
+              ...i,
+              uploading: true,
+              processing: false,
+              progress: 0,
+              error: null,
+            }
+          : i,
+      ),
     );
 
     try {
       // Phase 1: Get presigned URL
       const result = await requestImageUpload({
         fileName: img.file.name,
-        contentType: img.file.type || 'image/jpeg',
+        contentType: img.file.type || "image/jpeg",
         sizeBytes: img.file.size,
       });
 
       if (!result.success) {
         setImages((prev) =>
-          prev.map((i) => (i.id === img.id ? { ...i, uploading: false, error: result.error ?? 'Upload failed' } : i))
+          prev.map((i) =>
+            i.id === img.id
+              ? {
+                  ...i,
+                  uploading: false,
+                  error: result.error ?? "Upload failed",
+                }
+              : i,
+          ),
         );
         return;
       }
@@ -152,16 +207,16 @@ export default function SellPage() {
       // Phase 2: Upload directly to R2
       const xhr = new XMLHttpRequest();
       await new Promise<void>((resolve, reject) => {
-        xhr.upload.addEventListener('progress', (e) => {
+        xhr.upload.addEventListener("progress", (e) => {
           if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 100);
             setImages((prev) =>
-              prev.map((i) => (i.id === img.id ? { ...i, progress: pct } : i))
+              prev.map((i) => (i.id === img.id ? { ...i, progress: pct } : i)),
             );
           }
         });
 
-        xhr.addEventListener('load', () => {
+        xhr.addEventListener("load", () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
           } else {
@@ -169,24 +224,40 @@ export default function SellPage() {
           }
         });
 
-        xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
-        xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+        xhr.addEventListener("error", () =>
+          reject(new Error("Network error during upload")),
+        );
+        xhr.addEventListener("abort", () =>
+          reject(new Error("Upload cancelled")),
+        );
 
-        xhr.open('PUT', uploadUrl);
-        xhr.setRequestHeader('Content-Type', img.file.type || 'image/jpeg');
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", img.file.type || "image/jpeg");
         xhr.send(img.file);
       });
 
       // Phase 3: Confirm upload — triggers processing (compress, WebP, EXIF strip, thumbnail)
       setImages((prev) =>
-        prev.map((i) => (i.id === img.id ? { ...i, uploading: false, processing: true, progress: 100 } : i))
+        prev.map((i) =>
+          i.id === img.id
+            ? { ...i, uploading: false, processing: true, progress: 100 }
+            : i,
+        ),
       );
 
       const confirmResult = await confirmImageUpload({ imageId, r2Key });
 
       if (!confirmResult.success) {
         setImages((prev) =>
-          prev.map((i) => (i.id === img.id ? { ...i, processing: false, error: confirmResult.error ?? 'Processing failed' } : i))
+          prev.map((i) =>
+            i.id === img.id
+              ? {
+                  ...i,
+                  processing: false,
+                  error: confirmResult.error ?? "Processing failed",
+                }
+              : i,
+          ),
         );
         return;
       }
@@ -205,20 +276,26 @@ export default function SellPage() {
                 imageId,
                 originalSize: processed.originalSize ?? img.file.size,
                 compressedSize: processed.compressedSize ?? null,
-                dimensions: processed.width && processed.height
-                  ? { width: processed.width, height: processed.height }
-                  : null,
+                dimensions:
+                  processed.width && processed.height
+                    ? { width: processed.width, height: processed.height }
+                    : null,
               }
-            : i
-        )
+            : i,
+        ),
       );
     } catch (err) {
       setImages((prev) =>
         prev.map((i) =>
           i.id === img.id
-            ? { ...i, uploading: false, processing: false, error: err instanceof Error ? err.message : 'Upload failed' }
-            : i
-        )
+            ? {
+                ...i,
+                uploading: false,
+                processing: false,
+                error: err instanceof Error ? err.message : "Upload failed",
+              }
+            : i,
+        ),
       );
     }
   }
@@ -228,7 +305,7 @@ export default function SellPage() {
     (files: FileList | null) => {
       if (!files) return;
       const allowed = Array.from(files)
-        .filter((f) => f.type.startsWith('image/'))
+        .filter((f) => f.type.startsWith("image/"))
         .slice(0, 10 - images.length);
 
       const previews: ImagePreview[] = allowed.map((f) => ({
@@ -257,7 +334,7 @@ export default function SellPage() {
         uploadFileToR2(img);
       });
     },
-    [images.length]
+    [images.length],
   );
 
   function removeImage(id: string) {
@@ -282,57 +359,68 @@ export default function SellPage() {
   function validateStep(n: number): Record<string, string> {
     const errs: Record<string, string> = {};
     if (n === 1) {
-      if (images.length === 0) errs.images = 'Add at least one photo.';
+      if (images.length === 0) errs.images = "Add at least one photo.";
       const uploading = images.some((i) => i.uploading);
-      if (uploading) errs.images = 'Please wait for uploads to finish.';
+      if (uploading) errs.images = "Please wait for uploads to finish.";
       const processing = images.some((i) => i.processing);
-      if (processing) errs.images = 'Please wait for image optimisation to finish.';
+      if (processing)
+        errs.images = "Please wait for image optimisation to finish.";
       const failed = images.some((i) => i.error);
-      if (failed) errs.images = 'Some uploads failed. Remove or retry them.';
+      if (failed) errs.images = "Some uploads failed. Remove or retry them.";
     }
     if (n === 2) {
-      if (title.trim().length < 5) errs.title = 'Title must be at least 5 characters.';
-      if (title.trim().length > 100) errs.title = 'Title must be 100 characters or less.';
-      if (description.trim().length < 20) errs.description = 'Description must be at least 20 characters.';
-      if (!categoryId) errs.category = 'Select a category.';
-      if (!condition) errs.condition = 'Select a condition.';
+      if (title.trim().length < 5)
+        errs.title = "Title must be at least 5 characters.";
+      if (title.trim().length > 100)
+        errs.title = "Title must be 100 characters or less.";
+      if (description.trim().length < 20)
+        errs.description = "Description must be at least 20 characters.";
+      if (!categoryId) errs.category = "Select a category.";
+      if (!condition) errs.condition = "Select a condition.";
     }
     if (n === 3) {
       const p = parseFloat(price);
-      if (!price || isNaN(p) || p <= 0) errs.price = 'Enter a valid price.';
-      if (p > 100_000) errs.price = 'Maximum price is $100,000.';
+      if (!price || isNaN(p) || p <= 0) errs.price = "Enter a valid price.";
+      if (p > 100_000) errs.price = "Maximum price is $100,000.";
     }
     if (n === 4) {
-      if (!shippingOption) errs.shippingOption = 'Select a shipping option.';
-      if (shippingOption === 'courier' || shippingOption === 'both') {
+      if (!shippingOption) errs.shippingOption = "Select a shipping option.";
+      if (shippingOption === "courier" || shippingOption === "both") {
         const sp = parseFloat(shippingPrice);
-        if (shippingPrice && (isNaN(sp) || sp < 0)) errs.shippingPrice = 'Enter a valid shipping price.';
+        if (shippingPrice && (isNaN(sp) || sp < 0))
+          errs.shippingPrice = "Enter a valid shipping price.";
       }
-      if (!region) errs.region = 'Select your region.';
-      if (!suburb.trim()) errs.suburb = 'Enter your suburb or town.';
+      if (!region) errs.region = "Select your region.";
+      if (!suburb.trim()) errs.suburb = "Enter your suburb or town.";
     }
     return errs;
   }
 
   function goNext() {
     const errs = validateStep(step);
-    if (Object.keys(errs).length) { setErrors(errs); return; }
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
     setErrors({});
     setStep((s) => s + 1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function goBack() {
     setErrors({});
     setStep((s) => s - 1);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleSubmit() {
     const errs = validateStep(4);
-    if (Object.keys(errs).length) { setErrors(errs); return; }
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
     setSubmitting(true);
-    setSubmitError('');
+    setSubmitError("");
 
     // Collect uploaded R2 keys
     const imageKeys = images
@@ -340,7 +428,7 @@ export default function SellPage() {
       .map((i) => i.r2Key!);
 
     if (imageKeys.length === 0) {
-      setSubmitError('No images uploaded successfully. Please add photos.');
+      setSubmitError("No images uploaded successfully. Please add photos.");
       setSubmitting(false);
       return;
     }
@@ -368,7 +456,9 @@ export default function SellPage() {
     setSubmitting(false);
 
     if (!result.success) {
-      setSubmitError(result.error ?? 'Failed to create listing. Please try again.');
+      setSubmitError(
+        result.error ?? "Failed to create listing. Please try again.",
+      );
       return;
     }
 
@@ -382,35 +472,63 @@ export default function SellPage() {
         <NavBar />
         <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center px-4 py-20">
           <div className="max-w-md w-full text-center">
-            <div className="w-20 h-20 rounded-full bg-emerald-50 flex items-center
-              justify-center mx-auto mb-6">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                <polyline points="22 4 12 14.01 9 11.01"/>
+            <div
+              className="w-20 h-20 rounded-full bg-emerald-50 flex items-center
+              justify-center mx-auto mb-6"
+            >
+              <svg
+                width="36"
+                height="36"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#16a34a"
+                strokeWidth="2"
+              >
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
               </svg>
             </div>
-            <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem]
-              font-semibold text-[#141414] mb-3">
+            <h1
+              className="font-[family-name:var(--font-playfair)] text-[1.75rem]
+              font-semibold text-[#141414] mb-3"
+            >
               Your listing is live! 🥝
             </h1>
             <p className="text-[14px] text-[#73706A] mb-8 leading-relaxed">
-              <strong className="text-[#141414]">{title}</strong> is now visible to
-              NZ buyers. You&apos;ll be notified when someone watches or
+              <strong className="text-[#141414]">{title}</strong> is now visible
+              to NZ buyers. You&apos;ll be notified when someone watches or
               makes an offer.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link href="/dashboard/seller">
-                <Button variant="primary" size="md">Manage my listings</Button>
+                <Button variant="primary" size="md">
+                  Manage my listings
+                </Button>
               </Link>
-              <Button variant="secondary" size="md" onClick={() => {
-                setSubmitted(false); setStep(1);
-                setImages([]); setTitle(''); setDescription('');
-                setCategoryId(''); setSubcategory(''); setCondition('');
-                setPrice(''); setOffersEnabled(true); setGstIncluded(false);
-                setIsUrgent(false); setIsNegotiable(false); setShipsNationwide(false);
-                setShippingOption(''); setShippingPrice('');
-                setRegion(''); setSuburb('');
-              }}>
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => {
+                  setSubmitted(false);
+                  setStep(1);
+                  setImages([]);
+                  setTitle("");
+                  setDescription("");
+                  setCategoryId("");
+                  setSubcategory("");
+                  setCondition("");
+                  setPrice("");
+                  setOffersEnabled(true);
+                  setGstIncluded(false);
+                  setIsUrgent(false);
+                  setIsNegotiable(false);
+                  setShipsNationwide(false);
+                  setShippingOption("");
+                  setShippingPrice("");
+                  setRegion("");
+                  setSuburb("");
+                }}
+              >
                 List another item
               </Button>
             </div>
@@ -443,7 +561,14 @@ export default function SellPage() {
           <div className="max-w-md w-full">
             <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-sm p-8 text-center">
               <div className="w-16 h-16 rounded-full bg-[#F5ECD4] flex items-center justify-center mx-auto mb-6">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#D4A843"
+                  strokeWidth="2"
+                >
                   <line x1="12" y1="1" x2="12" y2="23" />
                   <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                 </svg>
@@ -452,19 +577,24 @@ export default function SellPage() {
                 Set up payments first
               </h1>
               <p className="text-[14px] text-[#73706A] leading-relaxed mb-6">
-                Before listing items you need to connect your bank account so buyers can pay you.
-                It only takes 2 minutes and is completely free.
+                Before listing items you need to connect your bank account so
+                buyers can pay you. It only takes 2 minutes and is completely
+                free.
               </p>
               <div className="text-left space-y-3 mb-8">
                 {[
-                  'Get paid directly to your NZ bank account',
-                  'Funds held safely in escrow until delivery',
-                  'Automatic payout within 3 business days',
-                  'Bank-grade security powered by Stripe',
+                  "Get paid directly to your NZ bank account",
+                  "Funds held safely in escrow until delivery",
+                  "Automatic payout within 3 business days",
+                  "Bank-grade security powered by Stripe",
                 ].map((benefit) => (
                   <div key={benefit} className="flex items-start gap-2.5">
-                    <span className="text-[#D4A843] shrink-0 mt-0.5 font-bold">✓</span>
-                    <span className="text-[13.5px] text-[#73706A]">{benefit}</span>
+                    <span className="text-[#D4A843] shrink-0 mt-0.5 font-bold">
+                      ✓
+                    </span>
+                    <span className="text-[13.5px] text-[#73706A]">
+                      {benefit}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -494,8 +624,10 @@ export default function SellPage() {
         <div className="max-w-2xl mx-auto px-4 sm:px-6 pt-8">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem]
-              font-semibold text-[#141414] mb-1">
+            <h1
+              className="font-[family-name:var(--font-playfair)] text-[1.75rem]
+              font-semibold text-[#141414] mb-1"
+            >
               List an item
             </h1>
             <p className="text-[13.5px] text-[#73706A]">
@@ -507,42 +639,63 @@ export default function SellPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-6 text-[12px] text-amber-800">
             <p className="font-semibold mb-0.5">Your obligations as a seller</p>
             <p>
-              Your listing must accurately represent the item. Under the NZ Consumer Guarantees Act,
-              buyers have the right to a remedy if items don&apos;t match their description.
-              Misrepresentation may result in account suspension.
+              Your listing must accurately represent the item. Under the NZ
+              Consumer Guarantees Act, buyers have the right to a remedy if
+              items don&apos;t match their description. Misrepresentation may
+              result in account suspension.
             </p>
           </div>
 
           {/* Step indicator */}
-          <div className="flex items-center gap-0 mb-8" role="list" aria-label="Listing steps">
+          <div
+            className="flex items-center gap-0 mb-8"
+            role="list"
+            aria-label="Listing steps"
+          >
             {STEPS.map((s, i) => (
-              <div key={s.number} className="flex items-center flex-1" role="listitem">
+              <div
+                key={s.number}
+                className="flex items-center flex-1"
+                role="listitem"
+              >
                 <div className="flex flex-col items-center gap-1.5 flex-1">
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center
                       text-[12px] font-bold transition-all duration-200
-                      ${step === s.number
-                        ? 'bg-[#141414] text-white shadow-md'
-                        : step > s.number
-                        ? 'bg-[#D4A843] text-white'
-                        : 'bg-[#EFEDE8] text-[#9E9A91]'
+                      ${
+                        step === s.number
+                          ? "bg-[#141414] text-white shadow-md"
+                          : step > s.number
+                            ? "bg-[#D4A843] text-white"
+                            : "bg-[#EFEDE8] text-[#9E9A91]"
                       }`}
-                    aria-current={step === s.number ? 'step' : undefined}
+                    aria-current={step === s.number ? "step" : undefined}
                   >
                     {step > s.number ? (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                        <polyline points="20 6 9 17 4 12"/>
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
                       </svg>
                     ) : (
                       s.number
                     )}
                   </div>
-                  <span className={`text-[11px] font-medium hidden sm:block ${step === s.number ? 'text-[#141414]' : 'text-[#9E9A91]'}`}>
+                  <span
+                    className={`text-[11px] font-medium hidden sm:block ${step === s.number ? "text-[#141414]" : "text-[#9E9A91]"}`}
+                  >
                     {s.label}
                   </span>
                 </div>
                 {i < STEPS.length - 1 && (
-                  <div className={`h-0.5 flex-1 mx-1 transition-colors duration-300 ${step > s.number ? 'bg-[#D4A843]' : 'bg-[#E3E0D9]'}`} />
+                  <div
+                    className={`h-0.5 flex-1 mx-1 transition-colors duration-300 ${step > s.number ? "bg-[#D4A843]" : "bg-[#E3E0D9]"}`}
+                  />
                 )}
               </div>
             ))}
@@ -550,17 +703,19 @@ export default function SellPage() {
 
           {/* ── Step panels ─────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-sm overflow-hidden">
-
             {/* ── STEP 1: Photos ────────────────────────────────────────── */}
             {step === 1 && (
               <div className="p-6 space-y-5">
                 <div>
-                  <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                    font-semibold text-[#141414] mb-1">
+                  <h2
+                    className="font-[family-name:var(--font-playfair)] text-[1.15rem]
+                    font-semibold text-[#141414] mb-1"
+                  >
                     Add photos
                   </h2>
                   <p className="text-[12.5px] text-[#73706A]">
-                    Up to 10 photos. First photo is your cover image. Good photos get more views.
+                    Up to 10 photos. First photo is your cover image. Good
+                    photos get more views.
                   </p>
                 </div>
 
@@ -570,31 +725,45 @@ export default function SellPage() {
 
                 {/* Drop zone */}
                 <div
-                  onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setDragActive(true);
+                  }}
                   onDragLeave={() => setDragActive(false)}
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.preventDefault(); setDragActive(false); addFiles(e.dataTransfer.files); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragActive(false);
+                    addFiles(e.dataTransfer.files);
+                  }}
                   onClick={() => fileInputRef.current?.click()}
                   role="button"
                   tabIndex={0}
                   aria-label="Upload photos"
-                  onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && fileInputRef.current?.click()
+                  }
                   className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer
                     transition-all duration-150 select-none
-                    ${dragActive
-                      ? 'border-[#D4A843] bg-[#F5ECD4]/50'
-                      : 'border-[#C9C5BC] hover:border-[#D4A843] hover:bg-[#F8F7F4]'
+                    ${
+                      dragActive
+                        ? "border-[#D4A843] bg-[#F5ECD4]/50"
+                        : "border-[#C9C5BC] hover:border-[#D4A843] hover:bg-[#F8F7F4]"
                     }`}
                 >
                   <svg
                     aria-hidden
                     className="mx-auto mb-3 text-[#C9C5BC]"
-                    width="32" height="32" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="1.5"
+                    width="32"
+                    height="32"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
                   >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
                   </svg>
                   <p className="text-[13.5px] font-semibold text-[#141414]">
                     Click to upload or drag photos here
@@ -616,9 +785,11 @@ export default function SellPage() {
                 {images.length > 0 && (
                   <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5">
                     {images.map((img, i) => (
-                      <div key={img.id} className="relative group aspect-square rounded-xl overflow-hidden
-                        border-2 border-[#E3E0D9]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <div
+                        key={img.id}
+                        className="relative group aspect-square rounded-xl overflow-hidden
+                        border-2 border-[#E3E0D9]"
+                      >
                         <img
                           src={img.url}
                           alt={`Photo ${i + 1}`}
@@ -634,35 +805,66 @@ export default function SellPage() {
                                 style={{ width: `${img.progress}%` }}
                               />
                             </div>
-                            <span className="text-white text-[10px] font-medium">{img.progress}%</span>
+                            <span className="text-white text-[10px] font-medium">
+                              {img.progress}%
+                            </span>
                           </div>
                         )}
 
                         {/* Processing overlay (compression + WebP conversion) */}
                         {img.processing && (
                           <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
-                            <svg className="animate-spin h-5 w-5 text-[#D4A843]" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                            <svg
+                              className="animate-spin h-5 w-5 text-[#D4A843]"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
                             </svg>
-                            <span className="text-white text-[10px] font-medium">Optimising photo...</span>
+                            <span className="text-white text-[10px] font-medium">
+                              Optimising photo...
+                            </span>
                           </div>
                         )}
 
                         {/* Upload success indicator with file info */}
                         {img.uploaded && !img.uploading && !img.processing && (
                           <>
-                            <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-emerald-500
-                              flex items-center justify-center">
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                                <polyline points="20 6 9 17 4 12"/>
+                            <div
+                              className="absolute top-1 left-1 w-5 h-5 rounded-full bg-emerald-500
+                              flex items-center justify-center"
+                            >
+                              <svg
+                                width="10"
+                                height="10"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="white"
+                                strokeWidth="3"
+                              >
+                                <polyline points="20 6 9 17 4 12" />
                               </svg>
                             </div>
                             {img.compressedSize && (
-                              <div className="absolute bottom-1 right-1 bg-black/70 text-white
-                                text-[8px] px-1.5 py-0.5 rounded-full font-medium">
+                              <div
+                                className="absolute bottom-1 right-1 bg-black/70 text-white
+                                text-[8px] px-1.5 py-0.5 rounded-full font-medium"
+                              >
                                 {(img.compressedSize / 1024).toFixed(0)}KB
-                                {img.dimensions && ` · ${img.dimensions.width}×${img.dimensions.height}`}
+                                {img.dimensions &&
+                                  ` · ${img.dimensions.width}×${img.dimensions.height}`}
                               </div>
                             )}
                           </>
@@ -675,7 +877,10 @@ export default function SellPage() {
                               Failed
                             </span>
                             <button
-                              onClick={(e) => { e.stopPropagation(); retryUpload(img.id); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                retryUpload(img.id);
+                              }}
                               className="text-[9px] text-white bg-red-600 px-2 py-0.5 rounded-full font-medium
                                 hover:bg-red-700 transition-colors"
                             >
@@ -685,15 +890,20 @@ export default function SellPage() {
                         )}
 
                         {i === 0 && !img.uploading && !img.error && (
-                          <div className="absolute bottom-1 left-1 bg-[#D4A843] text-[#141414]
-                            text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                          <div
+                            className="absolute bottom-1 left-1 bg-[#D4A843] text-[#141414]
+                            text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                          >
                             COVER
                           </div>
                         )}
 
                         {/* Remove */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); removeImage(img.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeImage(img.id);
+                          }}
                           aria-label={`Remove photo ${i + 1}`}
                           className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60
                             text-white flex items-center justify-center opacity-0
@@ -705,14 +915,24 @@ export default function SellPage() {
                         {/* Move left */}
                         {i > 0 && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); reorderImage(i, i - 1); }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              reorderImage(i, i - 1);
+                            }}
                             aria-label="Move photo left"
                             className="absolute left-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full
                               bg-black/60 text-white flex items-center justify-center
                               opacity-0 group-hover:opacity-100 transition-opacity"
                           >
-                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                              <path d="m15 18-6-6 6-6"/>
+                            <svg
+                              width="9"
+                              height="9"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                            >
+                              <path d="m15 18-6-6 6-6" />
                             </svg>
                           </button>
                         )}
@@ -728,8 +948,15 @@ export default function SellPage() {
                           hover:border-[#D4A843] hover:text-[#D4A843] transition-colors"
                         aria-label="Add more photos"
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <path d="M12 5v14M5 12h14"/>
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                        >
+                          <path d="M12 5v14M5 12h14" />
                         </svg>
                       </button>
                     )}
@@ -741,15 +968,20 @@ export default function SellPage() {
             {/* ── STEP 2: Details ───────────────────────────────────────── */}
             {step === 2 && (
               <div className="p-6 space-y-5">
-                <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                  font-semibold text-[#141414]">
+                <h2
+                  className="font-[family-name:var(--font-playfair)] text-[1.15rem]
+                  font-semibold text-[#141414]"
+                >
                   Item details
                 </h2>
 
                 <Input
                   label="Title"
                   value={title}
-                  onChange={(e) => { setTitle(e.target.value); setErrors((p) => ({ ...p, title: '' })); }}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setErrors((p) => ({ ...p, title: "" }));
+                  }}
                   placeholder="e.g. Sony WH-1000XM5 Noise-Cancelling Headphones"
                   maxLength={100}
                   required
@@ -760,7 +992,10 @@ export default function SellPage() {
                 <Textarea
                   label="Description"
                   value={description}
-                  onChange={(e) => { setDescription(e.target.value); setErrors((p) => ({ ...p, description: '' })); }}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setErrors((p) => ({ ...p, description: "" }));
+                  }}
                   placeholder="Describe the item's condition, what's included, any issues, reason for selling..."
                   required
                   error={errors.description}
@@ -772,13 +1007,19 @@ export default function SellPage() {
                   <Select
                     label="Category"
                     value={categoryId}
-                    onChange={(e) => { setCategoryId(e.target.value); setSubcategory(''); setErrors((p) => ({ ...p, category: '' })); }}
+                    onChange={(e) => {
+                      setCategoryId(e.target.value);
+                      setSubcategory("");
+                      setErrors((p) => ({ ...p, category: "" }));
+                    }}
                     placeholder="Select category"
                     required
                     error={errors.category}
                   >
                     {CATEGORIES.map((c) => (
-                      <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                      <option key={c.id} value={c.id}>
+                        {c.icon} {c.name}
+                      </option>
                     ))}
                   </Select>
 
@@ -790,7 +1031,9 @@ export default function SellPage() {
                       placeholder="Select subcategory"
                     >
                       {activeCat.subcategories.map((s) => (
-                        <option key={s} value={s}>{s}</option>
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
                       ))}
                     </Select>
                   )}
@@ -806,23 +1049,33 @@ export default function SellPage() {
                       <button
                         key={c.value}
                         type="button"
-                        onClick={() => { setCondition(c.value); setErrors((p) => ({ ...p, condition: '' })); }}
+                        onClick={() => {
+                          setCondition(c.value);
+                          setErrors((p) => ({ ...p, condition: "" }));
+                        }}
                         className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2
                           text-center transition-all duration-150
-                          ${condition === c.value
-                            ? 'border-[#141414] bg-[#141414] text-white'
-                            : 'border-[#E3E0D9] hover:border-[#C9C5BC] text-[#73706A]'
+                          ${
+                            condition === c.value
+                              ? "border-[#141414] bg-[#141414] text-white"
+                              : "border-[#E3E0D9] hover:border-[#C9C5BC] text-[#73706A]"
                           }`}
                       >
-                        <span className="text-[11.5px] font-semibold">{c.label}</span>
-                        <span className={`text-[10px] leading-tight ${condition === c.value ? 'text-white/70' : 'text-[#9E9A91]'}`}>
+                        <span className="text-[11.5px] font-semibold">
+                          {c.label}
+                        </span>
+                        <span
+                          className={`text-[10px] leading-tight ${condition === c.value ? "text-white/70" : "text-[#9E9A91]"}`}
+                        >
                           {c.hint}
                         </span>
                       </button>
                     ))}
                   </div>
                   {errors.condition && (
-                    <p className="text-[11.5px] text-red-500 font-medium">{errors.condition}</p>
+                    <p className="text-[11.5px] text-red-500 font-medium">
+                      {errors.condition}
+                    </p>
                   )}
                 </div>
               </div>
@@ -831,8 +1084,10 @@ export default function SellPage() {
             {/* ── STEP 3: Pricing ───────────────────────────────────────── */}
             {step === 3 && (
               <div className="p-6 space-y-5">
-                <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                  font-semibold text-[#141414]">
+                <h2
+                  className="font-[family-name:var(--font-playfair)] text-[1.15rem]
+                  font-semibold text-[#141414]"
+                >
                   Set your price
                 </h2>
 
@@ -840,7 +1095,10 @@ export default function SellPage() {
                   label="Asking price (NZD)"
                   type="number"
                   value={price}
-                  onChange={(e) => { setPrice(e.target.value); setErrors((p) => ({ ...p, price: '' })); }}
+                  onChange={(e) => {
+                    setPrice(e.target.value);
+                    setErrors((p) => ({ ...p, price: "" }));
+                  }}
                   placeholder="0.00"
                   min={0.01}
                   max={100000}
@@ -855,14 +1113,33 @@ export default function SellPage() {
                 {price && !isNaN(Number(price)) && Number(price) > 0 && (
                   <div className="rounded-xl border border-[#E3E0D9] divide-y divide-[#F0EDE8]">
                     {[
-                      { label: 'Listing price', value: `$${Number(price).toFixed(2)}` },
-                      { label: 'KiwiMart listing fee', value: '$0.00', highlight: true },
-                      { label: 'Payment processing (est.)', value: `$${(Number(price) * 0.019 + 0.30).toFixed(2)}` },
-                      { label: 'You receive', value: `$${(Number(price) - (Number(price) * 0.019 + 0.30)).toFixed(2)}`, bold: true },
+                      {
+                        label: "Listing price",
+                        value: `$${Number(price).toFixed(2)}`,
+                      },
+                      {
+                        label: "KiwiMart listing fee",
+                        value: "$0.00",
+                        highlight: true,
+                      },
+                      {
+                        label: "Payment processing (est.)",
+                        value: `$${(Number(price) * 0.019 + 0.3).toFixed(2)}`,
+                      },
+                      {
+                        label: "You receive",
+                        value: `$${(Number(price) - (Number(price) * 0.019 + 0.3)).toFixed(2)}`,
+                        bold: true,
+                      },
                     ].map(({ label, value, highlight, bold }) => (
-                      <div key={label} className="flex justify-between px-4 py-2.5 text-[12.5px]">
+                      <div
+                        key={label}
+                        className="flex justify-between px-4 py-2.5 text-[12.5px]"
+                      >
                         <span className="text-[#73706A]">{label}</span>
-                        <span className={`font-medium ${highlight ? 'text-emerald-600' : bold ? 'text-[#141414] font-bold' : 'text-[#141414]'}`}>
+                        <span
+                          className={`font-medium ${highlight ? "text-emerald-600" : bold ? "text-[#141414] font-bold" : "text-[#141414]"}`}
+                        >
                           {value}
                         </span>
                       </div>
@@ -872,8 +1149,10 @@ export default function SellPage() {
 
                 {/* Options */}
                 <div className="space-y-3">
-                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] transition-colors">
+                  <label
+                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={offersEnabled}
@@ -881,15 +1160,20 @@ export default function SellPage() {
                       className="mt-0.5 w-4 h-4 accent-[#D4A843] cursor-pointer"
                     />
                     <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">Accept offers</p>
+                      <p className="text-[13px] font-semibold text-[#141414]">
+                        Accept offers
+                      </p>
                       <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Buyers can make lower offers. You choose to accept or decline.
+                        Buyers can make lower offers. You choose to accept or
+                        decline.
                       </p>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] transition-colors">
+                  <label
+                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={gstIncluded}
@@ -897,15 +1181,20 @@ export default function SellPage() {
                       className="mt-0.5 w-4 h-4 accent-[#D4A843] cursor-pointer"
                     />
                     <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">GST included in price</p>
+                      <p className="text-[13px] font-semibold text-[#141414]">
+                        GST included in price
+                      </p>
                       <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Only if you&apos;re a GST-registered NZ business (IRD number required).
+                        Only if you&apos;re a GST-registered NZ business (IRD
+                        number required).
                       </p>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-red-300 transition-colors">
+                  <label
+                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-red-300 transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={isUrgent}
@@ -913,15 +1202,20 @@ export default function SellPage() {
                       className="mt-0.5 w-4 h-4 accent-red-500 cursor-pointer"
                     />
                     <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">🔥 Urgent sale</p>
+                      <p className="text-[13px] font-semibold text-[#141414]">
+                        🔥 Urgent sale
+                      </p>
                       <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Highlights your listing to buyers looking for quick deals.
+                        Highlights your listing to buyers looking for quick
+                        deals.
                       </p>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-blue-300 transition-colors">
+                  <label
+                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-blue-300 transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={isNegotiable}
@@ -929,15 +1223,20 @@ export default function SellPage() {
                       className="mt-0.5 w-4 h-4 accent-blue-500 cursor-pointer"
                     />
                     <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">💬 Price is negotiable</p>
+                      <p className="text-[13px] font-semibold text-[#141414]">
+                        💬 Price is negotiable
+                      </p>
                       <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Signals to buyers that you&apos;re open to a lower price discussion.
+                        Signals to buyers that you&apos;re open to a lower price
+                        discussion.
                       </p>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-emerald-300 transition-colors">
+                  <label
+                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
+                    rounded-xl border border-[#E3E0D9] hover:border-emerald-300 transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={shipsNationwide}
@@ -945,9 +1244,12 @@ export default function SellPage() {
                       className="mt-0.5 w-4 h-4 accent-emerald-500 cursor-pointer"
                     />
                     <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">📦 Ships anywhere in NZ</p>
+                      <p className="text-[13px] font-semibold text-[#141414]">
+                        📦 Ships anywhere in NZ
+                      </p>
                       <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Your listing will appear in the &quot;Ships NZ wide&quot; filter.
+                        Your listing will appear in the &quot;Ships NZ
+                        wide&quot; filter.
                       </p>
                     </div>
                   </label>
@@ -958,8 +1260,10 @@ export default function SellPage() {
             {/* ── STEP 4: Shipping & Location ───────────────────────────── */}
             {step === 4 && (
               <div className="p-6 space-y-5">
-                <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                  font-semibold text-[#141414]">
+                <h2
+                  className="font-[family-name:var(--font-playfair)] text-[1.15rem]
+                  font-semibold text-[#141414]"
+                >
                   Shipping & location
                 </h2>
 
@@ -968,48 +1272,83 @@ export default function SellPage() {
                 {/* Shipping option */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[12.5px] font-semibold text-[#141414]">
-                    How will you deliver? <span className="text-red-500">*</span>
+                    How will you deliver?{" "}
+                    <span className="text-red-500">*</span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {([
-                      { value: 'courier', label: '📦 Courier', hint: 'Ship nationwide' },
-                      { value: 'pickup', label: '🤝 Pickup only', hint: 'Buyer collects' },
-                      { value: 'both', label: '✅ Both options', hint: 'Flexible' },
-                    ] as { value: ShippingOption; label: string; hint: string }[]).map((o) => (
+                    {(
+                      [
+                        {
+                          value: "courier",
+                          label: "📦 Courier",
+                          hint: "Ship nationwide",
+                        },
+                        {
+                          value: "pickup",
+                          label: "🤝 Pickup only",
+                          hint: "Buyer collects",
+                        },
+                        {
+                          value: "both",
+                          label: "✅ Both options",
+                          hint: "Flexible",
+                        },
+                      ] as {
+                        value: ShippingOption;
+                        label: string;
+                        hint: string;
+                      }[]
+                    ).map((o) => (
                       <button
                         key={o.value}
                         type="button"
-                        onClick={() => { setShippingOption(o.value); setErrors((p) => ({ ...p, shippingOption: '' })); }}
+                        onClick={() => {
+                          setShippingOption(o.value);
+                          setErrors((p) => ({ ...p, shippingOption: "" }));
+                        }}
                         className={`flex flex-col gap-1 p-4 rounded-xl border-2 text-left
                           transition-all duration-150
-                          ${shippingOption === o.value
-                            ? 'border-[#141414] bg-[#141414] text-white'
-                            : 'border-[#E3E0D9] hover:border-[#C9C5BC] text-[#141414]'
+                          ${
+                            shippingOption === o.value
+                              ? "border-[#141414] bg-[#141414] text-white"
+                              : "border-[#E3E0D9] hover:border-[#C9C5BC] text-[#141414]"
                           }`}
                       >
-                        <span className="text-[13px] font-semibold">{o.label}</span>
-                        <span className={`text-[11.5px] ${shippingOption === o.value ? 'text-white/70' : 'text-[#9E9A91]'}`}>
+                        <span className="text-[13px] font-semibold">
+                          {o.label}
+                        </span>
+                        <span
+                          className={`text-[11.5px] ${shippingOption === o.value ? "text-white/70" : "text-[#9E9A91]"}`}
+                        >
                           {o.hint}
                         </span>
                       </button>
                     ))}
                   </div>
                   {errors.shippingOption && (
-                    <p className="text-[11.5px] text-red-500 font-medium">{errors.shippingOption}</p>
+                    <p className="text-[11.5px] text-red-500 font-medium">
+                      {errors.shippingOption}
+                    </p>
                   )}
                 </div>
 
                 {/* Courier price */}
-                {(shippingOption === 'courier' || shippingOption === 'both') && (
+                {(shippingOption === "courier" ||
+                  shippingOption === "both") && (
                   <Input
                     label="Courier price (NZD)"
                     type="number"
                     value={shippingPrice}
-                    onChange={(e) => { setShippingPrice(e.target.value); setErrors((p) => ({ ...p, shippingPrice: '' })); }}
+                    onChange={(e) => {
+                      setShippingPrice(e.target.value);
+                      setErrors((p) => ({ ...p, shippingPrice: "" }));
+                    }}
                     placeholder="0 for free shipping"
                     min={0}
                     error={errors.shippingPrice}
-                    leftAddon={<span className="text-[13px] font-medium">$</span>}
+                    leftAddon={
+                      <span className="text-[13px] font-medium">$</span>
+                    }
                     hint="Enter 0 to offer free shipping — this can improve your listing visibility."
                   />
                 )}
@@ -1018,20 +1357,28 @@ export default function SellPage() {
                   <Select
                     label="Region"
                     value={region}
-                    onChange={(e) => { setRegion(e.target.value as NZRegion); setErrors((p) => ({ ...p, region: '' })); }}
+                    onChange={(e) => {
+                      setRegion(e.target.value as NZRegion);
+                      setErrors((p) => ({ ...p, region: "" }));
+                    }}
                     placeholder="Select region"
                     required
                     error={errors.region}
                   >
                     {NZ_REGIONS.map((r) => (
-                      <option key={r} value={r}>{r}</option>
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
                     ))}
                   </Select>
 
                   <Input
                     label="Suburb / town"
                     value={suburb}
-                    onChange={(e) => { setSuburb(e.target.value); setErrors((p) => ({ ...p, suburb: '' })); }}
+                    onChange={(e) => {
+                      setSuburb(e.target.value);
+                      setErrors((p) => ({ ...p, suburb: "" }));
+                    }}
                     placeholder="e.g. Ponsonby"
                     required
                     error={errors.suburb}
@@ -1044,44 +1391,75 @@ export default function SellPage() {
                   <p className="text-[12px] font-semibold text-[#9E9A91] uppercase tracking-wide">
                     Listing summary
                   </p>
-                  <p className="text-[14px] font-semibold text-[#141414] line-clamp-1">{title || 'Your item'}</p>
+                  <p className="text-[14px] font-semibold text-[#141414] line-clamp-1">
+                    {title || "Your item"}
+                  </p>
                   <p className="text-[13px] text-[#73706A]">
-                    {price ? `$${price}` : 'Price not set'}
-                    {condition ? ` · ${CONDITIONS.find((c) => c.value === condition)?.label}` : ''}
-                    {categoryId ? ` · ${CATEGORIES.find((c) => c.id === categoryId)?.name}` : ''}
+                    {price ? `$${price}` : "Price not set"}
+                    {condition
+                      ? ` · ${CONDITIONS.find((c) => c.value === condition)?.label}`
+                      : ""}
+                    {categoryId
+                      ? ` · ${CATEGORIES.find((c) => c.id === categoryId)?.name}`
+                      : ""}
                   </p>
                   <p className="text-[12px] text-[#9E9A91]">
-                    {images.filter((i) => i.uploaded).length} photo{images.filter((i) => i.uploaded).length !== 1 ? 's' : ''} uploaded
+                    {images.filter((i) => i.uploaded).length} photo
+                    {images.filter((i) => i.uploaded).length !== 1 ? "s" : ""}{" "}
+                    uploaded
                   </p>
                 </div>
               </div>
             )}
 
             {/* ── Footer nav ────────────────────────────────────────────── */}
-            <div className="px-6 py-4 bg-[#F8F7F4] border-t border-[#E3E0D9]
-              flex items-center justify-between gap-3">
+            <div
+              className="px-6 py-4 bg-[#F8F7F4] border-t border-[#E3E0D9]
+              flex items-center justify-between gap-3"
+            >
               {step > 1 ? (
                 <Button variant="ghost" size="md" onClick={goBack}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="m15 18-6-6 6-6"/>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="m15 18-6-6 6-6" />
                   </svg>
                   Back
                 </Button>
               ) : (
                 <Link href="/">
-                  <Button variant="ghost" size="md">Cancel</Button>
+                  <Button variant="ghost" size="md">
+                    Cancel
+                  </Button>
                 </Link>
               )}
 
               {step < 4 ? (
                 <Button variant="primary" size="md" onClick={goNext}>
                   Continue
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="m9 18 6-6-6-6"/>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="m9 18 6-6-6-6" />
                   </svg>
                 </Button>
               ) : (
-                <Button variant="gold" size="md" loading={submitting} onClick={handleSubmit}>
+                <Button
+                  variant="gold"
+                  size="md"
+                  loading={submitting}
+                  onClick={handleSubmit}
+                >
                   Publish listing
                 </Button>
               )}
