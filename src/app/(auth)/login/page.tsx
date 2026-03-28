@@ -34,6 +34,7 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
   const [error, setError] = useState(
     errorParam === 'CredentialsSignin'
       ? 'Incorrect email or password. Please try again.'
@@ -73,6 +74,13 @@ export default function LoginPage() {
         widgetId.current = window.turnstile.render(turnstileRef.current, {
           sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
           theme: 'light',
+          // Capture the token as soon as the invisible challenge auto-completes.
+          // For 0x invisible keys this fires automatically within a few seconds.
+          callback: (token: string) => setTurnstileToken(token),
+          // Clear the token when it expires (~5 min TTL) so we never send a stale one.
+          'expired-callback': () => setTurnstileToken(''),
+          // Clear on widget error (network failure, blocked, etc.)
+          'error-callback': () => setTurnstileToken(''),
         });
       }
     };
@@ -95,9 +103,14 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
-    const turnstileToken = widgetId.current
-      ? window.turnstile?.getResponse(widgetId.current) ?? ''
-      : '';
+    // If Turnstile is active but the invisible challenge hasn't completed yet
+    // (callback hasn't fired), block submission and reset so it retries.
+    if (isTurnstileActive && !turnstileToken) {
+      if (widgetId.current) window.turnstile?.reset(widgetId.current);
+      setError('Security check still in progress — please wait a moment and try again.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const result = await signIn('credentials', {
@@ -114,6 +127,7 @@ export default function LoginPage() {
       if (!result?.ok || result?.error) {
         setError('Incorrect email or password. Please try again.');
         if (widgetId.current) window.turnstile?.reset(widgetId.current);
+        setTurnstileToken('');
         setLoading(false);
         return;
       }
@@ -131,6 +145,7 @@ export default function LoginPage() {
       // signIn can throw on network error or unexpected Auth.js exception.
       setError('Something went wrong. Please try again.');
       if (widgetId.current) window.turnstile?.reset(widgetId.current);
+      setTurnstileToken('');
       setLoading(false);
     }
   }
