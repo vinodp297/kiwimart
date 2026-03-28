@@ -5,6 +5,7 @@ import Footer from '@/components/Footer';
 import LoadingSkeleton from '@/components/LoadingSkeleton';
 import SearchPageClient from './SearchPageClient';
 import { searchListings } from '@/server/actions/search';
+import { NZ_REGION_CENTERS } from '@/lib/geocoding';
 import type { SortOption } from '@/types';
 
 export const revalidate = 300;
@@ -34,6 +35,12 @@ export default async function SearchPage({
   const isNegotiable    = sp.isNegotiable === 'true';
   const shipsNationwide = sp.shipsNationwide === 'true';
   const verifiedOnly    = sp.verifiedOnly === 'true';
+  const radiusKm = typeof sp.radiusKm === 'string' && sp.radiusKm ? Number(sp.radiusKm) : undefined;
+
+  // Resolve region to lat/lng for radius search
+  const regionCenter = region ? NZ_REGION_CENTERS[region] : undefined;
+  const searchLat = regionCenter?.lat;
+  const searchLng = regionCenter?.lng;
 
   let initialResults;
   try {
@@ -44,6 +51,9 @@ export default async function SearchPage({
       isNegotiable: isNegotiable || undefined,
       shipsNationwide: shipsNationwide || undefined,
       verifiedOnly: verifiedOnly || undefined,
+      searchLat: radiusKm ? searchLat : undefined,
+      searchLng: radiusKm ? searchLng : undefined,
+      radiusKm: radiusKm || undefined,
     });
   } catch {
     initialResults = { listings: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 0, hasNextPage: false };

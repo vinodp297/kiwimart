@@ -17,6 +17,10 @@ export interface SearchParams {
   isNegotiable?: boolean
   shipsNationwide?: boolean
   verifiedOnly?: boolean
+  // Radius search
+  searchLat?: number
+  searchLng?: number
+  radiusKm?: number
 }
 
 export interface SearchResult {
