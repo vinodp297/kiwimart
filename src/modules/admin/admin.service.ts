@@ -156,45 +156,53 @@ export class AdminService {
     // Extract after null check so TypeScript narrows the type inside the async callback
     const paymentIntentId = order.stripePaymentIntentId
 
-    await withLock(`dispute:${orderId}`, async () => {
-      if (favour === 'buyer') {
-        // DB first (optimistic) — then Stripe refund.
-        // If Stripe fails, the order is already REFUNDED in DB so admin can retry Stripe.
-        await transitionOrder(orderId, 'REFUNDED', { disputeResolvedAt: new Date() }, { fromStatus: order.status })
+    try {
+      await withLock(`dispute:${orderId}`, async () => {
+        if (favour === 'buyer') {
+          // DB first (optimistic) — then Stripe refund.
+          // If Stripe fails, the order is already REFUNDED in DB so admin can retry Stripe.
+          await transitionOrder(orderId, 'REFUNDED', { disputeResolvedAt: new Date() }, { fromStatus: order.status })
 
-        try {
-          await paymentService.refundPayment({
+          try {
+            await paymentService.refundPayment({
+              paymentIntentId,
+              orderId,
+            })
+          } catch (stripeError) {
+            // Log for manual intervention — DB already updated
+            logger.error('admin.dispute.refund_failed', {
+              orderId,
+              stripePaymentIntentId: paymentIntentId,
+              error: stripeError instanceof Error ? stripeError.message : String(stripeError),
+            })
+            // Don't re-throw — admin sees REFUNDED status and can retry Stripe manually
+          }
+        } else {
+          // Seller wins — capture first, then atomically update DB
+          await paymentService.capturePayment({
             paymentIntentId,
             orderId,
           })
-        } catch (stripeError) {
-          // Log for manual intervention — DB already updated
-          logger.error('admin.dispute.refund_failed', {
-            orderId,
-            stripePaymentIntentId: paymentIntentId,
-            error: stripeError instanceof Error ? stripeError.message : String(stripeError),
-          })
-          // Don't re-throw — admin sees REFUNDED status and can retry Stripe manually
-        }
-      } else {
-        // Seller wins — capture first, then atomically update DB
-        await paymentService.capturePayment({
-          paymentIntentId,
-          orderId,
-        })
 
-        await db.$transaction(async (tx) => {
-          await transitionOrder(orderId, 'COMPLETED', {
-            completedAt: new Date(),
-            disputeResolvedAt: new Date(),
-          }, { tx, fromStatus: order.status })
-          await tx.payout.updateMany({
-            where: { orderId },
-            data: { status: 'PROCESSING', initiatedAt: new Date() },
+          await db.$transaction(async (tx) => {
+            await transitionOrder(orderId, 'COMPLETED', {
+              completedAt: new Date(),
+              disputeResolvedAt: new Date(),
+            }, { tx, fromStatus: order.status })
+            await tx.payout.updateMany({
+              where: { orderId },
+              data: { status: 'PROCESSING', initiatedAt: new Date() },
+            })
           })
-        })
+        }
+      })
+    } catch (lockErr) {
+      // Fail-closed: Redis unavailable in production → surface retry message
+      if (lockErr instanceof Error && lockErr.message.includes('temporarily unavailable')) {
+        throw new AppError('STRIPE_ERROR', 'Service temporarily unavailable. Please try again in a moment.', 503)
       }
-    })
+      throw lockErr
+    }
 
     audit({
       userId: adminUserId,
