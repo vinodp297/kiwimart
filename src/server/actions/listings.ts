@@ -72,10 +72,29 @@ export async function createListing(
   // 3. Validate
   const parsed = createListingSchema.safeParse(raw);
   if (!parsed.success) {
+    const flat = parsed.error.flatten();
+    // Debug: log exact validation failures so we can diagnose in Vercel logs
+    logger.error("listing:validation-failed", {
+      fieldErrors: flat.fieldErrors,
+      formErrors: flat.formErrors,
+      rawInput: JSON.stringify(raw).slice(0, 2000),
+    });
+
+    // Build a user-friendly summary of what went wrong
+    const fieldMessages: string[] = [];
+    for (const [field, msgs] of Object.entries(flat.fieldErrors)) {
+      const msg = (msgs as string[])?.[0];
+      if (msg) fieldMessages.push(`${field}: ${msg}`);
+    }
+    const summary =
+      fieldMessages.length > 0
+        ? `Please fix ${fieldMessages.length} issue${fieldMessages.length > 1 ? "s" : ""}: ${fieldMessages.join("; ")}`
+        : "Please fix the errors in your listing and try again.";
+
     return {
       success: false,
-      error: "Please fix the errors in your listing and try again.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      error: summary,
+      fieldErrors: flat.fieldErrors,
     };
   }
   const data = parsed.data;
