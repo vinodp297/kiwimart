@@ -46,6 +46,7 @@ export interface PresignedUploadResult {
 
 export interface ProcessedImageResult {
   safe: boolean;
+  r2Key?: string; // The processed full-size key (may differ from original)
   width?: number;
   height?: number;
   compressedSize?: number;
@@ -220,6 +221,7 @@ export async function confirmImageUpload(params: {
         success: true,
         data: {
           safe: true,
+          r2Key: result.fullKey, // Updated key after processing (e.g., uuid-full.webp)
           width: result.width,
           height: result.height,
           compressedSize: result.compressedSize,
@@ -265,7 +267,7 @@ export async function confirmImageUpload(params: {
             scannedAt: new Date(),
           },
         });
-        return { success: true, data: { safe: true } };
+        return { success: true, data: { safe: true, r2Key: params.r2Key } };
       }
 
       // Real processing error (e.g. image too small, virus detected)
@@ -289,6 +291,47 @@ export async function confirmImageUpload(params: {
         "Image processing encountered an issue. Please try uploading again.",
       ),
     };
+  }
+}
+
+// ── cleanupOrphanedImages — removes stale pending images from old sessions ──
+// Called when /sell page mounts to prevent old orphaned records from
+// interfering with new uploads or publish validation.
+
+export async function cleanupOrphanedImages(): Promise<
+  ActionResult<{ deleted: number }>
+> {
+  try {
+    const user = await requireUser();
+
+    // Delete orphaned images for this user:
+    // - Not associated with any listing (listingId is null)
+    // - Unprocessed (stuck/failed processing — processedAt is null)
+    // Note: ListingImage has no createdAt column, so we can only filter
+    // on processedAt. We keep processed orphans since they may belong
+    // to a draft being resumed in the same session.
+    const result = await db.listingImage.deleteMany({
+      where: {
+        listingId: null,
+        r2Key: { startsWith: `listings/${user.id}/` },
+        processedAt: null, // Only delete unprocessed orphans
+      },
+    });
+
+    if (result.count > 0) {
+      logger.info("image:orphan-cleanup", {
+        userId: user.id,
+        deleted: result.count,
+      });
+    }
+
+    return { success: true, data: { deleted: result.count } };
+  } catch (err) {
+    // Non-critical — don't block the user from using the page
+    logger.warn("image:orphan-cleanup-failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { success: true, data: { deleted: 0 } };
   }
 }
 
