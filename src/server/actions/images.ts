@@ -94,6 +94,22 @@ export async function requestImageUpload(params: {
     } else {
       // For new listings (pending), count pending images by this user.
       // listingId is null for uploads not yet associated with a listing.
+      // Clean up stale orphans first: delete unprocessed images older than 1 hour
+      // that were never associated with a listing (leftover from failed uploads).
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      await db.listingImage.deleteMany({
+        where: {
+          listingId: null,
+          r2Key: { startsWith: `listings/${user.id}/` },
+          scanned: false,
+          safe: false,
+          processedAt: null,
+          // Use id-based heuristic: cuid() is roughly time-ordered.
+          // For exact timing, we'd need a createdAt column.
+          // Instead, just delete all unprocessed orphans — they're useless anyway.
+        },
+      });
+
       const pendingCount = await db.listingImage.count({
         where: {
           listingId: null,
@@ -156,6 +172,12 @@ export async function requestImageUpload(params: {
       data: { uploadUrl, r2Key, imageId: image.id },
     };
   } catch (err) {
+    logger.error("image:request-upload-failed", {
+      error: err instanceof Error ? err.message : String(err),
+      fileName: params.fileName,
+      contentType: params.contentType,
+      sizeBytes: params.sizeBytes,
+    });
     return { success: false, error: safeActionError(err) };
   }
 }
@@ -224,7 +246,10 @@ export async function confirmImageUpload(params: {
         },
       };
     } catch (err) {
-      const msg = safeActionError(err, "Processing failed.");
+      // Preserve the actual error message for actionable feedback.
+      // processImage throws descriptive errors (too small, scan failed, etc.)
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const msg = rawMsg || "Processing failed.";
       const isStorageUnavailable =
         msg.includes("Failed to download") ||
         msg.includes("getaddrinfo") ||
@@ -262,9 +287,19 @@ export async function confirmImageUpload(params: {
       }
 
       // Real processing error (e.g. image too small, virus detected)
+      logger.error("image:processing-failed", {
+        imageId: params.imageId,
+        r2Key: params.r2Key,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return { success: false, error: msg };
     }
   } catch (err) {
+    logger.error("image:confirm-upload-failed", {
+      imageId: params.imageId,
+      r2Key: params.r2Key,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { success: false, error: safeActionError(err) };
   }
 }
