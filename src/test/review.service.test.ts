@@ -194,6 +194,7 @@ describe("ReviewService", () => {
           createdAt: new Date("2026-01-15"),
           author: { displayName: "Buyer One" },
           order: { listing: { title: "iPhone 15" } },
+          tags: [{ tag: "FAST_SHIPPING" }],
         },
       ] as never);
 

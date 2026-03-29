@@ -2,12 +2,13 @@
 // ─── Review Domain Types ─────────────────────────────────────────────────────
 
 export interface CreateReviewInput {
-  orderId: string
-  rating: number
-  comment: string
+  orderId: string;
+  rating: number;
+  comment: string;
+  tags?: string[]; // ReviewTagType values
 }
 
 export interface ReplyToReviewInput {
-  reviewId: string
-  reply: string
+  reviewId: string;
+  reply: string;
 }

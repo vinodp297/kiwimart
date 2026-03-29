@@ -1,29 +1,75 @@
 "use client";
 // src/components/RecentlyViewed.tsx
 // ─── Recently Viewed Listings Section ─────────────────────────────────────────
+// Authenticated users: fetches from DB. Guests: falls back to localStorage.
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { getRecentlyViewed } from "@/lib/recently-viewed";
 import type { RecentlyViewedItem } from "@/lib/recently-viewed";
+import { getRecentlyViewedFromDB } from "@/server/actions/recentlyViewed";
 import { formatPrice, CONDITION_LABELS } from "@/lib/utils";
 import type { Condition } from "@/types";
+
+interface DisplayItem {
+  id: string;
+  title: string;
+  price: number;
+  thumbnailUrl: string;
+  condition: string;
+}
 
 export default function RecentlyViewed({
   excludeId,
   maxItems = 8,
+  title = "Recently viewed",
 }: {
   excludeId?: string;
   maxItems?: number;
+  title?: string;
 }) {
-  const [items, setItems] = useState<RecentlyViewedItem[]>([]);
+  const { status } = useSession();
+  const [items, setItems] = useState<DisplayItem[]>([]);
 
   useEffect(() => {
-    const viewed = getRecentlyViewed()
-      .filter((i) => i.id !== excludeId)
-      .slice(0, maxItems);
-    setItems(viewed);
-  }, [excludeId, maxItems]);
+    async function load() {
+      let loaded: DisplayItem[] = [];
+
+      if (status === "authenticated") {
+        // Fetch from DB
+        const result = await getRecentlyViewedFromDB(maxItems + 1);
+        if (result.success) {
+          loaded = result.data.map((r) => ({
+            id: r.id,
+            title: r.title,
+            price: r.price,
+            thumbnailUrl: r.thumbnailUrl,
+            condition: r.condition,
+          }));
+        }
+      } else if (status === "unauthenticated") {
+        // Fallback to localStorage for guests
+        loaded = getRecentlyViewed().map((i) => ({
+          id: i.id,
+          title: i.title,
+          price: i.price,
+          thumbnailUrl: i.thumbnailUrl,
+          condition: i.condition,
+        }));
+      }
+
+      // Filter and limit
+      const filtered = loaded
+        .filter((i) => i.id !== excludeId)
+        .slice(0, maxItems);
+      setItems(filtered);
+    }
+
+    if (status !== "loading") {
+      load();
+    }
+  }, [excludeId, maxItems, status]);
 
   if (items.length === 0) return null;
 
@@ -34,7 +80,7 @@ export default function RecentlyViewed({
           className="font-[family-name:var(--font-playfair)] text-[1.25rem]
           font-semibold text-[#141414]"
         >
-          Recently viewed
+          {title}
         </h2>
         <span className="text-[11.5px] text-[#9E9A91]">
           {items.length} item{items.length !== 1 ? "s" : ""}

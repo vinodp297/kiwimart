@@ -1,27 +1,29 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/listings.ts
 // ─── Listing Server Actions ───────────────────────────────────────────────────
 
-import { headers } from 'next/headers';
-import { revalidatePath } from 'next/cache';
-import db from '@/lib/db';
-import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
-import { audit } from '@/server/lib/audit';
-import { requireUser } from '@/server/lib/requireUser';
-import { listingService } from '@/modules/listings/listing.service';
-import { createNotification } from '@/modules/notifications/notification.service';
+import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
+import db from "@/lib/db";
+import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
+import { audit } from "@/server/lib/audit";
+import { requireUser } from "@/server/lib/requireUser";
+import { listingService } from "@/modules/listings/listing.service";
+import { createNotification } from "@/modules/notifications/notification.service";
+import { sendPriceDropEmail } from "@/server/email";
+import { logger } from "@/shared/logger";
 import {
   createListingSchema,
   updateListingSchema,
   toggleWatchSchema,
-} from '@/server/validators';
-import type { ActionResult, ListingCard } from '@/types';
+} from "@/server/validators";
+import type { ActionResult, ListingCard } from "@/types";
 
 // ── createListing ─────────────────────────────────────────────────────────────
 
 export async function createListing(
-  raw: unknown
+  raw: unknown,
 ): Promise<ActionResult<{ listingId: string; slug: string }>> {
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders);
@@ -31,30 +33,38 @@ export async function createListing(
   try {
     authedUser = await requireUser();
   } catch (err) {
-    return { success: false, error: safeActionError(err, 'Authentication required.') };
+    return {
+      success: false,
+      error: safeActionError(err, "Authentication required."),
+    };
   }
 
   // 2. Authorise — check email verified, seller terms accepted, stripe onboarded
   const userDetails = await db.user.findUnique({
     where: { id: authedUser.id },
-    select: { emailVerified: true, sellerEnabled: true, sellerTermsAcceptedAt: true },
+    select: {
+      emailVerified: true,
+      sellerEnabled: true,
+      sellerTermsAcceptedAt: true,
+    },
   });
   if (!userDetails?.emailVerified) {
     return {
       success: false,
-      error: 'Please verify your email address before creating a listing.',
+      error: "Please verify your email address before creating a listing.",
     };
   }
   if (!userDetails.sellerTermsAcceptedAt) {
     return {
       success: false,
-      error: 'Please accept seller terms before listing items. Go to Seller Hub to accept.',
+      error:
+        "Please accept seller terms before listing items. Go to Seller Hub to accept.",
     };
   }
   if (!authedUser.stripeOnboarded) {
     return {
       success: false,
-      error: 'Please set up your payment account before listing items.',
+      error: "Please set up your payment account before listing items.",
     };
   }
 
@@ -63,14 +73,14 @@ export async function createListing(
   if (!parsed.success) {
     return {
       success: false,
-      error: 'Invalid listing data',
+      error: "Invalid listing data",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
   const data = parsed.data;
 
   // 4. Rate limit — 10 listings per hour per user
-  const limit = await rateLimit('listing', authedUser.id);
+  const limit = await rateLimit("listing", authedUser.id);
   if (!limit.success) {
     return {
       success: false,
@@ -84,7 +94,11 @@ export async function createListing(
     select: { id: true },
   });
   if (!category) {
-    return { success: false, error: 'Invalid category.', fieldErrors: { categoryId: ['Invalid category'] } };
+    return {
+      success: false,
+      error: "Invalid category.",
+      fieldErrors: { categoryId: ["Invalid category"] },
+    };
   }
 
   // 5b. Validate image keys exist and are safe (scanned by ClamAV in image upload action)
@@ -99,7 +113,7 @@ export async function createListing(
   if (images.length !== data.imageKeys.length) {
     return {
       success: false,
-      error: 'One or more images are invalid or have not passed safety checks.',
+      error: "One or more images are invalid or have not passed safety checks.",
     };
   }
 
@@ -113,15 +127,16 @@ export async function createListing(
         priceNzd: Math.round(data.price * 100), // Convert dollars → cents
         gstIncluded: data.gstIncluded,
         condition: data.condition,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         categoryId: data.categoryId,
         subcategoryName: data.subcategoryName ?? null,
         region: data.region,
         suburb: data.suburb,
         shippingOption: data.shippingOption,
-        shippingNzd: data.shippingPrice != null
-          ? Math.round(data.shippingPrice * 100)
-          : null,
+        shippingNzd:
+          data.shippingPrice != null
+            ? Math.round(data.shippingPrice * 100)
+            : null,
         pickupAddress: data.pickupAddress ?? null,
         offersEnabled: data.offersEnabled,
         isUrgent: data.isUrgent,
@@ -159,23 +174,25 @@ export async function createListing(
   });
 
   // 5d. Record initial price history point
-  db.listingPriceHistory.create({
-    data: { listingId: listing.id, priceNzd: Math.round(data.price * 100) },
-  }).catch(() => {});
+  db.listingPriceHistory
+    .create({
+      data: { listingId: listing.id, priceNzd: Math.round(data.price * 100) },
+    })
+    .catch(() => {});
 
   // 6. Audit (fire-and-forget)
   audit({
     userId: authedUser.id,
-    action: 'LISTING_CREATED',
-    entityType: 'Listing',
+    action: "LISTING_CREATED",
+    entityType: "Listing",
     entityId: listing.id,
     metadata: { title: data.title, price: data.price },
     ip,
   });
 
   // 7. Revalidate affected cache paths
-  revalidatePath('/');
-  revalidatePath('/search');
+  revalidatePath("/");
+  revalidatePath("/search");
 
   return {
     success: true,
@@ -188,15 +205,18 @@ export async function createListing(
 // priceDroppedAt for the Price Dropped badge in ListingCard.
 
 export async function updateListing(
-  raw: unknown
+  raw: unknown,
 ): Promise<ActionResult<{ listingId: string }>> {
   const user = await requireUser();
   const parsed = updateListingSchema.safeParse(raw);
   if (!parsed.success) {
     return {
       success: false,
-      error: 'Validation failed.',
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      error: "Validation failed.",
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<
+        string,
+        string[]
+      >,
     };
   }
 
@@ -210,13 +230,14 @@ export async function updateListing(
   });
 
   if (!existing || existing.deletedAt) {
-    return { success: false, error: 'Listing not found.' };
+    return { success: false, error: "Listing not found." };
   }
   if (existing.sellerId !== user.id && !user.isAdmin) {
-    return { success: false, error: 'Not authorised.' };
+    return { success: false, error: "Not authorised." };
   }
 
-  const newPriceNzd = data.price != null ? Math.round(data.price * 100) : undefined;
+  const newPriceNzd =
+    data.price != null ? Math.round(data.price * 100) : undefined;
   const priceDropData =
     newPriceNzd != null && newPriceNzd < existing.priceNzd
       ? {
@@ -234,16 +255,28 @@ export async function updateListing(
       ...(data.gstIncluded != null ? { gstIncluded: data.gstIncluded } : {}),
       ...(data.condition != null ? { condition: data.condition } : {}),
       ...(data.categoryId != null ? { categoryId: data.categoryId } : {}),
-      ...(data.subcategoryName !== undefined ? { subcategoryName: data.subcategoryName ?? null } : {}),
+      ...(data.subcategoryName !== undefined
+        ? { subcategoryName: data.subcategoryName ?? null }
+        : {}),
       ...(data.region != null ? { region: data.region } : {}),
       ...(data.suburb != null ? { suburb: data.suburb } : {}),
-      ...(data.shippingOption != null ? { shippingOption: data.shippingOption } : {}),
-      ...(data.shippingPrice != null ? { shippingNzd: Math.round(data.shippingPrice * 100) } : {}),
-      ...(data.pickupAddress !== undefined ? { pickupAddress: data.pickupAddress ?? null } : {}),
-      ...(data.offersEnabled != null ? { offersEnabled: data.offersEnabled } : {}),
+      ...(data.shippingOption != null
+        ? { shippingOption: data.shippingOption }
+        : {}),
+      ...(data.shippingPrice != null
+        ? { shippingNzd: Math.round(data.shippingPrice * 100) }
+        : {}),
+      ...(data.pickupAddress !== undefined
+        ? { pickupAddress: data.pickupAddress ?? null }
+        : {}),
+      ...(data.offersEnabled != null
+        ? { offersEnabled: data.offersEnabled }
+        : {}),
       ...(data.isUrgent != null ? { isUrgent: data.isUrgent } : {}),
       ...(data.isNegotiable != null ? { isNegotiable: data.isNegotiable } : {}),
-      ...(data.shipsNationwide != null ? { shipsNationwide: data.shipsNationwide } : {}),
+      ...(data.shipsNationwide != null
+        ? { shipsNationwide: data.shipsNationwide }
+        : {}),
       ...priceDropData,
     },
   });
@@ -251,39 +284,85 @@ export async function updateListing(
   // Price history tracking + notify watchlist users of price drop (fire-and-forget)
   if (newPriceNzd != null && newPriceNzd !== existing.priceNzd) {
     // Record price change in history
-    db.listingPriceHistory.create({
-      data: { listingId, priceNzd: newPriceNzd },
-    }).catch(() => {});
+    db.listingPriceHistory
+      .create({
+        data: { listingId, priceNzd: newPriceNzd },
+      })
+      .catch(() => {});
   }
 
   if (newPriceNzd != null && newPriceNzd < existing.priceNzd) {
     const listingTitle = data.title ?? existing.title;
-    const priceDrop = Math.round(((existing.priceNzd - newPriceNzd) / existing.priceNzd) * 100);
+    const priceDrop = Math.round(
+      ((existing.priceNzd - newPriceNzd) / existing.priceNzd) * 100,
+    );
     const newPriceFormatted = `$${(newPriceNzd / 100).toFixed(2)}`;
     const oldPriceFormatted = `$${(existing.priceNzd / 100).toFixed(2)}`;
     const savings = `$${((existing.priceNzd - newPriceNzd) / 100).toFixed(2)}`;
 
-    db.watchlistItem.findMany({
-      where: { listingId, priceAlertEnabled: true },
-      select: { userId: true },
-    }).then((watchers) => {
-      for (const watcher of watchers) {
-        if (watcher.userId === existing.sellerId) continue;
-        createNotification({
-          userId:    watcher.userId,
-          type:      'PRICE_DROP',
-          title:     `Price dropped ${priceDrop}%! 📉`,
-          body:      `"${listingTitle}" dropped from ${oldPriceFormatted} to ${newPriceFormatted} — ${savings} savings!`,
+    db.watchlistItem
+      .findMany({
+        where: { listingId, priceAlertEnabled: true },
+        select: {
+          userId: true,
+          user: { select: { email: true, displayName: true } },
+        },
+      })
+      .then(async (watchers) => {
+        const promises: Promise<unknown>[] = [];
+        for (const watcher of watchers) {
+          if (watcher.userId === existing.sellerId) continue;
+
+          // In-app notification
+          promises.push(
+            createNotification({
+              userId: watcher.userId,
+              type: "PRICE_DROP",
+              title: `Price dropped ${priceDrop}%! 📉`,
+              body: `"${listingTitle}" dropped from ${oldPriceFormatted} to ${newPriceFormatted} — ${savings} savings!`,
+              listingId,
+              link: `/listings/${listingId}`,
+            }),
+          );
+
+          // Email notification
+          if (watcher.user?.email) {
+            promises.push(
+              sendPriceDropEmail({
+                to: watcher.user.email,
+                buyerName: watcher.user.displayName ?? "there",
+                listingTitle,
+                oldPrice: oldPriceFormatted,
+                newPrice: newPriceFormatted,
+                savings,
+                dropPercent: priceDrop,
+                listingUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz"}/listings/${listingId}`,
+              }),
+            );
+          }
+        }
+
+        const results = await Promise.allSettled(promises);
+        const failures = results.filter((r) => r.status === "rejected");
+        if (failures.length > 0) {
+          logger.warn("Some price drop notifications failed", {
+            listingId,
+            totalSent: promises.length,
+            failures: failures.length,
+          });
+        }
+      })
+      .catch((err) => {
+        logger.error("Failed to send price drop notifications", {
           listingId,
-          link:      `/listings/${listingId}`,
-        }).catch(() => {});
-      }
-    }).catch(() => {});
+          err,
+        });
+      });
   }
 
   revalidatePath(`/listings/${listingId}`);
-  revalidatePath('/dashboard/seller');
-  revalidatePath('/search');
+  revalidatePath("/dashboard/seller");
+  revalidatePath("/search");
 
   return { success: true, data: { listingId } };
 }
@@ -291,13 +370,13 @@ export async function updateListing(
 // ── deleteListing ─────────────────────────────────────────────────────────────
 
 export async function deleteListing(
-  listingId: string
+  listingId: string,
 ): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
     await listingService.deleteListing(listingId, user.id, user.isAdmin);
-    revalidatePath('/dashboard/seller');
-    revalidatePath('/search');
+    revalidatePath("/dashboard/seller");
+    revalidatePath("/search");
     return { success: true, data: undefined };
   } catch (err) {
     return { success: false, error: safeActionError(err) };
@@ -307,15 +386,18 @@ export async function deleteListing(
 // ── toggleWatch ───────────────────────────────────────────────────────────────
 
 export async function toggleWatch(
-  raw: unknown
+  raw: unknown,
 ): Promise<ActionResult<{ watching: boolean }>> {
   try {
     const user = await requireUser();
     const parsed = toggleWatchSchema.safeParse(raw);
     if (!parsed.success) {
-      return { success: false, error: 'Invalid listing ID.' };
+      return { success: false, error: "Invalid listing ID." };
     }
-    const result = await listingService.toggleWatch(parsed.data.listingId, user.id);
+    const result = await listingService.toggleWatch(
+      parsed.data.listingId,
+      user.id,
+    );
     return { success: true, data: result };
   } catch (err) {
     return { success: false, error: safeActionError(err) };
@@ -328,4 +410,3 @@ export async function toggleWatch(
 export async function getListingById(id: string) {
   return listingService.getListingById(id);
 }
-

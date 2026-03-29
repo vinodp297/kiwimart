@@ -1,78 +1,62 @@
 // src/lib/review-tags.ts
-// ─── Review Strength Tags — computed from review text + rating ────────────────
+// ─── Review Strength Tags — user-selectable chips ────────────────────────────
+// Maps the ReviewTagType enum to display labels and colours.
 // Pure function safe for client + server.
 
-export interface ReviewTag {
-  label: string;
-  colour: string; // Tailwind classes for bg + text
-}
+/** Matches the Prisma ReviewTagType enum */
+export type ReviewTagType =
+  | "FAST_SHIPPING"
+  | "GREAT_PACKAGING"
+  | "ACCURATE_DESCRIPTION"
+  | "QUICK_COMMUNICATION"
+  | "FAIR_PRICING"
+  | "AS_DESCRIBED";
 
-const TAG_RULES: {
-  keywords: RegExp;
+export const REVIEW_TAG_OPTIONS: {
+  value: ReviewTagType;
   label: string;
+  emoji: string;
   colour: string;
 }[] = [
   {
-    keywords: /\b(fast|quick|speedy|prompt|same.?day|next.?day)\b/i,
+    value: "FAST_SHIPPING",
     label: "Fast shipping",
-    colour: "bg-sky-50 text-sky-700",
+    emoji: "\u{1F680}",
+    colour: "bg-sky-50 text-sky-700 border-sky-200",
   },
   {
-    keywords:
-      /\b(great.?condition|perfect.?condition|like.?new|mint|brand.?new|immaculate|pristine)\b/i,
-    label: "Great condition",
-    colour: "bg-emerald-50 text-emerald-700",
+    value: "GREAT_PACKAGING",
+    label: "Great packaging",
+    emoji: "\u{1F4E6}",
+    colour: "bg-violet-50 text-violet-700 border-violet-200",
   },
   {
-    keywords: /\b(well.?packed|packag|bubble.?wrap|protected|secure.?pack)\b/i,
-    label: "Well packed",
-    colour: "bg-violet-50 text-violet-700",
+    value: "ACCURATE_DESCRIPTION",
+    label: "Accurate description",
+    emoji: "\u2705",
+    colour: "bg-emerald-50 text-emerald-700 border-emerald-200",
   },
   {
-    keywords: /\b(friend(ly)?|helpful|kind|nice|pleasant|polite|lovely)\b/i,
-    label: "Friendly seller",
-    colour: "bg-amber-50 text-amber-700",
+    value: "QUICK_COMMUNICATION",
+    label: "Quick comms",
+    emoji: "\u{1F4AC}",
+    colour: "bg-indigo-50 text-indigo-700 border-indigo-200",
   },
   {
-    keywords: /\b(communicat|responsive|repli|respond|messag|quick.?reply)\b/i,
-    label: "Great communication",
-    colour: "bg-indigo-50 text-indigo-700",
+    value: "FAIR_PRICING",
+    label: "Fair pricing",
+    emoji: "\u{1F4B0}",
+    colour: "bg-amber-50 text-amber-700 border-amber-200",
   },
   {
-    keywords: /\b(bargain|deal|value|worth|cheap|affordable|good.?price)\b/i,
-    label: "Great value",
-    colour: "bg-rose-50 text-rose-700",
-  },
-  {
-    keywords: /\b(as.?described|accurate|exactly|match|true.?to)\b/i,
-    label: "As described",
-    colour: "bg-teal-50 text-teal-700",
-  },
-  {
-    keywords: /\b(recommend|again|return|come.?back|buy.?again)\b/i,
-    label: "Would buy again",
-    colour: "bg-orange-50 text-orange-700",
+    value: "AS_DESCRIBED",
+    label: "Item as described",
+    emoji: "\u{1F3AF}",
+    colour: "bg-teal-50 text-teal-700 border-teal-200",
   },
 ];
 
-/**
- * Generate strength tags from a review comment and rating.
- * Returns up to 3 tags (most relevant first).
- */
-export function getReviewTags(comment: string, rating: number): ReviewTag[] {
-  const tags: ReviewTag[] = [];
-
-  for (const rule of TAG_RULES) {
-    if (tags.length >= 3) break;
-    if (rule.keywords.test(comment)) {
-      tags.push({ label: rule.label, colour: rule.colour });
-    }
-  }
-
-  // If the review is 5 stars and we have room, add a "Top rated" tag
-  if (rating >= 5 && tags.length < 3) {
-    tags.push({ label: "Top rated", colour: "bg-yellow-50 text-yellow-700" });
-  }
-
-  return tags;
+/** Get display config for a tag type */
+export function getTagConfig(tag: ReviewTagType) {
+  return REVIEW_TAG_OPTIONS.find((o) => o.value === tag);
 }

@@ -1,8 +1,11 @@
 "use client";
 // src/components/RecordView.tsx
-// ─── Records a listing view to localStorage on mount ─────────────────────────
+// ─── Records a listing view to localStorage (guest fallback) ─────────────────
+// For authenticated users, recording is done server-side in the page component.
+// This client component handles the localStorage fallback for unauthenticated users.
 
 import { useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { recordView } from "@/lib/recently-viewed";
 
 interface Props {
@@ -20,9 +23,15 @@ export default function RecordView({
   thumbnailUrl,
   condition,
 }: Props) {
+  const { status } = useSession();
+
   useEffect(() => {
-    recordView({ id, title, price, thumbnailUrl, condition });
-  }, [id, title, price, thumbnailUrl, condition]);
+    // Only use localStorage for unauthenticated users
+    // Authenticated users are tracked server-side via DB
+    if (status === "unauthenticated") {
+      recordView({ id, title, price, thumbnailUrl, condition });
+    }
+  }, [id, title, price, thumbnailUrl, condition, status]);
 
   return null; // Render nothing — side-effect only
 }
