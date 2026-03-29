@@ -1,15 +1,15 @@
-'use client';
+"use client";
 // src/components/NavBar.tsx  (Sprint 3 update)
 // ─── Navigation Bar ───────────────────────────────────────────────────────────
 // Sprint 3: wired to Auth.js useSession() — real session replaces mock.
 
-import { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react';
-import CATEGORIES from '@/data/categories';
+import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
+import CATEGORIES from "@/data/categories";
 
-const HIDDEN_CATEGORY_IDS = ['vehicles', 'property'];
+const HIDDEN_CATEGORY_IDS = ["vehicles", "property"];
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function NavBar() {
@@ -26,25 +26,25 @@ export default function NavBar() {
   // Auth.js v5 (beta.30): use redirectTo (callbackUrl is deprecated).
   // redirect:true is the default so it is omitted.
   const PROTECTED_PREFIXES = [
-    '/dashboard',
-    '/admin',
-    '/sell',
-    '/account',
-    '/welcome',
-    '/seller',
-    '/notifications',
-    '/checkout',
-    '/orders',
-    '/reviews',
-    '/messages',
+    "/dashboard",
+    "/admin",
+    "/sell",
+    "/account",
+    "/welcome",
+    "/seller",
+    "/notifications",
+    "/checkout",
+    "/orders",
+    "/reviews",
+    "/messages",
   ];
   async function handleSignOut() {
     setMobileOpen(false);
     setAccountOpen(false);
     const isProtected = PROTECTED_PREFIXES.some((p) =>
-      window.location.pathname.startsWith(p)
+      window.location.pathname.startsWith(p),
     );
-    const redirectTo = isProtected ? '/' : window.location.pathname;
+    const redirectTo = isProtected ? "/" : window.location.pathname;
     await signOut({ redirectTo });
   }
 
@@ -62,32 +62,32 @@ export default function NavBar() {
 
   function getNotifIcon(type: string): string {
     const icons: Record<string, string> = {
-      ORDER_PLACED:     '🛍️',
-      ORDER_DISPATCHED: '📦',
-      ORDER_COMPLETED:  '✅',
-      ORDER_DISPUTED:   '⚠️',
-      MESSAGE_RECEIVED: '💬',
-      OFFER_RECEIVED:   '💰',
-      OFFER_ACCEPTED:   '🎉',
-      OFFER_DECLINED:   '❌',
-      PRICE_DROP:       '📉',
-      WATCHLIST_SOLD:   '🔔',
-      ID_VERIFIED:      '✅',
-      SYSTEM:           'ℹ️',
+      ORDER_PLACED: "🛍️",
+      ORDER_DISPATCHED: "📦",
+      ORDER_COMPLETED: "✅",
+      ORDER_DISPUTED: "⚠️",
+      MESSAGE_RECEIVED: "💬",
+      OFFER_RECEIVED: "💰",
+      OFFER_ACCEPTED: "🎉",
+      OFFER_DECLINED: "❌",
+      PRICE_DROP: "📉",
+      WATCHLIST_SOLD: "🔔",
+      ID_VERIFIED: "✅",
+      SYSTEM: "ℹ️",
     };
-    return icons[type] ?? '🔔';
+    return icons[type] ?? "🔔";
   }
 
   function formatRelativeTime(dateStr: string): string {
     const diff = Date.now() - new Date(dateStr).getTime();
-    const mins  = Math.floor(diff / 60_000);
+    const mins = Math.floor(diff / 60_000);
     const hours = Math.floor(diff / 3_600_000);
-    const days  = Math.floor(diff / 86_400_000);
-    if (mins  <  1) return 'Just now';
-    if (mins  < 60) return `${mins}m ago`;
+    const days = Math.floor(diff / 86_400_000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
     if (hours < 24) return `${hours}h ago`;
-    if (days  <  7) return `${days}d ago`;
-    return new Date(dateStr).toLocaleDateString('en-NZ');
+    if (days < 7) return `${days}d ago`;
+    return new Date(dateStr).toLocaleDateString("en-NZ");
   }
 
   const hasUnread = notifications.some((n) => !n.read);
@@ -97,9 +97,10 @@ export default function NavBar() {
   // Normalise session.user into local shape
   const user = session?.user
     ? {
-        displayName: session.user.name ?? session.user.email ?? 'Account',
-        email: session.user.email ?? '',
-        sellerEnabled: (session.user as { sellerEnabled?: boolean }).sellerEnabled ?? false,
+        displayName: session.user.name ?? session.user.email ?? "Account",
+        email: session.user.email ?? "",
+        sellerEnabled:
+          (session.user as { sellerEnabled?: boolean }).sellerEnabled ?? false,
         avatarUrl: session.user.image ?? null,
         isAdmin: (session.user as { isAdmin?: boolean }).isAdmin ?? false,
       }
@@ -108,15 +109,18 @@ export default function NavBar() {
   // Close dropdowns on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (accountRef.current && !accountRef.current.contains(e.target as Node)) {
+      if (
+        accountRef.current &&
+        !accountRef.current.contains(e.target as Node)
+      ) {
         setAccountOpen(false);
       }
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setNotifOpen(false);
       }
     }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   // Close mobile on route change
@@ -128,7 +132,7 @@ export default function NavBar() {
   // Fetch real notifications when user is logged in
   useEffect(() => {
     if (!user) return;
-    fetch('/api/notifications')
+    fetch("/api/notifications")
       .then((r) => r.json())
       .then((data) => setNotifications(data.notifications ?? []))
       .catch(() => {});
@@ -136,22 +140,25 @@ export default function NavBar() {
 
   // Fetch cart count when user is logged in
   useEffect(() => {
-    if (!user) { setCartCount(0); return; }
-    fetch('/api/cart')
+    if (!user) {
+      setCartCount(0);
+      return;
+    }
+    fetch("/api/cart")
       .then((r) => r.json())
-      .then((data) => setCartCount(data.count ?? 0))
+      .then((res) => setCartCount(res.data?.count ?? res.count ?? 0))
       .catch(() => {});
   }, [user]);
 
   async function markAllRead() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    await fetch('/api/notifications', { method: 'PATCH' }).catch(() => {});
+    await fetch("/api/notifications", { method: "PATCH" }).catch(() => {});
   }
 
   // Show sell banner for logged-in users who haven't set up selling
   useEffect(() => {
     if (user && !user.sellerEnabled) {
-      const dismissed = sessionStorage.getItem('sell-banner-dismissed');
+      const dismissed = sessionStorage.getItem("sell-banner-dismissed");
       if (!dismissed) setShowSellBanner(true);
     } else {
       setShowSellBanner(false);
@@ -159,9 +166,9 @@ export default function NavBar() {
   }, [user]);
 
   const initials = user?.displayName
-    .split(' ')
+    .split(" ")
     .map((w) => w[0])
-    .join('')
+    .join("")
     .slice(0, 2)
     .toUpperCase();
 
@@ -169,8 +176,11 @@ export default function NavBar() {
     <>
       {/* ── Compliance bar ─────────────────────────────────────────────── */}
       <div className="bg-[#141414] text-[11px] text-white/50 text-center py-1.5 px-4">
-        🥝 New Zealand&apos;s most trusted marketplace · $0 listing fees ·{' '}
-        <Link href="/trust" className="underline hover:text-white transition-colors">
+        🥝 New Zealand&apos;s most trusted marketplace · $0 listing fees ·{" "}
+        <Link
+          href="/trust"
+          className="underline hover:text-white transition-colors"
+        >
           $3,000 buyer protection
         </Link>
       </div>
@@ -182,7 +192,6 @@ export default function NavBar() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center h-14 gap-4">
-
             {/* Logo */}
             <Link
               href="/"
@@ -226,8 +235,12 @@ export default function NavBar() {
                 <svg
                   aria-hidden
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9A91]"
-                  width="14" height="14" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
                 >
                   <circle cx="11" cy="11" r="8" />
                   <path d="m21 21-4.35-4.35" />
@@ -244,7 +257,9 @@ export default function NavBar() {
             </form>
 
             {/* Right side */}
-            <div className={`flex items-center gap-1.5 ml-auto ${mobileOpen ? 'invisible' : ''}`}>
+            <div
+              className={`flex items-center gap-1.5 ml-auto ${mobileOpen ? "invisible" : ""}`}
+            >
               {/* Sell CTA */}
               <Link
                 href="/sell"
@@ -254,8 +269,12 @@ export default function NavBar() {
                   duration-150 whitespace-nowrap"
               >
                 <svg
-                  width="11" height="11" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="3"
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
                 >
                   <path d="M12 5v14M5 12h14" />
                 </svg>
@@ -270,11 +289,15 @@ export default function NavBar() {
                     className="relative w-9 h-9 rounded-xl flex items-center justify-center
                       text-[#73706A] hover:text-[#141414] hover:bg-[#F8F7F4]
                       transition-colors"
-                    aria-label={`Shopping cart${cartCount > 0 ? ` (${cartCount} items)` : ''}`}
+                    aria-label={`Shopping cart${cartCount > 0 ? ` (${cartCount} items)` : ""}`}
                   >
                     <svg
-                      width="17" height="17" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="1.8"
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
                     >
                       <circle cx="9" cy="21" r="1" />
                       <circle cx="20" cy="21" r="1" />
@@ -286,7 +309,7 @@ export default function NavBar() {
                           bg-[#D4A843] text-[10px] font-bold text-white flex items-center
                           justify-center px-1 ring-2 ring-white"
                       >
-                        {cartCount > 9 ? '9+' : cartCount}
+                        {cartCount > 9 ? "9+" : cartCount}
                       </span>
                     )}
                   </Link>
@@ -300,9 +323,11 @@ export default function NavBar() {
                         setAccountOpen(false);
                         if (opening) {
                           // Refresh list and mark all read when dropdown opens
-                          fetch('/api/notifications')
+                          fetch("/api/notifications")
                             .then((r) => r.json())
-                            .then((data) => setNotifications(data.notifications ?? []))
+                            .then((data) =>
+                              setNotifications(data.notifications ?? []),
+                            )
                             .catch(() => {});
                           markAllRead();
                         }
@@ -314,8 +339,12 @@ export default function NavBar() {
                         transition-colors"
                     >
                       <svg
-                        width="17" height="17" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="1.8"
+                        width="17"
+                        height="17"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
                       >
                         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.73 21a2 2 0 0 1-3.46 0" />
@@ -353,34 +382,42 @@ export default function NavBar() {
                         <div className="divide-y divide-[#F8F7F4]">
                           {notifications.length === 0 ? (
                             <div className="px-4 py-8 text-center">
-                              <p className="text-[13px] text-[#9E9A91]">No notifications yet</p>
+                              <p className="text-[13px] text-[#9E9A91]">
+                                No notifications yet
+                              </p>
                             </div>
-                          ) : notifications.slice(0, 5).map((n) => (
-                            <Link
-                              key={n.id}
-                              href={n.link ?? '/notifications'}
-                              onClick={() => setNotifOpen(false)}
-                              className={`flex items-start gap-3 px-4 py-3
+                          ) : (
+                            notifications.slice(0, 5).map((n) => (
+                              <Link
+                                key={n.id}
+                                href={n.link ?? "/notifications"}
+                                onClick={() => setNotifOpen(false)}
+                                className={`flex items-start gap-3 px-4 py-3
                                 hover:bg-[#F8F7F4] cursor-pointer transition-colors
-                                ${!n.read ? 'bg-[#F5ECD4]/40' : ''}`}
-                            >
-                              <span className="text-lg shrink-0 mt-0.5">{getNotifIcon(n.type)}</span>
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-[12px] text-[#141414] leading-snug ${!n.read ? 'font-semibold' : ''}`}>
-                                  {n.title}
-                                </p>
-                                <p className="text-[11px] text-[#73706A] mt-0.5 line-clamp-2">
-                                  {n.body}
-                                </p>
-                                <p className="text-[10px] text-[#C9C5BC] mt-1">
-                                  {formatRelativeTime(n.createdAt)}
-                                </p>
-                              </div>
-                              {!n.read && (
-                                <div className="w-2 h-2 rounded-full bg-[#D4A843] shrink-0 mt-1.5" />
-                              )}
-                            </Link>
-                          ))}
+                                ${!n.read ? "bg-[#F5ECD4]/40" : ""}`}
+                              >
+                                <span className="text-lg shrink-0 mt-0.5">
+                                  {getNotifIcon(n.type)}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p
+                                    className={`text-[12px] text-[#141414] leading-snug ${!n.read ? "font-semibold" : ""}`}
+                                  >
+                                    {n.title}
+                                  </p>
+                                  <p className="text-[11px] text-[#73706A] mt-0.5 line-clamp-2">
+                                    {n.body}
+                                  </p>
+                                  <p className="text-[10px] text-[#C9C5BC] mt-1">
+                                    {formatRelativeTime(n.createdAt)}
+                                  </p>
+                                </div>
+                                {!n.read && (
+                                  <div className="w-2 h-2 rounded-full bg-[#D4A843] shrink-0 mt-1.5" />
+                                )}
+                              </Link>
+                            ))
+                          )}
                         </div>
                         <Link
                           href="/notifications"
@@ -415,9 +452,13 @@ export default function NavBar() {
                       <svg
                         aria-hidden
                         className={`text-[#9E9A91] transition-transform duration-150
-                          ${accountOpen ? 'rotate-180' : ''}`}
-                        width="11" height="11" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" strokeWidth="2.5"
+                          ${accountOpen ? "rotate-180" : ""}`}
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
                       >
                         <path d="m6 9 6 6 6-6" />
                       </svg>
@@ -434,7 +475,9 @@ export default function NavBar() {
                           <p className="text-[13px] font-semibold text-[#141414] truncate">
                             {user.displayName}
                           </p>
-                          <p className="text-[11.5px] text-[#9E9A91] truncate">{user.email}</p>
+                          <p className="text-[11.5px] text-[#9E9A91] truncate">
+                            {user.email}
+                          </p>
                         </div>
 
                         {/* Admin Panel link */}
@@ -455,9 +498,21 @@ export default function NavBar() {
                         {/* Buyer links */}
                         <div className="py-1">
                           {[
-                            { href: '/dashboard/buyer?tab=orders', label: 'My orders & purchases', icon: '📦' },
-                            { href: '/dashboard/buyer?tab=watchlist', label: 'Watchlist', icon: '❤️' },
-                            { href: '/dashboard/buyer?tab=messages', label: 'Messages', icon: '💬' },
+                            {
+                              href: "/dashboard/buyer?tab=orders",
+                              label: "My orders & purchases",
+                              icon: "📦",
+                            },
+                            {
+                              href: "/dashboard/buyer?tab=watchlist",
+                              label: "Watchlist",
+                              icon: "❤️",
+                            },
+                            {
+                              href: "/dashboard/buyer?tab=messages",
+                              label: "Messages",
+                              icon: "💬",
+                            },
                           ].map(({ href, label, icon }) => (
                             <Link
                               key={href}
@@ -480,9 +535,21 @@ export default function NavBar() {
                                 Selling
                               </p>
                               {[
-                                { href: '/dashboard/seller?tab=overview', label: 'Seller dashboard', icon: '📊' },
-                                { href: '/sell', label: 'Create listing', icon: '➕' },
-                                { href: '/seller/onboarding', label: 'Seller Hub', icon: '🌿' },
+                                {
+                                  href: "/dashboard/seller?tab=overview",
+                                  label: "Seller dashboard",
+                                  icon: "📊",
+                                },
+                                {
+                                  href: "/sell",
+                                  label: "Create listing",
+                                  icon: "➕",
+                                },
+                                {
+                                  href: "/seller/onboarding",
+                                  label: "Seller Hub",
+                                  icon: "🌿",
+                                },
                               ].map(({ href, label, icon }) => (
                                 <Link
                                   key={href}
@@ -523,9 +590,12 @@ export default function NavBar() {
                     )}
                   </div>
                 </>
-              ) : status === 'loading' ? (
+              ) : status === "loading" ? (
                 /* Loading skeleton */
-                <div className="w-9 h-9 rounded-xl bg-[#F0EDE8] animate-pulse" aria-hidden />
+                <div
+                  className="w-9 h-9 rounded-xl bg-[#F0EDE8] animate-pulse"
+                  aria-hidden
+                />
               ) : (
                 /* Unauthenticated state */
                 <div className="flex items-center gap-1.5">
@@ -551,18 +621,32 @@ export default function NavBar() {
               {/* Mobile menu button — always visible */}
               <button
                 onClick={() => setMobileOpen((v) => !v)}
-                aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+                aria-label={mobileOpen ? "Close menu" : "Open menu"}
                 aria-expanded={mobileOpen}
-                style={{ visibility: 'visible' }}
+                style={{ visibility: "visible" }}
                 className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center
                   text-[#73706A] hover:bg-[#F8F7F4] transition-colors"
               >
                 {mobileOpen ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
                     <path d="M18 6 6 18M6 6l12 12" />
                   </svg>
                 ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
                     <line x1="3" y1="12" x2="21" y2="12" />
                     <line x1="3" y1="6" x2="21" y2="6" />
                     <line x1="3" y1="18" x2="21" y2="18" />
@@ -574,9 +658,7 @@ export default function NavBar() {
         </div>
 
         {/* ── Category strip — desktop ──────────────────────────────────── */}
-        <div
-          className="hidden md:block border-t border-[#F0EDE8] bg-[#FAFAF8]"
-        >
+        <div className="hidden md:block border-t border-[#F0EDE8] bg-[#FAFAF8]">
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex items-center gap-0 overflow-x-auto scrollbar-none">
               <Link
@@ -588,14 +670,19 @@ export default function NavBar() {
               >
                 All
               </Link>
-              {CATEGORIES.filter((cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id)).map((cat) => (
+              {CATEGORIES.filter(
+                (cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id),
+              ).map((cat) => (
                 <Link
                   key={cat.id}
                   href={`/search?category=${cat.id}`}
                   className={`flex items-center gap-1.5 px-3 py-2.5 text-[12px]
                     font-semibold border-b-2 transition-all duration-150 whitespace-nowrap
-                    ${pathname === `/search` ? 'text-[#73706A] hover:text-[#141414] border-transparent hover:border-[#D4A843]'
-                    : 'text-[#73706A] hover:text-[#141414] border-transparent hover:border-[#D4A843]'}`}
+                    ${
+                      pathname === `/search`
+                        ? "text-[#73706A] hover:text-[#141414] border-transparent hover:border-[#D4A843]"
+                        : "text-[#73706A] hover:text-[#141414] border-transparent hover:border-[#D4A843]"
+                    }`}
                 >
                   <span aria-hidden>{cat.icon}</span>
                   {cat.name}
@@ -608,10 +695,12 @@ export default function NavBar() {
 
       {/* ── Sell banner (buyers without seller setup) ───────────────────── */}
       {showSellBanner && (
-        <div className="bg-[#F5ECD4] border-b border-[#D4A843]/20 px-4 py-2 flex
-          items-center justify-between gap-4">
+        <div
+          className="bg-[#F5ECD4] border-b border-[#D4A843]/20 px-4 py-2 flex
+          items-center justify-between gap-4"
+        >
           <p className="text-[12.5px] text-[#8B6914]">
-            🛍 Want to sell on KiwiMart?{' '}
+            🛍 Want to sell on KiwiMart?{" "}
             <a
               href="/account/stripe"
               className="font-semibold underline ml-1 hover:text-[#141414] transition-colors"
@@ -621,7 +710,7 @@ export default function NavBar() {
           </p>
           <button
             onClick={() => {
-              sessionStorage.setItem('sell-banner-dismissed', 'true');
+              sessionStorage.setItem("sell-banner-dismissed", "true");
               setShowSellBanner(false);
             }}
             aria-label="Dismiss"
@@ -634,7 +723,7 @@ export default function NavBar() {
 
       {/* ── Mobile drawer ──────────────────────────────────────────────── */}
       <div
-        className={`fixed inset-0 md:hidden ${mobileOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}
+        className={`fixed inset-0 md:hidden ${mobileOpen ? "pointer-events-auto" : "pointer-events-none"}`}
         aria-modal="true"
         role="dialog"
         aria-hidden={!mobileOpen}
@@ -642,7 +731,7 @@ export default function NavBar() {
         {/* Backdrop */}
         <div
           className={`absolute inset-0 bg-black/50 z-[390] transition-opacity duration-300
-            ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
+            ${mobileOpen ? "opacity-100" : "opacity-0"}`}
           onClick={() => setMobileOpen(false)}
         />
 
@@ -651,116 +740,151 @@ export default function NavBar() {
           className={`absolute top-0 right-0 h-full w-[85%] max-w-sm bg-white z-[400]
             shadow-2xl flex flex-col overflow-y-auto
             transform transition-transform duration-300
-            ${mobileOpen ? 'translate-x-0' : 'translate-x-full'}`}
+            ${mobileOpen ? "translate-x-0" : "translate-x-full"}`}
         >
-            {/* Header */}
-            <div
-              className="flex items-center justify-between px-5 py-4 border-b
+          {/* Header */}
+          <div
+            className="flex items-center justify-between px-5 py-4 border-b
                 border-[#E3E0D9] shrink-0"
-            >
-              <span
-                className="font-[family-name:var(--font-playfair)] text-[1.1rem]
+          >
+            <span
+              className="font-[family-name:var(--font-playfair)] text-[1.1rem]
                   text-[#141414]"
-              >
-                Kiwi<em className="not-italic text-[#D4A843]">Mart</em>
-              </span>
-              <button
-                onClick={() => setMobileOpen(false)}
-                aria-label="Close menu"
-                className="w-8 h-8 rounded-full bg-[#F8F7F4] flex items-center
+            >
+              Kiwi<em className="not-italic text-[#D4A843]">Mart</em>
+            </span>
+            <button
+              onClick={() => setMobileOpen(false)}
+              aria-label="Close menu"
+              className="w-8 h-8 rounded-full bg-[#F8F7F4] flex items-center
                   justify-center text-[#73706A]"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
 
-            {/* Mobile search */}
-            <div className="px-5 py-4 border-b border-[#E3E0D9]">
-              <form action="/search" method="get" role="search">
-                <div className="relative">
-                  <input
-                    name="q"
-                    type="search"
-                    placeholder="Search listings…"
-                    className="w-full h-10 pl-9 pr-4 rounded-xl border border-[#C9C5BC]
+          {/* Mobile search */}
+          <div className="px-5 py-4 border-b border-[#E3E0D9]">
+            <form action="/search" method="get" role="search">
+              <div className="relative">
+                <input
+                  name="q"
+                  type="search"
+                  placeholder="Search listings…"
+                  className="w-full h-10 pl-9 pr-4 rounded-xl border border-[#C9C5BC]
                       bg-[#F8F7F4] text-[13px] text-[#141414] placeholder:text-[#C9C5BC]
                       focus:outline-none focus:border-[#D4A843] transition"
-                  />
-                  <svg aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9A91]"
-                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-                  </svg>
-                </div>
-              </form>
-            </div>
-
-            {/* Nav links */}
-            <nav className="flex-1 py-3">
-              {/* Categories */}
-              <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
-                Categories
-              </p>
-              {CATEGORIES.filter((cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id)).map((cat) => (
-                <Link
-                  key={cat.id}
-                  href={`/search?category=${cat.id}`}
-                  className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414]
-                    hover:bg-[#F8F7F4] transition-colors"
+                />
+                <svg
+                  aria-hidden
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9A91]"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
                 >
-                  <span className="text-base">{cat.icon}</span>
-                  {cat.name}
-                </Link>
-              ))}
-
-              {/* Account */}
-              <div className="border-t border-[#E3E0D9] mt-3 pt-3">
-                <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
-                  Account
-                </p>
-                {user ? (
-                  <>
-                    <Link href="/dashboard/buyer" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
-                      📦 My orders
-                    </Link>
-                    <Link href="/dashboard/seller" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
-                      📊 Seller dashboard
-                    </Link>
-                    <Link href="/seller/onboarding" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
-                      🌿 Seller Hub
-                    </Link>
-                    <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors">
-                      🚪 Sign out
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link href="/login" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors">
-                      Sign in
-                    </Link>
-                    <Link href="/register" className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#D4A843] font-semibold hover:bg-[#F8F7F4] transition-colors">
-                      Register free
-                    </Link>
-                  </>
-                )}
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
               </div>
-            </nav>
+            </form>
+          </div>
 
-            {/* Sell CTA */}
-            <div className="px-5 py-4 border-t border-[#E3E0D9] shrink-0">
+          {/* Nav links */}
+          <nav className="flex-1 py-3">
+            {/* Categories */}
+            <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
+              Categories
+            </p>
+            {CATEGORIES.filter(
+              (cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id),
+            ).map((cat) => (
               <Link
-                href="/sell"
-                className="flex items-center justify-center gap-2 w-full h-11
+                key={cat.id}
+                href={`/search?category=${cat.id}`}
+                className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414]
+                    hover:bg-[#F8F7F4] transition-colors"
+              >
+                <span className="text-base">{cat.icon}</span>
+                {cat.name}
+              </Link>
+            ))}
+
+            {/* Account */}
+            <div className="border-t border-[#E3E0D9] mt-3 pt-3">
+              <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
+                Account
+              </p>
+              {user ? (
+                <>
+                  <Link
+                    href="/dashboard/buyer"
+                    className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors"
+                  >
+                    📦 My orders
+                  </Link>
+                  <Link
+                    href="/dashboard/seller"
+                    className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors"
+                  >
+                    📊 Seller dashboard
+                  </Link>
+                  <Link
+                    href="/seller/onboarding"
+                    className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors"
+                  >
+                    🌿 Seller Hub
+                  </Link>
+                  <button
+                    onClick={handleSignOut}
+                    className="w-full flex items-center gap-3 px-5 py-2.5 text-[13px] text-red-500 hover:bg-red-50 transition-colors"
+                  >
+                    🚪 Sign out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#141414] hover:bg-[#F8F7F4] transition-colors"
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/register"
+                    className="flex items-center gap-3 px-5 py-2.5 text-[13px] text-[#D4A843] font-semibold hover:bg-[#F8F7F4] transition-colors"
+                  >
+                    Register free
+                  </Link>
+                </>
+              )}
+            </div>
+          </nav>
+
+          {/* Sell CTA */}
+          <div className="px-5 py-4 border-t border-[#E3E0D9] shrink-0">
+            <Link
+              href="/sell"
+              className="flex items-center justify-center gap-2 w-full h-11
                   rounded-xl bg-[#D4A843] text-[#141414] font-semibold text-[14px]
                   hover:bg-[#B8912E] hover:text-white transition-colors"
-              >
-                + Sell an item
-              </Link>
-            </div>
+            >
+              + Sell an item
+            </Link>
           </div>
+        </div>
       </div>
     </>
   );
 }
-

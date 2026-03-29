@@ -16,9 +16,12 @@ export async function GET() {
 
     if (!session?.user?.id) {
       return NextResponse.json({
-        authenticated: false,
-        stripeOnboarded: false,
-        sellerEnabled: false,
+        success: true,
+        data: {
+          authenticated: false,
+          stripeOnboarded: false,
+          sellerEnabled: false,
+        },
       });
     }
 
@@ -32,10 +35,13 @@ export async function GET() {
     });
 
     return NextResponse.json({
-      authenticated: true,
-      stripeOnboarded: user?.stripeOnboarded ?? false,
-      hasStripeAccount: !!user?.stripeAccountId,
-      sellerEnabled: user?.sellerEnabled ?? false,
+      success: true,
+      data: {
+        authenticated: true,
+        stripeOnboarded: user?.stripeOnboarded ?? false,
+        hasStripeAccount: !!user?.stripeAccountId,
+        sellerEnabled: user?.sellerEnabled ?? false,
+      },
     });
   } catch (e) {
     logger.error("api.error", {
