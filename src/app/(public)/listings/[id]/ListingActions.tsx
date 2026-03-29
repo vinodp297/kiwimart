@@ -7,6 +7,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import type { ListingDetail } from "@/types";
 import { formatPrice } from "@/lib/utils";
 import {
@@ -16,6 +17,8 @@ import {
   Input,
 } from "@/components/ui/primitives";
 import { addToCart } from "@/server/actions/cart";
+import { toggleWatch } from "@/server/actions/listings";
+import { createOffer } from "@/server/actions/offers";
 
 interface Props {
   listing: ListingDetail;
@@ -29,18 +32,24 @@ export default function ListingActions({ listing }: Props) {
   const [offerSubmitted, setOfferSubmitted] = useState(false);
   const [offerError, setOfferError] = useState("");
   const [shareTooltip, setShareTooltip] = useState(false);
+  const [offerLoading, setOfferLoading] = useState(false);
   const [cartLoading, setCartLoading] = useState(false);
   const [cartMessage, setCartMessage] = useState<{
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const { status: sessionStatus } = useSession();
   const router = useRouter();
 
   const isSold = listing.status === "sold";
   const shipping = listing.shippingPrice;
 
-  function handleOfferSubmit(e: React.FormEvent) {
+  async function handleOfferSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (sessionStatus !== "authenticated") {
+      router.push(`/login?from=/listings/${listing.id}`);
+      return;
+    }
     const amount = Number(offerAmount);
     if (!amount || amount <= 0) {
       setOfferError("Please enter a valid offer amount.");
@@ -57,8 +66,25 @@ export default function ListingActions({ listing }: Props) {
       return;
     }
     setOfferError("");
-    // Sprint 3: await createOffer({ listingId: listing.id, amount, note: offerNote })
-    setOfferSubmitted(true);
+    setOfferLoading(true);
+    try {
+      const result = await createOffer({
+        listingId: listing.id,
+        amount,
+        note: offerNote || undefined,
+      });
+      if (result.success) {
+        setOfferSubmitted(true);
+      } else {
+        setOfferError(
+          result.error ?? "Failed to send offer. Please try again.",
+        );
+      }
+    } catch {
+      setOfferError("Something went wrong. Please try again.");
+    } finally {
+      setOfferLoading(false);
+    }
   }
 
   async function handleShare() {
@@ -281,7 +307,17 @@ export default function ListingActions({ listing }: Props) {
             <div className="border-t border-[#E3E0D9] pt-4 mt-1">
               <div className="flex items-center justify-around">
                 <button
-                  onClick={() => setWatched((w) => !w)}
+                  onClick={async () => {
+                    if (sessionStatus !== "authenticated") {
+                      router.push(`/login?from=/listings/${listing.id}`);
+                      return;
+                    }
+                    setWatched((w) => !w);
+                    const result = await toggleWatch({ listingId: listing.id });
+                    if (!result.success) {
+                      setWatched((w) => !w);
+                    }
+                  }}
                   aria-pressed={watched}
                   className="flex items-center gap-2 px-6 py-3 text-[#73706A]
                     hover:text-[#141414] transition-colors text-[14px] font-medium"
@@ -489,8 +525,15 @@ export default function ListingActions({ listing }: Props) {
                       escrow.
                     </Alert>
 
-                    <Button type="submit" variant="gold" fullWidth size="md">
-                      Send offer
+                    <Button
+                      type="submit"
+                      variant="gold"
+                      fullWidth
+                      size="md"
+                      loading={offerLoading}
+                      disabled={offerLoading}
+                    >
+                      {offerLoading ? "Sending..." : "Send offer"}
                     </Button>
                   </div>
                 </form>
