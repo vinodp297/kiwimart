@@ -5,13 +5,11 @@ import { safeActionError } from "@/shared/errors";
 
 import { requireUser } from "@/server/lib/requireUser";
 import db from "@/lib/db";
+import { getImageUrl } from "@/lib/image";
 import type { ActionResult } from "@/types";
 
 function r2Url(key: string | null): string {
-  if (!key)
-    return "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop";
-  if (key.startsWith("http")) return key;
-  return `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${key}`;
+  return getImageUrl(key);
 }
 
 const STATUS_MAP: Record<string, string> = {

@@ -3,6 +3,7 @@
 // ─── Recently Viewed — DB persistence for authenticated users ─────────────────
 
 import db from "@/lib/db";
+import { getImageUrl } from "@/lib/image";
 import { requireUser } from "@/server/lib/requireUser";
 import { logger } from "@/shared/logger";
 import type { ActionResult } from "@/types";
@@ -102,11 +103,7 @@ export async function getRecentlyViewedFromDB(
       .map((r) => {
         const imgKey =
           r.listing.images[0]?.thumbnailKey ?? r.listing.images[0]?.r2Key;
-        const thumbnailUrl = imgKey
-          ? imgKey.startsWith("http")
-            ? imgKey
-            : `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${imgKey}`
-          : "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop";
+        const thumbnailUrl = getImageUrl(imgKey);
         return {
           id: r.listing.id,
           title: r.listing.title,
