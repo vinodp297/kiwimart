@@ -459,15 +459,15 @@ export default function SellPage() {
       description: description.trim(),
       categoryId,
       subcategoryName: subcategory || undefined,
-      condition: condition.toUpperCase(),
-      price: parseFloat(price),
+      condition: condition.toUpperCase().replace(/-/g, "_"),
+      price,
       offersEnabled,
       gstIncluded,
       isUrgent,
       isNegotiable,
       shipsNationwide,
       shippingOption: shippingOption.toUpperCase(),
-      shippingPrice: shippingPrice ? parseFloat(shippingPrice) : undefined,
+      shippingPrice: shippingPrice || undefined,
       region,
       suburb: suburb.trim(),
       imageKeys,
@@ -477,6 +477,54 @@ export default function SellPage() {
     setSubmitting(false);
 
     if (!result.success) {
+      // If we got field-level errors from Zod, show them per-field and
+      // navigate to the first step that has an error.
+      const fe = result.fieldErrors;
+      if (fe && Object.keys(fe).length > 0) {
+        const fieldToStep: Record<string, number> = {
+          imageKeys: 1,
+          title: 2,
+          description: 2,
+          categoryId: 2,
+          subcategoryName: 2,
+          condition: 2,
+          price: 3,
+          offersEnabled: 3,
+          gstIncluded: 3,
+          isUrgent: 3,
+          isNegotiable: 3,
+          shipsNationwide: 3,
+          shippingOption: 4,
+          shippingPrice: 4,
+          region: 4,
+          suburb: 4,
+          pickupAddress: 4,
+        };
+        const fieldErrors: Record<string, string> = {};
+        let firstErrorStep = 4;
+        for (const [field, msgs] of Object.entries(fe)) {
+          const msg = (msgs as string[])?.[0];
+          if (msg) {
+            // Map Zod field names to our local error keys
+            const key =
+              field === "imageKeys"
+                ? "images"
+                : field === "categoryId"
+                  ? "category"
+                  : field === "shippingOption"
+                    ? "shippingOption"
+                    : field;
+            fieldErrors[key] = msg;
+            const s = fieldToStep[field] ?? 4;
+            if (s < firstErrorStep) firstErrorStep = s;
+          }
+        }
+        setErrors(fieldErrors);
+        if (firstErrorStep < step) {
+          setStep(firstErrorStep);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }
       setSubmitError(
         result.error ?? "Failed to create listing. Please try again.",
       );

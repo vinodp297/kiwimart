@@ -142,30 +142,63 @@ export const createListingSchema = z.object({
     .trim(),
   categoryId: z.string().min(1, "Category is required"),
   subcategoryName: z.string().max(50).optional(),
-  condition: conditionEnum,
-  // Price in NZD (dollars, not cents) — server converts to cents
-  price: z
+  // Condition — accepts both "LIKE_NEW" enum and "like-new" form format
+  condition: z
     .string()
-    .transform(Number)
+    .transform((v) => {
+      // Convert form format "like-new" → "LIKE_NEW" for the DB enum
+      const mapped: Record<string, string> = {
+        new: "NEW",
+        NEW: "NEW",
+        "like-new": "LIKE_NEW",
+        "LIKE-NEW": "LIKE_NEW",
+        LIKE_NEW: "LIKE_NEW",
+        good: "GOOD",
+        GOOD: "GOOD",
+        fair: "FAIR",
+        FAIR: "FAIR",
+        parts: "PARTS",
+        PARTS: "PARTS",
+      };
+      return mapped[v] ?? v;
+    })
+    .pipe(conditionEnum),
+  // Price in NZD (dollars, not cents) — server converts to cents.
+  // Accepts string or number since the form may send either.
+  price: z
+    .union([z.string(), z.number()])
+    .transform((v) => (typeof v === "string" ? Number(v) : v))
     .pipe(
       z
-        .number()
+        .number({ error: "Price must be a number" })
         .positive("Price must be greater than $0")
-        .max(100_000, "Maximum price is $100,000")
-        .multipleOf(0.01),
+        .max(100_000, "Maximum price is $100,000"),
     ),
   offersEnabled: z.boolean().default(true),
   gstIncluded: z.boolean().default(false),
   isUrgent: z.boolean().default(false),
   isNegotiable: z.boolean().default(false),
   shipsNationwide: z.boolean().default(false),
-  shippingOption: shippingEnum,
-  // Shipping price in NZD dollars (0 = free, null = not applicable)
-  shippingPrice: z
+  // Shipping option — accepts both "PICKUP" enum and "pickup" form format
+  shippingOption: z
     .string()
+    .transform((v) => v.toUpperCase())
+    .pipe(shippingEnum),
+  // Shipping price in NZD dollars (0 = free, null = not applicable).
+  // Accepts string, number, or undefined since the form may send any.
+  shippingPrice: z
+    .union([z.string(), z.number(), z.undefined()])
     .optional()
-    .transform((v) => (v ? Number(v) : 0))
-    .pipe(z.number().min(0).max(500)),
+    .transform((v) => {
+      if (v === undefined || v === null || v === "") return 0;
+      return typeof v === "string" ? Number(v) : v;
+    })
+    .pipe(
+      z
+        .number()
+        .min(0, "Shipping price can't be negative")
+        .max(500, "Maximum shipping price is $500"),
+    ),
   pickupAddress: z.string().max(200).optional(),
   region: nzRegionField,
   suburb: z.string().min(1, "Suburb is required").max(100).trim(),
@@ -199,22 +232,51 @@ export const saveDraftSchema = z.object({
   description: z.string().max(3000).optional(),
   categoryId: z.string().optional(),
   subcategoryName: z.string().max(50).optional(),
-  condition: conditionEnum.optional(),
-  price: z
+  condition: z
     .string()
+    .transform((v) => {
+      const mapped: Record<string, string> = {
+        new: "NEW",
+        NEW: "NEW",
+        "like-new": "LIKE_NEW",
+        "LIKE-NEW": "LIKE_NEW",
+        LIKE_NEW: "LIKE_NEW",
+        good: "GOOD",
+        GOOD: "GOOD",
+        fair: "FAIR",
+        FAIR: "FAIR",
+        parts: "PARTS",
+        PARTS: "PARTS",
+      };
+      return mapped[v] ?? v;
+    })
+    .pipe(conditionEnum)
+    .optional(),
+  price: z
+    .union([z.string(), z.number(), z.undefined()])
     .optional()
-    .transform((v) => (v ? Number(v) : undefined))
+    .transform((v) => {
+      if (v === undefined || v === null || v === "") return undefined;
+      return typeof v === "string" ? Number(v) : v;
+    })
     .pipe(z.number().min(0).max(100_000).optional()),
   offersEnabled: z.boolean().optional(),
   gstIncluded: z.boolean().optional(),
   isUrgent: z.boolean().optional(),
   isNegotiable: z.boolean().optional(),
   shipsNationwide: z.boolean().optional(),
-  shippingOption: shippingEnum.optional(),
-  shippingPrice: z
+  shippingOption: z
     .string()
+    .transform((v) => v.toUpperCase())
+    .pipe(shippingEnum)
+    .optional(),
+  shippingPrice: z
+    .union([z.string(), z.number(), z.undefined()])
     .optional()
-    .transform((v) => (v ? Number(v) : undefined))
+    .transform((v) => {
+      if (v === undefined || v === null || v === "") return undefined;
+      return typeof v === "string" ? Number(v) : v;
+    })
     .pipe(z.number().min(0).max(500).optional()),
   pickupAddress: z.string().max(200).optional(),
   region: nzRegionField.optional(),
