@@ -17,6 +17,7 @@ import {
   createListingSchema,
   updateListingSchema,
   toggleWatchSchema,
+  saveDraftSchema,
 } from "@/server/validators";
 import type { ActionResult, ListingCard } from "@/types";
 
@@ -198,6 +199,180 @@ export async function createListing(
     success: true,
     data: { listingId: listing.id, slug: listing.id },
   };
+}
+
+// ── saveDraft ─────────────────────────────────────────────────────────────────
+// Saves a partial listing as a DRAFT. All fields are optional — the seller
+// can save at any point in the wizard and come back later.
+// If draftId is provided, updates the existing draft. Otherwise creates new.
+
+export async function saveDraft(
+  raw: unknown,
+): Promise<ActionResult<{ draftId: string }>> {
+  try {
+    const user = await requireUser();
+
+    const parsed = saveDraftSchema.safeParse(raw);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: "Invalid draft data.",
+        fieldErrors: parsed.error.flatten().fieldErrors as Record<
+          string,
+          string[]
+        >,
+      };
+    }
+    const data = parsed.data;
+
+    // Rate limit
+    const limit = await rateLimit("listing", user.id);
+    if (!limit.success) {
+      return {
+        success: false,
+        error: `Too many saves. Try again in ${limit.retryAfter} seconds.`,
+      };
+    }
+
+    // If updating an existing draft, verify ownership
+    if (data.draftId) {
+      const existing = await db.listing.findUnique({
+        where: { id: data.draftId },
+        select: { sellerId: true, status: true, deletedAt: true },
+      });
+      if (!existing || existing.deletedAt) {
+        return { success: false, error: "Draft not found." };
+      }
+      if (existing.sellerId !== user.id) {
+        return { success: false, error: "Not authorised." };
+      }
+      if (existing.status !== "DRAFT") {
+        return {
+          success: false,
+          error: "This listing is no longer a draft.",
+        };
+      }
+
+      // Update existing draft
+      await db.listing.update({
+        where: { id: data.draftId },
+        data: {
+          ...(data.title != null ? { title: data.title } : {}),
+          ...(data.description != null
+            ? { description: data.description }
+            : {}),
+          ...(data.price != null
+            ? { priceNzd: Math.round(data.price * 100) }
+            : {}),
+          ...(data.gstIncluded != null
+            ? { gstIncluded: data.gstIncluded }
+            : {}),
+          ...(data.condition != null ? { condition: data.condition } : {}),
+          ...(data.categoryId != null ? { categoryId: data.categoryId } : {}),
+          ...(data.subcategoryName !== undefined
+            ? { subcategoryName: data.subcategoryName ?? null }
+            : {}),
+          ...(data.region != null ? { region: data.region } : {}),
+          ...(data.suburb != null ? { suburb: data.suburb } : {}),
+          ...(data.shippingOption != null
+            ? { shippingOption: data.shippingOption }
+            : {}),
+          ...(data.shippingPrice != null
+            ? { shippingNzd: Math.round(data.shippingPrice * 100) }
+            : {}),
+          ...(data.pickupAddress !== undefined
+            ? { pickupAddress: data.pickupAddress ?? null }
+            : {}),
+          ...(data.offersEnabled != null
+            ? { offersEnabled: data.offersEnabled }
+            : {}),
+          ...(data.isUrgent != null ? { isUrgent: data.isUrgent } : {}),
+          ...(data.isNegotiable != null
+            ? { isNegotiable: data.isNegotiable }
+            : {}),
+          ...(data.shipsNationwide != null
+            ? { shipsNationwide: data.shipsNationwide }
+            : {}),
+        },
+      });
+
+      // Update images if provided
+      if (data.imageKeys && data.imageKeys.length > 0) {
+        // Disconnect existing images and reconnect with new order
+        await db.listingImage.updateMany({
+          where: { listingId: data.draftId },
+          data: { listingId: null },
+        });
+        for (let i = 0; i < data.imageKeys.length; i++) {
+          await db.listingImage.updateMany({
+            where: { r2Key: data.imageKeys[i] },
+            data: { listingId: data.draftId, order: i },
+          });
+        }
+      }
+
+      revalidatePath("/dashboard/seller");
+      return { success: true, data: { draftId: data.draftId } };
+    }
+
+    // Create new draft — use defaults for required DB fields
+    const draft = await db.listing.create({
+      data: {
+        sellerId: user.id,
+        title: data.title || "Untitled Draft",
+        description: data.description || "",
+        priceNzd: data.price != null ? Math.round(data.price * 100) : 0,
+        gstIncluded: data.gstIncluded ?? false,
+        condition: data.condition ?? "GOOD",
+        status: "DRAFT",
+        categoryId: data.categoryId || "",
+        subcategoryName: data.subcategoryName ?? null,
+        region: data.region ?? "Auckland",
+        suburb: data.suburb ?? "",
+        shippingOption: data.shippingOption ?? "PICKUP",
+        shippingNzd:
+          data.shippingPrice != null
+            ? Math.round(data.shippingPrice * 100)
+            : null,
+        pickupAddress: data.pickupAddress ?? null,
+        offersEnabled: data.offersEnabled ?? true,
+        isUrgent: data.isUrgent ?? false,
+        isNegotiable: data.isNegotiable ?? false,
+        shipsNationwide: data.shipsNationwide ?? false,
+      },
+      select: { id: true },
+    });
+
+    // Associate images with the draft
+    if (data.imageKeys && data.imageKeys.length > 0) {
+      for (let i = 0; i < data.imageKeys.length; i++) {
+        await db.listingImage.updateMany({
+          where: { r2Key: data.imageKeys[i] },
+          data: { listingId: draft.id, order: i },
+        });
+      }
+    }
+
+    // Audit (fire-and-forget)
+    const reqHeaders = await headers();
+    const ip = getClientIp(reqHeaders);
+    audit({
+      userId: user.id,
+      action: "LISTING_CREATED",
+      entityType: "Listing",
+      entityId: draft.id,
+      metadata: { title: data.title },
+      ip,
+    });
+
+    revalidatePath("/dashboard/seller");
+    return { success: true, data: { draftId: draft.id } };
+  } catch (err) {
+    logger.error("listing:save-draft-failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { success: false, error: safeActionError(err) };
+  }
 }
 
 // ── updateListing ─────────────────────────────────────────────────────────────

@@ -535,9 +535,13 @@ export async function fetchSellerDashboard(): Promise<
         where: { userId, status: "PENDING" },
         _sum: { amountNzd: true },
       }),
-      // Active listings
+      // Active + Draft listings
       db.listing.findMany({
-        where: { sellerId: userId, status: "ACTIVE", deletedAt: null },
+        where: {
+          sellerId: userId,
+          status: { in: ["ACTIVE", "DRAFT"] },
+          deletedAt: null,
+        },
         orderBy: { createdAt: "desc" },
         take: 50,
         select: {
