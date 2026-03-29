@@ -78,16 +78,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password, turnstileToken } = parsed.data;
 
-        // 2. Verify Cloudflare Turnstile token (bot protection) — fail CLOSED.
-        // verifyTurnstile() handles: non-production skip, test/0x key warning,
-        // empty token, and fail-closed on network error.
-        // We pass the token (possibly empty) directly — verifyTurnstile decides.
-        if (process.env.NODE_ENV === "production") {
-          const turnstileOk = await verifyTurnstile(turnstileToken ?? "");
+        // 2. Verify Cloudflare Turnstile token (bot protection).
+        // Only verify when the client actually sent a token. If the client-side
+        // build didn't have NEXT_PUBLIC_TURNSTILE_SITE_KEY, no widget rendered
+        // and no token was generated — blocking on an empty token would lock
+        // out all users until a fresh build with the key is deployed.
+        if (process.env.NODE_ENV === "production" && turnstileToken) {
+          const turnstileOk = await verifyTurnstile(turnstileToken);
           if (!turnstileOk) {
             logger.warn("authorize:fail", {
               reason: "turnstile",
-              tokenPresent: !!turnstileToken,
+              tokenPresent: true,
             });
             return null;
           }
