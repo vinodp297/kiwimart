@@ -77,11 +77,13 @@ export default function ListingActions({ listing }: Props) {
         setOfferSubmitted(true);
       } else {
         setOfferError(
-          result.error ?? "Failed to send offer. Please try again.",
+          result.error ?? "Your offer couldn't be submitted. Please try again.",
         );
       }
     } catch {
-      setOfferError("Something went wrong. Please try again.");
+      setOfferError(
+        "Your offer couldn't be submitted. Please check your connection and try again.",
+      );
     } finally {
       setOfferLoading(false);
     }

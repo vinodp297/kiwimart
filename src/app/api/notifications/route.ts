@@ -42,7 +42,10 @@ export async function GET() {
       error: e instanceof Error ? e.message : e,
     });
     return NextResponse.json(
-      { success: false, error: "Something went wrong" },
+      {
+        success: false,
+        error: "We couldn't load your notifications. Please try again.",
+      },
       { status: 500 },
     );
   }
@@ -79,7 +82,10 @@ export async function PATCH(request: Request) {
       error: e instanceof Error ? e.message : e,
     });
     return NextResponse.json(
-      { success: false, error: "Something went wrong" },
+      {
+        success: false,
+        error: "We couldn't update your notifications. Please try again.",
+      },
       { status: 500 },
     );
   }

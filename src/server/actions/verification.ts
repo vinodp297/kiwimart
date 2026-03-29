@@ -1,13 +1,13 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/verification.ts — thin wrapper
 // Business logic delegated to UserService.
 
-import { headers } from 'next/headers';
-import { requireUser } from '@/server/lib/requireUser';
-import { getClientIp } from '@/server/lib/rateLimit';
-import { userService } from '@/modules/users/user.service';
-import type { ActionResult } from '@/types';
+import { headers } from "next/headers";
+import { requireUser } from "@/server/lib/requireUser";
+import { getClientIp } from "@/server/lib/rateLimit";
+import { userService } from "@/modules/users/user.service";
+import type { ActionResult } from "@/types";
 
 export async function requestPhoneVerification(params: {
   phone: string;
@@ -18,10 +18,20 @@ export async function requestPhoneVerification(params: {
     const ip = getClientIp(reqHeaders as unknown as Headers);
     const user = await requireUser();
 
-    const result = await userService.requestPhoneVerification(user.id, params.phone, ip);
+    const result = await userService.requestPhoneVerification(
+      user.id,
+      params.phone,
+      ip,
+    );
     return { success: true, data: result };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "Email verification failed. Please try again or request a new link.",
+      ),
+    };
   }
 }
 
@@ -37,6 +47,12 @@ export async function verifyPhoneCode(params: {
     await userService.verifyPhoneCode(user.id, params.code, ip);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't resend the verification email. Please try again.",
+      ),
+    };
   }
 }

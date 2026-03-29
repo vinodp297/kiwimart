@@ -1,46 +1,48 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/disputes.ts
 // ─── Dispute Server Actions ─────────────────────────────────────────────────
 
-import { headers } from 'next/headers';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { requireUser } from '@/server/lib/requireUser';
-import { rateLimit, getClientIp } from '@/server/lib/rateLimit';
-import { validateImageFile } from '@/server/lib/fileValidation';
-import { orderService } from '@/modules/orders/order.service';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { r2, R2_BUCKET } from '@/infrastructure/storage/r2';
-import { logger } from '@/shared/logger';
-import { audit } from '@/server/lib/audit';
-import { createNotification } from '@/modules/notifications/notification.service';
-import db from '@/lib/db';
-import type { ActionResult } from '@/types';
-import { z } from 'zod';
+import { headers } from "next/headers";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { requireUser } from "@/server/lib/requireUser";
+import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
+import { validateImageFile } from "@/server/lib/fileValidation";
+import { orderService } from "@/modules/orders/order.service";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
+import { logger } from "@/shared/logger";
+import { audit } from "@/server/lib/audit";
+import { createNotification } from "@/modules/notifications/notification.service";
+import db from "@/lib/db";
+import type { ActionResult } from "@/types";
+import { z } from "zod";
 
 const openDisputeSchema = z.object({
   orderId: z.string().min(1),
   reason: z.enum([
-    'ITEM_NOT_RECEIVED',
-    'ITEM_NOT_AS_DESCRIBED',
-    'ITEM_DAMAGED',
-    'WRONG_ITEM_SENT',
-    'COUNTERFEIT_ITEM',
-    'SELLER_UNRESPONSIVE',
-    'SELLER_CANCELLED',
-    'REFUND_NOT_PROCESSED',
-    'OTHER',
+    "ITEM_NOT_RECEIVED",
+    "ITEM_NOT_AS_DESCRIBED",
+    "ITEM_DAMAGED",
+    "WRONG_ITEM_SENT",
+    "COUNTERFEIT_ITEM",
+    "SELLER_UNRESPONSIVE",
+    "SELLER_CANCELLED",
+    "REFUND_NOT_PROCESSED",
+    "OTHER",
   ]),
-  description: z.string().min(20, 'Please describe the issue in at least 20 characters.').max(2000).trim(),
+  description: z
+    .string()
+    .min(20, "Please describe the issue in at least 20 characters.")
+    .max(2000)
+    .trim(),
   evidenceUrls: z.array(z.string().min(1)).max(3).optional(),
 });
 
 export type OpenDisputeInput = z.infer<typeof openDisputeSchema>;
 
-export async function openDispute(
-  raw: unknown
-): Promise<ActionResult<void>> {
+export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
   try {
     const reqHeaders = await headers();
     // Use getClientIp() — x-forwarded-for is client-controllable and spoofable.
@@ -48,11 +50,12 @@ export async function openDispute(
     const user = await requireUser();
 
     // Rate limit — 3 disputes per day per user
-    const limit = await rateLimit('disputes', user.id);
+    const limit = await rateLimit("disputes", user.id);
     if (!limit.success) {
       return {
         success: false,
-        error: 'You have opened too many disputes today. Please contact support if you need further assistance.',
+        error:
+          "You have opened too many disputes today. Please contact support if you need further assistance.",
       };
     }
 
@@ -65,7 +68,7 @@ export async function openDispute(
       },
     });
     if (recentDisputeCount >= 5) {
-      logger.warn('dispute.abuse_detected', {
+      logger.warn("dispute.abuse_detected", {
         userId: user.id,
         recentDisputeCount,
         ip,
@@ -76,7 +79,7 @@ export async function openDispute(
     if (!parsed.success) {
       return {
         success: false,
-        error: 'Invalid dispute details.',
+        error: "Invalid dispute details.",
         fieldErrors: parsed.error.flatten().fieldErrors,
       };
     }
@@ -84,7 +87,13 @@ export async function openDispute(
     await orderService.openDispute(parsed.data, user.id, ip);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't open your dispute. Please try again or contact support@kiwimart.co.nz.",
+      ),
+    };
   }
 }
 
@@ -97,21 +106,24 @@ const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_FILES = 3;
 
 export async function uploadDisputeEvidence(
-  formData: FormData
+  formData: FormData,
 ): Promise<ActionResult<{ urls: string[] }>> {
   try {
     const user = await requireUser();
 
     // Rate limit — 10 upload calls per hour per user
-    const uploadLimit = await rateLimit('disputes', user.id);
+    const uploadLimit = await rateLimit("disputes", user.id);
     if (!uploadLimit.success) {
-      return { success: false, error: 'Too many uploads. Please try again later.' };
+      return {
+        success: false,
+        error: "Too many uploads. Please try again later.",
+      };
     }
 
-    const files = formData.getAll('files') as File[];
+    const files = formData.getAll("files") as File[];
 
     if (files.length === 0) {
-      return { success: false, error: 'No files provided.' };
+      return { success: false, error: "No files provided." };
     }
     if (files.length > MAX_FILES) {
       return { success: false, error: `Maximum ${MAX_FILES} photos allowed.` };
@@ -130,14 +142,19 @@ export async function uploadDisputeEvidence(
         originalname: file.name,
       });
       if (!validation.valid) {
-        return { success: false, error: validation.error ?? 'Invalid file.' };
+        return { success: false, error: validation.error ?? "Invalid file." };
       }
 
       if (file.size > MAX_SIZE) {
-        return { success: false, error: 'Each photo must be under 5MB.' };
+        return { success: false, error: "Each photo must be under 5MB." };
       }
 
-      const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/png' ? 'png' : 'webp';
+      const ext =
+        file.type === "image/jpeg"
+          ? "jpg"
+          : file.type === "image/png"
+            ? "png"
+            : "webp";
       const key = `disputes/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
       await r2.send(
@@ -146,14 +163,14 @@ export async function uploadDisputeEvidence(
           Key: key,
           Body: buffer,
           ContentType: file.type,
-        })
+        }),
       );
 
       // Store the R2 key (NOT a public URL) — signed URLs generated at serve time
       uploadedKeys.push(key);
     }
 
-    logger.info('dispute.evidence.uploaded', {
+    logger.info("dispute.evidence.uploaded", {
       userId: user.id,
       count: uploadedKeys.length,
     });
@@ -161,10 +178,13 @@ export async function uploadDisputeEvidence(
     // Return keys in the `urls` field for backward-compat with the client
     return { success: true, data: { urls: uploadedKeys } };
   } catch (err) {
-    logger.error('dispute.evidence.upload.failed', {
+    logger.error("dispute.evidence.upload.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
-    return { success: false, error: 'Failed to upload photos. Please try again.' };
+    return {
+      success: false,
+      error: "Failed to upload photos. Please try again.",
+    };
   }
 }
 
@@ -176,13 +196,13 @@ const respondToDisputeSchema = z.object({
   orderId: z.string().min(1),
   response: z
     .string()
-    .min(20, 'Please describe your response in at least 20 characters.')
+    .min(20, "Please describe your response in at least 20 characters.")
     .max(2000)
     .trim(),
 });
 
 export async function respondToDispute(
-  raw: unknown
+  raw: unknown,
 ): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
@@ -191,7 +211,7 @@ export async function respondToDispute(
     if (!parsed.success) {
       return {
         success: false,
-        error: 'Invalid response.',
+        error: "Invalid response.",
         fieldErrors: parsed.error.flatten().fieldErrors,
       };
     }
@@ -210,16 +230,25 @@ export async function respondToDispute(
     });
 
     if (!order) {
-      return { success: false, error: 'Order not found.' };
+      return { success: false, error: "Order not found." };
     }
     if (order.sellerId !== user.id) {
-      return { success: false, error: 'Only the seller can respond to a dispute.' };
+      return {
+        success: false,
+        error: "Only the seller can respond to a dispute.",
+      };
     }
-    if (order.status !== 'DISPUTED') {
-      return { success: false, error: 'This order is not in a disputed state.' };
+    if (order.status !== "DISPUTED") {
+      return {
+        success: false,
+        error: "This order is not in a disputed state.",
+      };
     }
     if (order.sellerResponse) {
-      return { success: false, error: 'You have already responded to this dispute.' };
+      return {
+        success: false,
+        error: "You have already responded to this dispute.",
+      };
     }
 
     await db.order.update({
@@ -233,8 +262,8 @@ export async function respondToDispute(
     // Notify buyer that the seller has responded
     createNotification({
       userId: order.buyerId,
-      type: 'ORDER_DISPUTED',
-      title: 'Seller responded to your dispute',
+      type: "ORDER_DISPUTED",
+      title: "Seller responded to your dispute",
       body: `${order.seller.displayName} has responded to your dispute on "${order.listing.title}".`,
       orderId: order.id,
       link: `/orders/${order.id}`,
@@ -243,20 +272,26 @@ export async function respondToDispute(
     // Audit trail (fire-and-forget)
     audit({
       userId: user.id,
-      action: 'DISPUTE_SELLER_RESPONDED',
-      entityType: 'Order',
+      action: "DISPUTE_SELLER_RESPONDED",
+      entityType: "Order",
       entityId: order.id,
       metadata: { response: parsed.data.response.slice(0, 100) },
     });
 
-    logger.info('dispute.seller_responded', {
+    logger.info("dispute.seller_responded", {
       orderId: order.id,
       sellerId: user.id,
     });
 
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "Your dispute response couldn't be submitted. Please try again.",
+      ),
+    };
   }
 }
 
@@ -265,18 +300,18 @@ export async function respondToDispute(
 // Each signed URL is valid for 1 hour.
 
 export async function getDisputeEvidenceUrls(
-  r2Keys: string[]
+  r2Keys: string[],
 ): Promise<string[]> {
   return Promise.all(
     r2Keys.map(async (key) => {
       // If the stored value is already a full URL (legacy data), pass through
-      if (key.startsWith('http')) return key
+      if (key.startsWith("http")) return key;
 
       const command = new GetObjectCommand({
         Bucket: R2_BUCKET,
         Key: key,
-      })
-      return getSignedUrl(r2, command, { expiresIn: 3600 })
-    })
-  )
+      });
+      return getSignedUrl(r2, command, { expiresIn: 3600 });
+    }),
+  );
 }

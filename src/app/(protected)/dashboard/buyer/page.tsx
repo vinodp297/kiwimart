@@ -102,7 +102,8 @@ export default function BuyerDashboardPage() {
           setError(result.error);
         }
       } catch {
-        if (!cancelled) setError("Failed to load dashboard data.");
+        if (!cancelled)
+          setError("We couldn't load your dashboard. Please refresh the page.");
       } finally {
         if (!cancelled) setLoading(false);
       }

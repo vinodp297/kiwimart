@@ -3,23 +3,21 @@
 // Admin-only endpoint returning business health metrics for the internal
 // dashboard. Requires an active admin session.
 
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import { logger } from '@/shared/logger';
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { logger } from "@/shared/logger";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     // Admin only
     const session = await auth();
-    const user = session?.user as
-      | { id: string; isAdmin?: boolean }
-      | undefined;
+    const user = session?.user as { id: string; isAdmin?: boolean } | undefined;
 
     if (!user?.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 403 });
+      return NextResponse.json({ error: "Unauthorised" }, { status: 403 });
     }
 
     const todayStart = new Date();
@@ -44,19 +42,19 @@ export async function GET() {
     ] = await Promise.all([
       db.user.count(),
       db.user.count({ where: { createdAt: { gte: todayStart } } }),
-      db.listing.count({ where: { status: 'ACTIVE', deletedAt: null } }),
+      db.listing.count({ where: { status: "ACTIVE", deletedAt: null } }),
       db.order.count(),
       db.order.count({ where: { createdAt: { gte: todayStart } } }),
-      db.order.count({ where: { status: 'COMPLETED' } }),
-      db.order.count({ where: { status: 'DISPUTED' } }),
-      db.report.count({ where: { status: 'OPEN' } }),
-      db.payout.count({ where: { status: 'PROCESSING' } }),
+      db.order.count({ where: { status: "COMPLETED" } }),
+      db.order.count({ where: { status: "DISPUTED" } }),
+      db.report.count({ where: { status: "OPEN" } }),
+      db.payout.count({ where: { status: "PROCESSING" } }),
       db.order.aggregate({
-        where: { status: 'COMPLETED' },
+        where: { status: "COMPLETED" },
         _sum: { totalNzd: true },
       }),
       db.order.aggregate({
-        where: { status: 'COMPLETED', completedAt: { gte: weekStart } },
+        where: { status: "COMPLETED", completedAt: { gte: weekStart } },
         _sum: { totalNzd: true },
       }),
     ]);
@@ -94,7 +92,7 @@ export async function GET() {
       },
     };
 
-    logger.info('metrics.requested', { requestedBy: user.id });
+    logger.info("metrics.requested", { requestedBy: user.id });
 
     return NextResponse.json({
       success: true,
@@ -102,7 +100,13 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (e) {
-    logger.error('api.error', { path: '/api/metrics', error: e instanceof Error ? e.message : e });
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+    logger.error("api.error", {
+      path: "/api/metrics",
+      error: e instanceof Error ? e.message : e,
+    });
+    return NextResponse.json(
+      { error: "Failed to load metrics. Please try again." },
+      { status: 500 },
+    );
   }
 }

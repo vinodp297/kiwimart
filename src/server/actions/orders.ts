@@ -100,7 +100,9 @@ export async function createOrder(params: {
   if (!parsed.success) {
     return {
       success: false,
-      error: parsed.error.issues[0]?.message ?? "Validation failed",
+      error:
+        parsed.error.issues[0]?.message ??
+        "Please check your input and try again.",
     };
   }
 
@@ -394,13 +396,21 @@ export async function confirmDelivery(
     if (!parsed.success) {
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
     }
     await orderService.confirmDelivery(parsed.data.orderId, user.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't confirm delivery. Please try again.",
+      ),
+    };
   }
 }
 
@@ -421,7 +431,9 @@ export async function cancelOrder(params: {
     if (!parsed.success) {
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
     }
     await orderService.cancelOrder(
@@ -431,7 +443,13 @@ export async function cancelOrder(params: {
     );
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't cancel this order. Please try again or contact support.",
+      ),
+    };
   }
 }
 
@@ -448,12 +466,20 @@ export async function markDispatched(params: {
     if (!parsed.success) {
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
     }
     await orderService.markDispatched(parsed.data, user.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't update the dispatch status. Please try again.",
+      ),
+    };
   }
 }

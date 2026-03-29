@@ -3,18 +3,21 @@
 // Called after seller completes Stripe onboarding.
 // Verifies account ownership via metadata.userId, updates DB, then redirects.
 
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import { stripe } from '@/infrastructure/stripe/client';
-import { logger } from '@/shared/logger';
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { stripe } from "@/infrastructure/stripe/client";
+import { logger } from "@/shared/logger";
 
 export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.redirect(
-        new URL('/login?from=/account/stripe', process.env.NEXT_PUBLIC_APP_URL!)
+        new URL(
+          "/login?from=/account/stripe",
+          process.env.NEXT_PUBLIC_APP_URL!,
+        ),
       );
     }
 
@@ -31,29 +34,30 @@ export async function GET(): Promise<NextResponse> {
       // This is set when the account is created in createStripeConnectAccount().
       // If it does not match, reject — do not update any DB state.
       if (account.metadata?.userId !== session.user.id) {
-        logger.warn('stripe.connect.ownership_mismatch', {
+        logger.warn("stripe.connect.ownership_mismatch", {
           userId: session.user.id,
           accountUserId: account.metadata?.userId ?? null,
           accountId: account.id,
         });
         return NextResponse.redirect(
           new URL(
-            '/seller/onboarding?error=account_mismatch',
-            process.env.NEXT_PUBLIC_APP_URL!
-          )
+            "/seller/onboarding?error=account_mismatch",
+            process.env.NEXT_PUBLIC_APP_URL!,
+          ),
         );
       }
 
       // Ownership confirmed — sync onboarding status from Stripe
       const onboarded =
-        (account.details_submitted ?? false) && (account.charges_enabled ?? false);
+        (account.details_submitted ?? false) &&
+        (account.charges_enabled ?? false);
 
       await db.user.update({
         where: { id: session.user.id },
         data: { stripeOnboarded: onboarded },
       });
 
-      logger.info('stripe.connect.return.synced', {
+      logger.info("stripe.connect.return.synced", {
         userId: session.user.id,
         accountId: account.id,
         onboarded,
@@ -61,10 +65,19 @@ export async function GET(): Promise<NextResponse> {
     }
 
     return NextResponse.redirect(
-      new URL('/account/stripe?success=true', process.env.NEXT_PUBLIC_APP_URL!)
+      new URL("/account/stripe?success=true", process.env.NEXT_PUBLIC_APP_URL!),
     );
   } catch (e) {
-    logger.error('api.error', { path: '/api/stripe/connect/return', error: e instanceof Error ? e.message : e });
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+    logger.error("api.error", {
+      path: "/api/stripe/connect/return",
+      error: e instanceof Error ? e.message : e,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Stripe onboarding couldn't be completed. Please try again or contact support@kiwimart.co.nz.",
+      },
+      { status: 500 },
+    );
   }
 }

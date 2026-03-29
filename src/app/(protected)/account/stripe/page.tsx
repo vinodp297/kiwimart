@@ -1,21 +1,21 @@
-'use client';
+"use client";
 // src/app/(protected)/account/stripe/page.tsx
 // ─── Stripe Connect Onboarding Page ─────────────────────────────────────────
 
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import { Button, Alert } from '@/components/ui/primitives';
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import { Button, Alert } from "@/components/ui/primitives";
 import {
   createStripeConnectAccount,
   getStripeAccountStatus,
-} from '@/server/actions/stripe';
+} from "@/server/actions/stripe";
 
 export default function StripeAccountPage() {
   const searchParams = useSearchParams();
-  const justReturned = searchParams.get('success') === 'true';
+  const justReturned = searchParams.get("success") === "true";
 
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -38,7 +38,9 @@ export default function StripeAccountPage() {
           setError(result.error);
         }
       } catch {
-        setError('Failed to load Stripe account status.');
+        setError(
+          "We couldn't load your payment account status. Please refresh the page.",
+        );
       } finally {
         setLoading(false);
       }
@@ -58,7 +60,9 @@ export default function StripeAccountPage() {
         setActionLoading(false);
       }
     } catch {
-      setError('Failed to start Stripe onboarding.');
+      setError(
+        "We couldn't connect to Stripe. Please try again or contact support@kiwimart.co.nz.",
+      );
       setActionLoading(false);
     }
   }
@@ -79,7 +83,8 @@ export default function StripeAccountPage() {
     );
   }
 
-  const isFullyOnboarded = status?.onboarded && status?.chargesEnabled && status?.payoutsEnabled;
+  const isFullyOnboarded =
+    status?.onboarded && status?.chargesEnabled && status?.payoutsEnabled;
   const isPartiallyOnboarded = status?.hasAccount && !isFullyOnboarded;
 
   return (
@@ -89,11 +94,17 @@ export default function StripeAccountPage() {
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-[12.5px] text-[#9E9A91] mb-6">
-            <Link href="/dashboard/seller" className="hover:text-[#D4A843] transition-colors">
+            <Link
+              href="/dashboard/seller"
+              className="hover:text-[#D4A843] transition-colors"
+            >
               Dashboard
             </Link>
             <span>/</span>
-            <Link href="/account/settings" className="hover:text-[#D4A843] transition-colors">
+            <Link
+              href="/account/settings"
+              className="hover:text-[#D4A843] transition-colors"
+            >
               Account
             </Link>
             <span>/</span>
@@ -104,12 +115,14 @@ export default function StripeAccountPage() {
             Payout settings
           </h1>
           <p className="text-[14px] text-[#73706A] mb-8">
-            Connect your Stripe account to receive payouts from sales on KiwiMart.
+            Connect your Stripe account to receive payouts from sales on
+            KiwiMart.
           </p>
 
           {justReturned && (
             <Alert variant="success" className="mb-6">
-              Stripe setup updated successfully. Your account status has been refreshed.
+              Stripe setup updated successfully. Your account status has been
+              refreshed.
             </Alert>
           )}
 
@@ -124,7 +137,14 @@ export default function StripeAccountPage() {
               /* ── Fully onboarded ──────────────────────────── */
               <div className="text-center py-4">
                 <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#16a34a"
+                    strokeWidth="2.5"
+                  >
                     <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                     <polyline points="22 4 12 14.01 9 11.01" />
                   </svg>
@@ -133,24 +153,30 @@ export default function StripeAccountPage() {
                   Payouts active
                 </h2>
                 <p className="text-[13.5px] text-[#73706A] mb-1">
-                  Your Stripe account is fully connected and ready to receive payouts.
+                  Your Stripe account is fully connected and ready to receive
+                  payouts.
                 </p>
                 <p className="text-[12px] text-[#9E9A91] mb-6">
-                  Payouts arrive in your linked NZ bank account within 3 business days of buyer confirmation.
+                  Payouts arrive in your linked NZ bank account within 3
+                  business days of buyer confirmation.
                 </p>
 
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-[#F8F7F4] rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span className="text-[12px] font-semibold text-[#141414]">Charges</span>
+                      <span className="text-[12px] font-semibold text-[#141414]">
+                        Charges
+                      </span>
                     </div>
                     <p className="text-[11.5px] text-[#73706A]">Enabled</p>
                   </div>
                   <div className="bg-[#F8F7F4] rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span className="text-[12px] font-semibold text-[#141414]">Payouts</span>
+                      <span className="text-[12px] font-semibold text-[#141414]">
+                        Payouts
+                      </span>
                     </div>
                     <p className="text-[11.5px] text-[#73706A]">Enabled</p>
                   </div>
@@ -166,7 +192,14 @@ export default function StripeAccountPage() {
               /* ── Partially onboarded ──────────────────────── */
               <div className="text-center py-4">
                 <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#d97706"
+                    strokeWidth="2"
+                  >
                     <circle cx="12" cy="12" r="10" />
                     <line x1="12" y1="8" x2="12" y2="12" />
                     <line x1="12" y1="16" x2="12.01" y2="16" />
@@ -176,27 +209,36 @@ export default function StripeAccountPage() {
                   Setup incomplete
                 </h2>
                 <p className="text-[13.5px] text-[#73706A] mb-6">
-                  Your Stripe account has been created but setup is not yet complete.
-                  Please finish the onboarding process to start receiving payouts.
+                  Your Stripe account has been created but setup is not yet
+                  complete. Please finish the onboarding process to start
+                  receiving payouts.
                 </p>
 
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-[#F8F7F4] rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-2 h-2 rounded-full ${status?.detailsSubmitted ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-                      <span className="text-[12px] font-semibold text-[#141414]">Details</span>
+                      <div
+                        className={`w-2 h-2 rounded-full ${status?.detailsSubmitted ? "bg-emerald-500" : "bg-amber-400"}`}
+                      />
+                      <span className="text-[12px] font-semibold text-[#141414]">
+                        Details
+                      </span>
                     </div>
                     <p className="text-[11.5px] text-[#73706A]">
-                      {status?.detailsSubmitted ? 'Submitted' : 'Pending'}
+                      {status?.detailsSubmitted ? "Submitted" : "Pending"}
                     </p>
                   </div>
                   <div className="bg-[#F8F7F4] rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-1">
-                      <div className={`w-2 h-2 rounded-full ${status?.chargesEnabled ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-                      <span className="text-[12px] font-semibold text-[#141414]">Charges</span>
+                      <div
+                        className={`w-2 h-2 rounded-full ${status?.chargesEnabled ? "bg-emerald-500" : "bg-amber-400"}`}
+                      />
+                      <span className="text-[12px] font-semibold text-[#141414]">
+                        Charges
+                      </span>
                     </div>
                     <p className="text-[11.5px] text-[#73706A]">
-                      {status?.chargesEnabled ? 'Enabled' : 'Pending'}
+                      {status?.chargesEnabled ? "Enabled" : "Pending"}
                     </p>
                   </div>
                 </div>
@@ -214,7 +256,14 @@ export default function StripeAccountPage() {
               /* ── No account ───────────────────────────────── */
               <div className="text-center py-4">
                 <div className="w-16 h-16 rounded-full bg-[#F5ECD4]/50 flex items-center justify-center mx-auto mb-4">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D4A843" strokeWidth="2">
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#D4A843"
+                    strokeWidth="2"
+                  >
                     <line x1="12" y1="1" x2="12" y2="23" />
                     <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                   </svg>
@@ -223,16 +272,19 @@ export default function StripeAccountPage() {
                   Connect Stripe
                 </h2>
                 <p className="text-[13.5px] text-[#73706A] max-w-sm mx-auto mb-6">
-                  Link your Stripe account to receive payouts when buyers purchase your
-                  listings. Setup takes about 5 minutes.
+                  Link your Stripe account to receive payouts when buyers
+                  purchase your listings. Setup takes about 5 minutes.
                 </p>
 
                 <div className="bg-[#F8F7F4] rounded-xl p-4 mb-6 text-left space-y-3">
                   {[
-                    { text: 'Secure payments via Stripe', icon: '🔒' },
-                    { text: 'Payouts to your NZ bank account', icon: '🏦' },
-                    { text: 'No monthly fees — only pay when you sell', icon: '💰' },
-                    { text: 'Supports card and Afterpay payments', icon: '💳' },
+                    { text: "Secure payments via Stripe", icon: "🔒" },
+                    { text: "Payouts to your NZ bank account", icon: "🏦" },
+                    {
+                      text: "No monthly fees — only pay when you sell",
+                      icon: "💰",
+                    },
+                    { text: "Supports card and Afterpay payments", icon: "💳" },
                   ].map(({ text, icon }) => (
                     <div key={text} className="flex items-center gap-3">
                       <span className="text-[16px]">{icon}</span>
@@ -248,7 +300,14 @@ export default function StripeAccountPage() {
                   onClick={handleConnect}
                   loading={actionLoading}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
                     <line x1="12" y1="1" x2="12" y2="23" />
                     <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                   </svg>
@@ -256,8 +315,8 @@ export default function StripeAccountPage() {
                 </Button>
 
                 <p className="text-[11.5px] text-[#9E9A91] mt-4">
-                  You&apos;ll be redirected to Stripe to complete identity verification
-                  and bank account setup.
+                  You&apos;ll be redirected to Stripe to complete identity
+                  verification and bank account setup.
                 </p>
               </div>
             )}

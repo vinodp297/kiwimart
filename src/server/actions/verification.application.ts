@@ -112,7 +112,13 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
 
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "Your verification application couldn't be submitted. Please try again.",
+      ),
+    };
   }
 }
 
@@ -135,7 +141,9 @@ export async function reviewVerificationApplication(
     if (!parsed.success)
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
 
     const { sellerId, decision, notes } = parsed.data;
@@ -198,6 +206,12 @@ export async function reviewVerificationApplication(
 
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't process this verification review. Please try again.",
+      ),
+    };
   }
 }

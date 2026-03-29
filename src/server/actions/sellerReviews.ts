@@ -26,6 +26,12 @@ export async function fetchSellerReviews(): Promise<
     const data = await reviewService.fetchSellerReviews(user.id);
     return { success: true, data };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't load your reviews. Please refresh the page.",
+      ),
+    };
   }
 }

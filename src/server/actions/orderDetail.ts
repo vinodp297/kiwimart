@@ -148,6 +148,12 @@ export async function fetchOrderDetail(
       },
     };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't load order details. Please refresh the page.",
+      ),
+    };
   }
 }

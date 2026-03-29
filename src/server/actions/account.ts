@@ -1,5 +1,5 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/account.ts
 // ─── Account Security Server Actions ─────────────────────────────────────────
 // Password change, account deletion, session management.
@@ -9,38 +9,38 @@ import { safeActionError } from '@/shared/errors'
 //   • changePassword invalidates all other sessions (JWT rotation)
 //   • All actions audit-logged with IP
 
-import { headers } from 'next/headers';
-import { revalidatePath } from 'next/cache';
-import { requireUser } from '@/server/lib/requireUser';
-import { getClientIp } from '@/server/lib/rateLimit';
-import db from '@/lib/db';
-import { audit } from '@/server/lib/audit';
-import { logger } from '@/shared/logger';
-import { hashPassword, verifyPassword } from '@/server/lib/password';
-import type { ActionResult } from '@/types';
-import { z } from 'zod';
+import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
+import { requireUser } from "@/server/lib/requireUser";
+import { getClientIp } from "@/server/lib/rateLimit";
+import db from "@/lib/db";
+import { audit } from "@/server/lib/audit";
+import { logger } from "@/shared/logger";
+import { hashPassword, verifyPassword } from "@/server/lib/password";
+import type { ActionResult } from "@/types";
+import { z } from "zod";
 
 // ── Validation Schemas ──────────────────────────────────────────────────────
 
 const changePasswordSchema = z
   .object({
-    currentPassword: z.string().min(1, 'Current password is required'),
+    currentPassword: z.string().min(1, "Current password is required"),
     newPassword: z
       .string()
-      .min(12, 'Password must be at least 12 characters')
-      .max(128, 'Password is too long')
-      .regex(/[A-Z]/, 'Must contain at least one uppercase letter')
-      .regex(/[a-z]/, 'Must contain at least one lowercase letter')
-      .regex(/[0-9]/, 'Must contain at least one number'),
-    confirmPassword: z.string().min(1, 'Please confirm your new password'),
+      .min(12, "Password must be at least 12 characters")
+      .max(128, "Password is too long")
+      .regex(/[A-Z]/, "Must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Must contain at least one number"),
+    confirmPassword: z.string().min(1, "Please confirm your new password"),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
-    message: 'Passwords do not match',
-    path: ['confirmPassword'],
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
   })
   .refine((data) => data.currentPassword !== data.newPassword, {
-    message: 'New password must be different from current password',
-    path: ['newPassword'],
+    message: "New password must be different from current password",
+    path: ["newPassword"],
   });
 
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
@@ -48,7 +48,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 // ── changePassword ──────────────────────────────────────────────────────────
 
 export async function changePassword(
-  input: ChangePasswordInput
+  input: ChangePasswordInput,
 ): Promise<ActionResult<void>> {
   try {
     const reqHeaders = await headers();
@@ -62,8 +62,11 @@ export async function changePassword(
     if (!parsed.success) {
       return {
         success: false,
-        error: 'Invalid input.',
-        fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+        error: "Please fix the password errors below.",
+        fieldErrors: parsed.error.flatten().fieldErrors as Record<
+          string,
+          string[]
+        >,
       };
     }
 
@@ -77,7 +80,7 @@ export async function changePassword(
     if (!user?.passwordHash) {
       return {
         success: false,
-        error: 'Password change is not available for social login accounts.',
+        error: "Password change is not available for social login accounts.",
       };
     }
 
@@ -85,11 +88,11 @@ export async function changePassword(
     if (!valid) {
       audit({
         userId: authedUser.id,
-        action: 'PASSWORD_CHANGED',
-        metadata: { success: false, reason: 'invalid_current_password' },
+        action: "PASSWORD_CHANGED",
+        metadata: { success: false, reason: "invalid_current_password" },
         ip,
       });
-      return { success: false, error: 'Current password is incorrect.' };
+      return { success: false, error: "Current password is incorrect." };
     }
 
     const newHash = await hashPassword(newPassword);
@@ -106,8 +109,8 @@ export async function changePassword(
 
     audit({
       userId: authedUser.id,
-      action: 'PASSWORD_CHANGED',
-      entityType: 'User',
+      action: "PASSWORD_CHANGED",
+      entityType: "User",
       entityId: authedUser.id,
       metadata: { success: true },
       ip,
@@ -115,22 +118,31 @@ export async function changePassword(
 
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't update your password. Please try again.",
+      ),
+    };
   }
 }
 
 // ── updateProfile ────────────────────────────────────────────────────────────
 
 const updateProfileSchema = z.object({
-  displayName: z.string().min(2, 'Display name must be at least 2 characters').max(60),
+  displayName: z
+    .string()
+    .min(2, "Display name must be at least 2 characters")
+    .max(60),
   region: z.string().max(100).optional(),
-  bio: z.string().max(500, 'Bio must be under 500 characters').optional(),
+  bio: z.string().max(500, "Bio must be under 500 characters").optional(),
 });
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 export async function updateProfile(
-  input: UpdateProfileInput
+  input: UpdateProfileInput,
 ): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
@@ -139,8 +151,13 @@ export async function updateProfile(
     if (!parsed.success) {
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? 'Invalid input.',
-        fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your profile details and try again.",
+        fieldErrors: parsed.error.flatten().fieldErrors as Record<
+          string,
+          string[]
+        >,
       };
     }
 
@@ -155,10 +172,16 @@ export async function updateProfile(
       },
     });
 
-    revalidatePath('/account/settings');
+    revalidatePath("/account/settings");
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't update your profile. Please try again.",
+      ),
+    };
   }
 }
 
@@ -173,12 +196,9 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
     // Check for active orders — can't delete if money is in escrow
     const activeOrders = await db.order.count({
       where: {
-        OR: [
-          { buyerId: user.id },
-          { sellerId: user.id },
-        ],
+        OR: [{ buyerId: user.id }, { sellerId: user.id }],
         status: {
-          in: ['AWAITING_PAYMENT', 'PAYMENT_HELD', 'DISPATCHED', 'DISPUTED'],
+          in: ["AWAITING_PAYMENT", "PAYMENT_HELD", "DISPATCHED", "DISPUTED"],
         },
       },
     });
@@ -198,7 +218,7 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
         where: { id: user.id },
         data: {
           email: anonymisedEmail,
-          displayName: 'Deleted User',
+          displayName: "Deleted User",
           username: `deleted-${user.id.slice(0, 8)}`,
           bio: null,
           avatarKey: null,
@@ -219,9 +239,9 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
       await tx.offer.updateMany({
         where: {
           buyerId: user.id,
-          status: 'PENDING',
+          status: "PENDING",
         },
-        data: { status: 'WITHDRAWN' },
+        data: { status: "WITHDRAWN" },
       });
 
       // Remove from watchlists
@@ -232,21 +252,21 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
 
     audit({
       userId: user.id,
-      action: 'ADMIN_ACTION',
-      entityType: 'User',
+      action: "ADMIN_ACTION",
+      entityType: "User",
       entityId: user.id,
-      metadata: { type: 'account_deleted', anonymised: true },
+      metadata: { type: "account_deleted", anonymised: true },
     });
 
-    logger.info('account.deleted', { userId: user.id });
+    logger.info("account.deleted", { userId: user.id });
     return { success: true, data: undefined };
   } catch (err) {
-    logger.error('account.delete.failed', {
+    logger.error("account.delete.failed", {
       error: err instanceof Error ? err.message : String(err),
     });
     return {
       success: false,
-      error: 'Failed to delete account. Please contact support@kiwimart.co.nz',
+      error: "Failed to delete account. Please contact support@kiwimart.co.nz",
     };
   }
 }

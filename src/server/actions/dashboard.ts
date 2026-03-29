@@ -391,7 +391,13 @@ export async function fetchBuyerDashboard(): Promise<
       },
     };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't load your dashboard. Please refresh the page.",
+      ),
+    };
   }
 }
 
@@ -708,6 +714,12 @@ export async function fetchSellerDashboard(): Promise<
       },
     };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't load your seller dashboard. Please refresh the page.",
+      ),
+    };
   }
 }

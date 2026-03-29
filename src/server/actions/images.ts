@@ -178,7 +178,13 @@ export async function requestImageUpload(params: {
       contentType: params.contentType,
       sizeBytes: params.sizeBytes,
     });
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't prepare the upload. Please try again.",
+      ),
+    };
   }
 }
 
@@ -300,7 +306,13 @@ export async function confirmImageUpload(params: {
       r2Key: params.r2Key,
       error: err instanceof Error ? err.message : String(err),
     });
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "Image processing encountered an issue. Please try uploading again.",
+      ),
+    };
   }
 }
 

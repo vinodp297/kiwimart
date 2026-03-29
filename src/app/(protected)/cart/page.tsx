@@ -36,7 +36,9 @@ export default function CartPage() {
         setError(result.error);
       }
     } catch {
-      setError("Failed to load cart.");
+      setError(
+        "We couldn't load your cart. Please check your connection and refresh the page.",
+      );
     } finally {
       setLoading(false);
     }
@@ -58,7 +60,7 @@ export default function CartPage() {
         setError(result.error);
       }
     } catch {
-      setError("Failed to remove item.");
+      setError("We couldn't remove that item. Please try again.");
     } finally {
       setRemoving(null);
     }
@@ -76,7 +78,7 @@ export default function CartPage() {
         setError(result.error);
       }
     } catch {
-      setError("Failed to clear cart.");
+      setError("We couldn't clear your cart. Please try again.");
     } finally {
       setClearing(false);
     }

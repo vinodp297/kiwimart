@@ -1,18 +1,18 @@
-'use client';
+"use client";
 // src/app/(auth)/verify-email/page.tsx
 // ─── Email Verification Waiting Page ─────────────────────────────────────────
 
-import { Suspense, useState } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { resendVerificationEmail } from '@/server/actions/auth';
+import { Suspense, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { resendVerificationEmail } from "@/server/actions/auth";
 
 function VerifyEmailContent() {
   const params = useSearchParams();
-  const email = params.get('email') ?? '';
-  const error = params.get('error');
+  const email = params.get("email") ?? "";
+  const error = params.get("error");
 
-  if (error === 'invalid') {
+  if (error === "invalid") {
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-sm p-8 max-w-md w-full text-center">
@@ -23,8 +23,8 @@ function VerifyEmailContent() {
             Link expired or invalid
           </h1>
           <p className="text-[#73706A] text-[14px] mb-6 leading-relaxed">
-            This verification link has expired or has already been used.
-            Please register again to get a new link.
+            This verification link has expired or has already been used. Please
+            register again to get a new link.
           </p>
           <Link
             href="/register"
@@ -41,8 +41,13 @@ function VerifyEmailContent() {
     <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-sm p-8 max-w-md w-full text-center">
         {/* Logo */}
-        <Link href="/" className="flex items-center justify-center gap-2 mb-6 group">
-          <div className="w-8 h-8 rounded-full bg-[#141414] flex items-center justify-center text-[#D4A843] text-sm font-bold group-hover:bg-[#D4A843] group-hover:text-[#141414] transition-colors">K</div>
+        <Link
+          href="/"
+          className="flex items-center justify-center gap-2 mb-6 group"
+        >
+          <div className="w-8 h-8 rounded-full bg-[#141414] flex items-center justify-center text-[#D4A843] text-sm font-bold group-hover:bg-[#D4A843] group-hover:text-[#141414] transition-colors">
+            K
+          </div>
           <span className="font-[family-name:var(--font-playfair)] text-[1.2rem] text-[#141414] tracking-tight">
             Kiwi<em className="not-italic text-[#D4A843]">Mart</em>
           </span>
@@ -58,8 +63,12 @@ function VerifyEmailContent() {
 
         {email ? (
           <>
-            <p className="text-[#73706A] text-[13.5px] mb-1">We sent a verification link to</p>
-            <p className="font-semibold text-[#141414] text-[15px] mb-5">{email}</p>
+            <p className="text-[#73706A] text-[13.5px] mb-1">
+              We sent a verification link to
+            </p>
+            <p className="font-semibold text-[#141414] text-[15px] mb-5">
+              {email}
+            </p>
           </>
         ) : (
           <p className="text-[#73706A] text-[13.5px] mb-5">
@@ -101,40 +110,47 @@ function VerifyEmailContent() {
 }
 
 function ResendButton() {
-  const [status, setStatus] = useState<'idle' | 'loading' | 'sent' | 'error'>('idle');
+  const [status, setStatus] = useState<"idle" | "loading" | "sent" | "error">(
+    "idle",
+  );
   const [countdown, setCountdown] = useState(0);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleResend = async () => {
-    setStatus('loading');
+    setStatus("loading");
     try {
       const result = await resendVerificationEmail();
       if (result.success) {
-        setStatus('sent');
+        setStatus("sent");
         setCountdown(60);
         const interval = setInterval(() => {
           setCountdown((prev) => {
             if (prev <= 1) {
               clearInterval(interval);
-              setStatus('idle');
+              setStatus("idle");
               return 0;
             }
             return prev - 1;
           });
         }, 1000);
       } else {
-        setErrorMsg(result.error ?? 'Something went wrong.');
-        setStatus('error');
-        setTimeout(() => setStatus('idle'), 4000);
+        setErrorMsg(
+          result.error ??
+            "We couldn't resend the verification email. Please try again.",
+        );
+        setStatus("error");
+        setTimeout(() => setStatus("idle"), 4000);
       }
     } catch {
-      setErrorMsg('Something went wrong. Please try again.');
-      setStatus('error');
-      setTimeout(() => setStatus('idle'), 4000);
+      setErrorMsg(
+        "We couldn't resend the verification email. Please check your connection and try again.",
+      );
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 4000);
     }
   };
 
-  if (status === 'sent') {
+  if (status === "sent") {
     return (
       <div className="text-center">
         <div className="inline-flex items-center gap-2 bg-[#F0FDF4] text-[#16a34a] px-4 py-2.5 rounded-xl text-[13px] font-medium border border-[#16a34a]/20">
@@ -150,7 +166,7 @@ function ResendButton() {
     );
   }
 
-  if (status === 'error') {
+  if (status === "error") {
     return (
       <div className="inline-flex items-center gap-2 bg-red-50 text-red-600 px-4 py-2.5 rounded-xl text-[13px] font-medium border border-red-200">
         <span>⚠️</span>
@@ -162,21 +178,23 @@ function ResendButton() {
   return (
     <button
       onClick={handleResend}
-      disabled={status === 'loading' || countdown > 0}
+      disabled={status === "loading" || countdown > 0}
       className="text-[13px] text-[#D4A843] hover:underline disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
     >
-      {status === 'loading' ? 'Sending…' : 'Resend verification email'}
+      {status === "loading" ? "Sending…" : "Resend verification email"}
     </button>
   );
 }
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-[#D4A843] border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
+          <div className="w-6 h-6 border-2 border-[#D4A843] border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
       <VerifyEmailContent />
     </Suspense>
   );

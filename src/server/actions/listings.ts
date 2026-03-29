@@ -74,7 +74,7 @@ export async function createListing(
   if (!parsed.success) {
     return {
       success: false,
-      error: "Invalid listing data",
+      error: "Please fix the errors in your listing and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
@@ -216,7 +216,8 @@ export async function saveDraft(
     if (!parsed.success) {
       return {
         success: false,
-        error: "Invalid draft data.",
+        error:
+          "We couldn't save your draft. Please check your entries and try again.",
         fieldErrors: parsed.error.flatten().fieldErrors as Record<
           string,
           string[]
@@ -371,7 +372,13 @@ export async function saveDraft(
     logger.error("listing:save-draft-failed", {
       error: err instanceof Error ? err.message : String(err),
     });
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't save your draft. Please check your connection and try again.",
+      ),
+    };
   }
 }
 
@@ -387,7 +394,7 @@ export async function updateListing(
   if (!parsed.success) {
     return {
       success: false,
-      error: "Validation failed.",
+      error: "Please fix the errors in your listing and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors as Record<
         string,
         string[]
@@ -554,7 +561,13 @@ export async function deleteListing(
     revalidatePath("/search");
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't delete this listing. Please try again.",
+      ),
+    };
   }
 }
 
@@ -567,7 +580,10 @@ export async function toggleWatch(
     const user = await requireUser();
     const parsed = toggleWatchSchema.safeParse(raw);
     if (!parsed.success) {
-      return { success: false, error: "Invalid listing ID." };
+      return {
+        success: false,
+        error: "This listing could not be found. It may have been removed.",
+      };
     }
     const result = await listingService.toggleWatch(
       parsed.data.listingId,
@@ -575,7 +591,13 @@ export async function toggleWatch(
     );
     return { success: true, data: result };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't update your watchlist. Please try again.",
+      ),
+    };
   }
 }
 
