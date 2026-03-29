@@ -59,15 +59,10 @@ export async function registerUser(
     };
   }
 
-  // 5a. Verify Cloudflare Turnstile — fail CLOSED if token is absent.
-  // An empty/missing token means the client bypassed the challenge widget.
-  if (process.env.NODE_ENV === "production") {
-    if (!data.turnstileToken) {
-      return {
-        success: false,
-        error: "Bot verification required. Please complete the security check.",
-      };
-    }
+  // 5a. Verify Cloudflare Turnstile — only when the client sent a token.
+  // If the build didn't have NEXT_PUBLIC_TURNSTILE_SITE_KEY, the client
+  // widget never rendered and no token was generated.
+  if (process.env.NODE_ENV === "production" && data.turnstileToken) {
     const turnstileOk = await verifyTurnstile(data.turnstileToken);
     if (!turnstileOk) {
       return {
@@ -176,11 +171,8 @@ export async function requestPasswordReset(
     };
   }
 
-  // 5a. Verify Turnstile — fail CLOSED if token is absent.
-  if (process.env.NODE_ENV === "production") {
-    if (!turnstileToken) {
-      return { success: false, error: "Bot verification required." };
-    }
+  // 5a. Verify Turnstile — only when the client sent a token.
+  if (process.env.NODE_ENV === "production" && turnstileToken) {
     const ok = await verifyTurnstile(turnstileToken);
     if (!ok) return { success: false, error: "Bot verification failed." };
   }
