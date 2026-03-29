@@ -15,12 +15,6 @@ import {
   PasswordStrength,
 } from "@/components/ui/primitives";
 
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
-const isTurnstileActive =
-  TURNSTILE_SITE_KEY.length > 0 &&
-  !TURNSTILE_SITE_KEY.startsWith("1x") &&
-  !TURNSTILE_SITE_KEY.startsWith("2x");
-
 export default function RegisterPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -39,25 +33,40 @@ export default function RegisterPage() {
   const turnstileRef = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
 
+  // Turnstile state — fetched at runtime, not baked at build time
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+
   // Fix 1 — Sign out any existing session so a fresh account can be created
   useEffect(() => {
     if (status === "loading") return;
     if (session) {
       signOut({ redirect: false })
         .then(() => setSessionCleared(true))
-        .catch(() => setSessionCleared(true)); // Continue anyway if signOut fails
+        .catch(() => setSessionCleared(true));
     } else {
       setSessionCleared(true);
     }
   }, [session, status]);
 
+  // Fetch Turnstile site key at runtime
+  useEffect(() => {
+    fetch("/api/auth/turnstile-config")
+      .then((r) => r.json())
+      .then((data: { siteKey: string | null; active: boolean }) => {
+        if (data.active && data.siteKey) {
+          setTurnstileSiteKey(data.siteKey);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const initializeTurnstileWidget = useCallback(() => {
-    if (!turnstileRef.current || !window.turnstile) return;
+    if (!turnstileRef.current || !window.turnstile || !turnstileSiteKey) return;
     widgetId.current = window.turnstile.render(turnstileRef.current, {
-      sitekey: TURNSTILE_SITE_KEY,
+      sitekey: turnstileSiteKey,
       theme: "light",
     });
-  }, []);
+  }, [turnstileSiteKey]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -326,7 +335,7 @@ export default function RegisterPage() {
               </label>
             </div>
 
-            {isTurnstileActive && <div ref={turnstileRef} />}
+            {turnstileSiteKey && <div ref={turnstileRef} />}
 
             <Button
               type="submit"
@@ -387,7 +396,7 @@ export default function RegisterPage() {
         </p>
       </div>
 
-      {isTurnstileActive && (
+      {turnstileSiteKey && (
         <Script
           src="https://challenges.cloudflare.com/turnstile/v0/api.js"
           strategy="afterInteractive"
