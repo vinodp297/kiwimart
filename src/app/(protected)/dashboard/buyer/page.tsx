@@ -27,6 +27,7 @@ import type {
 import ProfileCompletion from "@/components/onboarding/ProfileCompletion";
 import { sendMessage as sendMessageAction } from "@/server/actions/messages";
 import { toggleWatch } from "@/server/actions/listings";
+import { togglePriceAlert } from "@/server/actions/watchlist";
 import { confirmDelivery } from "@/server/actions/orders";
 import { resendVerificationEmail } from "@/server/actions/auth";
 
@@ -847,6 +848,27 @@ function WatchlistCard({
   onRemove: () => void;
 }) {
   const isSold = item.status === "sold";
+  const [alertEnabled, setAlertEnabled] = useState(item.priceAlertEnabled);
+  const [alertLoading, setAlertLoading] = useState(false);
+
+  async function handleToggleAlert() {
+    const newState = !alertEnabled;
+    setAlertEnabled(newState); // optimistic
+    setAlertLoading(true);
+    try {
+      const result = await togglePriceAlert({
+        listingId: item.id,
+        enabled: newState,
+      });
+      if (!result.success) {
+        setAlertEnabled(!newState); // revert
+      }
+    } catch {
+      setAlertEnabled(!newState); // revert
+    } finally {
+      setAlertLoading(false);
+    }
+  }
 
   return (
     <article
@@ -891,6 +913,48 @@ function WatchlistCard({
             Watched {relativeTime(item.watchedAt)}
           </span>
         </div>
+
+        {/* Price drop alert toggle */}
+        {!isSold && (
+          <button
+            type="button"
+            onClick={handleToggleAlert}
+            disabled={alertLoading}
+            className={`mt-2.5 w-full flex items-center justify-between gap-2 px-3 py-2 rounded-xl
+              border text-[11.5px] font-medium transition-colors ${
+                alertEnabled
+                  ? "border-emerald-200 bg-emerald-50/60 text-emerald-700"
+                  : "border-[#E3E0D9] bg-[#F8F7F4] text-[#9E9A91]"
+              }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill={alertEnabled ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              Price drop alerts
+            </span>
+            <span
+              className={`w-8 h-[18px] rounded-full relative transition-colors ${
+                alertEnabled ? "bg-emerald-500" : "bg-[#C9C5BC]"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                  alertEnabled ? "left-[15px]" : "left-0.5"
+                }`}
+              />
+            </span>
+          </button>
+        )}
+
         <div className="flex gap-2 mt-3">
           <Link href={`/listings/${item.id}`} className="flex-1">
             <Button variant="secondary" size="sm" fullWidth>

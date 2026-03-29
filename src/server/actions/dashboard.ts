@@ -63,6 +63,7 @@ export interface WatchlistRow {
   suburb: string;
   watchedAt: string;
   status: string;
+  priceAlertEnabled: boolean;
 }
 
 export interface ThreadRow {
@@ -198,6 +199,7 @@ export async function fetchBuyerDashboard(): Promise<
         select: {
           id: true,
           createdAt: true,
+          priceAlertEnabled: true,
           listing: {
             select: {
               id: true,
@@ -287,6 +289,7 @@ export async function fetchBuyerDashboard(): Promise<
       suburb: w.listing.suburb,
       watchedAt: w.createdAt.toISOString(),
       status: w.listing.status.toLowerCase(),
+      priceAlertEnabled: w.priceAlertEnabled,
     }));
 
     // Map threads — need to look up the other participant

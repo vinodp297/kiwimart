@@ -1,27 +1,28 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/orderDetail.ts
 // ─── Order Detail Server Action ─────────────────────────────────────────────
 
-import { requireUser } from '@/server/lib/requireUser';
-import db from '@/lib/db';
-import type { ActionResult } from '@/types';
+import { requireUser } from "@/server/lib/requireUser";
+import db from "@/lib/db";
+import type { ActionResult } from "@/types";
 
 function r2Url(key: string | null): string {
-  if (!key) return 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop';
-  if (key.startsWith('http')) return key;
+  if (!key)
+    return "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop";
+  if (key.startsWith("http")) return key;
   return `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${key}`;
 }
 
 const STATUS_MAP: Record<string, string> = {
-  AWAITING_PAYMENT: 'awaiting_payment',
-  PAYMENT_HELD: 'payment_held',
-  DISPATCHED: 'dispatched',
-  DELIVERED: 'delivered',
-  COMPLETED: 'completed',
-  DISPUTED: 'disputed',
-  REFUNDED: 'refunded',
-  CANCELLED: 'cancelled',
+  AWAITING_PAYMENT: "awaiting_payment",
+  PAYMENT_HELD: "payment_held",
+  DISPATCHED: "dispatched",
+  DELIVERED: "delivered",
+  COMPLETED: "completed",
+  DISPUTED: "disputed",
+  REFUNDED: "refunded",
+  CANCELLED: "cancelled",
 };
 
 export interface OrderDetailData {
@@ -56,7 +57,7 @@ export interface OrderDetailData {
 }
 
 export async function fetchOrderDetail(
-  orderId: string
+  orderId: string,
 ): Promise<ActionResult<OrderDetailData>> {
   try {
     const user = await requireUser();
@@ -83,6 +84,9 @@ export async function fetchOrderDetail(
         disputeNotes: true,
         sellerResponse: true,
         sellerRespondedAt: true,
+        cancelledBy: true,
+        cancelReason: true,
+        cancelledAt: true,
         listing: {
           select: {
             title: true,
@@ -95,12 +99,15 @@ export async function fetchOrderDetail(
       },
     });
 
-    if (!order) return { success: false, error: 'Order not found.' };
+    if (!order) return { success: false, error: "Order not found." };
 
     const isBuyer = order.buyerId === user.id;
     const isSeller = order.sellerId === user.id;
     if (!isBuyer && !isSeller) {
-      return { success: false, error: 'You do not have permission to view this order.' };
+      return {
+        success: false,
+        error: "You do not have permission to view this order.",
+      };
     }
 
     return {
@@ -125,14 +132,18 @@ export async function fetchOrderDetail(
         disputeNotes: order.disputeNotes,
         sellerResponse: order.sellerResponse,
         sellerRespondedAt: order.sellerRespondedAt?.toISOString() ?? null,
-        cancelledBy: null,
-        cancelReason: null,
-        cancelledAt: null,
+        cancelledBy: order.cancelledBy ?? null,
+        cancelReason: order.cancelReason ?? null,
+        cancelledAt: order.cancelledAt?.toISOString() ?? null,
         isBuyer,
         buyerId: order.buyerId,
         sellerId: order.sellerId,
-        otherPartyName: isBuyer ? order.seller.displayName : order.buyer.displayName,
-        otherPartyUsername: isBuyer ? order.seller.username : order.buyer.username,
+        otherPartyName: isBuyer
+          ? order.seller.displayName
+          : order.buyer.displayName,
+        otherPartyUsername: isBuyer
+          ? order.seller.username
+          : order.buyer.username,
         hasReview: !!order.review,
       },
     };

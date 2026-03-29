@@ -40,10 +40,148 @@ import {
   requestProfileImageUpload,
   confirmProfileImageUpload,
 } from "@/server/actions/profile-images";
+import { getReviewTags } from "@/lib/review-tags";
+
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
 
 type Tab = "overview" | "listings" | "orders" | "payouts" | "reviews";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Seller Insights Chart ────────────────────────────────────────────────────
+
+function SellerInsightsChart({ orders }: { orders: SellerOrderRow[] }) {
+  const [view, setView] = useState<"revenue" | "sales">("revenue");
+
+  // Build 6-month rolling data from orders
+  const monthlyData = (() => {
+    const months: { label: string; revenue: number; sales: number }[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        label: d.toLocaleDateString("en-NZ", {
+          month: "short",
+          year: "2-digit",
+        }),
+        revenue: 0,
+        sales: 0,
+      });
+    }
+
+    orders.forEach((o) => {
+      if (o.status !== "completed") return;
+      const d = new Date(o.createdAt);
+      for (let i = 0; i < months.length; i++) {
+        const now2 = new Date();
+        const monthDate = new Date(
+          now2.getFullYear(),
+          now2.getMonth() - (5 - i),
+          1,
+        );
+        const nextMonth = new Date(
+          monthDate.getFullYear(),
+          monthDate.getMonth() + 1,
+          1,
+        );
+        if (d >= monthDate && d < nextMonth) {
+          const bucket = months[i];
+          if (bucket) {
+            bucket.revenue += o.total;
+            bucket.sales += 1;
+          }
+          break;
+        }
+      }
+    });
+
+    return months;
+  })();
+
+  const hasData = monthlyData.some((m) => m.revenue > 0 || m.sales > 0);
+
+  if (!hasData) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[13.5px] font-semibold text-[#141414]">
+          Seller insights
+        </h3>
+        <div className="flex gap-1 bg-[#F8F7F4] rounded-lg p-0.5">
+          {(["revenue", "sales"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`px-3 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                view === v
+                  ? "bg-white text-[#141414] shadow-sm"
+                  : "text-[#9E9A91] hover:text-[#73706A]"
+              }`}
+            >
+              {v === "revenue" ? "Revenue" : "Sales"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="h-[200px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={monthlyData}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#EFEDE8"
+              vertical={false}
+            />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11, fill: "#9E9A91" }}
+              tickLine={false}
+              axisLine={{ stroke: "#E3E0D9" }}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#9E9A91" }}
+              tickLine={false}
+              axisLine={false}
+              width={50}
+              tickFormatter={(v: number) =>
+                view === "revenue" ? `$${v}` : `${v}`
+              }
+            />
+            <Tooltip
+              formatter={(value) => [
+                view === "revenue"
+                  ? `$${Number(value).toFixed(2)}`
+                  : `${value} sale${Number(value) !== 1 ? "s" : ""}`,
+                view === "revenue" ? "Revenue" : "Sales",
+              ]}
+              contentStyle={{
+                borderRadius: 12,
+                border: "1px solid #E3E0D9",
+                fontSize: 12,
+              }}
+            />
+            <Bar
+              dataKey={view}
+              fill="#D4A843"
+              radius={[6, 6, 0, 0]}
+              maxBarSize={40}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="text-[11px] text-[#9E9A91] mt-2">Last 6 months</p>
+    </div>
+  );
+}
+
 // ── Tier Progress ────────────────────────────────────────────────────────────
 function TierProgress({
   completedSales,
@@ -802,6 +940,9 @@ export default function SellerDashboardPage() {
                 completedSales={stats.recentSales}
                 avgRating={stats.avgRating}
               />
+
+              {/* Seller Insights — revenue and sales charts */}
+              <SellerInsightsChart orders={orders} />
             </div>
           )}
 
@@ -1382,6 +1523,23 @@ function ReviewsTabContent({ sellerId }: { sellerId: string }) {
           <p className="text-[13px] text-[#141414] leading-relaxed">
             {review.comment}
           </p>
+
+          {/* Strength tags */}
+          {(() => {
+            const tags = getReviewTags(review.comment, review.rating);
+            return tags.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {tags.map((tag) => (
+                  <span
+                    key={tag.label}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium ${tag.colour}`}
+                  >
+                    {tag.label}
+                  </span>
+                ))}
+              </div>
+            ) : null;
+          })()}
 
           {review.sellerReply ? (
             <div className="mt-3 bg-[#F8F7F4] rounded-xl p-3 border-l-2 border-[#D4A843]">
