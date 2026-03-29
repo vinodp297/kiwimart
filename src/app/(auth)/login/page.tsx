@@ -31,17 +31,13 @@ declare global {
 }
 
 // Determine at module level whether Turnstile is active.
-// NEXT_PUBLIC_ vars are inlined at build time, so this is a static constant.
+// NEXT_PUBLIC_ vars are inlined at build time — if the env var is missing from
+// the Vercel build environment, it becomes "" and Turnstile silently disables.
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
-const isTurnstileActive = (() => {
-  if (!TURNSTILE_SITE_KEY) return false;
-  if (
-    TURNSTILE_SITE_KEY.startsWith("1x") ||
-    TURNSTILE_SITE_KEY.startsWith("2x")
-  )
-    return false;
-  return true;
-})();
+const isTurnstileActive =
+  TURNSTILE_SITE_KEY.length > 0 &&
+  !TURNSTILE_SITE_KEY.startsWith("1x") &&
+  !TURNSTILE_SITE_KEY.startsWith("2x");
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
