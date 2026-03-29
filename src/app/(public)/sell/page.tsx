@@ -189,6 +189,7 @@ export default function SellPage() {
       });
 
       if (!result.success) {
+        console.error("[Upload] Phase 1 failed (presigned URL):", result.error);
         setImages((prev) =>
           prev.map((i) =>
             i.id === img.id
@@ -254,6 +255,10 @@ export default function SellPage() {
       const confirmResult = await confirmImageUpload({ imageId, r2Key });
 
       if (!confirmResult.success) {
+        console.error(
+          "[Upload] Phase 3 failed (processing):",
+          confirmResult.error,
+        );
         setImages((prev) =>
           prev.map((i) =>
             i.id === img.id
@@ -291,6 +296,7 @@ export default function SellPage() {
         ),
       );
     } catch (err) {
+      console.error("[Upload] Uncaught error:", err);
       setImages((prev) =>
         prev.map((i) =>
           i.id === img.id
@@ -878,9 +884,9 @@ export default function SellPage() {
 
                         {/* Upload error */}
                         {img.error && (
-                          <div className="absolute inset-0 bg-red-500/20 flex flex-col items-center justify-center gap-1">
-                            <span className="text-red-700 text-[9px] font-semibold bg-white/90 px-1.5 py-0.5 rounded">
-                              Failed
+                          <div className="absolute inset-0 bg-red-500/20 flex flex-col items-center justify-center gap-1 p-1">
+                            <span className="text-red-700 text-[9px] font-semibold bg-white/90 px-1.5 py-0.5 rounded text-center leading-tight max-w-full truncate">
+                              {img.error}
                             </span>
                             <button
                               onClick={(e) => {
