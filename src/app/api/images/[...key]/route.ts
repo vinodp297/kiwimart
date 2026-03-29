@@ -53,11 +53,10 @@ export async function GET(
       return NextResponse.json({ error: "Image not found" }, { status: 404 });
     }
 
-    // Convert stream to buffer
+    // Convert stream to buffer — cast Body to AsyncIterable for Node.js iteration
     const chunks: Uint8Array[] = [];
-    // @ts-expect-error — AWS SDK returns a ReadableStream; iterate for Node.js
-    for await (const chunk of response.Body) {
-      chunks.push(chunk as Uint8Array);
+    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(chunk);
     }
     const buffer = Buffer.concat(chunks);
 
