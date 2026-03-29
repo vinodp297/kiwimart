@@ -68,7 +68,7 @@ export async function registerUser(
         error: "Bot verification required. Please complete the security check.",
       };
     }
-    const turnstileOk = await verifyTurnstile(data.turnstileToken);
+    const turnstileOk = await verifyTurnstile(data.turnstileToken, ip);
     if (!turnstileOk) {
       return {
         success: false,
@@ -181,7 +181,7 @@ export async function requestPasswordReset(
     if (!turnstileToken) {
       return { success: false, error: "Bot verification required." };
     }
-    const ok = await verifyTurnstile(turnstileToken);
+    const ok = await verifyTurnstile(turnstileToken, ip);
     if (!ok) return { success: false, error: "Bot verification failed." };
   }
 
