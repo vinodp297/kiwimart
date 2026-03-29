@@ -26,28 +26,8 @@ export default async function AdminPage() {
   monthStart.setHours(0, 0, 0, 0);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  const [
-    totalUsers,
-    newUsersToday,
-    activeSellers,
-    newSellersThisWeek,
-    gmvAllTime,
-    gmvThisMonth,
-    completedOrders,
-    pendingPayoutsCount,
-    openDisputes,
-    pendingReports,
-    bannedUsers,
-    pendingVerifications,
-    activeListings,
-    ordersToday,
-    totalOrders,
-    refundedOrders,
-    last7DaysOrders,
-    recentOrdersForChart,
-    categoryStats,
-    categories,
-  ] = await Promise.all([
+  // Use Promise.allSettled so a single query failure doesn't crash the page
+  const results = await Promise.allSettled([
     db.user.count({ where: { isBanned: false } }),
     db.user.count({ where: { createdAt: { gte: todayStart } } }),
     db.user.count({ where: { sellerEnabled: true, isBanned: false } }),
@@ -94,6 +74,47 @@ export default async function AdminPage() {
     }),
     db.category.findMany({ select: { id: true, name: true } }),
   ]);
+
+  // Extract values with safe defaults for any rejected promises
+  function val<T>(r: PromiseSettledResult<T>, fallback: T): T {
+    return r.status === "fulfilled" ? r.value : fallback;
+  }
+  const emptyAggregate = { _sum: { totalNzd: null } };
+
+  const totalUsers = val(results[0], 0);
+  const newUsersToday = val(results[1], 0);
+  const activeSellers = val(results[2], 0);
+  const newSellersThisWeek = val(results[3], 0);
+  const gmvAllTime = val(results[4], emptyAggregate);
+  const gmvThisMonth = val(results[5], emptyAggregate);
+  const completedOrders = val(results[6], 0);
+  const pendingPayoutsCount = val(results[7], 0);
+  const openDisputes = val(results[8], 0);
+  const pendingReports = val(results[9], 0);
+  const bannedUsers = val(results[10], 0);
+  const pendingVerifications = val(
+    results[11],
+    [] as {
+      id: string;
+      displayName: string;
+      email: string;
+      idSubmittedAt: Date | null;
+    }[],
+  );
+  const activeListings = val(results[12], 0);
+  const ordersToday = val(results[13], 0);
+  const totalOrders = val(results[14], 0);
+  const refundedOrders = val(results[15], 0);
+  const last7DaysOrders = val(
+    results[16],
+    [] as { completedAt: Date | null; totalNzd: number }[],
+  );
+  const recentOrdersForChart = val(results[17], [] as { createdAt: Date }[]);
+  const categoryStats = val(
+    results[18],
+    [] as { categoryId: string; _count: { id: number } }[],
+  );
+  const categories = val(results[19], [] as { id: string; name: string }[]);
 
   const completionRate =
     totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;
