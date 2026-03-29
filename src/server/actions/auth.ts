@@ -41,7 +41,7 @@ export async function registerUser(
   if (!parsed.success) {
     return {
       success: false,
-      error: "Invalid input",
+      error: "Please fix the errors below and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
@@ -162,7 +162,7 @@ export async function requestPasswordReset(
   // 3. Validate
   const parsed = forgotPasswordSchema.safeParse(raw);
   if (!parsed.success) {
-    return { success: false, error: "Invalid input" };
+    return { success: false, error: "Please enter a valid email address." };
   }
   const { email: rawEmail, turnstileToken } = parsed.data;
   const email = rawEmail.toLowerCase().trim();
@@ -263,7 +263,7 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
   if (!parsed.success) {
     return {
       success: false,
-      error: "Invalid input",
+      error: "Please fix the password errors below and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
@@ -386,7 +386,11 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
     });
   } catch {
     logger.error("auth.resend_verification.failed", { email: user.email });
-    return { success: false, error: "Failed to send email. Please try again." };
+    return {
+      success: false,
+      error:
+        "We couldn't resend the verification email. Please wait a moment and try again.",
+    };
   }
 
   audit({

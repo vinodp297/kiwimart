@@ -1,11 +1,11 @@
-'use client';
+"use client";
 // src/app/(protected)/messages/new/NewMessageForm.tsx
 // ─── New Message Compose Form ─────────────────────────────────────────────────
 // Client component — calls sendMessage server action, then redirects.
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { sendMessage } from '@/server/actions/messages';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { sendMessage } from "@/server/actions/messages";
 
 interface Props {
   listingId: string | null;
@@ -18,7 +18,7 @@ export function NewMessageForm({ listingId, sellerId, listingTitle }: Props) {
   const [message, setMessage] = useState(
     listingTitle
       ? `Hi, is "${listingTitle}" still available?`
-      : 'Hi, I have a question for you.'
+      : "Hi, I have a question for you.",
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,15 +41,19 @@ export function NewMessageForm({ listingId, sellerId, listingTitle }: Props) {
       });
 
       if (!result.success) {
-        setError(result.error ?? 'Failed to send message.');
+        setError(
+          result.error ?? "Your message couldn't be sent. Please try again.",
+        );
         setIsLoading(false);
         return;
       }
 
       // Redirect to buyer dashboard messages tab
-      router.push('/dashboard/buyer');
+      router.push("/dashboard/buyer");
     } catch {
-      setError('Failed to send message. Please try again.');
+      setError(
+        "Your message couldn't be sent. Please check your connection and try again.",
+      );
       setIsLoading(false);
     }
   };
@@ -96,7 +100,7 @@ export function NewMessageForm({ listingId, sellerId, listingTitle }: Props) {
           text-[#141414] font-semibold
           text-[15px] py-3.5 rounded-full transition-colors"
       >
-        {isLoading ? 'Sending...' : 'Send message'}
+        {isLoading ? "Sending..." : "Send message"}
       </button>
 
       <button

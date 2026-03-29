@@ -2,18 +2,21 @@
 // ─── Stripe Connect Onboarding Refresh ──────────────────────────────────────
 // Called when the onboarding link expires. Generates a fresh link and redirects.
 
-import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import { stripe } from '@/infrastructure/stripe/client';
-import { logger } from '@/shared/logger';
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { stripe } from "@/infrastructure/stripe/client";
+import { logger } from "@/shared/logger";
 
 export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.redirect(
-        new URL('/login?from=/account/stripe', process.env.NEXT_PUBLIC_APP_URL!)
+        new URL(
+          "/login?from=/account/stripe",
+          process.env.NEXT_PUBLIC_APP_URL!,
+        ),
       );
     }
 
@@ -24,7 +27,7 @@ export async function GET(): Promise<NextResponse> {
 
     if (!user?.stripeAccountId) {
       return NextResponse.redirect(
-        new URL('/account/stripe', process.env.NEXT_PUBLIC_APP_URL!)
+        new URL("/account/stripe", process.env.NEXT_PUBLIC_APP_URL!),
       );
     }
 
@@ -32,12 +35,18 @@ export async function GET(): Promise<NextResponse> {
       account: user.stripeAccountId,
       refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
       return_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
-      type: 'account_onboarding',
+      type: "account_onboarding",
     });
 
     return NextResponse.redirect(accountLink.url);
   } catch (e) {
-    logger.error('api.error', { path: '/api/stripe/connect/refresh', error: e instanceof Error ? e.message : e });
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+    logger.error("api.error", {
+      path: "/api/stripe/connect/refresh",
+      error: e instanceof Error ? e.message : e,
+    });
+    return NextResponse.json(
+      { error: "We couldn't reconnect to Stripe. Please try again." },
+      { status: 500 },
+    );
   }
 }

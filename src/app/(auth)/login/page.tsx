@@ -176,7 +176,9 @@ export default function LoginPage() {
       window.location.href =
         fromParam || (isFirstLogin ? "/welcome" : "/dashboard/buyer");
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(
+        "We couldn't sign you in. Please check your internet connection and try again.",
+      );
       if (widgetId.current) window.turnstile?.reset(widgetId.current);
       setLoading(false);
     }

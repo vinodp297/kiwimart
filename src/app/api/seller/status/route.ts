@@ -49,7 +49,10 @@ export async function GET() {
       error: e instanceof Error ? e.message : e,
     });
     return NextResponse.json(
-      { success: false, error: "Something went wrong" },
+      {
+        success: false,
+        error: "We couldn't check your seller status. Please try again.",
+      },
       { status: 500 },
     );
   }

@@ -1,21 +1,34 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/onboarding.ts
 // ─── Onboarding Server Actions ────────────────────────────────────────────────
 
-import { requireUser } from '@/server/lib/requireUser';
-import db from '@/lib/db';
-import type { ActionResult } from '@/types';
-import { z } from 'zod';
+import { requireUser } from "@/server/lib/requireUser";
+import db from "@/lib/db";
+import type { ActionResult } from "@/types";
+import { z } from "zod";
 
 const NZ_REGIONS = [
-  'Auckland', 'Wellington', 'Canterbury', 'Waikato', 'Bay of Plenty',
-  'Otago', "Hawke's Bay", 'Manawatū-Whanganui', 'Northland', 'Tasman',
-  'Nelson', 'Marlborough', 'Southland', 'Taranaki', 'Gisborne', 'West Coast',
+  "Auckland",
+  "Wellington",
+  "Canterbury",
+  "Waikato",
+  "Bay of Plenty",
+  "Otago",
+  "Hawke's Bay",
+  "Manawatū-Whanganui",
+  "Northland",
+  "Tasman",
+  "Nelson",
+  "Marlborough",
+  "Southland",
+  "Taranaki",
+  "Gisborne",
+  "West Coast",
 ] as const;
 
 const completeOnboardingSchema = z.object({
-  intent: z.enum(['BUY', 'SELL', 'BOTH']),
+  intent: z.enum(["BUY", "SELL", "BOTH"]),
   region: z.string().optional(),
 });
 
@@ -24,14 +37,17 @@ export type CompleteOnboardingInput = z.infer<typeof completeOnboardingSchema>;
 // ── completeOnboarding ────────────────────────────────────────────────────────
 
 export async function completeOnboarding(
-  input: CompleteOnboardingInput
+  input: CompleteOnboardingInput,
 ): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
 
     const parsed = completeOnboardingSchema.safeParse(input);
     if (!parsed.success) {
-      return { success: false, error: 'Invalid input.' };
+      return {
+        success: false,
+        error: "Please complete all required onboarding fields.",
+      };
     }
 
     const { intent, region } = parsed.data;
@@ -41,7 +57,7 @@ export async function completeOnboarding(
       data: {
         onboardingCompleted: true,
         onboardingIntent: intent,
-        ...(region && NZ_REGIONS.includes(region as typeof NZ_REGIONS[number])
+        ...(region && NZ_REGIONS.includes(region as (typeof NZ_REGIONS)[number])
           ? { region }
           : {}),
       },
@@ -49,7 +65,13 @@ export async function completeOnboarding(
 
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't complete your onboarding. Please try again.",
+      ),
+    };
   }
 }
 
@@ -65,29 +87,37 @@ export interface OnboardingStatus {
   stripeOnboarded: boolean;
 }
 
-export async function getOnboardingStatus(): Promise<ActionResult<OnboardingStatus>> {
+export async function getOnboardingStatus(): Promise<
+  ActionResult<OnboardingStatus>
+> {
   try {
     const authedUser = await requireUser();
 
     const user = await db.user.findUnique({
       where: { id: authedUser.id },
-    select: {
-      onboardingCompleted: true,
-      onboardingIntent: true,
-      region: true,
-      bio: true,
-      displayName: true,
-      emailVerified: true,
-      stripeOnboarded: true,
-    },
-  });
+      select: {
+        onboardingCompleted: true,
+        onboardingIntent: true,
+        region: true,
+        bio: true,
+        displayName: true,
+        emailVerified: true,
+        stripeOnboarded: true,
+      },
+    });
 
     if (!user) {
-      return { success: false, error: 'User not found.' };
+      return { success: false, error: "User not found." };
     }
 
     return { success: true, data: user };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't load your onboarding status. Please refresh the page.",
+      ),
+    };
   }
 }

@@ -36,7 +36,10 @@ export async function GET() {
       error: err instanceof Error ? err.message : String(err),
     });
     return NextResponse.json(
-      { success: false, error: "Something went wrong" },
+      {
+        success: false,
+        error: "We couldn't process your cart request. Please try again.",
+      },
       { status: 500 },
     );
   }

@@ -4,20 +4,20 @@
 // Returns 200 when all healthy, 503 when any service is degraded.
 // Requires VIEW_SYSTEM_HEALTH permission (SUPER_ADMIN or READ_ONLY_ADMIN).
 
-import { NextResponse } from 'next/server'
-import db from '@/lib/db'
-import { getRedisClient } from '@/infrastructure/redis/client'
-import { stripe } from '@/infrastructure/stripe/client'
-import { logger } from '@/shared/logger'
-import { requirePermission } from '@/shared/auth/requirePermission'
+import { NextResponse } from "next/server";
+import db from "@/lib/db";
+import { getRedisClient } from "@/infrastructure/redis/client";
+import { stripe } from "@/infrastructure/stripe/client";
+import { logger } from "@/shared/logger";
+import { requirePermission } from "@/shared/auth/requirePermission";
 
-export const dynamic = 'force-dynamic'
+export const dynamic = "force-dynamic";
 
 interface ServiceCheck {
-  name: string
-  status: 'ok' | 'error'
-  latencyMs?: number
-  error?: string
+  name: string;
+  status: "ok" | "error";
+  latencyMs?: number;
+  error?: string;
 }
 
 // Caps each service check at timeoutMs — prevents a slow dependency from
@@ -25,85 +25,91 @@ interface ServiceCheck {
 async function checkService(
   name: string,
   fn: () => Promise<void>,
-  timeoutMs = 2000
+  timeoutMs = 2000,
 ): Promise<ServiceCheck> {
-  const start = Date.now()
+  const start = Date.now();
   try {
     await Promise.race([
       fn(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), timeoutMs)
+        setTimeout(() => reject(new Error("timeout")), timeoutMs),
       ),
-    ])
+    ]);
     return {
       name,
-      status: 'ok',
+      status: "ok",
       latencyMs: Date.now() - start,
-    }
+    };
   } catch (err) {
     return {
       name,
-      status: 'error',
+      status: "error",
       latencyMs: Date.now() - start,
       error: err instanceof Error ? err.message : String(err),
-    }
+    };
   }
 }
 
 export async function GET() {
   // Auth guard — requires VIEW_SYSTEM_HEALTH permission
   try {
-    await requirePermission('VIEW_SYSTEM_HEALTH')
+    await requirePermission("VIEW_SYSTEM_HEALTH");
   } catch {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
-    const start = Date.now()
+    const start = Date.now();
 
     const checks = await Promise.allSettled([
-      checkService('database', async () => {
-        await db.$queryRaw`SELECT 1`
+      checkService("database", async () => {
+        await db.$queryRaw`SELECT 1`;
       }),
-      checkService('redis', async () => {
-        await getRedisClient().ping()
+      checkService("redis", async () => {
+        await getRedisClient().ping();
       }),
-      checkService('stripe', async () => {
+      checkService("stripe", async () => {
         // Lightweight check — just verify the API key is accepted
-        await stripe.balance.retrieve()
+        await stripe.balance.retrieve();
       }),
-    ])
+    ]);
 
     const services: ServiceCheck[] = checks.map((result) =>
-      result.status === 'fulfilled'
+      result.status === "fulfilled"
         ? result.value
         : {
-            name: 'unknown',
-            status: 'error' as const,
-            error: 'Check failed',
-          }
-    )
+            name: "unknown",
+            status: "error" as const,
+            error: "Check failed",
+          },
+    );
 
-    const allHealthy = services.every((s) => s.status === 'ok')
-    const totalLatencyMs = Date.now() - start
+    const allHealthy = services.every((s) => s.status === "ok");
+    const totalLatencyMs = Date.now() - start;
 
     if (!allHealthy) {
-      logger.error('health.check.degraded', {
-        services: services.filter((s) => s.status === 'error'),
-      })
+      logger.error("health.check.degraded", {
+        services: services.filter((s) => s.status === "error"),
+      });
     }
 
     return NextResponse.json(
       {
-        status: allHealthy ? 'ok' : 'degraded',
+        status: allHealthy ? "ok" : "degraded",
         timestamp: new Date().toISOString(),
         totalLatencyMs,
         services,
       },
-      { status: allHealthy ? 200 : 503 }
-    )
+      { status: allHealthy ? 200 : 503 },
+    );
   } catch (e) {
-    logger.error('api.error', { path: '/api/admin/health', error: e instanceof Error ? e.message : e })
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
+    logger.error("api.error", {
+      path: "/api/admin/health",
+      error: e instanceof Error ? e.message : e,
+    });
+    return NextResponse.json(
+      { error: "Health check failed. Please try again." },
+      { status: 500 },
+    );
   }
 }

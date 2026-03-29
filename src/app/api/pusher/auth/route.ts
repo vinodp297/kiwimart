@@ -59,7 +59,10 @@ export async function POST(request: NextRequest) {
       error: e instanceof Error ? e.message : e,
     });
     return NextResponse.json(
-      { success: false, error: "Something went wrong" },
+      {
+        success: false,
+        error: "Real-time connection failed. Please refresh the page.",
+      },
       { status: 500 },
     );
   }

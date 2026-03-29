@@ -22,7 +22,9 @@ export async function togglePriceAlert(
     if (!parsed.success)
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
 
     const { listingId, enabled } = parsed.data;
@@ -41,6 +43,12 @@ export async function togglePriceAlert(
 
     return { success: true, data: { enabled } };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't update your price alert. Please try again.",
+      ),
+    };
   }
 }

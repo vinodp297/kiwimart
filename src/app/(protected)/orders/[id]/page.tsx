@@ -267,7 +267,9 @@ export default function OrderDetailPage() {
           setError(result.error);
         }
       } catch {
-        setError("Failed to load order details.");
+        setError(
+          "We couldn't load this order. Please check your connection and refresh the page.",
+        );
       } finally {
         setLoading(false);
       }

@@ -343,7 +343,10 @@ export default function SellerDashboardPage() {
           setStripeOnboarded(stripeResult.data.onboarded);
         }
       } catch {
-        if (!cancelled) setError("Failed to load seller dashboard.");
+        if (!cancelled)
+          setError(
+            "We couldn't load your seller dashboard. Please refresh the page.",
+          );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -390,7 +393,9 @@ export default function SellerDashboardPage() {
         body: blob,
       });
       if (!putRes.ok) {
-        alert("Upload failed. Please try again.");
+        alert(
+          "Your photo couldn't be uploaded. Please try a different image or try again later.",
+        );
         return;
       }
       // Confirm + update DB

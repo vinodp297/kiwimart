@@ -34,7 +34,9 @@ export async function banUser(
   if (!parsed.success)
     return {
       success: false,
-      error: parsed.error.issues[0]?.message ?? "Validation failed",
+      error:
+        parsed.error.issues[0]?.message ??
+        "Please check your input and try again.",
     };
   try {
     const admin = await requirePermission("BAN_USERS");
@@ -45,7 +47,10 @@ export async function banUser(
     );
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(err, "The ban action failed. Please try again."),
+    };
   }
 }
 
@@ -57,7 +62,10 @@ export async function unbanUser(userId: string): Promise<ActionResult<void>> {
     await adminService.unbanUser(userId, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(err, "The unban action failed. Please try again."),
+    };
   }
 }
 
@@ -69,7 +77,13 @@ export async function toggleSellerEnabled(
     await adminService.toggleSellerEnabled(userId, admin.id);
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "The seller status change failed. Please try again.",
+      ),
+    };
   }
 }
 
@@ -81,7 +95,9 @@ export async function resolveReport(
   if (!parsed.success)
     return {
       success: false,
-      error: parsed.error.issues[0]?.message ?? "Validation failed",
+      error:
+        parsed.error.issues[0]?.message ??
+        "Please check your input and try again.",
     };
   try {
     const admin = await requirePermission("MODERATE_CONTENT");
@@ -92,7 +108,13 @@ export async function resolveReport(
     );
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "The report couldn't be resolved. Please try again.",
+      ),
+    };
   }
 }
 
@@ -104,7 +126,9 @@ export async function resolveDispute(
   if (!parsed.success)
     return {
       success: false,
-      error: parsed.error.issues[0]?.message ?? "Validation failed",
+      error:
+        parsed.error.issues[0]?.message ??
+        "Please check your input and try again.",
     };
   try {
     const admin = await requirePermission("RESOLVE_DISPUTES");
@@ -115,6 +139,12 @@ export async function resolveDispute(
     );
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "The dispute couldn't be resolved. Please try again.",
+      ),
+    };
   }
 }

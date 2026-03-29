@@ -1,20 +1,20 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/adminTeam.ts
 // ─── Admin Team Management Actions ───────────────────────────────────────────
 
-import { requireSuperAdmin } from '@/shared/auth/requirePermission';
-import db from '@/lib/db';
-import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client';
-import { logger } from '@/shared/logger';
-import { getRoleDisplayName } from '@/lib/permissions';
-import crypto from 'crypto';
-import type { AdminRole } from '@prisma/client';
-import type { ActionResult } from '@/types';
+import { requireSuperAdmin } from "@/shared/auth/requirePermission";
+import db from "@/lib/db";
+import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
+import { logger } from "@/shared/logger";
+import { getRoleDisplayName } from "@/lib/permissions";
+import crypto from "crypto";
+import type { AdminRole } from "@prisma/client";
+import type { ActionResult } from "@/types";
 
 export async function inviteAdmin(
   email: string,
-  role: AdminRole
+  role: AdminRole,
 ): Promise<ActionResult<void>> {
   try {
     const admin = await requireSuperAdmin();
@@ -25,19 +25,34 @@ export async function inviteAdmin(
       select: { isAdmin: true },
     });
     if (existing?.isAdmin) {
-      return { success: false, error: 'This user is already an admin' };
+      return { success: false, error: "This user is already an admin" };
     }
 
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(rawToken)
+      .digest("hex");
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
     // Upsert — replace any existing pending invitation for this email.
     // Store SHA-256 hash of the token; raw token sent in email only, never persisted.
     await db.adminInvitation.upsert({
       where: { email },
-      create: { email, adminRole: role, invitedBy: admin.id, tokenHash, expiresAt },
-      update: { adminRole: role, invitedBy: admin.id, tokenHash, expiresAt, acceptedAt: null },
+      create: {
+        email,
+        adminRole: role,
+        invitedBy: admin.id,
+        tokenHash,
+        expiresAt,
+      },
+      update: {
+        adminRole: role,
+        invitedBy: admin.id,
+        tokenHash,
+        expiresAt,
+        acceptedAt: null,
+      },
     });
 
     // Send invitation email (non-blocking) — raw token in the URL, never stored in DB
@@ -47,27 +62,36 @@ export async function inviteAdmin(
       role,
       token: rawToken,
       expiresAt,
-    }).catch((err) => logger.error('admin.invitation.email.failed', { err, email }));
+    }).catch((err) =>
+      logger.error("admin.invitation.email.failed", { err, email }),
+    );
 
-    logger.info('admin.invitation.sent', { invitedEmail: email, role, invitedBy: admin.id });
+    logger.info("admin.invitation.sent", {
+      invitedEmail: email,
+      role,
+      invitedBy: admin.id,
+    });
     return { success: true, data: undefined };
   } catch (err) {
     return {
       success: false,
-      error: safeActionError(err),
+      error: safeActionError(
+        err,
+        "The invitation couldn't be sent. Please try again.",
+      ),
     };
   }
 }
 
 export async function changeAdminRole(
   targetUserId: string,
-  newRole: AdminRole
+  newRole: AdminRole,
 ): Promise<ActionResult<void>> {
   try {
     const admin = await requireSuperAdmin();
 
     if (targetUserId === admin.id) {
-      return { success: false, error: 'Cannot change your own role' };
+      return { success: false, error: "Cannot change your own role" };
     }
 
     await db.user.update({
@@ -75,22 +99,31 @@ export async function changeAdminRole(
       data: { adminRole: newRole },
     });
 
-    logger.info('admin.role.changed', { targetUserId, newRole, changedBy: admin.id });
+    logger.info("admin.role.changed", {
+      targetUserId,
+      newRole,
+      changedBy: admin.id,
+    });
     return { success: true, data: undefined };
   } catch (err) {
     return {
       success: false,
-      error: safeActionError(err),
+      error: safeActionError(
+        err,
+        "The role change couldn't be saved. Please try again.",
+      ),
     };
   }
 }
 
-export async function revokeAdminAccess(targetUserId: string): Promise<ActionResult<void>> {
+export async function revokeAdminAccess(
+  targetUserId: string,
+): Promise<ActionResult<void>> {
   try {
     const admin = await requireSuperAdmin();
 
     if (targetUserId === admin.id) {
-      return { success: false, error: 'Cannot revoke your own admin access' };
+      return { success: false, error: "Cannot revoke your own admin access" };
     }
 
     await db.user.update({
@@ -98,12 +131,15 @@ export async function revokeAdminAccess(targetUserId: string): Promise<ActionRes
       data: { isAdmin: false, adminRole: null },
     });
 
-    logger.info('admin.access.revoked', { targetUserId, revokedBy: admin.id });
+    logger.info("admin.access.revoked", { targetUserId, revokedBy: admin.id });
     return { success: true, data: undefined };
   } catch (err) {
     return {
       success: false,
-      error: safeActionError(err),
+      error: safeActionError(
+        err,
+        "Access couldn't be revoked. Please try again.",
+      ),
     };
   }
 }
@@ -118,8 +154,7 @@ async function sendInvitationEmail(params: {
   const resend = getEmailClient();
   if (!resend) return;
 
-  const inviteUrl =
-    `${process.env.NEXT_PUBLIC_APP_URL}/admin/accept-invite?token=${params.token}`;
+  const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/admin/accept-invite?token=${params.token}`;
 
   await resend.emails.send({
     from: EMAIL_FROM,
@@ -136,7 +171,7 @@ async function sendInvitationEmail(params: {
           <p style="margin:0;font-size:14px;color:#141414;">
             <strong>Role:</strong> ${getRoleDisplayName(params.role)}<br/>
             <strong>Invited by:</strong> ${params.inviterName}<br/>
-            <strong>Expires:</strong> ${params.expiresAt.toLocaleDateString('en-NZ')}
+            <strong>Expires:</strong> ${params.expiresAt.toLocaleDateString("en-NZ")}
           </p>
         </div>
         <a href="${inviteUrl}"

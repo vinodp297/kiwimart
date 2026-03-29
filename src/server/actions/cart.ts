@@ -82,7 +82,9 @@ export async function addToCart(
     if (!parsed.success) {
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
     }
 
@@ -178,7 +180,13 @@ export async function addToCart(
 
     return { success: true, data: { cartItemCount: newCart.items.length } };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't add this item to your cart. Please try again.",
+      ),
+    };
   }
 }
 
@@ -206,7 +214,9 @@ export async function removeFromCart(
     if (!parsed.success) {
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
     }
 
@@ -243,7 +253,13 @@ export async function removeFromCart(
 
     return { success: true, data: { cartItemCount: cart.items.length - 1 } };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't remove this item from your cart. Please try again.",
+      ),
+    };
   }
 }
 
@@ -265,7 +281,13 @@ export async function clearCart(): Promise<ActionResult<void>> {
     await db.cart.deleteMany({ where: { userId: user.id } });
     return { success: true, data: undefined };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't clear your cart. Please try again.",
+      ),
+    };
   }
 }
 
@@ -356,7 +378,13 @@ export async function getCart(): Promise<ActionResult<CartData | null>> {
       },
     };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't update your cart. Please try again.",
+      ),
+    };
   }
 }
 
@@ -380,7 +408,13 @@ export async function getCartCount(): Promise<ActionResult<number>> {
 
     return { success: true, data: cart._count.items };
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't update the cart quantity. Please try again.",
+      ),
+    };
   }
 }
 
@@ -420,7 +454,9 @@ export async function checkoutCart(
     if (!parsed.success) {
       return {
         success: false,
-        error: parsed.error.issues[0]?.message ?? "Validation failed",
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
       };
     }
 
@@ -751,6 +787,12 @@ export async function checkoutCart(
       };
     }
   } catch (err) {
-    return { success: false, error: safeActionError(err) };
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "Checkout failed. Please try again or contact support if the problem persists.",
+      ),
+    };
   }
 }

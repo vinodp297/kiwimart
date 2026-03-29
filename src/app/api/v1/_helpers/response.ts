@@ -1,10 +1,14 @@
 // src/app/api/v1/_helpers/response.ts
 // ─── API Response Helpers ────────────────────────────────────────────────────
 
-import { AppError } from '@/shared/errors'
-import { auth } from '@/lib/auth'
-import db from '@/lib/db'
-import { rateLimit, getClientIp, type RateLimitKey } from '@/server/lib/rateLimit'
+import { AppError } from "@/shared/errors";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import {
+  rateLimit,
+  getClientIp,
+  type RateLimitKey,
+} from "@/server/lib/rateLimit";
 
 export function apiOk<T>(data: T, status = 200): Response {
   return Response.json(
@@ -13,11 +17,15 @@ export function apiOk<T>(data: T, status = 200): Response {
       data,
       timestamp: new Date().toISOString(),
     },
-    { status }
-  )
+    { status },
+  );
 }
 
-export function apiError(message: string, status: number, code?: string): Response {
+export function apiError(
+  message: string,
+  status: number,
+  code?: string,
+): Response {
   return Response.json(
     {
       success: false,
@@ -25,21 +33,24 @@ export function apiError(message: string, status: number, code?: string): Respon
       code,
       timestamp: new Date().toISOString(),
     },
-    { status }
-  )
+    { status },
+  );
 }
 
 export function handleApiError(e: unknown): Response {
   if (e instanceof AppError) {
-    return apiError(e.message, e.statusCode, e.code)
+    return apiError(e.message, e.statusCode, e.code);
   }
-  return apiError('Internal server error', 500)
+  return apiError(
+    "An unexpected error occurred. Please try again or contact support.",
+    500,
+  );
 }
 
 export async function requireApiUser() {
-  const session = await auth()
+  const session = await auth();
   if (!session?.user?.id) {
-    throw AppError.unauthenticated()
+    throw AppError.unauthenticated();
   }
 
   // Fresh DB lookup — same pattern as requireUser().
@@ -57,17 +68,17 @@ export async function requireApiUser() {
       sellerEnabled: true,
       stripeOnboarded: true,
     },
-  })
+  });
 
   if (!user) {
-    throw AppError.unauthenticated()
+    throw AppError.unauthenticated();
   }
 
   if (user.isBanned) {
-    throw AppError.banned()
+    throw AppError.banned();
   }
 
-  return user
+  return user;
 }
 
 /**
@@ -76,29 +87,29 @@ export async function requireApiUser() {
  */
 export async function checkApiRateLimit(
   request: Request,
-  type: RateLimitKey
+  type: RateLimitKey,
 ): Promise<Response | null> {
-  const ip = getClientIp(new Headers(request.headers))
-  const result = await rateLimit(type, `api:${ip}`)
+  const ip = getClientIp(new Headers(request.headers));
+  const result = await rateLimit(type, `api:${ip}`);
 
   if (!result.success) {
     return Response.json(
       {
         success: false,
-        error: 'Too many requests',
+        error: "Too many requests",
         retryAfter: result.retryAfter,
         timestamp: new Date().toISOString(),
       },
       {
         status: 429,
         headers: {
-          'Retry-After': String(result.retryAfter),
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(result.reset),
+          "Retry-After": String(result.retryAfter),
+          "X-RateLimit-Remaining": "0",
+          "X-RateLimit-Reset": String(result.reset),
         },
-      }
-    )
+      },
+    );
   }
 
-  return null // Allowed — proceed
+  return null; // Allowed — proceed
 }

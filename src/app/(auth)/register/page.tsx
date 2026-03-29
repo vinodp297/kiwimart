@@ -123,7 +123,9 @@ export default function RegisterPage() {
         router.push(`/login?registered=true&email=${encodedEmail}`);
       }
     } catch {
-      setServerError("Something went wrong. Please try again.");
+      setServerError(
+        "Registration failed. Please check your internet connection and try again.",
+      );
       setLoading(false);
     }
   }
