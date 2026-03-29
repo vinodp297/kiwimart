@@ -1,4 +1,4 @@
-'use server';
+"use server";
 // src/server/actions/imageProcessor.ts  (Sprint 4)
 // ─── Image Processing Pipeline ───────────────────────────────────────────────
 // Called by the BullMQ image worker after upload confirmation.
@@ -11,10 +11,14 @@
 //   6. Re-upload processed versions to R2
 //   7. Update DB with dimensions + safe=true
 
-import { GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import sharp from 'sharp';
-import db from '@/lib/db';
-import { r2, R2_BUCKET } from '@/infrastructure/storage/r2';
+import {
+  GetObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
+import sharp from "sharp";
+import db from "@/lib/db";
+import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 
 export interface ProcessImageParams {
   imageId: string;
@@ -34,15 +38,24 @@ export interface ProcessImageResult {
 
 // ── processImage — main pipeline ─────────────────────────────────────────────
 
-export async function processImage(params: ProcessImageParams): Promise<ProcessImageResult> {
+export async function processImage(
+  params: ProcessImageParams,
+): Promise<ProcessImageResult> {
   const { imageId, r2Key, userId } = params;
 
-  // Verify image ownership — the image record must belong to the claimed user
+  // Verify image ownership — the image record must belong to the claimed user.
+  // For new listings, listingId is null (images uploaded before listing is created),
+  // so we verify via the r2Key prefix which is scoped to listings/{userId}/.
   const imageRecord = await db.listingImage.findUnique({
     where: { id: imageId },
-    select: { listing: { select: { sellerId: true } } },
+    select: { r2Key: true, listing: { select: { sellerId: true } } },
   });
-  if (!imageRecord?.listing || imageRecord.listing.sellerId !== userId) {
+  if (!imageRecord) {
+    throw new Error(`Image ${imageId} not found`);
+  }
+  const ownerViaListing = imageRecord.listing?.sellerId === userId;
+  const ownerViaKey = imageRecord.r2Key.startsWith(`listings/${userId}/`);
+  if (!ownerViaListing && !ownerViaKey) {
     throw new Error(`Image ${imageId} does not belong to user ${userId}`);
   }
 
@@ -86,25 +99,27 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
       where: { id: imageId },
       data: { scanned: true, safe: false, scannedAt: new Date() },
     });
-    throw new Error(`Image too small: ${origWidth}×${origHeight} (min 200×200)`);
+    throw new Error(
+      `Image too small: ${origWidth}×${origHeight} (min 200×200)`,
+    );
   }
 
   // 4. Process full-size image (max 1200×1200, WebP, strip EXIF, progressive)
   const fullImage = await sharp(originalBuffer)
     .rotate() // Auto-rotate based on EXIF orientation before stripping
-    .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+    .resize(1200, 1200, { fit: "inside", withoutEnlargement: true })
     .webp({ quality: 82 })
     .toBuffer({ resolveWithObject: true });
 
   // 5. Process thumbnail (480×480, WebP, strip EXIF)
   const thumbImage = await sharp(originalBuffer)
     .rotate()
-    .resize(480, 480, { fit: 'cover' })
+    .resize(480, 480, { fit: "cover" })
     .webp({ quality: 75 })
     .toBuffer({ resolveWithObject: true });
 
   // 6. Generate new R2 keys for processed versions
-  const basePath = r2Key.replace(/\.[^.]+$/, '');
+  const basePath = r2Key.replace(/\.[^.]+$/, "");
   const fullKey = `${basePath}-full.webp`;
   const thumbKey = `${basePath}-thumb.webp`;
 
@@ -115,18 +130,18 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
         Bucket: R2_BUCKET,
         Key: fullKey,
         Body: fullImage.data,
-        ContentType: 'image/webp',
-        Metadata: { userId, imageId, variant: 'full' },
-      })
+        ContentType: "image/webp",
+        Metadata: { userId, imageId, variant: "full" },
+      }),
     ),
     r2.send(
       new PutObjectCommand({
         Bucket: R2_BUCKET,
         Key: thumbKey,
         Body: thumbImage.data,
-        ContentType: 'image/webp',
-        Metadata: { userId, imageId, variant: 'thumb' },
-      })
+        ContentType: "image/webp",
+        Metadata: { userId, imageId, variant: "thumb" },
+      }),
     ),
   ]);
 
@@ -153,7 +168,7 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
       new DeleteObjectCommand({
         Bucket: R2_BUCKET,
         Key: r2Key,
-      })
+      }),
     );
   } catch {
     // Failed to delete original — non-critical
@@ -175,9 +190,12 @@ export async function processImage(params: ProcessImageParams): Promise<ProcessI
 
 function mockClamAVScan(buffer: Buffer): { clean: boolean; threat?: string } {
   // Check for EICAR test string (standard antivirus test pattern)
-  const eicar = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
-  if (buffer.toString('utf8', 0, Math.min(buffer.length, 100)).includes(eicar)) {
-    return { clean: false, threat: 'EICAR-Test-File' };
+  const eicar =
+    "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
+  if (
+    buffer.toString("utf8", 0, Math.min(buffer.length, 100)).includes(eicar)
+  ) {
+    return { clean: false, threat: "EICAR-Test-File" };
   }
   return { clean: true };
 }

@@ -140,11 +140,13 @@ export async function requestImageUpload(params: {
     });
 
     // 8. Generate real presigned upload URL via R2
+    // Note: Do NOT include ContentLength — it gets signed into the URL and causes
+    // SignatureDoesNotMatch errors on R2 if the browser's Content-Length differs
+    // by even 1 byte. R2 determines content length from the request body.
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET,
       Key: r2Key,
       ContentType: params.contentType,
-      ContentLength: params.sizeBytes,
       Metadata: { userId: user.id, imageId: image.id },
     });
     const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 }); // 5 min
