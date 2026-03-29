@@ -221,13 +221,18 @@ export default function SellPage() {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
           } else {
+            console.error(
+              `[Upload] R2 PUT failed: status=${xhr.status}`,
+              xhr.responseText?.slice(0, 500),
+            );
             reject(new Error(`Upload failed with status ${xhr.status}`));
           }
         });
 
-        xhr.addEventListener("error", () =>
-          reject(new Error("Network error during upload")),
-        );
+        xhr.addEventListener("error", () => {
+          console.error("[Upload] Network error — likely CORS or connectivity");
+          reject(new Error("Network error during upload"));
+        });
         xhr.addEventListener("abort", () =>
           reject(new Error("Upload cancelled")),
         );
