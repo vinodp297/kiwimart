@@ -121,19 +121,40 @@ export async function createListing(
     };
   }
 
-  // 5b. Validate image keys exist and are safe (scanned by ClamAV in image upload action)
+  // 5b. Validate image keys exist and are safe (scanned in image upload action)
+  // This is a safety net — images should already be verified in Step 1.
   const images = await db.listingImage.findMany({
-    where: {
-      r2Key: { in: data.imageKeys },
-      scanned: true,
-      safe: true,
-    },
-    select: { id: true, r2Key: true },
+    where: { r2Key: { in: data.imageKeys } },
+    select: { id: true, r2Key: true, scanned: true, safe: true },
   });
-  if (images.length !== data.imageKeys.length) {
+  const missingKeys = data.imageKeys.filter(
+    (key) => !images.some((img) => img.r2Key === key),
+  );
+  const unsafeImages = images.filter((img) => !img.scanned || !img.safe);
+  if (missingKeys.length > 0 || unsafeImages.length > 0) {
+    const issues: string[] = [];
+    if (missingKeys.length > 0)
+      issues.push(
+        `${missingKeys.length} photo${missingKeys.length > 1 ? "s" : ""} could not be found`,
+      );
+    if (unsafeImages.length > 0)
+      issues.push(
+        `${unsafeImages.length} photo${unsafeImages.length > 1 ? "s" : ""} didn't pass verification`,
+      );
+    logger.error("listing:image-validation-failed", {
+      missingKeys,
+      unsafeImages: unsafeImages.map((i) => ({
+        id: i.id,
+        scanned: i.scanned,
+        safe: i.safe,
+      })),
+      totalExpected: data.imageKeys.length,
+      totalFound: images.length,
+    });
     return {
       success: false,
-      error: "One or more images are invalid or have not passed safety checks.",
+      error: `There's an issue with your photos: ${issues.join(" and ")}. Please go back to Step 1 and re-upload them.`,
+      fieldErrors: { imageKeys: [`${issues.join("; ")}`] },
     };
   }
 

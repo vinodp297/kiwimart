@@ -202,36 +202,12 @@ export async function confirmImageUpload(params: {
       return { success: false, error: "Unauthorised image access." };
     }
 
-    // 3. Try BullMQ queue first, fall back to direct processing
-    try {
-      const { imageQueue } = await import("@/lib/queue");
-      await imageQueue.add(
-        "process-image",
-        {
-          imageId: params.imageId,
-          r2Key: params.r2Key,
-          userId: user.id,
-        },
-        {
-          jobId: `image-${params.imageId}`, // dedup — same image won't be queued twice
-          attempts: 3,
-          backoff: { type: "exponential", delay: 2000 },
-          removeOnComplete: 100,
-          removeOnFail: 50,
-        },
-      );
-      // Queue accepted — processing happens async
-      return { success: true, data: { safe: true } };
-    } catch (queueError) {
-      // Queue unavailable (dev without Redis) — fall through to direct processing
-      logger.warn("image:queue-unavailable", {
-        error: queueError instanceof Error ? queueError.message : "unknown",
-        imageId: params.imageId,
-        r2Key: params.r2Key,
-      });
-    }
-
-    // 4. Direct processing fallback (dev mode / no Redis)
+    // 3. Process image SYNCHRONOUSLY so the frontend knows immediately
+    // whether the image is safe. Previously this used BullMQ which returned
+    // safe:true optimistically before processing — causing publish to fail
+    // later with "images have not passed safety checks" since scanned was
+    // still false in the DB. Direct inline processing ensures images are
+    // fully verified before the seller can proceed past Step 1.
     try {
       const { processImage } = await import("@/server/actions/imageProcessor");
       const result = await processImage({

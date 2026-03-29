@@ -84,6 +84,7 @@ interface ImagePreview {
   progress: number;
   error: string | null;
   uploaded: boolean;
+  safe: boolean; // true only after server confirms scanned + safe
   compressedSize: number | null;
   originalSize: number | null;
   dimensions: { width: number; height: number } | null;
@@ -292,6 +293,7 @@ export default function SellPage() {
                 processing: false,
                 progress: 100,
                 uploaded: true,
+                safe: processed.safe ?? true,
                 r2Key,
                 imageId,
                 originalSize: processed.originalSize ?? img.file.size,
@@ -325,9 +327,23 @@ export default function SellPage() {
   const addFiles = useCallback(
     (files: FileList | null) => {
       if (!files) return;
-      const allowed = Array.from(files)
-        .filter((f) => f.type.startsWith("image/"))
-        .slice(0, 10 - images.length);
+      const allFiles = Array.from(files);
+      const nonImages = allFiles.filter((f) => !f.type.startsWith("image/"));
+      if (nonImages.length > 0) {
+        setErrors((prev) => ({
+          ...prev,
+          images: `${nonImages.length} file${nonImages.length > 1 ? "s were" : " was"} skipped — only JPG, PNG, and WebP photos are allowed.`,
+        }));
+      }
+      const remaining = 10 - images.length;
+      const imageFiles = allFiles.filter((f) => f.type.startsWith("image/"));
+      if (imageFiles.length > remaining) {
+        setErrors((prev) => ({
+          ...prev,
+          images: `Only ${remaining} more photo${remaining !== 1 ? "s" : ""} can be added (max 10). ${imageFiles.length - remaining} skipped.`,
+        }));
+      }
+      const allowed = imageFiles.slice(0, remaining);
 
       const previews: ImagePreview[] = allowed.map((f) => ({
         id: `${f.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -340,6 +356,7 @@ export default function SellPage() {
         progress: 0,
         error: null,
         uploaded: false,
+        safe: false,
         compressedSize: null,
         originalSize: null,
         dimensions: null,
@@ -385,9 +402,19 @@ export default function SellPage() {
       if (uploading) errs.images = "Please wait for uploads to finish.";
       const processing = images.some((i) => i.processing);
       if (processing)
-        errs.images = "Please wait for image optimisation to finish.";
-      const failed = images.some((i) => i.error);
-      if (failed) errs.images = "Some uploads failed. Remove or retry them.";
+        errs.images = "Please wait — your photos are being verified.";
+      const failed = images.filter((i) => i.error);
+      if (failed.length > 0)
+        errs.images = `${failed.length} photo${failed.length > 1 ? "s" : ""} failed. Remove or retry them before continuing.`;
+      // Check that all uploaded images passed safety/processing
+      const unsafe = images.filter((i) => i.uploaded && !i.safe && !i.error);
+      if (unsafe.length > 0)
+        errs.images =
+          "Some photos haven't been verified yet. Please wait or re-upload them.";
+      // Check no uploaded images are explicitly marked unsafe
+      const flagged = images.filter((i) => i.uploaded && !i.safe && i.error);
+      if (flagged.length > 0)
+        errs.images = "Please remove flagged photos before continuing.";
     }
     if (n === 2) {
       if (title.trim().length < 5)
@@ -1094,41 +1121,56 @@ export default function SellPage() {
                               />
                             </svg>
                             <span className="text-white text-[10px] font-medium">
-                              Optimising photo...
+                              Verifying photo...
                             </span>
                           </div>
                         )}
 
-                        {/* Upload success indicator with file info */}
-                        {img.uploaded && !img.uploading && !img.processing && (
-                          <>
-                            <div
-                              className="absolute top-1 left-1 w-5 h-5 rounded-full bg-emerald-500
-                              flex items-center justify-center"
-                            >
-                              <svg
-                                width="10"
-                                height="10"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="white"
-                                strokeWidth="3"
-                              >
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            </div>
-                            {img.compressedSize && (
+                        {/* Upload success indicator — green for safe, amber for unverified */}
+                        {img.uploaded &&
+                          !img.uploading &&
+                          !img.processing &&
+                          !img.error && (
+                            <>
                               <div
-                                className="absolute bottom-1 right-1 bg-black/70 text-white
-                                text-[8px] px-1.5 py-0.5 rounded-full font-medium"
+                                className={`absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center ${
+                                  img.safe ? "bg-emerald-500" : "bg-amber-500"
+                                }`}
                               >
-                                {(img.compressedSize / 1024).toFixed(0)}KB
-                                {img.dimensions &&
-                                  ` · ${img.dimensions.width}×${img.dimensions.height}`}
+                                {img.safe ? (
+                                  <svg
+                                    width="10"
+                                    height="10"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="white"
+                                    strokeWidth="3"
+                                  >
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                ) : (
+                                  <span className="text-white text-[9px] font-bold">
+                                    !
+                                  </span>
+                                )}
                               </div>
-                            )}
-                          </>
-                        )}
+                              {!img.safe && (
+                                <div className="absolute bottom-1 left-1 right-1 bg-amber-600/90 text-white text-[8px] px-1.5 py-0.5 rounded text-center font-medium">
+                                  Not verified
+                                </div>
+                              )}
+                              {img.safe && img.compressedSize && (
+                                <div
+                                  className="absolute bottom-1 right-1 bg-black/70 text-white
+                                text-[8px] px-1.5 py-0.5 rounded-full font-medium"
+                                >
+                                  {(img.compressedSize / 1024).toFixed(0)}KB
+                                  {img.dimensions &&
+                                    ` · ${img.dimensions.width}×${img.dimensions.height}`}
+                                </div>
+                              )}
+                            </>
+                          )}
 
                         {/* Upload error */}
                         {img.error && (
