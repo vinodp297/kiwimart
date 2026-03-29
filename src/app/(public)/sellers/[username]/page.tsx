@@ -1,28 +1,52 @@
 // src/app/(public)/sellers/[username]/page.tsx
 // ─── Public Seller Profile Page ───────────────────────────────────────────────
 
-import { notFound } from 'next/navigation';
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import ListingCard from '@/components/ListingCard';
-import { Avatar, StarRating, Breadcrumb } from '@/components/ui/primitives';
-import { relativeTime } from '@/lib/utils';
-import type { SellerBadge, NZRegion, Review, ListingCard as ListingCardType } from '@/types';
-import db from '@/lib/db';
-import { getImageUrl, getDefaultAvatar } from '@/lib/image';
-import { auth } from '@/lib/auth';
-import { BlockButton } from '@/components/seller/BlockButton';
-import { getSellerTrustProfile } from '@/modules/sellers/trust-score.service';
-import { getResponseLabel, getResponseColour } from '@/modules/sellers/response-metrics.service';
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import Link from "next/link";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import ListingCard from "@/components/ListingCard";
+import { Avatar, StarRating, Breadcrumb } from "@/components/ui/primitives";
+import { relativeTime } from "@/lib/utils";
+import type {
+  SellerBadge,
+  NZRegion,
+  Review,
+  ListingCard as ListingCardType,
+} from "@/types";
+import db from "@/lib/db";
+import { getImageUrl, getDefaultAvatar } from "@/lib/image";
+import { auth } from "@/lib/auth";
+import { getReviewTags } from "@/lib/review-tags";
+import { BlockButton } from "@/components/seller/BlockButton";
+import { getSellerTrustProfile } from "@/modules/sellers/trust-score.service";
+import {
+  getResponseLabel,
+  getResponseColour,
+} from "@/modules/sellers/response-metrics.service";
 
 const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
-  top_seller:     { label: '🏆 Top Seller',      colour: 'bg-amber-50 text-amber-700 ring-amber-200' },
-  fast_responder: { label: '⚡ Fast Responder',   colour: 'bg-sky-50 text-sky-700 ring-sky-200' },
-  verified_id:    { label: '✓ Verified ID',       colour: 'bg-emerald-50 text-emerald-700 ring-emerald-200' },
-  trusted_seller: { label: '🛡 Trusted Seller',   colour: 'bg-violet-50 text-violet-700 ring-violet-200' },
-  nz_business:    { label: '🥝 NZ Business',      colour: 'bg-[#F5ECD4] text-[#8B6914] ring-[#D4A843]/40' },
+  top_seller: {
+    label: "🏆 Top Seller",
+    colour: "bg-amber-50 text-amber-700 ring-amber-200",
+  },
+  fast_responder: {
+    label: "⚡ Fast Responder",
+    colour: "bg-sky-50 text-sky-700 ring-sky-200",
+  },
+  verified_id: {
+    label: "✓ Verified ID",
+    colour: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  },
+  trusted_seller: {
+    label: "🛡 Trusted Seller",
+    colour: "bg-violet-50 text-violet-700 ring-violet-200",
+  },
+  nz_business: {
+    label: "🥝 NZ Business",
+    colour: "bg-[#F5ECD4] text-[#8B6914] ring-[#D4A843]/40",
+  },
 };
 
 async function getSellerByUsername(username: string) {
@@ -44,14 +68,14 @@ async function getSellerByUsername(username: string) {
       createdAt: true,
       _count: {
         select: {
-          sellerOrders: { where: { status: 'COMPLETED' } },
-          listings: { where: { status: 'ACTIVE', deletedAt: null } },
+          sellerOrders: { where: { status: "COMPLETED" } },
+          listings: { where: { status: "ACTIVE", deletedAt: null } },
           reviews: { where: { approved: true } },
         },
       },
       reviews: {
         where: { approved: true },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
         take: 20,
         select: {
           id: true,
@@ -59,7 +83,9 @@ async function getSellerByUsername(username: string) {
           comment: true,
           createdAt: true,
           sellerReply: true,
-          author: { select: { displayName: true, username: true, avatarKey: true } },
+          author: {
+            select: { displayName: true, username: true, avatarKey: true },
+          },
           order: { select: { listing: { select: { title: true } } } },
         },
       },
@@ -77,14 +103,14 @@ export async function generateMetadata({
   try {
     const { username } = await params;
     const user = await getSellerByUsername(username);
-    if (!user) return { title: 'Seller not found' };
+    if (!user) return { title: "Seller not found" };
     return {
       title: `${user.displayName} — Seller Profile`,
-      description: `${user.displayName} is a ${user.idVerified ? 'verified' : ''} NZ seller on KiwiMart with ${user._count.reviews} reviews.`,
+      description: `${user.displayName} is a ${user.idVerified ? "verified" : ""} NZ seller on KiwiMart with ${user._count.reviews} reviews.`,
     };
   } catch (err) {
-    console.error('[SellerProfile] generateMetadata error:', err);
-    return { title: 'Seller Profile' };
+    console.error("[SellerProfile] generateMetadata error:", err);
+    return { title: "Seller Profile" };
   }
 }
 
@@ -106,7 +132,7 @@ export default async function SellerProfilePage({
     user = fetchedUser;
     session = fetchedSession as { user?: { id?: string } } | null;
   } catch (err) {
-    console.error('[SellerProfile] Failed to load seller data:', err);
+    console.error("[SellerProfile] Failed to load seller data:", err);
     notFound();
   }
   if (!user) notFound();
@@ -128,7 +154,8 @@ export default async function SellerProfilePage({
   }
 
   // Fetch trust profile (trust score + tier + response metrics)
-  let trustProfile: Awaited<ReturnType<typeof getSellerTrustProfile>> | null = null;
+  let trustProfile: Awaited<ReturnType<typeof getSellerTrustProfile>> | null =
+    null;
   try {
     trustProfile = await getSellerTrustProfile(user.id);
   } catch {
@@ -136,21 +163,26 @@ export default async function SellerProfilePage({
   }
 
   // Compute avg rating from reviews
-  const avgRating = user.reviews.length > 0
-    ? user.reviews.reduce((sum, r) => sum + r.rating, 0) / user.reviews.length / 10
-    : 0;
+  const avgRating =
+    user.reviews.length > 0
+      ? user.reviews.reduce((sum, r) => sum + r.rating, 0) /
+        user.reviews.length /
+        10
+      : 0;
 
   // Map DB reviews to Review type — guard against orphaned author FKs
   const reviews: Review[] = user.reviews
     .filter((r) => r.author != null) // skip reviews whose author was hard-deleted
     .map((r) => ({
       id: r.id,
-      buyerName: r.author?.displayName ?? 'KiwiMart user',
-      buyerUsername: r.author?.username ?? '',
-      buyerAvatarUrl: r.author?.avatarKey ? getImageUrl(r.author.avatarKey) : null,
+      buyerName: r.author?.displayName ?? "KiwiMart user",
+      buyerUsername: r.author?.username ?? "",
+      buyerAvatarUrl: r.author?.avatarKey
+        ? getImageUrl(r.author.avatarKey)
+        : null,
       rating: r.rating / 10, // DB stores 1-50, display as 0.1-5.0
-      comment: r.comment ?? '',
-      listingTitle: r.order?.listing?.title ?? 'Unknown listing',
+      comment: r.comment ?? "",
+      listingTitle: r.order?.listing?.title ?? "Unknown listing",
       createdAt: r.createdAt.toISOString(),
       sellerReply: r.sellerReply,
     }));
@@ -162,11 +194,11 @@ export default async function SellerProfilePage({
     displayName: user.displayName,
     avatarUrl: user.avatarKey
       ? getImageUrl(user.avatarKey)
-      : getDefaultAvatar(user.idVerified ? 'id_verified' : undefined),
+      : getDefaultAvatar(user.idVerified ? "id_verified" : undefined),
     coverImageUrl: user.coverImageKey ? getImageUrl(user.coverImageKey) : null,
     bio: user.bio,
-    region: (user.region ?? 'Auckland') as NZRegion,
-    suburb: user.suburb ?? '',
+    region: (user.region ?? "Auckland") as NZRegion,
+    suburb: user.suburb ?? "",
     rating: avgRating,
     reviewCount: user._count.reviews,
     verified: user.idVerified,
@@ -178,7 +210,7 @@ export default async function SellerProfilePage({
     trustScore: trustProfile?.trustScore ?? null,
     tier: trustProfile?.tier ?? null,
     isVerifiedSeller: user.isVerifiedSeller,
-    badges: (user.idVerified ? ['verified_id'] : []) as SellerBadge[],
+    badges: (user.idVerified ? ["verified_id"] : []) as SellerBadge[],
   };
 
   // Fetch seller's active listings
@@ -186,29 +218,48 @@ export default async function SellerProfilePage({
   try {
     // We can't filter searchListings by sellerId directly, so use a raw query approach
     const listingRows = await db.listing.findMany({
-      where: { sellerId: user.id, status: 'ACTIVE', deletedAt: null },
-      orderBy: { createdAt: 'desc' },
+      where: { sellerId: user.id, status: "ACTIVE", deletedAt: null },
+      orderBy: { createdAt: "desc" },
       take: 24,
       select: {
-        id: true, title: true, priceNzd: true, condition: true,
-        categoryId: true, subcategoryName: true, region: true, suburb: true,
-        shippingOption: true, shippingNzd: true, offersEnabled: true,
-        status: true, viewCount: true, watcherCount: true, createdAt: true,
-        images: { where: { order: 0, safe: true }, select: { r2Key: true }, take: 1 },
+        id: true,
+        title: true,
+        priceNzd: true,
+        condition: true,
+        categoryId: true,
+        subcategoryName: true,
+        region: true,
+        suburb: true,
+        shippingOption: true,
+        shippingNzd: true,
+        offersEnabled: true,
+        status: true,
+        viewCount: true,
+        watcherCount: true,
+        createdAt: true,
+        images: {
+          where: { order: 0, safe: true },
+          select: { r2Key: true },
+          take: 1,
+        },
       },
     });
 
-    const condMap: Record<string, ListingCardType['condition']> = {
-      NEW: 'new', LIKE_NEW: 'like-new', GOOD: 'good', FAIR: 'fair', PARTS: 'parts',
+    const condMap: Record<string, ListingCardType["condition"]> = {
+      NEW: "new",
+      LIKE_NEW: "like-new",
+      GOOD: "good",
+      FAIR: "fair",
+      PARTS: "parts",
     };
 
     sellerListings = listingRows.map((row) => ({
       id: row.id,
       title: row.title,
       price: row.priceNzd / 100,
-      condition: condMap[row.condition] ?? 'good',
+      condition: condMap[row.condition] ?? "good",
       categoryName: row.categoryId,
-      subcategoryName: row.subcategoryName ?? '',
+      subcategoryName: row.subcategoryName ?? "",
       region: row.region as NZRegion,
       suburb: row.suburb,
       thumbnailUrl: getImageUrl(row.images[0]?.r2Key ?? null),
@@ -219,8 +270,9 @@ export default async function SellerProfilePage({
       viewCount: row.viewCount,
       watcherCount: row.watcherCount,
       createdAt: row.createdAt.toISOString(),
-      status: row.status.toLowerCase() as ListingCardType['status'],
-      shippingOption: row.shippingOption.toLowerCase() as ListingCardType['shippingOption'],
+      status: row.status.toLowerCase() as ListingCardType["status"],
+      shippingOption:
+        row.shippingOption.toLowerCase() as ListingCardType["shippingOption"],
       shippingPrice: row.shippingNzd != null ? row.shippingNzd / 100 : null,
       offersEnabled: row.offersEnabled,
     }));
@@ -237,8 +289,8 @@ export default async function SellerProfilePage({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
           <Breadcrumb
             items={[
-              { label: 'Home', href: '/' },
-              { label: 'Sellers' },
+              { label: "Home", href: "/" },
+              { label: "Sellers" },
               { label: seller.displayName },
             ]}
           />
@@ -247,11 +299,15 @@ export default async function SellerProfilePage({
           <div
             className="relative mt-5 rounded-2xl overflow-hidden bg-[#141414]
               text-white p-6 sm:p-8"
-            style={seller.coverImageUrl ? {
-              backgroundImage: `url(${seller.coverImageUrl})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            } : undefined}
+            style={
+              seller.coverImageUrl
+                ? {
+                    backgroundImage: `url(${seller.coverImageUrl})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }
+                : undefined
+            }
           >
             {/* Overlay to keep text readable over cover images */}
             {seller.coverImageUrl && (
@@ -271,8 +327,10 @@ export default async function SellerProfilePage({
               />
             )}
 
-            <div className="relative flex flex-col sm:flex-row items-start
-              sm:items-center gap-5">
+            <div
+              className="relative flex flex-col sm:flex-row items-start
+              sm:items-center gap-5"
+            >
               {/* Avatar */}
               <Avatar
                 name={seller.displayName}
@@ -284,8 +342,10 @@ export default async function SellerProfilePage({
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <h1 className="font-[family-name:var(--font-playfair)] text-[1.6rem]
-                    font-semibold leading-tight">
+                  <h1
+                    className="font-[family-name:var(--font-playfair)] text-[1.6rem]
+                    font-semibold leading-tight"
+                  >
                     {seller.displayName}
                   </h1>
                   {seller.isVerifiedSeller && (
@@ -294,9 +354,21 @@ export default async function SellerProfilePage({
                         bg-blue-500/20 text-blue-300 text-[11px] font-semibold
                         rounded-full ring-1 ring-blue-400/30"
                     >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M22 12L20.56 10.39L20.78 8.21L18.64 7.73L17.5 5.83L15.47 6.71L13.5 5.5L11.53 6.71L9.5 5.83L8.36 7.73L6.22 8.21L6.44 10.39L5 12L6.44 13.61L6.22 15.79L8.36 16.27L9.5 18.17L11.53 17.29L13.5 18.5L15.47 17.29L17.5 18.17L18.64 16.27L20.78 15.79L20.56 13.61L22 12Z"/>
-                        <path d="M10 12L12 14L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M22 12L20.56 10.39L20.78 8.21L18.64 7.73L17.5 5.83L15.47 6.71L13.5 5.5L11.53 6.71L9.5 5.83L8.36 7.73L6.22 8.21L6.44 10.39L5 12L6.44 13.61L6.22 15.79L8.36 16.27L9.5 18.17L11.53 17.29L13.5 18.5L15.47 17.29L17.5 18.17L18.64 16.27L20.78 15.79L20.56 13.61L22 12Z" />
+                        <path
+                          d="M10 12L12 14L16 10"
+                          stroke="white"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       Verified Seller
                     </span>
@@ -307,9 +379,21 @@ export default async function SellerProfilePage({
                         bg-[#D4A843]/20 text-[#D4A843] text-[11px] font-semibold
                         rounded-full ring-1 ring-[#D4A843]/30"
                     >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="#D4A843">
-                        <path d="M22 12L20.56 10.39L20.78 8.21L18.64 7.73L17.5 5.83L15.47 6.71L13.5 5.5L11.53 6.71L9.5 5.83L8.36 7.73L6.22 8.21L6.44 10.39L5 12L6.44 13.61L6.22 15.79L8.36 16.27L9.5 18.17L11.53 17.29L13.5 18.5L15.47 17.29L17.5 18.17L18.64 16.27L20.78 15.79L20.56 13.61L22 12Z"/>
-                        <path d="M10 12L12 14L16 10" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="#D4A843"
+                      >
+                        <path d="M22 12L20.56 10.39L20.78 8.21L18.64 7.73L17.5 5.83L15.47 6.71L13.5 5.5L11.53 6.71L9.5 5.83L8.36 7.73L6.22 8.21L6.44 10.39L5 12L6.44 13.61L6.22 15.79L8.36 16.27L9.5 18.17L11.53 17.29L13.5 18.5L15.47 17.29L17.5 18.17L18.64 16.27L20.78 15.79L20.56 13.61L22 12Z" />
+                        <path
+                          d="M10 12L12 14L16 10"
+                          stroke="white"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
                       </svg>
                       Verified ID
                     </span>
@@ -318,43 +402,80 @@ export default async function SellerProfilePage({
                     <span
                       className={`inline-flex items-center gap-1 px-2.5 py-0.5
                         text-[11px] font-semibold rounded-full ring-1 ${
-                          seller.tier === 'GOLD'
-                            ? 'bg-amber-400/20 text-amber-300 ring-amber-400/30'
-                            : seller.tier === 'SILVER'
-                            ? 'bg-gray-300/20 text-gray-300 ring-gray-400/30'
-                            : 'bg-orange-400/20 text-orange-300 ring-orange-400/30'
+                          seller.tier === "GOLD"
+                            ? "bg-amber-400/20 text-amber-300 ring-amber-400/30"
+                            : seller.tier === "SILVER"
+                              ? "bg-gray-300/20 text-gray-300 ring-gray-400/30"
+                              : "bg-orange-400/20 text-orange-300 ring-orange-400/30"
                         }`}
                     >
-                      {seller.tier === 'GOLD' ? '🥇' : seller.tier === 'SILVER' ? '🥈' : '🥉'}{' '}
-                      {seller.tier.charAt(0) + seller.tier.slice(1).toLowerCase()} Seller
+                      {seller.tier === "GOLD"
+                        ? "🥇"
+                        : seller.tier === "SILVER"
+                          ? "🥈"
+                          : "🥉"}{" "}
+                      {seller.tier.charAt(0) +
+                        seller.tier.slice(1).toLowerCase()}{" "}
+                      Seller
                     </span>
                   )}
                 </div>
 
                 <p className="text-[13px] text-white/50 mb-3">
-                  {seller.suburb}, {seller.region} · Member since{' '}
-                  {memberSince.toLocaleDateString('en-NZ', { month: 'long', year: 'numeric' })}
+                  {seller.suburb}, {seller.region} · Member since{" "}
+                  {memberSince.toLocaleDateString("en-NZ", {
+                    month: "long",
+                    year: "numeric",
+                  })}
                 </p>
 
                 {/* Stats row */}
                 <div className="flex flex-wrap gap-6">
                   {[
-                    ...(seller.trustScore != null ? [{ value: `${seller.trustScore}/100`, label: 'Trust score' }] : []),
-                    { value: seller.soldCount.toLocaleString('en-NZ'), label: 'Items sold' },
-                    { value: seller.activeListingCount.toString(), label: 'Active listings' },
+                    ...(seller.trustScore != null
+                      ? [
+                          {
+                            value: `${seller.trustScore}/100`,
+                            label: "Trust score",
+                          },
+                        ]
+                      : []),
+                    {
+                      value: seller.soldCount.toLocaleString("en-NZ"),
+                      label: "Items sold",
+                    },
+                    {
+                      value: seller.activeListingCount.toString(),
+                      label: "Active listings",
+                    },
                     seller.reviewCount > 0
-                      ? { value: `${seller.rating.toFixed(1)} ★`, label: `${seller.reviewCount} reviews` }
-                      : { value: '—', label: 'No reviews yet' },
+                      ? {
+                          value: `${seller.rating.toFixed(1)} ★`,
+                          label: `${seller.reviewCount} reviews`,
+                        }
+                      : { value: "—", label: "No reviews yet" },
                     seller.responseTimeLabel
-                      ? { value: seller.responseTimeLabel.replace('Usually replies ', '').replace('Replies ', ''), label: seller.responseRate != null ? `Response (${Math.round(seller.responseRate)}%)` : 'Response time' }
-                      : { value: '—', label: 'New seller' },
+                      ? {
+                          value: seller.responseTimeLabel
+                            .replace("Usually replies ", "")
+                            .replace("Replies ", ""),
+                          label:
+                            seller.responseRate != null
+                              ? `Response (${Math.round(seller.responseRate)}%)`
+                              : "Response time",
+                        }
+                      : { value: "—", label: "New seller" },
                   ].map(({ value, label }) => (
                     <div key={label}>
-                      <p className="text-[#D4A843] font-[family-name:var(--font-playfair)]
-                        text-[1.25rem] font-semibold leading-none">
+                      <p
+                        className="text-[#D4A843] font-[family-name:var(--font-playfair)]
+                        text-[1.25rem] font-semibold leading-none"
+                      >
                         {value}
                       </p>
-                      <p className="text-[11.5px] text-white/50 mt-0.5">{label}</p>
+                      <p className="text-[11.5px] text-white/50 mt-0.5">
+                        {label}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -378,8 +499,15 @@ export default async function SellerProfilePage({
                       hover:bg-white/20 text-white text-[12.5px] font-semibold
                       transition-colors border border-white/20"
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                     </svg>
                     Message
                   </Link>
@@ -390,14 +518,24 @@ export default async function SellerProfilePage({
                       font-semibold transition-colors border border-white/10"
                     title="Report this user"
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
                       <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
                       <line x1="4" y1="22" x2="4" y2="15" />
                     </svg>
                     Report
                   </Link>
                   {currentUserId && (
-                    <BlockButton targetUserId={seller.id} initialBlocked={isBlocked} />
+                    <BlockButton
+                      targetUserId={seller.id}
+                      initialBlocked={isBlocked}
+                    />
                   )}
                 </div>
               )}
@@ -405,8 +543,10 @@ export default async function SellerProfilePage({
 
             {/* Bio */}
             {seller.bio && (
-              <p className="relative mt-5 pt-5 border-t border-white/10
-                text-[13px] text-white/60 leading-relaxed max-w-2xl">
+              <p
+                className="relative mt-5 pt-5 border-t border-white/10
+                text-[13px] text-white/60 leading-relaxed max-w-2xl"
+              >
                 {seller.bio}
               </p>
             )}
@@ -432,12 +572,13 @@ export default async function SellerProfilePage({
 
           {/* ── Two column content ─────────────────────────────────────────── */}
           <div className="mt-8 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
-
             {/* ── Left: Listings ─────────────────────────────────────────── */}
             <div>
               <div className="flex items-center justify-between mb-5">
-                <h2 className="font-[family-name:var(--font-playfair)] text-[1.25rem]
-                  font-semibold text-[#141414]">
+                <h2
+                  className="font-[family-name:var(--font-playfair)] text-[1.25rem]
+                  font-semibold text-[#141414]"
+                >
                   Active listings
                   <span className="ml-2 text-[0.9rem] text-[#9E9A91] font-normal">
                     ({sellerListings.length})
@@ -452,9 +593,13 @@ export default async function SellerProfilePage({
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 bg-white rounded-2xl border
-                  border-dashed border-[#C9C5BC]">
-                  <p className="text-[14px] text-[#9E9A91]">No active listings</p>
+                <div
+                  className="text-center py-12 bg-white rounded-2xl border
+                  border-dashed border-[#C9C5BC]"
+                >
+                  <p className="text-[14px] text-[#9E9A91]">
+                    No active listings
+                  </p>
                 </div>
               )}
             </div>
@@ -462,12 +607,17 @@ export default async function SellerProfilePage({
             {/* ── Right: Reviews ─────────────────────────────────────────── */}
             <div>
               <div className="mb-5 flex items-center justify-between">
-                <h2 className="font-[family-name:var(--font-playfair)] text-[1.25rem]
-                  font-semibold text-[#141414]">
+                <h2
+                  className="font-[family-name:var(--font-playfair)] text-[1.25rem]
+                  font-semibold text-[#141414]"
+                >
                   Reviews
                 </h2>
                 {reviews.length > 0 && (
-                  <StarRating rating={seller.rating} reviewCount={seller.reviewCount} />
+                  <StarRating
+                    rating={seller.rating}
+                    reviewCount={seller.reviewCount}
+                  />
                 )}
               </div>
 
@@ -499,13 +649,37 @@ export default async function SellerProfilePage({
                             </p>
                           </div>
                         </div>
-                        <StarRating rating={review.rating} showCount={false} size="sm" />
+                        <StarRating
+                          rating={review.rating}
+                          showCount={false}
+                          size="sm"
+                        />
                       </div>
 
                       {/* Comment */}
                       <p className="text-[13px] text-[#73706A] leading-relaxed mb-2">
                         {review.comment}
                       </p>
+
+                      {/* Strength tags */}
+                      {(() => {
+                        const tags = getReviewTags(
+                          review.comment,
+                          review.rating,
+                        );
+                        return tags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {tags.map((tag) => (
+                              <span
+                                key={tag.label}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium ${tag.colour}`}
+                              >
+                                {tag.label}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null;
+                      })()}
 
                       {/* Listing ref */}
                       <p className="text-[11px] text-[#C9C5BC] italic">
@@ -519,7 +693,7 @@ export default async function SellerProfilePage({
                             text-[12px] text-[#73706A] leading-relaxed"
                         >
                           <span className="font-semibold text-[#141414]">
-                            {seller.displayName}:{' '}
+                            {seller.displayName}:{" "}
                           </span>
                           {review.sellerReply}
                         </div>
@@ -536,4 +710,3 @@ export default async function SellerProfilePage({
     </>
   );
 }
-

@@ -26,6 +26,8 @@ import { auth } from "@/lib/auth";
 import db from "@/lib/db";
 import SafetyBanner from "@/components/SafetyBanner";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
+import RecordView from "@/components/RecordView";
+import RecentlyViewed from "@/components/RecentlyViewed";
 import type {
   ListingDetail,
   SellerPublic,
@@ -285,6 +287,15 @@ export default async function ListingDetailPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <NavBar />
+
+      {/* Record this listing as recently viewed (client-side localStorage) */}
+      <RecordView
+        id={detail.id}
+        title={detail.title}
+        price={price}
+        thumbnailUrl={images[0]?.url ?? ""}
+        condition={condition}
+      />
 
       <main className="bg-[#FAFAF8] min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
@@ -549,6 +560,8 @@ export default async function ListingDetailPage({
               </a>
             </div>
           </div>
+          {/* Recently viewed listings */}
+          <RecentlyViewed excludeId={detail.id} maxItems={4} />
         </div>
       </main>
 

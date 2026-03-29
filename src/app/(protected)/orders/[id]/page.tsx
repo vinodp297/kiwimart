@@ -10,7 +10,11 @@ import Footer from "@/components/Footer";
 import { Button, OrderStatusBadge, Alert } from "@/components/ui/primitives";
 import { formatPrice, relativeTime } from "@/lib/utils";
 import type { OrderStatus } from "@/types";
-import { confirmDelivery, markDispatched } from "@/server/actions/orders";
+import {
+  confirmDelivery,
+  markDispatched,
+  cancelOrder,
+} from "@/server/actions/orders";
 import {
   openDispute,
   uploadDisputeEvidence,
@@ -163,6 +167,60 @@ function getStatusInfo(order: OrderDetailData): {
   }
 }
 
+// ── Client-side cancellation status (mirrors order.service.ts logic) ────────
+const CANCEL_FREE_WINDOW_MINUTES = 60;
+const CANCEL_REQUEST_WINDOW_HOURS = 24;
+
+function getCancellationStatusClient(order: OrderDetailData): {
+  canCancel: boolean;
+  requiresReason: boolean;
+  message: string;
+  windowType: "free" | "request" | "closed" | "na";
+} {
+  if (order.status !== "payment_held") {
+    return {
+      canCancel: false,
+      requiresReason: false,
+      windowType: "na",
+      message:
+        order.status === "dispatched"
+          ? "Order already dispatched. Open a dispute if there is an issue."
+          : "This order cannot be cancelled at this stage.",
+    };
+  }
+
+  const minutesElapsed = Math.floor(
+    (Date.now() - new Date(order.createdAt).getTime()) / (1000 * 60),
+  );
+
+  if (minutesElapsed <= CANCEL_FREE_WINDOW_MINUTES) {
+    const minutesLeft = CANCEL_FREE_WINDOW_MINUTES - minutesElapsed;
+    return {
+      canCancel: true,
+      requiresReason: false,
+      windowType: "free",
+      message: `Free cancellation available for another ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""}.`,
+    };
+  }
+
+  if (minutesElapsed <= CANCEL_REQUEST_WINDOW_HOURS * 60) {
+    return {
+      canCancel: true,
+      requiresReason: true,
+      windowType: "request",
+      message: "Cancellation requires a reason after the first hour.",
+    };
+  }
+
+  return {
+    canCancel: false,
+    requiresReason: false,
+    windowType: "closed",
+    message:
+      "Cancellation window has closed. Open a dispute if there is an issue.",
+  };
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = params.id as string;
@@ -187,6 +245,13 @@ export default function OrderDetailPage() {
   const [disputeReason, setDisputeReason] = useState("");
   const [disputeDescription, setDisputeDescription] = useState("");
   const [disputePhotos, setDisputePhotos] = useState<File[]>([]);
+
+  // Cancel order modal
+  const [showCancel, setShowCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+
+  // Cancellation status (computed from order data)
+  const cancellationStatus = order ? getCancellationStatusClient(order) : null;
 
   // Seller dispute response
   const [sellerResponseText, setSellerResponseText] = useState("");
@@ -309,6 +374,32 @@ export default function OrderDetailPage() {
         );
         setShowSellerResponse(false);
         setSellerResponseText("");
+        const updated = await fetchOrderDetail(orderId);
+        if (updated.success) setOrder(updated.data);
+      } else {
+        setError(result.error);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleCancelOrder() {
+    if (cancellationStatus?.requiresReason && cancelReason.trim().length < 10) {
+      setError("Please provide a reason (at least 10 characters).");
+      return;
+    }
+    setError(null);
+    setActionLoading(true);
+    try {
+      const result = await cancelOrder({
+        orderId,
+        reason: cancelReason.trim() || undefined,
+      });
+      if (result.success) {
+        setActionSuccess("Order cancelled successfully.");
+        setShowCancel(false);
+        setCancelReason("");
         const updated = await fetchOrderDetail(orderId);
         if (updated.success) setOrder(updated.data);
       } else {
@@ -860,6 +951,17 @@ export default function OrderDetailPage() {
                 </Button>
               )}
 
+            {/* Cancel order — both buyer and seller during cancellation window */}
+            {cancellationStatus?.canCancel && (
+              <Button
+                variant="danger"
+                size="md"
+                onClick={() => setShowCancel(true)}
+              >
+                Cancel order
+              </Button>
+            )}
+
             {/* Buyer: leave review */}
             {order.isBuyer &&
               order.status === "completed" &&
@@ -1043,6 +1145,112 @@ export default function OrderDetailPage() {
               >
                 Something wrong? Open a dispute instead
               </button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Cancel Order Modal ──────────────────────────────────────── */}
+      {showCancel && cancellationStatus && (
+        <ModalOverlay onClose={() => setShowCancel(false)}>
+          <div className="text-center">
+            <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#dc2626"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M15 9l-6 6M9 9l6 6" />
+              </svg>
+            </div>
+            <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2">
+              Cancel this order?
+            </h2>
+            <p className="text-[13px] text-[#73706A] mb-1">
+              {cancellationStatus.message}
+            </p>
+            {cancellationStatus.windowType === "free" && (
+              <p className="text-[12px] text-emerald-600 font-medium mb-4">
+                Free cancellation — no questions asked
+              </p>
+            )}
+            {cancellationStatus.windowType === "request" && (
+              <p className="text-[12px] text-amber-600 font-medium mb-4">
+                A reason is required for cancellation after the first hour
+              </p>
+            )}
+
+            {cancellationStatus.requiresReason && (
+              <div className="text-left mb-4">
+                <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                  Reason for cancellation
+                </label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="Please explain why you need to cancel (min 10 characters)..."
+                  rows={3}
+                  maxLength={500}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                    text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                    focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+                />
+                <p className="text-[11px] text-[#9E9A91] mt-1">
+                  {cancelReason.length}/500 characters
+                </p>
+              </div>
+            )}
+
+            <div className="rounded-xl bg-red-50 border border-red-200 p-3 mb-4 text-left">
+              <p className="text-[12px] text-red-800 font-semibold flex items-center gap-1.5">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                This action cannot be undone
+              </p>
+              <p className="text-[11.5px] text-red-700 mt-1">
+                The listing will be made available to other buyers again.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="danger"
+                fullWidth
+                size="md"
+                onClick={handleCancelOrder}
+                loading={actionLoading}
+                disabled={
+                  cancellationStatus.requiresReason &&
+                  cancelReason.trim().length < 10
+                }
+              >
+                Yes, cancel this order
+              </Button>
+              <Button
+                variant="ghost"
+                fullWidth
+                size="md"
+                onClick={() => {
+                  setShowCancel(false);
+                  setCancelReason("");
+                }}
+              >
+                Keep order
+              </Button>
             </div>
           </div>
         </ModalOverlay>
