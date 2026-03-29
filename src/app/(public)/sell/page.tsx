@@ -103,12 +103,13 @@ export default function SellPage() {
 
     fetch("/api/seller/status", { signal: controller.signal })
       .then((r) => r.json())
-      .then((data) => {
+      .then((res) => {
         clearTimeout(timeoutId);
+        const payload = res.data ?? res;
         setSellerStatus({
           loading: false,
-          stripeOnboarded: data.stripeOnboarded,
-          authenticated: data.authenticated,
+          stripeOnboarded: payload.stripeOnboarded,
+          authenticated: payload.authenticated,
         });
       })
       .catch(() => {

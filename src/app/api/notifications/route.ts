@@ -48,8 +48,17 @@ export async function GET() {
   }
 }
 
-export async function PATCH() {
+export async function PATCH(request: Request) {
   try {
+    // Pusher auth uses form-data, but this endpoint expects JSON
+    const contentType = request.headers.get("content-type");
+    if (contentType && !contentType.includes("application/json")) {
+      return NextResponse.json(
+        { success: false, error: "Content-Type must be application/json" },
+        { status: 415 },
+      );
+    }
+
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.json(

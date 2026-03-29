@@ -797,10 +797,9 @@ export default function SellerDashboardPage() {
                 ))}
               </div>
 
-              {/* Seller tier progress — uses all-time sales for display; actual tier
-                 is calculated from last 12 months of sales in trust-score.service */}
+              {/* Seller tier progress — uses 12-month rolling window for tier calc */}
               <TierProgress
-                completedSales={stats.totalSales}
+                completedSales={stats.recentSales}
                 avgRating={stats.avgRating}
               />
             </div>
