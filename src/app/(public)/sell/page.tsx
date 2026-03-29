@@ -24,6 +24,7 @@ import CATEGORIES from "@/data/categories";
 import {
   requestImageUpload,
   confirmImageUpload,
+  cleanupOrphanedImages,
 } from "@/server/actions/images";
 import { createListing, saveDraft } from "@/server/actions/listings";
 import ListingPreviewModal from "./ListingPreviewModal";
@@ -102,6 +103,11 @@ export default function SellPage() {
   useEffect(() => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    // Clean up orphaned images from previous abandoned sessions (fire-and-forget)
+    cleanupOrphanedImages().catch(() => {
+      /* non-critical */
+    });
 
     fetch("/api/seller/status", { signal: controller.signal })
       .then((r) => r.json())
@@ -284,6 +290,8 @@ export default function SellPage() {
       }
 
       const processed = confirmResult.data;
+      // Use the processed r2Key if returned (image processor renames to -full.webp)
+      const finalR2Key = processed.r2Key ?? r2Key;
       setImages((prev) =>
         prev.map((i) =>
           i.id === img.id
@@ -294,7 +302,7 @@ export default function SellPage() {
                 progress: 100,
                 uploaded: true,
                 safe: processed.safe ?? true,
-                r2Key,
+                r2Key: finalR2Key,
                 imageId,
                 originalSize: processed.originalSize ?? img.file.size,
                 compressedSize: processed.compressedSize ?? null,
