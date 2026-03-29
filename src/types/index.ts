@@ -5,61 +5,66 @@
 
 // ─────────────────────────────── Primitives ──────────────────────────────────
 
-export type Condition = 'new' | 'like-new' | 'good' | 'fair' | 'parts';
+export type Condition = "new" | "like-new" | "good" | "fair" | "parts";
 
 export type NZRegion =
-  | 'Auckland'
-  | 'Wellington'
-  | 'Canterbury'
-  | 'Waikato'
-  | 'Bay of Plenty'
-  | 'Otago'
+  | "Auckland"
+  | "Wellington"
+  | "Canterbury"
+  | "Waikato"
+  | "Bay of Plenty"
+  | "Otago"
   | "Hawke's Bay"
-  | 'Manawatū-Whanganui'
-  | 'Northland'
-  | 'Tasman'
-  | 'Nelson'
-  | 'Marlborough'
-  | 'Southland'
-  | 'Taranaki'
-  | 'Gisborne'
-  | 'West Coast';
+  | "Manawatū-Whanganui"
+  | "Northland"
+  | "Tasman"
+  | "Nelson"
+  | "Marlborough"
+  | "Southland"
+  | "Taranaki"
+  | "Gisborne"
+  | "West Coast";
 
 export type SortOption =
-  | 'newest'
-  | 'oldest'
-  | 'price-asc'
-  | 'price-desc'
-  | 'most-watched';
+  | "newest"
+  | "oldest"
+  | "price-asc"
+  | "price-desc"
+  | "most-watched";
 
 export type ListingStatus =
-  | 'active'
-  | 'sold'
-  | 'reserved'
-  | 'expired'
-  | 'draft'
-  | 'removed';
+  | "active"
+  | "sold"
+  | "reserved"
+  | "expired"
+  | "draft"
+  | "removed";
 
-export type ShippingOption = 'pickup' | 'courier' | 'both';
+export type ShippingOption = "pickup" | "courier" | "both";
 
-export type OfferStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'withdrawn';
+export type OfferStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "expired"
+  | "withdrawn";
 
 export type OrderStatus =
-  | 'awaiting_payment'
-  | 'payment_held'
-  | 'dispatched'
-  | 'delivered'
-  | 'completed'
-  | 'disputed'
-  | 'refunded'
-  | 'cancelled';
+  | "awaiting_payment"
+  | "payment_held"
+  | "dispatched"
+  | "delivered"
+  | "completed"
+  | "disputed"
+  | "refunded"
+  | "cancelled";
 
 export type DisputeReason =
-  | 'item_not_received'
-  | 'item_not_as_described'
-  | 'item_damaged'
-  | 'seller_unresponsive'
-  | 'other';
+  | "item_not_received"
+  | "item_not_as_described"
+  | "item_damaged"
+  | "seller_unresponsive"
+  | "other";
 
 // ─────────────────────────────── Core Models ─────────────────────────────────
 
@@ -76,11 +81,11 @@ export interface ListingCard {
   thumbnailUrl: string;
   sellerName: string;
   sellerUsername: string;
-  sellerRating: number;       // 1–5
+  sellerRating: number; // 1–5
   sellerVerified: boolean;
   viewCount: number;
   watcherCount: number;
-  createdAt: string;          // ISO 8601
+  createdAt: string; // ISO 8601
   status: ListingStatus;
   shippingOption: ShippingOption;
   shippingPrice: number | null; // null = free / pickup only
@@ -136,16 +141,16 @@ export interface SellerPublic {
   memberSince: string;
   activeListingCount: number;
   soldCount: number;
-  responseTimeLabel: string | null;  // e.g. "Usually replies within 1 hour"
+  responseTimeLabel: string | null; // e.g. "Usually replies within 1 hour"
   badges: SellerBadge[];
 }
 
 export type SellerBadge =
-  | 'top_seller'
-  | 'fast_responder'
-  | 'verified_id'
-  | 'trusted_seller'
-  | 'nz_business';
+  | "top_seller"
+  | "fast_responder"
+  | "verified_id"
+  | "trusted_seller"
+  | "nz_business";
 
 /** Authenticated session user (subset of DB User row) */
 export interface SessionUser {
@@ -200,7 +205,7 @@ export interface CreateListingFormValues {
   shippingOption: ShippingOption;
   shippingPrice: string;
   pickupAddress: string;
-  region: NZRegion | '';
+  region: NZRegion | "";
   suburb: string;
 }
 
@@ -226,7 +231,7 @@ export interface BuyerOrder {
 }
 
 export interface WatchlistItem {
-  id: string;             // listing id
+  id: string; // listing id
   title: string;
   price: number;
   condition: Condition;
@@ -255,7 +260,7 @@ export interface MessageThread {
 export interface Message {
   id: string;
   body: string;
-  senderId: string;             // 'me' or other user id
+  senderId: string; // 'me' or other user id
   senderName: string;
   createdAt: string;
   read: boolean;
@@ -269,7 +274,7 @@ export interface SellerListing extends ListingCard {
 export interface SellerPayout {
   id: string;
   amount: number;
-  status: 'pending' | 'paid' | 'failed';
+  status: "pending" | "paid" | "failed";
   orderId: string;
   listingTitle: string;
   paidAt: string | null;
@@ -284,7 +289,7 @@ export interface SellerStats {
   avgRating: number;
   reviewCount: number;
   pendingPayout: number;
-  responseRate: number;       // 0–100
+  responseRate: number; // 0–100
 }
 
 // ─────────────────────────────── Reviews ─────────────────────────────────────
@@ -299,6 +304,7 @@ export interface Review {
   listingTitle: string;
   createdAt: string;
   sellerReply: string | null;
+  tags?: string[];
 }
 
 // ─────────────────────────────── Filters (Search page) ──────────────────────
@@ -307,8 +313,8 @@ export interface SearchFilters {
   query: string;
   category: string;
   subcategory: string;
-  condition: Condition | '';
-  region: NZRegion | '';
+  condition: Condition | "";
+  region: NZRegion | "";
   priceMin: string;
   priceMax: string;
   sort: SortOption;
@@ -346,4 +352,3 @@ export interface SiteStat {
 export type ActionResult<T = void> =
   | { success: true; data: T }
   | { success: false; error: string; fieldErrors?: Record<string, string[]> };
-

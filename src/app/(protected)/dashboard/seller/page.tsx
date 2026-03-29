@@ -40,7 +40,8 @@ import {
   requestProfileImageUpload,
   confirmProfileImageUpload,
 } from "@/server/actions/profile-images";
-import { getReviewTags } from "@/lib/review-tags";
+import { getTagConfig } from "@/lib/review-tags";
+import type { ReviewTagType } from "@/lib/review-tags";
 
 import {
   ResponsiveContainer,
@@ -1422,6 +1423,7 @@ interface SellerReviewRow {
   listingTitle: string;
   createdAt: string;
   sellerReply: string | null;
+  tags?: string[];
 }
 
 function ReviewsTabContent({ sellerId }: { sellerId: string }) {
@@ -1524,22 +1526,23 @@ function ReviewsTabContent({ sellerId }: { sellerId: string }) {
             {review.comment}
           </p>
 
-          {/* Strength tags */}
-          {(() => {
-            const tags = getReviewTags(review.comment, review.rating);
-            return tags.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {tags.map((tag) => (
+          {/* Buyer-selected strength tags */}
+          {review.tags && review.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {review.tags.map((tag) => {
+                const cfg = getTagConfig(tag as ReviewTagType);
+                if (!cfg) return null;
+                return (
                   <span
-                    key={tag.label}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium ${tag.colour}`}
+                    key={tag}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border ${cfg.colour}`}
                   >
-                    {tag.label}
+                    {cfg.emoji} {cfg.label}
                   </span>
-                ))}
-              </div>
-            ) : null;
-          })()}
+                );
+              })}
+            </div>
+          )}
 
           {review.sellerReply ? (
             <div className="mt-3 bg-[#F8F7F4] rounded-xl p-3 border-l-2 border-[#D4A843]">

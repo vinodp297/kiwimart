@@ -1,11 +1,11 @@
-'use server';
-import { safeActionError } from '@/shared/errors'
+"use server";
+import { safeActionError } from "@/shared/errors";
 // src/server/actions/sellerReviews.ts — thin wrapper
 // Business logic delegated to ReviewService.
 
-import { requireUser } from '@/server/lib/requireUser';
-import { reviewService } from '@/modules/reviews/review.service';
-import type { ActionResult } from '@/types';
+import { requireUser } from "@/server/lib/requireUser";
+import { reviewService } from "@/modules/reviews/review.service";
+import type { ActionResult } from "@/types";
 
 interface SellerReviewRow {
   id: string;
@@ -15,9 +15,12 @@ interface SellerReviewRow {
   listingTitle: string;
   createdAt: string;
   sellerReply: string | null;
+  tags: string[];
 }
 
-export async function fetchSellerReviews(): Promise<ActionResult<SellerReviewRow[]>> {
+export async function fetchSellerReviews(): Promise<
+  ActionResult<SellerReviewRow[]>
+> {
   try {
     const user = await requireUser();
     const data = await reviewService.fetchSellerReviews(user.id);

@@ -3,16 +3,16 @@
 // Transport layer: Resend (when RESEND_API_KEY is set) or console logging.
 // All HTML templates are kept here; transport via Resend.
 
-import { sendTransactionalEmail } from './transport';
+import { sendTransactionalEmail } from "./transport";
 
 // ── Helper: HTML-escape ───────────────────────────────────────────────────────
 
 function esc(str: string): string {
   return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ── Base HTML template ────────────────────────────────────────────────────────
@@ -87,11 +87,11 @@ export async function sendVerificationEmail(params: {
     <p style="font-size:12px; color:#C9C5BC; margin-top:16px;">
       If you didn't create a KiwiMart account, you can safely ignore this email.
     </p>`,
-    `Verify your KiwiMart email address`
+    `Verify your KiwiMart email address`,
   );
   await sendTransactionalEmail({
     to: params.to,
-    subject: 'Verify your KiwiMart email address',
+    subject: "Verify your KiwiMart email address",
     html,
   });
 }
@@ -109,7 +109,7 @@ export async function sendWelcomeEmail(params: {
     <p><strong>🛡 $3,000 protection</strong> — every purchase backed by KiwiMart's buyer protection.</p>
     <a href="${process.env.NEXT_PUBLIC_APP_URL}" class="btn">Start exploring →</a>
     <div class="trust">Your account is protected by secure escrow payments and ID-verified sellers.</div>`,
-    `Welcome to KiwiMart, ${params.displayName}!`
+    `Welcome to KiwiMart, ${params.displayName}!`,
   );
   await sendTransactionalEmail({
     to: params.to,
@@ -132,11 +132,11 @@ export async function sendPasswordResetEmail(params: {
     <hr class="divider">
     <p style="font-size:12px;">If you didn't request this, ignore this email — your password won't change. If you're worried about your account, <a href="${process.env.NEXT_PUBLIC_APP_URL}/support" style="color:#D4A843;">contact support</a>.</p>
     <p style="font-size:11px; color:#C9C5BC;">For security, this link can only be used once and expires after ${params.expiresInMinutes} minutes.</p>`,
-    'Reset your KiwiMart password'
+    "Reset your KiwiMart password",
   );
   await sendTransactionalEmail({
     to: params.to,
-    subject: 'Reset your KiwiMart password',
+    subject: "Reset your KiwiMart password",
     html,
   });
 }
@@ -149,14 +149,14 @@ export async function sendOfferReceivedEmail(params: {
   offerAmount: number;
   listingUrl: string;
 }): Promise<void> {
-  const formatted = `$${params.offerAmount.toLocaleString('en-NZ')}`;
+  const formatted = `$${params.offerAmount.toLocaleString("en-NZ")}`;
   const html = baseTemplate(
     `<h1>You've received an offer! 🎉</h1>
     <p>Hi ${esc(params.sellerName)}, <strong>${esc(params.buyerName)}</strong> has made an offer of <strong>${esc(formatted)}</strong> on your listing:</p>
     <p><strong>${esc(params.listingTitle)}</strong></p>
     <a href="${esc(params.listingUrl)}" class="btn">View offer →</a>
     <p style="font-size:12px; color:#9E9A91;">Offers expire after 48 hours. Sign in to accept or decline.</p>`,
-    `You received a ${formatted} offer`
+    `You received a ${formatted} offer`,
   );
   await sendTransactionalEmail({
     to: params.to,
@@ -187,7 +187,7 @@ export async function sendOfferResponseEmail(params: {
         <p>Hi ${esc(params.buyerName)}, the seller has declined your offer on <strong>${esc(params.listingTitle)}</strong>.</p>
         <p>You can make a new offer or browse similar listings.</p>
         <a href="${esc(params.listingUrl)}" class="btn">View listing →</a>`,
-    subject
+    subject,
   );
   await sendTransactionalEmail({ to: params.to, subject, html });
 }
@@ -203,13 +203,15 @@ export async function sendOrderDispatchedEmail(params: {
   const html = baseTemplate(
     `<h1>Your item has been dispatched! 📦</h1>
     <p>Hi ${esc(params.buyerName)}, your order for <strong>${esc(params.listingTitle)}</strong> is on its way.</p>
-    ${params.trackingNumber
-      ? `<p>Tracking number: <strong>${esc(params.trackingNumber)}</strong>${params.trackingUrl ? ` — <a href="${esc(params.trackingUrl)}" style="color:#D4A843;">track your parcel</a>` : ''}</p>`
-      : ''}
+    ${
+      params.trackingNumber
+        ? `<p>Tracking number: <strong>${esc(params.trackingNumber)}</strong>${params.trackingUrl ? ` — <a href="${esc(params.trackingUrl)}" style="color:#D4A843;">track your parcel</a>` : ""}</p>`
+        : ""
+    }
     <p>Once you receive and inspect your item, please confirm delivery in KiwiMart so the seller gets paid.</p>
     <a href="${esc(params.orderUrl)}" class="btn">View order →</a>
     <div class="trust">Your payment is held securely until you confirm receipt. Don't confirm delivery until you're happy with the item.</div>`,
-    'Your order has been dispatched'
+    "Your order has been dispatched",
   );
   await sendTransactionalEmail({
     to: params.to,
@@ -232,7 +234,7 @@ export async function sendDeliveryReminderEmail(params: {
   const html = baseTemplate(
     `<h1>Please confirm delivery 📦</h1>
     <p>Hi ${esc(params.buyerName)}, your order for <strong>${esc(params.listingTitle)}</strong> has been dispatched.</p>
-    ${params.trackingNumber ? `<p>Tracking: <strong>${esc(params.trackingNumber)}</strong></p>` : ''}
+    ${params.trackingNumber ? `<p>Tracking: <strong>${esc(params.trackingNumber)}</strong></p>` : ""}
     <p>Once you receive your item, please confirm delivery so the seller gets paid.</p>
     <div class="trust">
       You have <strong>${params.daysRemaining} days</strong> before payment is automatically released to the seller.
@@ -240,7 +242,7 @@ export async function sendDeliveryReminderEmail(params: {
     </div>
     <a href="${esc(params.confirmUrl)}" class="btn">Confirm delivery →</a>
     <p style="font-size:12px; color:#9E9A91;">If there is an issue with your order, <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer" style="color:#D4A843;">open a dispute</a> before the auto-release date.</p>`,
-    `Reminder: please confirm delivery — ${params.listingTitle}`
+    `Reminder: please confirm delivery — ${params.listingTitle}`,
   );
   await sendTransactionalEmail({
     to: params.to,
@@ -258,7 +260,8 @@ export async function sendOrderConfirmationEmail(params: {
   orderId: string;
   listingId: string;
 }): Promise<void> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
   const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
   const html = baseTemplate(
     `<h1>Your order is confirmed! 🎉</h1>
@@ -289,7 +292,7 @@ export async function sendOrderConfirmationEmail(params: {
     2. You'll receive a shipping notification with tracking details<br>
     3. Once you receive the item, confirm delivery to release payment</p>
     <a href="${appUrl}/dashboard/buyer?tab=orders" class="btn">View your order →</a>`,
-    `Order confirmed — ${params.listingTitle}`
+    `Order confirmed — ${params.listingTitle}`,
   );
   await sendTransactionalEmail({
     to: params.to,
@@ -306,21 +309,23 @@ export async function sendNewMessageEmail(params: {
   listingTitle?: string;
   listingId?: string;
 }): Promise<void> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
-  const preview = params.messagePreview.length > 120
-    ? `${params.messagePreview.slice(0, 117)}...`
-    : params.messagePreview;
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
+  const preview =
+    params.messagePreview.length > 120
+      ? `${params.messagePreview.slice(0, 117)}...`
+      : params.messagePreview;
   const html = baseTemplate(
     `<h1>💬 New message from ${esc(params.senderName)}</h1>
     <p>Hi ${esc(params.recipientName)},</p>
-    ${params.listingTitle ? `<p style="font-size:12px;color:#9E9A91;margin-bottom:8px">Re: ${esc(params.listingTitle)}</p>` : ''}
+    ${params.listingTitle ? `<p style="font-size:12px;color:#9E9A91;margin-bottom:8px">Re: ${esc(params.listingTitle)}</p>` : ""}
     <div style="background:#F8F7F4;border-radius:12px;padding:16px;border-left:4px solid #D4A843;margin-bottom:16px">
       <p style="margin:0;font-size:14px;font-style:italic;color:#141414">"${esc(preview)}"</p>
       <p style="margin:8px 0 0;font-size:12px;color:#9E9A91">— ${esc(params.senderName)}</p>
     </div>
     <a href="${appUrl}/dashboard/buyer?tab=messages" class="btn">Reply to ${esc(params.senderName)} →</a>
     <p style="font-size:12px;color:#C9C5BC;text-align:center">You are receiving this because someone messaged you on KiwiMart.</p>`,
-    `New message from ${params.senderName}`
+    `New message from ${params.senderName}`,
   );
   await sendTransactionalEmail({
     to: params.to,
@@ -338,9 +343,10 @@ export async function sendDisputeOpenedEmail(params: {
   reason: string;
   description: string;
 }): Promise<void> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
   const formattedReason = params.reason
-    .replace(/_/g, ' ')
+    .replace(/_/g, " ")
     .toLowerCase()
     .replace(/^\w/, (c) => c.toUpperCase());
   const html = baseTemplate(
@@ -364,7 +370,7 @@ export async function sendDisputeOpenedEmail(params: {
     </table>
     <p>Our team will review this dispute. <strong>Do not contact the buyer outside of KiwiMart.</strong></p>
     <a href="${appUrl}/dashboard/seller" class="btn">View dispute →</a>`,
-    `⚠️ Dispute opened — ${params.listingTitle}`
+    `⚠️ Dispute opened — ${params.listingTitle}`,
   );
   await sendTransactionalEmail({
     to: params.to,
@@ -386,7 +392,7 @@ export async function sendFinalDeliveryReminderEmail(params: {
     `<h1>⚠️ Action required — payment releases tomorrow</h1>
     <p>Hi ${esc(params.buyerName)}, this is an urgent reminder about your order:</p>
     <p><strong>${esc(params.listingTitle)}</strong></p>
-    ${params.trackingNumber ? `<p>Tracking: <strong>${esc(params.trackingNumber)}</strong></p>` : ''}
+    ${params.trackingNumber ? `<p>Tracking: <strong>${esc(params.trackingNumber)}</strong></p>` : ""}
     <div class="warning">
       <strong>Payment will be automatically released to the seller TOMORROW</strong> if you do not take action.
       If you have NOT received the item or it is NOT as described, please open a dispute immediately.
@@ -394,11 +400,53 @@ export async function sendFinalDeliveryReminderEmail(params: {
     <a href="${esc(params.confirmUrl)}" class="btn">Confirm delivery →</a>
     <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer" class="btn-secondary">Open a dispute</a>
     <p style="font-size:12px; color:#9E9A91;">Once payment is released it cannot be reversed. Act now if there is an issue.</p>`,
-    `⚠️ Action required — payment releases tomorrow for ${params.listingTitle}`
+    `⚠️ Action required — payment releases tomorrow for ${params.listingTitle}`,
   );
   await sendTransactionalEmail({
     to: params.to,
     subject: `⚠️ Action required — payment releases tomorrow for ${params.listingTitle}`,
+    html,
+  });
+}
+
+export async function sendPriceDropEmail(params: {
+  to: string;
+  buyerName: string;
+  listingTitle: string;
+  oldPrice: string;
+  newPrice: string;
+  savings: string;
+  dropPercent: number;
+  listingUrl: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Price dropped on a listing you're watching! 📉</h1>
+    <p>Hi ${esc(params.buyerName)}, great news — a listing on your watchlist just got cheaper:</p>
+    <p style="font-size:18px; font-weight:700; margin:16px 0;">${esc(params.listingTitle)}</p>
+    <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+      <tr>
+        <td style="padding:8px 0; font-size:14px; color:#9E9A91;">Was</td>
+        <td style="padding:8px 0; font-size:14px; text-decoration:line-through; color:#9E9A91; text-align:right;">NZ${esc(params.oldPrice)}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0; font-size:18px; font-weight:700; color:#141414;">Now</td>
+        <td style="padding:8px 0; font-size:18px; font-weight:700; color:#141414; text-align:right;">NZ${esc(params.newPrice)}</td>
+      </tr>
+    </table>
+    <div class="trust">
+      You save <strong>NZ${esc(params.savings)}</strong> (${params.dropPercent}% off) — grab it before someone else does!
+    </div>
+    <a href="${esc(params.listingUrl)}" class="btn">View listing →</a>
+    <hr class="divider">
+    <p style="font-size:11px; color:#C9C5BC;">
+      You're receiving this because you have price drop alerts enabled for this listing.
+      <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer?tab=watchlist" style="color:#C9C5BC;">Manage alerts</a>
+    </p>`,
+    `Price dropped ${params.dropPercent}% on ${params.listingTitle}`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `📉 Price dropped ${params.dropPercent}% on "${params.listingTitle}"`,
     html,
   });
 }

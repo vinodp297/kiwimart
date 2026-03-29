@@ -28,6 +28,7 @@ import SafetyBanner from "@/components/SafetyBanner";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import RecordView from "@/components/RecordView";
 import RecentlyViewed from "@/components/RecentlyViewed";
+import { recordListingView } from "@/server/actions/recentlyViewed";
 import type {
   ListingDetail,
   SellerPublic,
@@ -124,6 +125,12 @@ export default async function ListingDetailPage({
   }
 
   const session = await auth().catch(() => null);
+
+  // Record view for authenticated users (fire-and-forget, never blocks render)
+  // Skip if seller is viewing their own listing
+  if (session?.user?.id && session.user.id !== listing.seller.id) {
+    recordListingView(listing.id).catch(() => {});
+  }
 
   const [responseTimeLabel, trustProfile, rawSocialProof, priceHistory] =
     await Promise.all([

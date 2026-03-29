@@ -18,7 +18,8 @@ import type {
 import db from "@/lib/db";
 import { getImageUrl, getDefaultAvatar } from "@/lib/image";
 import { auth } from "@/lib/auth";
-import { getReviewTags } from "@/lib/review-tags";
+import { getTagConfig } from "@/lib/review-tags";
+import type { ReviewTagType } from "@/lib/review-tags";
 import { BlockButton } from "@/components/seller/BlockButton";
 import { getSellerTrustProfile } from "@/modules/sellers/trust-score.service";
 import {
@@ -87,6 +88,7 @@ async function getSellerByUsername(username: string) {
             select: { displayName: true, username: true, avatarKey: true },
           },
           order: { select: { listing: { select: { title: true } } } },
+          tags: { select: { tag: true } },
         },
       },
     },
@@ -185,6 +187,7 @@ export default async function SellerProfilePage({
       listingTitle: r.order?.listing?.title ?? "Unknown listing",
       createdAt: r.createdAt.toISOString(),
       sellerReply: r.sellerReply,
+      tags: r.tags.map((t) => t.tag),
     }));
 
   // Build seller shape for display
@@ -621,6 +624,37 @@ export default async function SellerProfilePage({
                 )}
               </div>
 
+              {/* Aggregated strength tags — show top tags with min 2 mentions */}
+              {(() => {
+                const tagCounts: Record<string, number> = {};
+                reviews.forEach((r) => {
+                  r.tags?.forEach((t) => {
+                    tagCounts[t] = (tagCounts[t] ?? 0) + 1;
+                  });
+                });
+                const topTags = Object.entries(tagCounts)
+                  .filter(([, count]) => count >= 2)
+                  .sort((a, b) => b[1] - a[1])
+                  .slice(0, 5);
+                return topTags.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {topTags.map(([tag, count]) => {
+                      const cfg = getTagConfig(tag as ReviewTagType);
+                      if (!cfg) return null;
+                      return (
+                        <span
+                          key={tag}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${cfg.colour}`}
+                        >
+                          {cfg.emoji} {cfg.label}
+                          <span className="opacity-60">({count})</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : null;
+              })()}
+
               {reviews.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6 text-center">
                   <p className="text-[13.5px] text-[#9E9A91]">No reviews yet</p>
@@ -661,25 +695,23 @@ export default async function SellerProfilePage({
                         {review.comment}
                       </p>
 
-                      {/* Strength tags */}
-                      {(() => {
-                        const tags = getReviewTags(
-                          review.comment,
-                          review.rating,
-                        );
-                        return tags.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5 mb-2">
-                            {tags.map((tag) => (
+                      {/* Buyer-selected strength tags */}
+                      {review.tags && review.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {review.tags.map((tag) => {
+                            const cfg = getTagConfig(tag as ReviewTagType);
+                            if (!cfg) return null;
+                            return (
                               <span
-                                key={tag.label}
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium ${tag.colour}`}
+                                key={tag}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border ${cfg.colour}`}
                               >
-                                {tag.label}
+                                {cfg.emoji} {cfg.label}
                               </span>
-                            ))}
-                          </div>
-                        ) : null;
-                      })()}
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {/* Listing ref */}
                       <p className="text-[11px] text-[#C9C5BC] italic">

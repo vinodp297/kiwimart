@@ -1,33 +1,36 @@
-'use client';
+"use client";
 // src/app/(protected)/reviews/new/page.tsx
 // ─── New Review Page ────────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import { Button, Alert } from '@/components/ui/primitives';
-import { createReview } from '@/server/actions/reviews';
-import { fetchOrderDetail } from '@/server/actions/orderDetail';
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import { Button, Alert } from "@/components/ui/primitives";
+import { createReview } from "@/server/actions/reviews";
+import { fetchOrderDetail } from "@/server/actions/orderDetail";
+import { REVIEW_TAG_OPTIONS } from "@/lib/review-tags";
+import type { ReviewTagType } from "@/lib/review-tags";
 
 export default function NewReviewPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const orderId = searchParams.get('orderId');
+  const orderId = searchParams.get("orderId");
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [orderTitle, setOrderTitle] = useState('');
+  const [orderTitle, setOrderTitle] = useState("");
 
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
-  const [comment, setComment] = useState('');
+  const [comment, setComment] = useState("");
+  const [selectedTags, setSelectedTags] = useState<ReviewTagType[]>([]);
 
   useEffect(() => {
     if (!orderId) {
-      setError('No order specified.');
+      setError("No order specified.");
       setLoading(false);
       return;
     }
@@ -36,10 +39,10 @@ export default function NewReviewPage() {
       if (result.success) {
         setOrderTitle(result.data.listingTitle);
         if (result.data.hasReview) {
-          setError('You have already reviewed this order.');
+          setError("You have already reviewed this order.");
         }
-        if (result.data.status !== 'completed') {
-          setError('Reviews can only be left for completed orders.');
+        if (result.data.status !== "completed") {
+          setError("Reviews can only be left for completed orders.");
         }
       } else {
         setError(result.error);
@@ -52,11 +55,11 @@ export default function NewReviewPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (rating === 0) {
-      setError('Please select a rating.');
+      setError("Please select a rating.");
       return;
     }
     if (comment.length < 10) {
-      setError('Please write at least 10 characters.');
+      setError("Please write at least 10 characters.");
       return;
     }
 
@@ -67,10 +70,11 @@ export default function NewReviewPage() {
       orderId: orderId!,
       rating,
       comment,
+      tags: selectedTags,
     });
 
     if (result.success) {
-      router.push('/dashboard/buyer?reviewSubmitted=true');
+      router.push("/dashboard/buyer?reviewSubmitted=true");
     } else {
       setError(result.error);
       setSubmitting(false);
@@ -97,7 +101,10 @@ export default function NewReviewPage() {
       <main className="bg-[#FAFAF8] min-h-screen">
         <div className="max-w-lg mx-auto px-4 sm:px-6 py-12">
           <nav className="flex items-center gap-2 text-[12.5px] text-[#9E9A91] mb-6">
-            <Link href="/dashboard/buyer" className="hover:text-[#D4A843] transition-colors">
+            <Link
+              href="/dashboard/buyer"
+              className="hover:text-[#D4A843] transition-colors"
+            >
               Dashboard
             </Link>
             <span>/</span>
@@ -114,10 +121,15 @@ export default function NewReviewPage() {
           )}
 
           {error && (
-            <Alert variant="error" className="mb-6">{error}</Alert>
+            <Alert variant="error" className="mb-6">
+              {error}
+            </Alert>
           )}
 
-          <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+          <form
+            onSubmit={handleSubmit}
+            className="bg-white rounded-2xl border border-[#E3E0D9] p-6"
+          >
             {/* Star rating */}
             <div className="mb-6">
               <label className="text-[12.5px] font-semibold text-[#141414] mb-3 block">
@@ -132,14 +144,18 @@ export default function NewReviewPage() {
                     onMouseEnter={() => setHoverRating(star)}
                     onMouseLeave={() => setHoverRating(0)}
                     className="transition-transform hover:scale-110"
-                    aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                    aria-label={`${star} star${star > 1 ? "s" : ""}`}
                   >
                     <svg
                       width="32"
                       height="32"
                       viewBox="0 0 24 24"
-                      fill={(hoverRating || rating) >= star ? '#D4A843' : 'none'}
-                      stroke={(hoverRating || rating) >= star ? '#D4A843' : '#C9C5BC'}
+                      fill={
+                        (hoverRating || rating) >= star ? "#D4A843" : "none"
+                      }
+                      stroke={
+                        (hoverRating || rating) >= star ? "#D4A843" : "#C9C5BC"
+                      }
                       strokeWidth="1.5"
                     >
                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -149,9 +165,55 @@ export default function NewReviewPage() {
               </div>
               {rating > 0 && (
                 <p className="text-[12px] text-[#73706A] mt-2">
-                  {['', 'Poor', 'Below average', 'Good', 'Very good', 'Excellent'][rating]}
+                  {
+                    [
+                      "",
+                      "Poor",
+                      "Below average",
+                      "Good",
+                      "Very good",
+                      "Excellent",
+                    ][rating]
+                  }
                 </p>
               )}
+            </div>
+
+            {/* Tag chips */}
+            <div className="mb-6">
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                What did this seller do well?
+              </label>
+              <p className="text-[11px] text-[#9E9A91] mb-3">
+                Optional — select all that apply
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {REVIEW_TAG_OPTIONS.map((opt) => {
+                  const isSelected = selectedTags.includes(opt.value);
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTags((prev) =>
+                          isSelected
+                            ? prev.filter((t) => t !== opt.value)
+                            : [...prev, opt.value],
+                        );
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px]
+                        font-medium border transition-all duration-150 ${
+                          isSelected
+                            ? "bg-[#F5ECD4] text-[#8B6914] border-[#D4A843]/50 shadow-sm"
+                            : "bg-[#F8F7F4] text-[#73706A] border-[#E3E0D9] hover:border-[#D4A843]/30 hover:bg-[#F5ECD4]/30"
+                        }`}
+                    >
+                      <span>{opt.emoji}</span>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Comment */}

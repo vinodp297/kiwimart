@@ -258,6 +258,7 @@ model User {
   blocksReceived  BlockedUser[]  @relation("UserBlockedBy")
   cart            Cart?
   verificationApplication VerificationApplication?
+  recentlyViewed  RecentlyViewed[]
 
   @@index([email])
   @@index([username])
@@ -416,6 +417,7 @@ model Listing {
   watchers     WatchlistItem[]
   cartItems    CartItem[]
   priceHistory ListingPriceHistory[]
+  recentViews  RecentlyViewed[]
 
   @@index([sellerId])
   @@index([status])
@@ -605,6 +607,7 @@ model Review {
   order  Order @relation(fields: [orderId], references: [id])
   seller User  @relation("ReviewedSeller", fields: [sellerId], references: [id])
   author User  @relation("ReviewAuthor", fields: [authorId], references: [id])
+  tags   ReviewTag[]
 
   @@index([sellerId])
   @@index([authorId])
@@ -986,5 +989,44 @@ model ListingPriceHistory {
   changedAt DateTime @default(now())
 
   @@index([listingId, changedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Review Tags (buyer-selected strength chips)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ReviewTagType {
+  FAST_SHIPPING
+  GREAT_PACKAGING
+  ACCURATE_DESCRIPTION
+  QUICK_COMMUNICATION
+  FAIR_PRICING
+  AS_DESCRIBED
+}
+
+model ReviewTag {
+  id       String        @id @default(cuid())
+  reviewId String
+  review   Review        @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  tag      ReviewTagType
+
+  @@unique([reviewId, tag])
+  @@index([tag])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recently Viewed Listings (authenticated users)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RecentlyViewed {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId String
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  viewedAt  DateTime @default(now())
+
+  @@unique([userId, listingId])
+  @@index([userId, viewedAt(sort: Desc)])
 }
 
