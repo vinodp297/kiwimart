@@ -82,7 +82,6 @@ export default async function RootLayout({
       <head>
         <meta name="theme-color" content="#141414" />
         <meta name="color-scheme" content="light" />
-        {nonce && <meta name="csp-nonce" content={nonce} />}
       </head>
       <body
         className={`${dmSans.className} antialiased`}
