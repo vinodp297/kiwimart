@@ -956,8 +956,10 @@ export default function SellerDashboardPage() {
               {listings.length > 0 && (
                 <div className="flex items-center justify-between">
                   <p className="text-[13px] text-[#9E9A91]">
-                    {listings.length} active listing
-                    {listings.length !== 1 ? "s" : ""}
+                    {listings.filter((l) => l.status === "active").length}{" "}
+                    active
+                    {listings.filter((l) => l.status === "draft").length > 0 &&
+                      ` · ${listings.filter((l) => l.status === "draft").length} draft${listings.filter((l) => l.status === "draft").length !== 1 ? "s" : ""}`}
                   </p>
                   <Link href="/sell">
                     <Button variant="primary" size="sm">
@@ -1195,24 +1197,34 @@ function SellerListingRow({
             {listing.title}
           </Link>
           <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
-            <ConditionBadge condition={listing.condition as Condition} />
-            <span className="text-[12px] text-[#9E9A91]">
-              {listing.viewCount.toLocaleString("en-NZ")} views
-            </span>
-            <span className="text-[12px] text-[#9E9A91]">
-              {listing.watcherCount} watchers
-            </span>
-            {listing.offerCount > 0 && (
-              <span className="text-[12px] text-amber-600 font-semibold">
-                {listing.offerCount} offer{listing.offerCount > 1 ? "s" : ""}
+            {listing.status === "draft" && (
+              <span className="text-[10px] font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                Draft
               </span>
             )}
-            {daysLeft !== null && (
-              <span
-                className={`text-[11.5px] ${daysLeft <= 7 ? "text-red-500" : "text-[#9E9A91]"}`}
-              >
-                Expires in {daysLeft}d
-              </span>
+            <ConditionBadge condition={listing.condition as Condition} />
+            {listing.status !== "draft" && (
+              <>
+                <span className="text-[12px] text-[#9E9A91]">
+                  {listing.viewCount.toLocaleString("en-NZ")} views
+                </span>
+                <span className="text-[12px] text-[#9E9A91]">
+                  {listing.watcherCount} watchers
+                </span>
+                {listing.offerCount > 0 && (
+                  <span className="text-[12px] text-amber-600 font-semibold">
+                    {listing.offerCount} offer
+                    {listing.offerCount > 1 ? "s" : ""}
+                  </span>
+                )}
+                {daysLeft !== null && (
+                  <span
+                    className={`text-[11.5px] ${daysLeft <= 7 ? "text-red-500" : "text-[#9E9A91]"}`}
+                  >
+                    Expires in {daysLeft}d
+                  </span>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1228,9 +1240,18 @@ function SellerListingRow({
 
           {!isConfirming ? (
             <div className="flex gap-2">
-              <Link href={`/sell/edit/${listing.id}`}>
-                <Button variant="secondary" size="sm">
-                  Edit
+              <Link
+                href={
+                  listing.status === "draft"
+                    ? `/sell?draft=${listing.id}`
+                    : `/sell/edit/${listing.id}`
+                }
+              >
+                <Button
+                  variant={listing.status === "draft" ? "gold" : "secondary"}
+                  size="sm"
+                >
+                  {listing.status === "draft" ? "Continue editing" : "Edit"}
                 </Button>
               </Link>
               <Button variant="ghost" size="sm" onClick={onDeleteRequest}>

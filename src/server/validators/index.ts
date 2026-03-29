@@ -191,6 +191,38 @@ export const updateListingSchema = createListingSchema.partial().extend({
 });
 export type UpdateListingInput = z.infer<typeof updateListingSchema>;
 
+// Draft schema — all fields optional except the ones we have.
+// Drafts can be saved at any point during the wizard so nothing is required.
+export const saveDraftSchema = z.object({
+  draftId: z.string().optional(), // existing draft to update
+  title: z.string().max(100).optional(),
+  description: z.string().max(3000).optional(),
+  categoryId: z.string().optional(),
+  subcategoryName: z.string().max(50).optional(),
+  condition: conditionEnum.optional(),
+  price: z
+    .string()
+    .optional()
+    .transform((v) => (v ? Number(v) : undefined))
+    .pipe(z.number().min(0).max(100_000).optional()),
+  offersEnabled: z.boolean().optional(),
+  gstIncluded: z.boolean().optional(),
+  isUrgent: z.boolean().optional(),
+  isNegotiable: z.boolean().optional(),
+  shipsNationwide: z.boolean().optional(),
+  shippingOption: shippingEnum.optional(),
+  shippingPrice: z
+    .string()
+    .optional()
+    .transform((v) => (v ? Number(v) : undefined))
+    .pipe(z.number().min(0).max(500).optional()),
+  pickupAddress: z.string().max(200).optional(),
+  region: nzRegionField.optional(),
+  suburb: z.string().max(100).optional(),
+  imageKeys: z.array(z.string().max(200)).max(10).optional(),
+});
+export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Offer schema
 // ─────────────────────────────────────────────────────────────────────────────

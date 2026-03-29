@@ -25,7 +25,8 @@ import {
   requestImageUpload,
   confirmImageUpload,
 } from "@/server/actions/images";
-import { createListing } from "@/server/actions/listings";
+import { createListing, saveDraft } from "@/server/actions/listings";
+import ListingPreviewModal from "./ListingPreviewModal";
 import type { Condition, ShippingOption, NZRegion } from "@/types";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -157,6 +158,14 @@ export default function SellPage() {
   const [shippingPrice, setShippingPrice] = useState("");
   const [region, setRegion] = useState<NZRegion | "">("");
   const [suburb, setSuburb] = useState("");
+
+  // Preview modal
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Save as draft
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftSaved, setDraftSaved] = useState(false);
 
   // Validation errors per step
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -475,6 +484,169 @@ export default function SellPage() {
     }
 
     setSubmitted(true);
+    // Clear localStorage after successful publish
+    try {
+      localStorage.removeItem("kiwi-sell-draft");
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+
+  // ── Save as Draft handler ────────────────────────────────────────────────
+  async function handleSaveDraft() {
+    setSavingDraft(true);
+    setSubmitError("");
+
+    const imageKeys = images
+      .filter((i) => i.uploaded && i.r2Key)
+      .map((i) => i.r2Key!);
+
+    const result = await saveDraft({
+      draftId: draftId ?? undefined,
+      title: title.trim() || undefined,
+      description: description.trim() || undefined,
+      categoryId: categoryId || undefined,
+      subcategoryName: subcategory || undefined,
+      condition: condition ? condition.toUpperCase() : undefined,
+      price: price || undefined,
+      offersEnabled,
+      gstIncluded,
+      isUrgent,
+      isNegotiable,
+      shipsNationwide,
+      shippingOption: shippingOption ? shippingOption.toUpperCase() : undefined,
+      shippingPrice: shippingPrice || undefined,
+      region: region || undefined,
+      suburb: suburb.trim() || undefined,
+      imageKeys: imageKeys.length > 0 ? imageKeys : undefined,
+    });
+
+    setSavingDraft(false);
+
+    if (!result.success) {
+      setSubmitError(result.error ?? "Failed to save draft. Please try again.");
+      return;
+    }
+
+    setDraftId(result.data.draftId);
+    setDraftSaved(true);
+    // Clear localStorage after saving to server
+    try {
+      localStorage.removeItem("kiwi-sell-draft");
+    } catch {
+      /* localStorage unavailable */
+    }
+    // Reset toast after 3s
+    setTimeout(() => setDraftSaved(false), 3000);
+  }
+
+  // ── localStorage auto-save (debounced) ───────────────────────────────────
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const draft = {
+          step,
+          title,
+          description,
+          categoryId,
+          subcategory,
+          condition,
+          price,
+          offersEnabled,
+          gstIncluded,
+          isUrgent,
+          isNegotiable,
+          shipsNationwide,
+          shippingOption,
+          shippingPrice,
+          region,
+          suburb,
+          draftId,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem("kiwi-sell-draft", JSON.stringify(draft));
+      } catch {
+        // localStorage unavailable
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [
+    step,
+    title,
+    description,
+    categoryId,
+    subcategory,
+    condition,
+    price,
+    offersEnabled,
+    gstIncluded,
+    isUrgent,
+    isNegotiable,
+    shipsNationwide,
+    shippingOption,
+    shippingPrice,
+    region,
+    suburb,
+    draftId,
+  ]);
+
+  // ── Restore from localStorage on mount ───────────────────────────────────
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const resumeDataRef = useRef<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("kiwi-sell-draft");
+      if (!saved) return;
+      const data = JSON.parse(saved);
+      // Only show prompt if draft is less than 24h old and has meaningful data
+      const age = Date.now() - (data.savedAt ?? 0);
+      if (age > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem("kiwi-sell-draft");
+        return;
+      }
+      if (data.title || data.description || data.price) {
+        resumeDataRef.current = data;
+        setShowResumePrompt(true);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, []);
+
+  function resumeDraft() {
+    const d = resumeDataRef.current;
+    if (!d) return;
+    if (typeof d.step === "number") setStep(d.step);
+    if (typeof d.title === "string") setTitle(d.title);
+    if (typeof d.description === "string") setDescription(d.description);
+    if (typeof d.categoryId === "string") setCategoryId(d.categoryId);
+    if (typeof d.subcategory === "string") setSubcategory(d.subcategory);
+    if (typeof d.condition === "string") setCondition(d.condition as Condition);
+    if (typeof d.price === "string") setPrice(d.price);
+    if (typeof d.offersEnabled === "boolean") setOffersEnabled(d.offersEnabled);
+    if (typeof d.gstIncluded === "boolean") setGstIncluded(d.gstIncluded);
+    if (typeof d.isUrgent === "boolean") setIsUrgent(d.isUrgent);
+    if (typeof d.isNegotiable === "boolean") setIsNegotiable(d.isNegotiable);
+    if (typeof d.shipsNationwide === "boolean")
+      setShipsNationwide(d.shipsNationwide);
+    if (typeof d.shippingOption === "string")
+      setShippingOption(d.shippingOption as ShippingOption);
+    if (typeof d.shippingPrice === "string") setShippingPrice(d.shippingPrice);
+    if (typeof d.region === "string") setRegion(d.region as NZRegion);
+    if (typeof d.suburb === "string") setSuburb(d.suburb);
+    if (typeof d.draftId === "string") setDraftId(d.draftId);
+    setShowResumePrompt(false);
+  }
+
+  function discardDraft() {
+    try {
+      localStorage.removeItem("kiwi-sell-draft");
+    } catch {
+      /* localStorage unavailable */
+    }
+    resumeDataRef.current = null;
+    setShowResumePrompt(false);
   }
 
   // ── Submitted success state ───────────────────────────────────────────────
@@ -539,6 +711,12 @@ export default function SellPage() {
                   setShippingPrice("");
                   setRegion("");
                   setSuburb("");
+                  setDraftId(null);
+                  try {
+                    localStorage.removeItem("kiwi-sell-draft");
+                  } catch {
+                    /* localStorage unavailable */
+                  }
                 }}
               >
                 List another item
@@ -646,6 +824,28 @@ export default function SellPage() {
               Reach NZ buyers — $0 listing fee.
             </p>
           </div>
+
+          {/* Resume draft prompt */}
+          {showResumePrompt && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[13px] font-semibold text-blue-900">
+                  Resume your draft?
+                </p>
+                <p className="text-[12px] text-blue-700 mt-0.5">
+                  You have an unsaved listing from a previous session.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="ghost" size="sm" onClick={discardDraft}>
+                  Discard
+                </Button>
+                <Button variant="primary" size="sm" onClick={resumeDraft}>
+                  Resume
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* NZ CGA seller obligation notice */}
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-6 text-[12px] text-amber-800">
@@ -1453,34 +1653,116 @@ export default function SellPage() {
                 </Link>
               )}
 
-              {step < 4 ? (
-                <Button variant="primary" size="md" onClick={goNext}>
-                  Continue
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
+              <div className="flex items-center gap-2">
+                {step === 4 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="md"
+                      onClick={() => setShowPreview(true)}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      Preview
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="md"
+                      loading={savingDraft}
+                      onClick={handleSaveDraft}
+                    >
+                      Save as Draft
+                    </Button>
+                  </>
+                )}
+                {step < 4 ? (
+                  <Button variant="primary" size="md" onClick={goNext}>
+                    Continue
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                    >
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="gold"
+                    size="md"
+                    loading={submitting}
+                    onClick={handleSubmit}
                   >
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
-                </Button>
-              ) : (
-                <Button
-                  variant="gold"
-                  size="md"
-                  loading={submitting}
-                  onClick={handleSubmit}
-                >
-                  Publish listing
-                </Button>
-              )}
+                    Publish listing
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </main>
+
+      {/* Draft saved toast */}
+      {draftSaved && (
+        <div
+          className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-lg
+          flex items-center gap-2 text-[13px] font-medium animate-in fade-in slide-in-from-bottom-2 duration-300"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Draft saved successfully
+        </div>
+      )}
+
+      {/* Preview modal */}
+      <ListingPreviewModal
+        open={showPreview}
+        onClose={() => setShowPreview(false)}
+        title={title}
+        description={description}
+        price={price}
+        condition={condition}
+        categoryId={categoryId}
+        subcategory={subcategory}
+        images={images
+          .filter((i) => i.url)
+          .map((i, idx) => ({
+            id: i.id,
+            url: i.url,
+            altText: `Photo ${idx + 1}`,
+            order: idx,
+          }))}
+        shippingOption={shippingOption}
+        shippingPrice={shippingPrice}
+        region={region}
+        suburb={suburb}
+        offersEnabled={offersEnabled}
+        gstIncluded={gstIncluded}
+        isUrgent={isUrgent}
+        isNegotiable={isNegotiable}
+        shipsNationwide={shipsNationwide}
+      />
+
       <Footer />
     </>
   );
