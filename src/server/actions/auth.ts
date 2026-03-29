@@ -59,10 +59,15 @@ export async function registerUser(
     };
   }
 
-  // 5a. Verify Cloudflare Turnstile — only when the client sent a token.
-  // If the build didn't have NEXT_PUBLIC_TURNSTILE_SITE_KEY, the client
-  // widget never rendered and no token was generated.
-  if (process.env.NODE_ENV === "production" && data.turnstileToken) {
+  // 5a. Verify Cloudflare Turnstile — FAIL CLOSED in production.
+  // Empty/missing tokens are rejected. Client gets key via /api/auth/turnstile-config.
+  if (process.env.NODE_ENV === "production") {
+    if (!data.turnstileToken) {
+      return {
+        success: false,
+        error: "Bot verification required. Please complete the security check.",
+      };
+    }
     const turnstileOk = await verifyTurnstile(data.turnstileToken);
     if (!turnstileOk) {
       return {
@@ -171,8 +176,11 @@ export async function requestPasswordReset(
     };
   }
 
-  // 5a. Verify Turnstile — only when the client sent a token.
-  if (process.env.NODE_ENV === "production" && turnstileToken) {
+  // 5a. Verify Turnstile — FAIL CLOSED in production.
+  if (process.env.NODE_ENV === "production") {
+    if (!turnstileToken) {
+      return { success: false, error: "Bot verification required." };
+    }
     const ok = await verifyTurnstile(turnstileToken);
     if (!ok) return { success: false, error: "Bot verification failed." };
   }
