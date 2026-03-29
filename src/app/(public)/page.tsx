@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import db from "@/lib/db";
+import { getImageUrl } from "@/lib/image";
 import { getCached } from "@/server/lib/cache";
 import CATEGORIES from "@/data/categories";
 import LISTINGS from "@/data/listings";
@@ -302,11 +303,7 @@ export default async function HomePage() {
         subcategoryName: row.subcategoryName ?? "",
         region: row.region as (typeof LISTINGS)[0]["region"],
         suburb: row.suburb,
-        thumbnailUrl: row.images[0]?.r2Key
-          ? row.images[0].r2Key.startsWith("http")
-            ? row.images[0].r2Key
-            : `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${row.images[0].r2Key}`
-          : "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop",
+        thumbnailUrl: getImageUrl(row.images[0]?.r2Key),
         sellerName: row.seller.displayName,
         sellerUsername: row.seller.username,
         sellerRating: 4.5,

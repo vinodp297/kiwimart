@@ -641,6 +641,113 @@ export async function toggleWatch(
   }
 }
 
+// ── getListingForEdit ─────────────────────────────────────────────────────────
+// Fetches listing data pre-populated for the edit form.
+// Only the listing owner (or admin) can access.
+
+export async function getListingForEdit(listingId: string): Promise<
+  ActionResult<{
+    id: string;
+    title: string;
+    description: string;
+    priceNzd: number;
+    gstIncluded: boolean;
+    condition: string;
+    status: string;
+    categoryId: string;
+    subcategoryName: string | null;
+    region: string;
+    suburb: string;
+    shippingOption: string;
+    shippingNzd: number | null;
+    offersEnabled: boolean;
+    isUrgent: boolean;
+    isNegotiable: boolean;
+    shipsNationwide: boolean;
+    images: {
+      id: string;
+      r2Key: string;
+      thumbnailKey: string | null;
+      order: number;
+    }[];
+  }>
+> {
+  try {
+    const user = await requireUser();
+
+    const listing = await db.listing.findUnique({
+      where: { id: listingId },
+      select: {
+        id: true,
+        sellerId: true,
+        title: true,
+        description: true,
+        priceNzd: true,
+        gstIncluded: true,
+        condition: true,
+        status: true,
+        categoryId: true,
+        subcategoryName: true,
+        region: true,
+        suburb: true,
+        shippingOption: true,
+        shippingNzd: true,
+        offersEnabled: true,
+        isUrgent: true,
+        isNegotiable: true,
+        shipsNationwide: true,
+        deletedAt: true,
+        images: {
+          orderBy: { order: "asc" },
+          select: { id: true, r2Key: true, thumbnailKey: true, order: true },
+        },
+      },
+    });
+
+    if (!listing || listing.deletedAt) {
+      return { success: false, error: "Listing not found." };
+    }
+    if (listing.sellerId !== user.id && !user.isAdmin) {
+      return {
+        success: false,
+        error: "You don't have permission to edit this listing.",
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        id: listing.id,
+        title: listing.title,
+        description: listing.description,
+        priceNzd: listing.priceNzd,
+        gstIncluded: listing.gstIncluded,
+        condition: listing.condition,
+        status: listing.status,
+        categoryId: listing.categoryId,
+        subcategoryName: listing.subcategoryName,
+        region: listing.region,
+        suburb: listing.suburb,
+        shippingOption: listing.shippingOption,
+        shippingNzd: listing.shippingNzd,
+        offersEnabled: listing.offersEnabled,
+        isUrgent: listing.isUrgent,
+        isNegotiable: listing.isNegotiable,
+        shipsNationwide: listing.shipsNationwide,
+        images: listing.images,
+      },
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't load this listing for editing. Please try again.",
+      ),
+    };
+  }
+}
+
 // ── getListingById ────────────────────────────────────────────────────────────
 // Public server function — delegated to ListingService
 

@@ -9,6 +9,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { requireUser } from "@/server/lib/requireUser";
 import db from "@/lib/db";
+import { getImageUrl, getThumbUrl } from "@/lib/image";
 import type { ActionResult } from "@/types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -110,18 +111,13 @@ const STATUS_MAP: Record<string, string> = {
 };
 
 function r2Url(key: string | null): string {
-  if (!key)
-    return "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop";
-  if (key.startsWith("http")) return key;
-  return `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${key}`;
+  return getImageUrl(key);
 }
 
 function thumbUrl(
   img: { r2Key: string; thumbnailKey?: string | null } | undefined,
 ): string {
-  if (!img)
-    return "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop";
-  return r2Url(img.thumbnailKey ?? img.r2Key);
+  return getThumbUrl(img);
 }
 
 // ── fetchBuyerDashboard ──────────────────────────────────────────────────────
