@@ -2,21 +2,21 @@
 // src/app/(auth)/login/page.tsx  (Sprint 3 — wired to Auth.js)
 // ─── Login Page ───────────────────────────────────────────────────────────────
 // Uses Auth.js signIn('credentials') for form submission.
-// Cloudflare Turnstile widget rendered via script tag.
+// Cloudflare Turnstile widget loaded via Next.js Script component.
 // All validation mirrors the loginSchema Zod validator (single source of truth).
 //
 // Turnstile flow (execution="execute", appearance="interaction-only"):
-//   1. Widget is rendered on mount but does NOT auto-execute.
-//   2. On form submit, we call turnstile.execute() to trigger the challenge.
-//   3. A Promise waits for the callback to fire with the token (10 s timeout).
-//   4. Token is passed to signIn(); widget is reset on any failure path.
-//   This eliminates the race where the invisible challenge callback fires too
-//   late and the form submission sees an empty token.
+//   1. Next.js <Script> loads the Turnstile API after hydration.
+//   2. onLoad renders the widget into the container div.
+//   3. On form submit, we call turnstile.execute() to trigger the challenge.
+//   4. A Promise waits for the callback to fire with the token (10 s timeout).
+//   5. Token is passed to signIn(); widget is reset on any failure path.
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import Script from "next/script";
 import { Button, Input, Alert, Divider } from "@/components/ui/primitives";
 
 declare global {
@@ -29,6 +29,19 @@ declare global {
     };
   }
 }
+
+// Determine at module level whether Turnstile is active.
+// NEXT_PUBLIC_ vars are inlined at build time, so this is a static constant.
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+const isTurnstileActive = (() => {
+  if (!TURNSTILE_SITE_KEY) return false;
+  if (
+    TURNSTILE_SITE_KEY.startsWith("1x") ||
+    TURNSTILE_SITE_KEY.startsWith("2x")
+  )
+    return false;
+  return true;
+})();
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
@@ -63,97 +76,31 @@ export default function LoginPage() {
     null,
   );
 
-  // Load Turnstile script.
-  // Test keys (1x… / 2x…) always show a red "For testing only" banner — skip
-  // them entirely. Real production keys don't start with these prefixes.
-  // TODO: Replace with real Cloudflare Turnstile keys once ready:
-  //   1. Go to dash.cloudflare.com → Turnstile
-  //   2. Create a site with domain: kiwimart.vercel.app
-  //   3. Add to Vercel env vars:
-  //      NEXT_PUBLIC_TURNSTILE_SITE_KEY = <real site key>
-  //      CLOUDFLARE_TURNSTILE_SECRET_KEY = <real secret key>
-  const isTurnstileActive = (() => {
-    const key = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
-    if (!key) return false;
-    if (key.startsWith("1x") || key.startsWith("2x")) return false; // test keys
-    return true;
-  })();
-
-  useEffect(() => {
-    // DEBUG: log Turnstile config at mount
-    console.log(
-      "[Turnstile] mount — isTurnstileActive:",
-      isTurnstileActive,
-      "siteKey:",
-      process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.slice(0, 8) ?? "NOT SET",
-    );
-
-    if (!isTurnstileActive) return;
-    const script = document.createElement("script");
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
-    script.async = true;
-    script.defer = true;
-    // Apply CSP nonce so strict-dynamic allows the script to execute
-    const cspNonce = document
-      .querySelector('meta[name="csp-nonce"]')
-      ?.getAttribute("content");
-    if (cspNonce) script.nonce = cspNonce;
-    console.log(
-      "[Turnstile] loading script, nonce:",
-      cspNonce ? "present" : "missing",
-    );
-    document.head.appendChild(script);
-    script.onload = () => {
-      console.log(
-        "[Turnstile] script loaded, window.turnstile:",
-        !!window.turnstile,
-        "turnstileRef:",
-        !!turnstileRef.current,
-      );
-      if (turnstileRef.current && window.turnstile) {
-        widgetId.current = window.turnstile.render(turnstileRef.current, {
-          sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
-          theme: "light",
-          // Do not auto-execute on render — we call execute() manually at submit.
-          execution: "execute",
-          // Only show the challenge UI if Cloudflare deems interaction necessary;
-          // normal users see nothing.
-          appearance: "interaction-only",
-          // Resolve the per-submit Promise when the challenge succeeds.
-          callback: (token: string) => {
-            console.log(
-              "[Turnstile] callback fired, token length:",
-              token.length,
-            );
-            if (tokenResolverRef.current) {
-              tokenResolverRef.current(token);
-              tokenResolverRef.current = null;
-            }
-          },
-          // Reject the per-submit Promise on widget error (network failure, etc.)
-          "error-callback": () => {
-            console.log("[Turnstile] error-callback fired");
-            if (tokenResolverRef.current) {
-              tokenResolverRef.current(null);
-              tokenResolverRef.current = null;
-            }
-          },
-          // Token expired between renders — no active submit in progress so
-          // nothing to resolve; the next execute() will obtain a fresh token.
-          "expired-callback": () => {
-            console.log("[Turnstile] expired-callback fired");
-          },
-        });
-        console.log("[Turnstile] widget rendered, widgetId:", widgetId.current);
-      }
-    };
-    script.onerror = (err) => {
-      console.error("[Turnstile] script FAILED to load:", err);
-    };
-    return () => {
-      document.head.removeChild(script);
-    };
-  }, [isTurnstileActive]);
+  // Called by <Script onLoad> — renders the Turnstile widget into the container.
+  const initializeTurnstileWidget = useCallback(() => {
+    if (!turnstileRef.current || !window.turnstile) return;
+    widgetId.current = window.turnstile.render(turnstileRef.current, {
+      sitekey: TURNSTILE_SITE_KEY,
+      theme: "light",
+      execution: "execute",
+      appearance: "interaction-only",
+      callback: (token: string) => {
+        if (tokenResolverRef.current) {
+          tokenResolverRef.current(token);
+          tokenResolverRef.current = null;
+        }
+      },
+      "error-callback": () => {
+        if (tokenResolverRef.current) {
+          tokenResolverRef.current(null);
+          tokenResolverRef.current = null;
+        }
+      },
+      "expired-callback": () => {
+        /* no-op in execute mode */
+      },
+    });
+  }, []);
 
   function validate() {
     const errs: typeof fieldErrors = {};
@@ -181,39 +128,24 @@ export default function LoginPage() {
     // Reset is only used in error/cleanup paths after a failed attempt.
     let challengeToken = "";
 
-    console.log(
-      "[Login] handleSubmit called, isTurnstileActive:",
-      isTurnstileActive,
-      "widgetId:",
-      widgetId.current,
-    );
-
     if (isTurnstileActive) {
       if (!widgetId.current) {
-        console.log("[Login] widgetId is null — widget not ready");
         setError("Security check not ready — please try again in a moment.");
         setLoading(false);
         return;
       }
 
-      console.log("[Login] calling execute on widgetId:", widgetId.current);
       const token = await new Promise<string | null>((resolve) => {
         tokenResolverRef.current = resolve;
         window.turnstile?.execute(widgetId.current!);
         // 10-second hard timeout — covers stalled challenges and slow networks.
         setTimeout(() => {
           if (tokenResolverRef.current) {
-            console.log("[Login] 10s timeout — callback never fired");
             tokenResolverRef.current = null;
             resolve(null);
           }
         }, 10_000);
       });
-
-      console.log(
-        "[Login] token result:",
-        token ? `received (${token.length} chars)` : "null/timeout",
-      );
 
       if (!token) {
         setError("Security check failed or timed out — please try again.");
@@ -235,9 +167,6 @@ export default function LoginPage() {
         redirect: false,
       });
 
-      // Auth.js v5 returns HTTP 200 even on failure — error info lives in
-      // result.error (e.g. "CredentialsSignin"), not in result.ok.
-      // Check both: ok=false (network/server error) and error set (auth failure).
       if (!result?.ok || result?.error) {
         setError("Incorrect email or password. Please try again.");
         if (widgetId.current) window.turnstile?.reset(widgetId.current);
@@ -245,18 +174,11 @@ export default function LoginPage() {
         return;
       }
 
-      // Hard-navigate to the destination so the new page gets a fresh server
-      // render with the session cookie already present.
-      // We do NOT call getSession() here — it races with the cookie being
-      // committed and can throw, swallowing the redirect entirely.
-      // First-time users (verified=true or registered=true) go to /welcome.
-      // Returning users go to the intended destination or buyer dashboard.
       const fromParam = searchParams.get("from");
       const isFirstLogin = !!verifiedParam || !!registeredParam;
       window.location.href =
         fromParam || (isFirstLogin ? "/welcome" : "/dashboard/buyer");
     } catch {
-      // signIn can throw on network error or unexpected Auth.js exception.
       setError("Something went wrong. Please try again.");
       if (widgetId.current) window.turnstile?.reset(widgetId.current);
       setLoading(false);
@@ -396,9 +318,7 @@ export default function LoginPage() {
               </span>
             </label>
 
-            {/* Cloudflare Turnstile — only rendered when a real (non-test) key is set.
-                The widget is invisible until execute() is called; appearance="interaction-only"
-                means the challenge UI only surfaces if Cloudflare requires it. */}
+            {/* Cloudflare Turnstile — container for the widget rendered by onLoad */}
             {isTurnstileActive && <div ref={turnstileRef} className="mt-1" />}
 
             <Button
@@ -464,6 +384,15 @@ export default function LoginPage() {
           .
         </p>
       </div>
+
+      {/* Turnstile script — Next.js Script component handles CSP nonce automatically */}
+      {isTurnstileActive && (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+          onLoad={initializeTurnstileWidget}
+        />
+      )}
     </main>
   );
 }
