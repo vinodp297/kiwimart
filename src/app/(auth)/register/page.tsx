@@ -16,15 +16,10 @@ import {
 } from "@/components/ui/primitives";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
-const isTurnstileActive = (() => {
-  if (!TURNSTILE_SITE_KEY) return false;
-  if (
-    TURNSTILE_SITE_KEY.startsWith("1x") ||
-    TURNSTILE_SITE_KEY.startsWith("2x")
-  )
-    return false;
-  return true;
-})();
+const isTurnstileActive =
+  TURNSTILE_SITE_KEY.length > 0 &&
+  !TURNSTILE_SITE_KEY.startsWith("1x") &&
+  !TURNSTILE_SITE_KEY.startsWith("2x");
 
 export default function RegisterPage() {
   const router = useRouter();
