@@ -20,13 +20,17 @@ import { logger } from "@/shared/logger";
  * Verify a Cloudflare Turnstile challenge token server-side.
  *
  * Returns true if the token is valid, or if verification is not required
- * (non-production environment, or test key configured).
+ * (non-production environment).
  *
  * Returns false on any failure — callers MUST reject the request on false.
  *
  * @param token - The Turnstile widget response token from the browser
+ * @param remoteIp - Optional client IP address (helps Cloudflare validate)
  */
-export async function verifyTurnstile(token: string): Promise<boolean> {
+export async function verifyTurnstile(
+  token: string,
+  remoteIp?: string,
+): Promise<boolean> {
   // Always pass in non-production — no real challenges in dev/test
   if (process.env.NODE_ENV !== "production") {
     return true;
@@ -59,6 +63,9 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
     const formData = new URLSearchParams();
     formData.append("secret", secretKey);
     formData.append("response", token);
+    if (remoteIp) {
+      formData.append("remoteip", remoteIp);
+    }
 
     const response = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
@@ -70,17 +77,27 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
       },
     );
 
+    // Read the body regardless of status — Cloudflare returns error details
+    // in the JSON body even for non-2xx responses
+    let data: { success: boolean; "error-codes"?: string[] };
+    try {
+      data = (await response.json()) as typeof data;
+    } catch {
+      logger.warn("turnstile: failed to parse Cloudflare response body", {
+        status: response.status,
+      });
+      return false;
+    }
+
     if (!response.ok) {
       logger.warn("turnstile: Cloudflare API returned non-2xx status", {
         status: response.status,
+        errorCodes: data["error-codes"] ?? [],
+        success: data.success,
       });
-      return false; // Fail closed on API error
+      return false;
     }
 
-    const data = (await response.json()) as {
-      success: boolean;
-      "error-codes"?: string[];
-    };
     if (!data.success) {
       logger.warn("turnstile: Cloudflare rejected the token", {
         errorCodes: data["error-codes"] ?? [],
