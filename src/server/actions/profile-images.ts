@@ -71,11 +71,13 @@ export async function requestProfileImageUpload(params: {
 
     // Lazy import so dev without R2 credentials doesn't crash on module load
     const { r2, R2_BUCKET } = await import("@/infrastructure/storage/r2");
+    // Note: Do NOT include ContentLength — it gets signed into the presigned URL
+    // and causes SignatureDoesNotMatch on R2 if the browser's Content-Length
+    // differs (e.g. after client-side cropping resizes the blob).
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET,
       Key: r2Key,
       ContentType: params.contentType,
-      ContentLength: params.sizeBytes,
     });
     const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 }); // 5 min
 

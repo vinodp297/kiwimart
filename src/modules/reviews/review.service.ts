@@ -12,7 +12,7 @@ export class ReviewService {
   async createReview(
     input: CreateReviewInput,
     userId: string,
-  ): Promise<{ reviewId: string }> {
+  ): Promise<{ reviewId: string; sellerId: string }> {
     const order = await db.order.findUnique({
       where: { id: input.orderId },
       select: {
@@ -75,7 +75,7 @@ export class ReviewService {
       userId,
     });
 
-    return { reviewId: review.id };
+    return { reviewId: review.id, sellerId: order.sellerId };
   }
 
   async replyToReview(

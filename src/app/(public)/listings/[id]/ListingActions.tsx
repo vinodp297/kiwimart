@@ -22,10 +22,14 @@ import { createOffer } from "@/server/actions/offers";
 
 interface Props {
   listing: ListingDetail;
+  initialWatched?: boolean;
 }
 
-export default function ListingActions({ listing }: Props) {
-  const [watched, setWatched] = useState(false);
+export default function ListingActions({
+  listing,
+  initialWatched = false,
+}: Props) {
+  const [watched, setWatched] = useState(initialWatched);
   const [offerOpen, setOfferOpen] = useState(false);
   const [offerAmount, setOfferAmount] = useState("");
   const [offerNote, setOfferNote] = useState("");

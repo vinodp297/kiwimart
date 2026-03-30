@@ -623,13 +623,19 @@ function OrderCard({
 }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function handleConfirmDelivery() {
     setActionLoading(true);
+    setActionError(null);
     const result = await confirmDelivery(order.id);
     if (result.success) {
       setShowConfirm(false);
       onRefresh?.();
+    } else {
+      setActionError(
+        result.error ?? "We couldn't confirm delivery. Please try again.",
+      );
     }
     setActionLoading(false);
   }
@@ -793,6 +799,11 @@ function OrderCard({
               Confirming releases payment to the seller. Only confirm if you
               have received the item.
             </p>
+            {actionError && (
+              <Alert variant="error" className="mb-4 text-left text-[13px]">
+                {actionError}
+              </Alert>
+            )}
             <div className="flex gap-3 justify-center">
               <Button
                 variant="gold"

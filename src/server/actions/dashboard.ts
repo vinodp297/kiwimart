@@ -267,7 +267,7 @@ export async function fetchBuyerDashboard(): Promise<
         trackingNumber: o.trackingNumber,
         trackingUrl: o.trackingUrl,
         dispatchedAt: o.dispatchedAt?.toISOString() ?? null,
-        canConfirmDelivery: status === "dispatched",
+        canConfirmDelivery: status === "dispatched" || status === "delivered",
         canDispute: status === "dispatched" || status === "delivered",
         hasReview: !!o.review,
       };

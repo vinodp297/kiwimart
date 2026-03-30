@@ -24,12 +24,15 @@ export async function createReview(
       };
     }
 
-    const result = await reviewService.createReview(parsed.data, user.id);
+    const { reviewId, sellerId } = await reviewService.createReview(
+      parsed.data,
+      user.id,
+    );
 
-    revalidatePath(`/sellers/${user.id}`);
+    revalidatePath(`/sellers/${sellerId}`);
     revalidatePath("/dashboard/buyer");
 
-    return { success: true, data: result };
+    return { success: true, data: { reviewId } };
   } catch (err) {
     return {
       success: false,
