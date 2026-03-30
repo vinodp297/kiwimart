@@ -1,5 +1,5 @@
 "use client";
-// src/app/(public)/sell/edit/[id]/page.tsx
+// src/app/(protected)/sell/edit/[id]/page.tsx
 // ─── Edit Listing Page ──────────────────────────────────────────────────────
 // Pre-populates the listing form with existing data and calls updateListing
 // on submit. Only the listing owner can access.

@@ -69,7 +69,7 @@ export async function requestImageUpload(params: {
     if (!ALLOWED_MIME_TYPES.includes(params.contentType)) {
       return {
         success: false,
-        error: `File type not allowed. Accepted types: JPG, PNG, WebP, HEIC.`,
+        error: `File type not allowed. Accepted types: JPG, PNG, WebP.`,
       };
     }
 
@@ -164,7 +164,6 @@ export async function requestImageUpload(params: {
       Bucket: R2_BUCKET,
       Key: r2Key,
       ContentType: params.contentType,
-      Metadata: { userId: user.id, imageId: image.id },
     });
     const uploadUrl = await getSignedUrl(r2, command, { expiresIn: 300 }); // 5 min
 

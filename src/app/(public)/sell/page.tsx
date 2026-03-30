@@ -73,6 +73,9 @@ const STEPS = [
   { number: 4, label: "Shipping" },
 ];
 
+// Must stay in sync with ALLOWED_MIME_TYPES in src/server/actions/images.ts
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
 // ── Image preview type ────────────────────────────────────────────────────────
 interface ImagePreview {
   id: string;
@@ -336,15 +339,19 @@ export default function SellPage() {
     (files: FileList | null) => {
       if (!files) return;
       const allFiles = Array.from(files);
-      const nonImages = allFiles.filter((f) => !f.type.startsWith("image/"));
-      if (nonImages.length > 0) {
+      const rejected = allFiles.filter(
+        (f) => !ACCEPTED_IMAGE_TYPES.includes(f.type),
+      );
+      if (rejected.length > 0) {
         setErrors((prev) => ({
           ...prev,
-          images: `${nonImages.length} file${nonImages.length > 1 ? "s were" : " was"} skipped — only JPG, PNG, and WebP photos are allowed.`,
+          images: `${rejected.length} file${rejected.length > 1 ? "s were" : " was"} skipped — only JPG, PNG, and WebP photos are allowed.`,
         }));
       }
       const remaining = 10 - images.length;
-      const imageFiles = allFiles.filter((f) => f.type.startsWith("image/"));
+      const imageFiles = allFiles.filter((f) =>
+        ACCEPTED_IMAGE_TYPES.includes(f.type),
+      );
       if (imageFiles.length > remaining) {
         setErrors((prev) => ({
           ...prev,

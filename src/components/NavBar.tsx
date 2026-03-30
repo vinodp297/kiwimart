@@ -134,7 +134,9 @@ export default function NavBar() {
     if (!user) return;
     fetch("/api/notifications")
       .then((r) => r.json())
-      .then((data) => setNotifications(data.notifications ?? []))
+      .then((data) =>
+        setNotifications(data.data?.notifications ?? data.notifications ?? []),
+      )
       .catch(() => {});
   }, [user]);
 
@@ -326,7 +328,11 @@ export default function NavBar() {
                           fetch("/api/notifications")
                             .then((r) => r.json())
                             .then((data) =>
-                              setNotifications(data.notifications ?? []),
+                              setNotifications(
+                                data.data?.notifications ??
+                                  data.notifications ??
+                                  [],
+                              ),
                             )
                             .catch(() => {});
                           markAllRead();

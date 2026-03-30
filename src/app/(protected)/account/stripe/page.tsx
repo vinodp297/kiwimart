@@ -284,7 +284,7 @@ export default function StripeAccountPage() {
                       text: "No monthly fees — only pay when you sell",
                       icon: "💰",
                     },
-                    { text: "Supports card and Afterpay payments", icon: "💳" },
+                    { text: "Supports card payments", icon: "💳" },
                   ].map(({ text, icon }) => (
                     <div key={text} className="flex items-center gap-3">
                       <span className="text-[16px]">{icon}</span>

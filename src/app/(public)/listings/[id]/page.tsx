@@ -146,10 +146,11 @@ export default async function ListingDetailPage({
       getListingPriceHistory(listing.id).catch(() => []),
     ]);
 
-  // Exclude current viewer from watcher count (if they're watching)
+  // Check if current viewer is watching this listing
+  let isWatching: { id: string } | null = null;
   let adjustedWatcherCount = rawSocialProof.watcherCount;
   if (session?.user?.id) {
-    const isWatching = await db.watchlistItem
+    isWatching = await db.watchlistItem
       .findFirst({
         where: { userId: session.user.id, listingId: listing.id },
         select: { id: true },
@@ -216,7 +217,7 @@ export default async function ListingDetailPage({
     attributes,
     seller,
     relatedListings: [],
-    offerCount: 0,
+    offerCount: rawSocialProof.pendingOfferCount,
     gstIncluded: listing.gstIncluded,
     pickupAddress: listing.pickupAddress,
   };
@@ -501,7 +502,7 @@ export default async function ListingDetailPage({
             {/* ── Right column (sticky) ──────────────────────────────────── */}
             <div className="flex flex-col gap-4">
               {/* Price / action panel (client — handles offer modal, watchlist) */}
-              <ListingActions listing={detail} />
+              <ListingActions listing={detail} initialWatched={!!isWatching} />
 
               {/* Shipping estimate */}
               <ShippingEstimate sellerRegion={detail.region} />
