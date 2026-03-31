@@ -4,7 +4,6 @@ import { safeActionError } from "@/shared/errors";
 // ─── Seller Onboarding Actions ────────────────────────────────────────────────
 
 import { headers } from "next/headers";
-import { z } from "zod";
 import db from "@/lib/db";
 import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
@@ -13,12 +12,7 @@ import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
-
-// ── Schemas ───────────────────────────────────────────────────────────────────
-
-const ApproveIdSchema = z.object({
-  userId: z.string().cuid("Invalid user ID"),
-});
+import { approveIdSchema as ApproveIdSchema } from "@/server/validators";
 
 // ── Accept Seller Terms ───────────────────────────────────────────────────────
 

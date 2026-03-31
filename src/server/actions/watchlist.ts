@@ -3,15 +3,10 @@ import { safeActionError } from "@/shared/errors";
 // src/server/actions/watchlist.ts
 // ─── Watchlist Actions ──────────────────────────────────────────────────────
 
-import { z } from "zod";
 import db from "@/lib/db";
 import { requireUser } from "@/server/lib/requireUser";
 import type { ActionResult } from "@/types";
-
-const TogglePriceAlertSchema = z.object({
-  listingId: z.string().min(1),
-  enabled: z.boolean(),
-});
+import { togglePriceAlertSchema as TogglePriceAlertSchema } from "@/server/validators";
 
 export async function togglePriceAlert(
   raw: unknown,

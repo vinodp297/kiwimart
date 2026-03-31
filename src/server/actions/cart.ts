@@ -23,7 +23,11 @@ import { stripe } from "@/infrastructure/stripe/client";
 import db from "@/lib/db";
 import { getImageUrl } from "@/lib/image";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
+import {
+  addToCartSchema as AddToCartSchema,
+  removeFromCartSchema as RemoveFromCartSchema,
+  checkoutCartSchema as CheckoutCartSchema,
+} from "@/server/validators";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -62,9 +66,7 @@ function r2Url(key: string | null): string {
 
 // ── addToCart ────────────────────────────────────────────────────────────────
 
-const AddToCartSchema = z.object({
-  listingId: z.string().min(1, "Listing ID is required"),
-});
+// Schemas imported from @/server/validators
 
 export async function addToCart(
   raw: unknown,
@@ -194,10 +196,6 @@ export async function addToCart(
 }
 
 // ── removeFromCart ───────────────────────────────────────────────────────────
-
-const RemoveFromCartSchema = z.object({
-  listingId: z.string().min(1, "Listing ID is required"),
-});
 
 export async function removeFromCart(
   raw: unknown,
@@ -423,20 +421,6 @@ export async function getCartCount(): Promise<ActionResult<number>> {
 
 // ── checkoutCart ─────────────────────────────────────────────────────────────
 // Re-validates all items, reserves listings atomically, creates order + PI.
-
-const CheckoutCartSchema = z.object({
-  idempotencyKey: z.string().max(128).optional(),
-  shippingAddress: z
-    .object({
-      name: z.string().min(2, "Name is required").max(100),
-      line1: z.string().min(5, "Street address is required").max(200),
-      line2: z.string().max(200).optional(),
-      city: z.string().min(2, "City is required").max(100),
-      region: z.string().min(2, "Region is required").max(100),
-      postcode: z.string().regex(/^\d{4}$/, "Invalid NZ postcode"),
-    })
-    .optional(),
-});
 
 export async function checkoutCart(
   raw: unknown,

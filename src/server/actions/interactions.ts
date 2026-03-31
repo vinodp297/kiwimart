@@ -21,24 +21,16 @@ import {
 } from "@/modules/orders/order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
-
-// ── Schemas ─────────────────────────────────────────────────────────────────
-
-const requestCancellationSchema = z.object({
-  orderId: z.string().min(1),
-  reason: z
-    .string()
-    .min(10, "Please provide a reason (at least 10 characters).")
-    .max(500)
-    .trim(),
-});
-
-const respondToCancellationSchema = z.object({
-  interactionId: z.string().min(1),
-  action: z.enum(["ACCEPT", "REJECT"]),
-  responseNote: z.string().max(500).trim().optional(),
-});
+import {
+  requestCancellationSchema,
+  respondToCancellationSchema,
+  requestReturnSchema,
+  respondToReturnSchema,
+  requestPartialRefundSchema,
+  respondToPartialRefundSchema,
+  notifyShippingDelaySchema,
+  respondToShippingDelaySchema,
+} from "@/server/validators";
 
 // ── Free cancellation window ────────────────────────────────────────────────
 const FREE_CANCEL_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
@@ -347,21 +339,7 @@ export async function respondToCancellation(
 
 // ─��� requestReturn ───────────────────────────────────────────────────────────
 
-const requestReturnSchema = z.object({
-  orderId: z.string().min(1),
-  reason: z.string().min(10).max(500).trim(),
-  details: z
-    .object({
-      returnReason: z.enum([
-        "damaged",
-        "not_as_described",
-        "wrong_item",
-        "changed_mind",
-      ]),
-      preferredResolution: z.enum(["full_refund", "replacement", "exchange"]),
-    })
-    .optional(),
-});
+// Schemas imported from @/server/validators
 
 export async function requestReturn(
   raw: unknown,
@@ -444,12 +422,6 @@ export async function requestReturn(
 }
 
 // ── respondToReturn ─────────────────────────────────────────────────────────
-
-const respondToReturnSchema = z.object({
-  interactionId: z.string().min(1),
-  action: z.enum(["ACCEPT", "REJECT"]),
-  responseNote: z.string().max(1000).trim().optional(),
-});
 
 export async function respondToReturn(
   raw: unknown,
@@ -544,12 +516,6 @@ export async function respondToReturn(
 }
 
 // ── requestPartialRefund ────────────────────────────────────────────────────
-
-const requestPartialRefundSchema = z.object({
-  orderId: z.string().min(1),
-  reason: z.string().min(10).max(500).trim(),
-  amount: z.number().positive("Amount must be greater than 0"),
-});
 
 export async function requestPartialRefund(
   raw: unknown,
@@ -655,13 +621,6 @@ export async function requestPartialRefund(
 }
 
 // ── respondToPartialRefund ──────────────────────────────────────────────────
-
-const respondToPartialRefundSchema = z.object({
-  interactionId: z.string().min(1),
-  action: z.enum(["ACCEPT", "REJECT", "COUNTER"]),
-  responseNote: z.string().max(500).trim().optional(),
-  counterAmount: z.number().positive().optional(),
-});
 
 export async function respondToPartialRefund(
   raw: unknown,
@@ -810,12 +769,6 @@ export async function respondToPartialRefund(
 
 // ── notifyShippingDelay ─────────────────────────────────────────────────────
 
-const notifyShippingDelaySchema = z.object({
-  orderId: z.string().min(1),
-  reason: z.string().min(10).max(500).trim(),
-  estimatedNewDate: z.string().optional(),
-});
-
 export async function notifyShippingDelay(
   raw: unknown,
 ): Promise<ActionResult<{ interactionId: string }>> {
@@ -912,12 +865,6 @@ export async function notifyShippingDelay(
 }
 
 // ── respondToShippingDelay ──────────────────────────────────────────────────
-
-const respondToShippingDelaySchema = z.object({
-  interactionId: z.string().min(1),
-  action: z.enum(["ACCEPT", "REJECT"]),
-  responseNote: z.string().max(500).trim().optional(),
-});
 
 export async function respondToShippingDelay(
   raw: unknown,

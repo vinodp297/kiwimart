@@ -24,27 +24,9 @@ import {
 import { createNotification } from "@/modules/notifications/notification.service";
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
+import { submitProblemSchema, type ProblemType } from "@/server/validators";
 
-const submitProblemSchema = z.object({
-  orderId: z.string().min(1),
-  problemType: z.enum([
-    "CANCEL",
-    "ITEM_DAMAGED",
-    "NOT_AS_DESCRIBED",
-    "WRONG_ITEM",
-    "MISSING_PARTS",
-    "NOT_RECEIVED",
-    "CHANGED_MIND",
-    "PARTIAL_REFUND",
-    "SELLER_NOT_SHIPPING",
-  ]),
-  description: z.string().min(10).max(2000).trim(),
-  evidenceKeys: z.array(z.string()).max(4).optional(),
-  refundAmount: z.number().positive().optional(),
-});
-
-export type ProblemType = z.infer<typeof submitProblemSchema>["problemType"];
+export type { ProblemType };
 
 export async function submitProblem(raw: unknown): Promise<
   ActionResult<{

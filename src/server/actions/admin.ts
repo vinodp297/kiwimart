@@ -6,50 +6,15 @@ import { safeActionError } from "@/shared/errors";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminService } from "@/modules/admin/admin.service";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
-
-const BanUserSchema = z.object({
-  userId: z.string().min(1, "User ID is required"),
-  reason: z
-    .string()
-    .min(10, "Ban reason must be at least 10 characters")
-    .max(500),
-});
-
-const ResolveReportSchema = z.object({
-  reportId: z.string().min(1, "Report ID is required"),
-  action: z.enum(["dismiss", "remove", "ban"]),
-});
-
-const ResolveDisputeSchema = z.object({
-  orderId: z.string().min(1, "Order ID is required"),
-  favour: z.enum(["buyer", "seller"]),
-});
-
-const PartialRefundSchema = z.object({
-  orderId: z.string().min(1),
-  amountCents: z.number().positive(),
-  reason: z.string().min(5).max(500),
-});
-
-const OverrideSchema = z.object({
-  orderId: z.string().min(1),
-  newDecision: z.enum(["refund", "dismiss", "partial_refund"]),
-  reason: z.string().min(5).max(500),
-  partialAmountCents: z.number().positive().optional(),
-});
-
-const RequestInfoSchema = z.object({
-  orderId: z.string().min(1),
-  target: z.enum(["buyer", "seller", "both"]),
-  message: z.string().min(10).max(1000),
-});
-
-const FlagFraudSchema = z.object({
-  userId: z.string().min(1),
-  orderId: z.string().min(1),
-  reason: z.string().min(10).max(500),
-});
+import {
+  banUserSchema as BanUserSchema,
+  resolveReportSchema as ResolveReportSchema,
+  resolveDisputeSchema as ResolveDisputeSchema,
+  partialRefundSchema as PartialRefundSchema,
+  overrideSchema as OverrideSchema,
+  requestInfoSchema as RequestInfoSchema,
+  flagFraudSchema as FlagFraudSchema,
+} from "@/server/validators";
 
 export async function banUser(
   userId: string,

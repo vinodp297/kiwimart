@@ -362,3 +362,392 @@ export const toggleWatchSchema = z.object({
   listingId: z.string().min(1),
 });
 export type ToggleWatchInput = z.infer<typeof toggleWatchSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Order schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+const shippingAddressSchema = z
+  .object({
+    name: z.string().min(2, "Name is required").max(100),
+    line1: z.string().min(5, "Street address is required").max(200),
+    line2: z.string().max(200).optional(),
+    city: z.string().min(2, "City is required").max(100),
+    region: z.string().min(2, "Region is required").max(100),
+    postcode: z.string().regex(/^\d{4}$/, "Invalid NZ postcode"),
+  })
+  .optional();
+
+export const createOrderSchema = z.object({
+  listingId: z.string().min(1, "Listing ID is required"),
+  idempotencyKey: z.string().max(128).optional(),
+  shippingAddress: shippingAddressSchema,
+});
+export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+
+export const confirmDeliverySchema = z.object({
+  orderId: z.string().min(1, "Order ID is required"),
+  itemAsDescribed: z.boolean(),
+  issueType: z.string().optional(),
+  deliveryPhotos: z.array(z.string()).max(4).optional(),
+  notes: z.string().max(2000).optional(),
+});
+export type ConfirmDeliveryInput = z.infer<typeof confirmDeliverySchema>;
+
+export const markDispatchedSchema = z.object({
+  orderId: z.string().min(1, "Order ID is required"),
+  trackingNumber: z.string().min(1, "Tracking number is required").max(100),
+  courier: z.string().min(1, "Courier is required"),
+  trackingUrl: z.string().max(500).optional(),
+  estimatedDeliveryDate: z
+    .string()
+    .min(1, "Estimated delivery date is required")
+    .refine(
+      (val) => {
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return false;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffDays = Math.round(
+          (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        return diffDays >= 1 && diffDays <= 14;
+      },
+      { message: "Estimated delivery must be 1-14 days from today." },
+    ),
+  dispatchPhotos: z
+    .array(z.string().min(1))
+    .min(1, "At least 1 dispatch photo is required.")
+    .max(4, "Maximum 4 dispatch photos."),
+});
+export type MarkDispatchedInput = z.infer<typeof markDispatchedSchema>;
+
+export const cancelOrderSchema = z.object({
+  orderId: z.string().min(1, "Order ID is required"),
+  reason: z.string().max(500).optional(),
+});
+export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dispute schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const openDisputeSchema = z.object({
+  orderId: z.string().min(1),
+  reason: z.enum([
+    "ITEM_NOT_RECEIVED",
+    "ITEM_NOT_AS_DESCRIBED",
+    "ITEM_DAMAGED",
+    "WRONG_ITEM_SENT",
+    "COUNTERFEIT_ITEM",
+    "SELLER_UNRESPONSIVE",
+    "SELLER_CANCELLED",
+    "REFUND_NOT_PROCESSED",
+    "OTHER",
+  ]),
+  description: z
+    .string()
+    .min(20, "Please describe the issue in at least 20 characters.")
+    .max(2000)
+    .trim(),
+  evidenceUrls: z.array(z.string().min(1)).max(3).optional(),
+});
+export type OpenDisputeInput = z.infer<typeof openDisputeSchema>;
+
+export const respondToDisputeSchema = z.object({
+  orderId: z.string().min(1),
+  response: z
+    .string()
+    .min(20, "Please describe your response in at least 20 characters.")
+    .max(2000)
+    .trim(),
+});
+export type RespondToDisputeInput = z.infer<typeof respondToDisputeSchema>;
+
+export const submitCounterEvidenceSchema = z.object({
+  orderId: z.string().min(1),
+  description: z.string().min(10).max(2000).trim(),
+  evidenceKeys: z.array(z.string()).max(4).optional(),
+});
+export type SubmitCounterEvidenceInput = z.infer<
+  typeof submitCounterEvidenceSchema
+>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const banUserSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+  reason: z
+    .string()
+    .min(10, "Ban reason must be at least 10 characters")
+    .max(500),
+});
+export type BanUserInput = z.infer<typeof banUserSchema>;
+
+export const resolveReportSchema = z.object({
+  reportId: z.string().min(1, "Report ID is required"),
+  action: z.enum(["dismiss", "remove", "ban"]),
+});
+export type ResolveReportInput = z.infer<typeof resolveReportSchema>;
+
+export const resolveDisputeSchema = z.object({
+  orderId: z.string().min(1, "Order ID is required"),
+  favour: z.enum(["buyer", "seller"]),
+});
+export type ResolveDisputeInput = z.infer<typeof resolveDisputeSchema>;
+
+export const partialRefundSchema = z.object({
+  orderId: z.string().min(1),
+  amountCents: z.number().positive(),
+  reason: z.string().min(5).max(500),
+});
+export type PartialRefundInput = z.infer<typeof partialRefundSchema>;
+
+export const overrideSchema = z.object({
+  orderId: z.string().min(1),
+  newDecision: z.enum(["refund", "dismiss", "partial_refund"]),
+  reason: z.string().min(5).max(500),
+  partialAmountCents: z.number().positive().optional(),
+});
+export type OverrideInput = z.infer<typeof overrideSchema>;
+
+export const requestInfoSchema = z.object({
+  orderId: z.string().min(1),
+  target: z.enum(["buyer", "seller", "both"]),
+  message: z.string().min(10).max(1000),
+});
+export type RequestInfoInput = z.infer<typeof requestInfoSchema>;
+
+export const flagFraudSchema = z.object({
+  userId: z.string().min(1),
+  orderId: z.string().min(1),
+  reason: z.string().min(10).max(500),
+});
+export type FlagFraudInput = z.infer<typeof flagFraudSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interaction schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const requestCancellationSchema = z.object({
+  orderId: z.string().min(1),
+  reason: z
+    .string()
+    .min(10, "Please provide a reason (at least 10 characters).")
+    .max(500)
+    .trim(),
+});
+export type RequestCancellationInput = z.infer<
+  typeof requestCancellationSchema
+>;
+
+export const respondToCancellationSchema = z.object({
+  interactionId: z.string().min(1),
+  action: z.enum(["ACCEPT", "REJECT"]),
+  responseNote: z.string().max(500).trim().optional(),
+});
+export type RespondToCancellationInput = z.infer<
+  typeof respondToCancellationSchema
+>;
+
+export const requestReturnSchema = z.object({
+  orderId: z.string().min(1),
+  reason: z.string().min(10).max(500).trim(),
+  details: z
+    .object({
+      returnReason: z.enum([
+        "damaged",
+        "not_as_described",
+        "wrong_item",
+        "changed_mind",
+      ]),
+      preferredResolution: z.enum(["full_refund", "replacement", "exchange"]),
+    })
+    .optional(),
+});
+export type RequestReturnInput = z.infer<typeof requestReturnSchema>;
+
+export const respondToReturnSchema = z.object({
+  interactionId: z.string().min(1),
+  action: z.enum(["ACCEPT", "REJECT"]),
+  responseNote: z.string().max(1000).trim().optional(),
+});
+export type RespondToReturnInput = z.infer<typeof respondToReturnSchema>;
+
+export const requestPartialRefundSchema = z.object({
+  orderId: z.string().min(1),
+  reason: z.string().min(10).max(500).trim(),
+  amount: z.number().positive("Amount must be greater than 0"),
+});
+export type RequestPartialRefundInput = z.infer<
+  typeof requestPartialRefundSchema
+>;
+
+export const respondToPartialRefundSchema = z.object({
+  interactionId: z.string().min(1),
+  action: z.enum(["ACCEPT", "REJECT", "COUNTER"]),
+  responseNote: z.string().max(500).trim().optional(),
+  counterAmount: z.number().positive().optional(),
+});
+export type RespondToPartialRefundInput = z.infer<
+  typeof respondToPartialRefundSchema
+>;
+
+export const notifyShippingDelaySchema = z.object({
+  orderId: z.string().min(1),
+  reason: z.string().min(10).max(500).trim(),
+  estimatedNewDate: z.string().optional(),
+});
+export type NotifyShippingDelayInput = z.infer<
+  typeof notifyShippingDelaySchema
+>;
+
+export const respondToShippingDelaySchema = z.object({
+  interactionId: z.string().min(1),
+  action: z.enum(["ACCEPT", "REJECT"]),
+  responseNote: z.string().max(500).trim().optional(),
+});
+export type RespondToShippingDelayInput = z.infer<
+  typeof respondToShippingDelaySchema
+>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cart schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const addToCartSchema = z.object({
+  listingId: z.string().min(1, "Listing ID is required"),
+});
+export type AddToCartInput = z.infer<typeof addToCartSchema>;
+
+export const removeFromCartSchema = z.object({
+  listingId: z.string().min(1, "Listing ID is required"),
+});
+export type RemoveFromCartInput = z.infer<typeof removeFromCartSchema>;
+
+export const checkoutCartSchema = z.object({
+  idempotencyKey: z.string().max(128).optional(),
+  shippingAddress: shippingAddressSchema,
+});
+export type CheckoutCartInput = z.infer<typeof checkoutCartSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Report schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const createReportSchema = z.object({
+  targetUserId: z.string().min(1).optional(),
+  listingId: z.string().min(1).optional(),
+  reason: z.enum([
+    "SCAM",
+    "COUNTERFEIT",
+    "PROHIBITED",
+    "OFFENSIVE",
+    "SPAM",
+    "OTHER",
+  ]),
+  description: z
+    .string()
+    .min(10, "Please provide at least 10 characters describing the issue.")
+    .max(2000, "Description must be 2000 characters or less.")
+    .trim(),
+});
+export type CreateReportInput = z.infer<typeof createReportSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Watchlist price alert schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const togglePriceAlertSchema = z.object({
+  listingId: z.string().min(1),
+  enabled: z.boolean(),
+});
+export type TogglePriceAlertInput = z.infer<typeof togglePriceAlertSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Account schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z
+      .string()
+      .min(12, "Password must be at least 12 characters")
+      .max(128, "Password is too long")
+      .regex(/[A-Z]/, "Must contain at least one uppercase letter")
+      .regex(/[a-z]/, "Must contain at least one lowercase letter")
+      .regex(/[0-9]/, "Must contain at least one number"),
+    confirmPassword: z.string().min(1, "Please confirm your new password"),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  })
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: "New password must be different from current password",
+    path: ["newPassword"],
+  });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+export const updateProfileSchema = z.object({
+  displayName: z
+    .string()
+    .min(2, "Display name must be at least 2 characters")
+    .max(60),
+  region: z.string().max(100).optional(),
+  bio: z.string().max(500, "Bio must be under 500 characters").optional(),
+});
+export type UpdateProfileActionInput = z.infer<typeof updateProfileSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const completeOnboardingSchema = z.object({
+  intent: z.enum(["BUY", "SELL", "BOTH"]),
+  region: z.string().optional(),
+});
+export type CompleteOnboardingInput = z.infer<typeof completeOnboardingSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seller schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const approveIdSchema = z.object({
+  userId: z.string().cuid("Invalid user ID"),
+});
+export type ApproveIdInput = z.infer<typeof approveIdSchema>;
+
+export const reviewVerificationSchema = z.object({
+  sellerId: z.string().min(1),
+  decision: z.enum(["APPROVED", "REJECTED"]),
+  notes: z.string().max(500).optional(),
+});
+export type ReviewVerificationInput = z.infer<typeof reviewVerificationSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Problem resolver schema
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const submitProblemSchema = z.object({
+  orderId: z.string().min(1),
+  problemType: z.enum([
+    "CANCEL",
+    "ITEM_DAMAGED",
+    "NOT_AS_DESCRIBED",
+    "WRONG_ITEM",
+    "MISSING_PARTS",
+    "NOT_RECEIVED",
+    "CHANGED_MIND",
+    "PARTIAL_REFUND",
+    "SELLER_NOT_SHIPPING",
+  ]),
+  description: z.string().min(10).max(2000).trim(),
+  evidenceKeys: z.array(z.string()).max(4).optional(),
+  refundAmount: z.number().positive().optional(),
+});
+export type SubmitProblemInput = z.infer<typeof submitProblemSchema>;
+export type ProblemType = SubmitProblemInput["problemType"];
