@@ -6,6 +6,11 @@ import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
+import {
+  orderEventService,
+  ORDER_EVENT_TYPES,
+  ACTOR_ROLES,
+} from "@/modules/orders/order-event.service";
 import type { CreateReviewInput, ReplyToReviewInput } from "./review.types";
 
 export class ReviewService {
@@ -67,6 +72,15 @@ export class ReviewService {
       entityType: "Review",
       entityId: review.id,
       metadata: { orderId: input.orderId, rating: input.rating },
+    });
+
+    orderEventService.recordEvent({
+      orderId: input.orderId,
+      type: ORDER_EVENT_TYPES.REVIEW_SUBMITTED,
+      actorId: userId,
+      actorRole: ACTOR_ROLES.BUYER,
+      summary: `Buyer left a ${input.rating}-star review`,
+      metadata: { reviewId: review.id, rating: input.rating },
     });
 
     logger.info("review.created", {

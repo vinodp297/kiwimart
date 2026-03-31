@@ -18,6 +18,11 @@ import { logger } from "@/shared/logger";
 import { audit } from "@/server/lib/audit";
 import db from "@/lib/db";
 import { transitionOrder } from "@/modules/orders/order.transitions";
+import {
+  orderEventService,
+  ORDER_EVENT_TYPES,
+  ACTOR_ROLES,
+} from "@/modules/orders/order-event.service";
 
 export class WebhookService {
   /**
@@ -163,6 +168,18 @@ export class WebhookService {
       },
     });
 
+    orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.PAYMENT_HELD,
+      actorId: null,
+      actorRole: ACTOR_ROLES.SYSTEM,
+      summary: "Payment authorized and held in escrow",
+      metadata: {
+        stripePaymentIntentId: pi.id,
+        trigger: "amount_capturable_updated",
+      },
+    });
+
     logger.info(
       "webhook.amount_capturable_updated: order moved to PAYMENT_HELD",
       {
@@ -226,6 +243,18 @@ export class WebhookService {
       entityId: orderId,
       metadata: { stripePaymentIntentId: pi.id, amountNzd: pi.amount },
     });
+
+    orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.PAYMENT_HELD,
+      actorId: null,
+      actorRole: ACTOR_ROLES.SYSTEM,
+      summary: "Payment authorized and held in escrow",
+      metadata: {
+        stripePaymentIntentId: pi.id,
+        trigger: "payment_intent_succeeded",
+      },
+    });
   }
 
   private async handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
@@ -272,6 +301,18 @@ export class WebhookService {
       entityId: orderId,
       metadata: {
         stripePaymentIntentId: pi.id,
+        failureCode: pi.last_payment_error?.code,
+      },
+    });
+
+    orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.CANCELLED,
+      actorId: null,
+      actorRole: ACTOR_ROLES.SYSTEM,
+      summary: `Order cancelled: payment failed${pi.last_payment_error?.code ? ` (${pi.last_payment_error.code})` : ""}`,
+      metadata: {
+        trigger: "PAYMENT_FAILED",
         failureCode: pi.last_payment_error?.code,
       },
     });

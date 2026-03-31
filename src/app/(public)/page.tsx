@@ -7,7 +7,7 @@ import { getCached } from "@/server/lib/cache";
 import CATEGORIES from "@/data/categories";
 import LISTINGS from "@/data/listings";
 
-const HIDDEN_CATEGORY_IDS = ["vehicles", "property"];
+const HIDDEN_CATEGORY_IDS = ["property"];
 import ListingCard from "@/components/ListingCard";
 import CategoryPills from "@/components/CategoryPills";
 import TrustBadge from "@/components/TrustBadge";

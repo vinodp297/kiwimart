@@ -258,7 +258,10 @@ model User {
   blocksReceived  BlockedUser[]  @relation("UserBlockedBy")
   cart            Cart?
   verificationApplication VerificationApplication?
-  recentlyViewed  RecentlyViewed[]
+  recentlyViewed         RecentlyViewed[]
+  orderEvents            OrderEvent[]        @relation("OrderEventActor")
+  initiatedInteractions  OrderInteraction[]  @relation("InteractionInitiator")
+  respondedInteractions  OrderInteraction[]  @relation("InteractionResponder")
 
   @@index([email])
   @@index([username])
@@ -525,7 +528,9 @@ model Order {
   listing Listing @relation(fields: [listingId], references: [id])
   review  Review?
   payout  Payout?
-  items   OrderItem[]
+  items        OrderItem[]
+  events       OrderEvent[]
+  interactions OrderInteraction[]
 
   @@index([buyerId])
   @@index([sellerId])
@@ -536,6 +541,63 @@ model Order {
   @@index([buyerId, status])
   @@index([sellerId, status])
   @@index([sellerId, completedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Order Events (audit trail / timeline)
+// ─────────────────────────────────────────────────────────────────────────────
+// Records every state transition and significant action on an order.
+// The UI renders a dynamic timeline from these events.
+// type and actorRole are plain Strings (not enums) so new event types
+// can be added without migrations.
+
+model OrderEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  type      String   // ORDER_CREATED, PAYMENT_HELD, DISPATCHED, COMPLETED, CANCELLED, etc.
+  actorId   String?  // null for SYSTEM actions
+  actorRole String   // BUYER, SELLER, ADMIN, SYSTEM
+  summary   String   // Human-readable description for timeline UI
+  metadata  Json?    // Structured data: tracking numbers, refund amounts, etc.
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor User? @relation("OrderEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Order Interactions (active negotiations)
+// ─────────────────────────────────────────────────────────────────────────────
+// Tracks buyer-seller negotiations that require a response.
+// Pattern: one party requests → other responds → resolution or escalation.
+
+model OrderInteraction {
+  id             String    @id @default(cuid())
+  orderId        String
+  type           String    // CANCEL_REQUEST, RETURN_REQUEST, PARTIAL_REFUND_REQUEST, etc.
+  status         String    @default("PENDING") // PENDING, ACCEPTED, REJECTED, COUNTERED, EXPIRED, ESCALATED, RESOLVED
+  initiatedById  String
+  initiatorRole  String    // BUYER or SELLER
+  reason         String    @db.Text
+  details        Json?     // Amount for partial refund, proposed resolution, counter-offer, etc.
+  responseById   String?
+  responseNote   String?   @db.Text
+  respondedAt    DateTime?
+  expiresAt      DateTime  // When auto-action kicks in if no response
+  autoAction     String    // AUTO_APPROVE, AUTO_REJECT, AUTO_ESCALATE
+  resolvedAt     DateTime?
+  resolution     String?   // REFUNDED, PARTIAL_REFUND, RETURNED, CANCELLED, DISMISSED
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  initiator User  @relation("InteractionInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
+  responder User? @relation("InteractionResponder", fields: [responseById], references: [id], onDelete: SetNull)
+
+  @@index([orderId, status])
+  @@index([expiresAt, status])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

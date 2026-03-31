@@ -9,7 +9,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import CATEGORIES from "@/data/categories";
 
-const HIDDEN_CATEGORY_IDS = ["vehicles", "property"];
+const HIDDEN_CATEGORY_IDS = ["property"];
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function NavBar() {

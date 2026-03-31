@@ -14,6 +14,11 @@ import { createNotification } from "@/modules/notifications/notification.service
 import { paymentService } from "@/modules/payments/payment.service";
 import { sendOrderConfirmationEmail } from "@/server/email";
 import { transitionOrder } from "@/modules/orders/order.transitions";
+import {
+  orderEventService,
+  ORDER_EVENT_TYPES,
+  ACTOR_ROLES,
+} from "@/modules/orders/order-event.service";
 import { stripe } from "@/infrastructure/stripe/client";
 import db from "@/lib/db";
 import { getImageUrl } from "@/lib/image";
@@ -694,6 +699,15 @@ export async function checkoutCart(
         },
       });
 
+      orderEventService.recordEvent({
+        orderId: order.id,
+        type: ORDER_EVENT_TYPES.ORDER_CREATED,
+        actorId: user.id,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: `Cart order placed — ${cart.items.length} item(s), $${(totalNzd / 100).toFixed(2)} NZD`,
+        metadata: { cartId: cart.id, itemCount: cart.items.length, totalNzd },
+      });
+
       // Notify seller (fire-and-forget)
       db.user
         .findUnique({ where: { id: user.id }, select: { displayName: true } })
@@ -771,6 +785,15 @@ export async function checkoutCart(
           data: { status: "ACTIVE" },
         })
         .catch(() => {});
+
+      orderEventService.recordEvent({
+        orderId: order.id,
+        type: ORDER_EVENT_TYPES.CANCELLED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: "Cart order cancelled: payment setup failed",
+        metadata: { trigger: "STRIPE_CREATION_FAILED", cartId: cart.id },
+      });
 
       logger.error("cart.checkout.failed", {
         orderId: order.id,
