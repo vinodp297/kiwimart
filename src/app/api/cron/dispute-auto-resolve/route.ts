@@ -4,7 +4,7 @@
 // Finds unresponsive disputes (72h+ without seller response) and re-evaluates.
 
 import { NextRequest, NextResponse } from "next/server";
-import { processUnresponsiveDisputes } from "@/server/jobs/disputeAutoResolve";
+import { processDisputeAutoResolution } from "@/server/jobs/disputeAutoResolve";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
 import { logger } from "@/shared/logger";
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   try {
-    const result = await processUnresponsiveDisputes();
+    const result = await processDisputeAutoResolution();
 
     return NextResponse.json({
       success: true,

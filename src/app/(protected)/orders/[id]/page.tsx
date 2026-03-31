@@ -41,6 +41,8 @@ import {
   getOrderStatusInfo,
   type OrderForStatus,
 } from "@/lib/orderStatusMessages";
+import ProblemResolver from "@/components/ProblemResolver";
+import { submitCounterEvidence } from "@/server/actions/counterEvidence";
 
 // ── Courier URL detection ────────────────────────────────────────────────────
 function getCourierUrl(trackingNumber: string): string {
@@ -359,6 +361,17 @@ export default function OrderDetailPage() {
   const [showShippingDelay, setShowShippingDelay] = useState(false);
   const [delayReason, setDelayReason] = useState("");
   const [newEstimatedDate, setNewEstimatedDate] = useState("");
+
+  // ProblemResolver modal
+  const [showProblemResolver, setShowProblemResolver] = useState(false);
+
+  // Counter-evidence
+  const [showCounterEvidence, setShowCounterEvidence] = useState(false);
+  const [counterDescription, setCounterDescription] = useState("");
+  const [counterPhotos, setCounterPhotos] = useState<File[]>([]);
+  const [counterPhotoKeys, setCounterPhotoKeys] = useState<string[]>([]);
+  const [uploadingCounter, setUploadingCounter] = useState(false);
+  const [submittingCounter, setSubmittingCounter] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -856,6 +869,52 @@ export default function OrderDetailPage() {
     }
   }
 
+  async function handleUploadCounterPhotos(files: File[]) {
+    if (files.length === 0) return;
+    setUploadingCounter(true);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      const res = await uploadOrderEvidence(fd, "delivery");
+      if (res.success) {
+        setCounterPhotoKeys((prev) => [...prev, ...res.data.keys]);
+        setCounterPhotos((prev) => [...prev, ...files]);
+      } else {
+        setError(res.error);
+      }
+    } catch {
+      setError("Failed to upload photos.");
+    }
+    setUploadingCounter(false);
+  }
+
+  async function handleSubmitCounterEvidence() {
+    if (counterDescription.length < 10) {
+      setError("Please describe your evidence (at least 10 characters).");
+      return;
+    }
+    setError(null);
+    setSubmittingCounter(true);
+    const res = await submitCounterEvidence({
+      orderId,
+      description: counterDescription,
+      evidenceKeys: counterPhotoKeys.length > 0 ? counterPhotoKeys : undefined,
+    });
+    if (res.success) {
+      setActionSuccess(
+        "Counter-evidence submitted. The case will be re-evaluated.",
+      );
+      setShowCounterEvidence(false);
+      setCounterDescription("");
+      setCounterPhotos([]);
+      setCounterPhotoKeys([]);
+      await refreshOrderData();
+    } else {
+      setError(res.error);
+    }
+    setSubmittingCounter(false);
+  }
+
   if (loading) {
     return (
       <>
@@ -1102,6 +1161,237 @@ export default function OrderDetailPage() {
 
           {/* Timeline — dynamic event-driven, replaces static stepper */}
           <OrderTimeline events={timelineEvents} currentStatus={order.status} />
+
+          {/* ── Queued auto-resolution card (counter-evidence) ─────── */}
+          {isDisputed &&
+            (() => {
+              const queuedEvent = timelineEvents.find(
+                (e) =>
+                  e.type === "AUTO_RESOLVED" &&
+                  (e.metadata as Record<string, unknown> | null)?.status ===
+                    "QUEUED",
+              );
+              if (!queuedEvent) return null;
+              const meta = queuedEvent.metadata as Record<string, unknown>;
+              const executeAt = meta?.executeAt
+                ? new Date(meta.executeAt as string)
+                : null;
+              const hoursLeft = executeAt
+                ? Math.max(
+                    0,
+                    Math.ceil(
+                      (executeAt.getTime() - Date.now()) / (1000 * 60 * 60),
+                    ),
+                  )
+                : null;
+              const decision = meta?.decision as string;
+              const outcomeText =
+                decision === "AUTO_REFUND"
+                  ? "resolved with a refund to the buyer"
+                  : "dismissed in the seller's favour";
+              const isAffectedParty =
+                (decision === "AUTO_REFUND" && !order.isBuyer) ||
+                (decision === "AUTO_DISMISS" && order.isBuyer);
+
+              return (
+                <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5 mb-6">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#d97706"
+                        strokeWidth="2"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[13.5px] font-semibold text-amber-900">
+                        Resolution pending
+                        {hoursLeft !== null && hoursLeft > 0
+                          ? ` — ${hoursLeft} hour${hoursLeft !== 1 ? "s" : ""} remaining`
+                          : " — processing soon"}
+                      </p>
+                      <p className="text-[12.5px] text-amber-800 mt-1">
+                        Based on the evidence reviewed, this dispute is
+                        scheduled to be <strong>{outcomeText}</strong>.
+                      </p>
+
+                      {isAffectedParty && (
+                        <div className="mt-3">
+                          {!showCounterEvidence ? (
+                            <button
+                              type="button"
+                              onClick={() => setShowCounterEvidence(true)}
+                              className="text-[12.5px] font-semibold text-amber-800 hover:text-amber-900 underline transition"
+                            >
+                              Have additional evidence? Submit it now
+                            </button>
+                          ) : (
+                            <div className="mt-2 space-y-3 bg-white rounded-xl p-4 border border-amber-200">
+                              <textarea
+                                value={counterDescription}
+                                onChange={(e) =>
+                                  setCounterDescription(e.target.value)
+                                }
+                                placeholder="Describe your evidence..."
+                                rows={3}
+                                maxLength={2000}
+                                className="w-full px-3 py-2 rounded-lg border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition resize-none"
+                              />
+                              {counterPhotos.length > 0 && (
+                                <div className="flex gap-2 flex-wrap">
+                                  {counterPhotos.map((f, i) => (
+                                    <div
+                                      key={i}
+                                      className="relative w-14 h-14 rounded-lg overflow-hidden border border-[#E3E0D9]"
+                                    >
+                                      <img
+                                        src={URL.createObjectURL(f)}
+                                        alt={`Evidence ${i + 1}`}
+                                        className="w-full h-full object-cover"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setCounterPhotos((p) =>
+                                            p.filter((_, idx) => idx !== i),
+                                          );
+                                          setCounterPhotoKeys((k) =>
+                                            k.filter((_, idx) => idx !== i),
+                                          );
+                                        }}
+                                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-black/60 text-white text-[9px] flex items-center justify-center"
+                                      >
+                                        &times;
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {counterPhotos.length < 4 && (
+                                <label
+                                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-[12px] font-medium transition ${uploadingCounter ? "text-[#9E9A91] cursor-wait" : "border-[#E3E0D9] text-[#73706A] hover:border-[#D4A843] hover:text-[#D4A843]"}`}
+                                >
+                                  {uploadingCounter
+                                    ? "Uploading..."
+                                    : "Add photos"}
+                                  <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    multiple
+                                    className="hidden"
+                                    disabled={uploadingCounter}
+                                    onChange={(e) => {
+                                      handleUploadCounterPhotos(
+                                        Array.from(e.target.files ?? []).slice(
+                                          0,
+                                          4 - counterPhotos.length,
+                                        ),
+                                      );
+                                      e.target.value = "";
+                                    }}
+                                  />
+                                </label>
+                              )}
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="gold"
+                                  size="sm"
+                                  onClick={handleSubmitCounterEvidence}
+                                  loading={submittingCounter}
+                                  disabled={
+                                    counterDescription.length < 10 ||
+                                    uploadingCounter
+                                  }
+                                >
+                                  Submit evidence
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setShowCounterEvidence(false)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!isAffectedParty && (
+                        <p className="text-[12px] text-amber-700 mt-2">
+                          The other party has been notified and can submit
+                          counter-evidence before the resolution takes effect.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+          {/* ── Dispute transparency card (both parties see same info) ── */}
+          {isDisputed && (
+            <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 mb-6">
+              <h3 className="text-[13.5px] font-semibold text-[#141414] mb-3">
+                Dispute status
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-[12.5px]">
+                  <span className="text-[#9E9A91]">Status:</span>
+                  <span
+                    className={`font-medium ${order.sellerRespondedAt ? "text-sky-700" : "text-amber-700"}`}
+                  >
+                    {order.sellerRespondedAt
+                      ? "Under review"
+                      : "Awaiting seller response"}
+                  </span>
+                </div>
+                {order.disputeReason && (
+                  <div className="text-[12.5px]">
+                    <span className="text-[#9E9A91]">Reason: </span>
+                    <span className="text-[#141414]">
+                      {order.disputeReason.replace(/_/g, " ").toLowerCase()}
+                    </span>
+                  </div>
+                )}
+                {order.disputeNotes && (
+                  <div className="text-[12.5px]">
+                    <span className="text-[#9E9A91]">Description: </span>
+                    <span className="text-[#141414] line-clamp-3">
+                      {order.disputeNotes}
+                    </span>
+                  </div>
+                )}
+                {order.sellerRespondedAt && order.sellerResponse && (
+                  <div className="bg-[#FAFAF8] rounded-xl p-3 border border-[#E3E0D9]">
+                    <p className="text-[11.5px] text-[#9E9A91] font-medium mb-1">
+                      Seller response (
+                      {new Date(order.sellerRespondedAt).toLocaleDateString(
+                        "en-NZ",
+                        { day: "numeric", month: "short" },
+                      )}
+                      )
+                    </p>
+                    <p className="text-[12.5px] text-[#141414] line-clamp-4">
+                      {order.sellerResponse}
+                    </p>
+                  </div>
+                )}
+                <div className="bg-sky-50 rounded-xl p-3 border border-sky-100">
+                  <p className="text-[12px] text-sky-800">
+                    {richStatus.whatHappensNext}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Dispute details — separate from timeline for seller response form */}
           <div className="mb-6">
@@ -1753,6 +2043,33 @@ export default function OrderDetailPage() {
                 </Button>
               </Link>
             )}
+
+            {/* Buyer: unified "Need help?" — replaces individual dispute/cancel/return buttons */}
+            {order.isBuyer &&
+              !["awaiting_payment", "cancelled", "refunded"].includes(
+                order.status,
+              ) &&
+              !order.disputeReason && (
+                <button
+                  type="button"
+                  onClick={() => setShowProblemResolver(true)}
+                  className="text-[12.5px] text-[#9E9A91] hover:text-[#D4A843] font-medium transition flex items-center gap-1.5"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  Need help with this order?
+                </button>
+              )}
           </div>
         </div>
       </main>
@@ -2809,6 +3126,21 @@ export default function OrderDetailPage() {
               Submit dispute
             </Button>
           </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── ProblemResolver Modal ─────────────────────────────────── */}
+      {showProblemResolver && (
+        <ModalOverlay onClose={() => setShowProblemResolver(false)}>
+          <ProblemResolver
+            orderId={orderId}
+            status={order.status}
+            listingTitle={order.listingTitle}
+            sellerName={order.otherPartyName}
+            totalNzd={order.total}
+            onClose={() => setShowProblemResolver(false)}
+            onSuccess={refreshOrderData}
+          />
         </ModalOverlay>
       )}
     </>

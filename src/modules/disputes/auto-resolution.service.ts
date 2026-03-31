@@ -1,13 +1,8 @@
 // src/modules/disputes/auto-resolution.service.ts
 // ─── Auto-Resolution Engine ────────────────────────────────────────────────
-// Evaluates disputed orders and returns a recommendation:
-//   AUTO_REFUND   — clear-cut buyer case, refund automatically
-//   AUTO_DISMISS  — clear-cut seller case, dismiss dispute
-//   ESCALATE_HUMAN — ambiguous, needs admin review
-//   FLAG_FRAUD    — suspicious pattern detected, do not auto-resolve
-//
-// Evidence scoring: -100 (strongly favours seller) to +100 (strongly favours buyer).
-// All decisions are logged with full reasoning for audit purposes.
+// Evaluates disputed orders using evidence scoring and returns a recommendation.
+// Supports a 24-hour cooling period before execution so the other party can
+// submit counter-evidence.
 
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
@@ -21,6 +16,44 @@ import {
 } from "@/modules/orders/order-event.service";
 import { trustMetricsService } from "@/modules/trust/trust-metrics.service";
 import { audit } from "@/server/lib/audit";
+
+// ── Scoring Configuration ─────────────────────────────────────────────────
+// All weights in one place — easy to extract to DB/env later.
+
+export const RESOLUTION_WEIGHTS = {
+  // Favour buyer (positive score)
+  NO_TRACKING_NUMBER: 30,
+  TRACKING_NO_MOVEMENT_7D: 25,
+  NO_DISPATCH_PHOTOS: 20,
+  SELLER_UNRESPONSIVE_72H: 25,
+  SELLER_HIGH_DISPUTE_RATE: 15,
+  BUYER_UPLOADED_EVIDENCE: 10,
+  BUYER_ATTEMPTED_RESOLUTION: 10,
+  SELLER_REJECTED_WITHOUT_COUNTER: 10,
+
+  // Favour seller (negative score)
+  BUYER_CONFIRMED_DELIVERY_OK: -30,
+  TRACKING_SHOWS_DELIVERED: -25,
+  SELLER_HAS_DISPATCH_PHOTOS: -15,
+  SELLER_RESPONDED_WITH_EVIDENCE: -15,
+  BUYER_HIGH_DISPUTE_RATE: -20,
+  DISPUTE_IS_CHANGE_OF_MIND: -25,
+  SELLER_LOW_DISPUTE_RATE: -10,
+
+  // Decision thresholds
+  AUTO_REFUND_THRESHOLD: 60,
+  AUTO_DISMISS_THRESHOLD: -40,
+
+  // Fraud detection
+  BUYER_FRAUD_DISPUTE_LIMIT: 5,
+  SELLER_FRAUD_DISPUTE_RATE: 0.2,
+
+  // Rate limiting — skip auto-resolution after N disputes
+  BUYER_HUMAN_REVIEW_AFTER: 3,
+
+  // Cooling period before execution (hours)
+  COOLING_PERIOD_HOURS: 24,
+} as const;
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -40,22 +73,16 @@ export interface DisputeEvaluation {
   score: number;
   decision: AutoResolutionDecision;
   factors: EvidenceFactor[];
-  recommendation: string; // human-readable summary for admin panel
+  recommendation: string;
+  coolingPeriodHours: number;
+  canAutoResolve: boolean;
 }
-
-// ── Decision thresholds ───────────────────────────────────────────────────
-
-const THRESHOLD_AUTO_REFUND = 60;
-const THRESHOLD_AUTO_DISMISS = -40;
-const FRAUD_BUYER_DISPUTES_30D = 5;
-const FRAUD_SELLER_DISPUTE_RATE = 20; // percentage
 
 // ── Service ───────────────────────────────────────────────────────────────
 
 export class AutoResolutionService {
   /**
    * Evaluate a disputed order and return a resolution recommendation.
-   * Does NOT execute any action — the caller decides what to do.
    */
   async evaluateDispute(orderId: string): Promise<DisputeEvaluation> {
     const order = await db.order.findUnique({
@@ -79,50 +106,61 @@ export class AutoResolutionService {
       },
     });
 
-    if (!order) {
-      throw new Error(`Order ${orderId} not found`);
-    }
+    if (!order) throw new Error(`Order ${orderId} not found`);
 
     const factors: EvidenceFactor[] = [];
     let score = 0;
+    const W = RESOLUTION_WEIGHTS;
 
-    // ── Fetch trust metrics ─────────────────────────────────────────
+    // Fetch trust metrics
     const [buyerMetrics, sellerMetrics] = await Promise.all([
       trustMetricsService.getBuyerMetrics(order.buyerId),
       trustMetricsService.getSellerMetrics(order.sellerId),
     ]);
 
-    // ── Factors that favour buyer (increase score) ──────────────────
+    // ── Rate limiting check ─────────────────────────────────────────
+    if (buyerMetrics.disputesLast30Days > W.BUYER_HUMAN_REVIEW_AFTER) {
+      return {
+        score: 0,
+        decision: "ESCALATE_HUMAN",
+        factors: [
+          {
+            factor: "BUYER_DISPUTE_RATE_LIMITED",
+            points: 0,
+            description: `Buyer has ${buyerMetrics.disputesLast30Days} disputes in 30 days — auto-resolution skipped, requires human review`,
+          },
+        ],
+        recommendation: `Escalated: Buyer exceeded auto-resolution threshold (${buyerMetrics.disputesLast30Days} disputes in 30 days).`,
+        coolingPeriodHours: 0,
+        canAutoResolve: false,
+      };
+    }
 
-    // No tracking number
+    // ── Factors that FAVOUR BUYER (increase score) ──────────────────
+
     if (!order.trackingNumber) {
-      const pts = 30;
-      score += pts;
+      score += W.NO_TRACKING_NUMBER;
       factors.push({
-        factor: "NO_TRACKING",
-        points: pts,
+        factor: "NO_TRACKING_NUMBER",
+        points: W.NO_TRACKING_NUMBER,
         description: "Seller did not provide a tracking number",
       });
     }
 
-    // Tracking shows no movement after 7+ days (check dispatch date)
     if (order.dispatchedAt) {
       const daysSinceDispatch =
         (Date.now() - order.dispatchedAt.getTime()) / (1000 * 60 * 60 * 24);
-      // If dispatched 7+ days ago and buyer hasn't confirmed delivery,
-      // treat as "no movement" (we can't check courier APIs directly)
       if (daysSinceDispatch >= 7 && !order.completedAt) {
-        const pts = 25;
-        score += pts;
+        score += W.TRACKING_NO_MOVEMENT_7D;
         factors.push({
-          factor: "NO_TRACKING_MOVEMENT",
-          points: pts,
+          factor: "TRACKING_NO_MOVEMENT_7D",
+          points: W.TRACKING_NO_MOVEMENT_7D,
           description: `Dispatched ${Math.floor(daysSinceDispatch)} days ago with no delivery confirmation`,
         });
       }
     }
 
-    // No dispatch photos
+    // Check dispatch photos
     const dispatchEvent = await db.orderEvent.findFirst({
       where: { orderId, type: "DISPATCHED" },
       select: { metadata: true },
@@ -131,57 +169,50 @@ export class AutoResolutionService {
       string,
       unknown
     >;
-    if (
-      !Array.isArray(dispatchMeta.dispatchPhotos) ||
-      dispatchMeta.dispatchPhotos.length === 0
-    ) {
-      const pts = 20;
-      score += pts;
+    const hasDispatchPhotos =
+      Array.isArray(dispatchMeta.dispatchPhotos) &&
+      dispatchMeta.dispatchPhotos.length > 0;
+
+    if (!hasDispatchPhotos) {
+      score += W.NO_DISPATCH_PHOTOS;
       factors.push({
         factor: "NO_DISPATCH_PHOTOS",
-        points: pts,
+        points: W.NO_DISPATCH_PHOTOS,
         description: "Seller did not upload dispatch evidence photos",
       });
     }
 
-    // Seller didn't respond to dispute within 72 hours
     if (order.disputeOpenedAt && !order.sellerRespondedAt) {
       const hoursSinceDispute =
         (Date.now() - order.disputeOpenedAt.getTime()) / (1000 * 60 * 60);
       if (hoursSinceDispute >= 72) {
-        const pts = 25;
-        score += pts;
+        score += W.SELLER_UNRESPONSIVE_72H;
         factors.push({
-          factor: "SELLER_UNRESPONSIVE",
-          points: pts,
-          description: `Seller has not responded to dispute (${Math.floor(hoursSinceDispute)}h elapsed)`,
+          factor: "SELLER_UNRESPONSIVE_72H",
+          points: W.SELLER_UNRESPONSIVE_72H,
+          description: `Seller has not responded (${Math.floor(hoursSinceDispute)}h elapsed)`,
         });
       }
     }
 
-    // Seller has high dispute rate (>15%)
     if (sellerMetrics.totalOrders >= 5 && sellerMetrics.disputeRate > 15) {
-      const pts = 15;
-      score += pts;
+      score += W.SELLER_HIGH_DISPUTE_RATE;
       factors.push({
-        factor: "HIGH_SELLER_DISPUTE_RATE",
-        points: pts,
-        description: `Seller dispute rate: ${sellerMetrics.disputeRate}% (${sellerMetrics.disputeCount}/${sellerMetrics.totalOrders})`,
+        factor: "SELLER_HIGH_DISPUTE_RATE",
+        points: W.SELLER_HIGH_DISPUTE_RATE,
+        description: `Seller dispute rate: ${sellerMetrics.disputeRate}%`,
       });
     }
 
-    // Buyer uploaded evidence photos
     if (order.disputeEvidenceUrls.length > 0) {
-      const pts = 10;
-      score += pts;
+      score += W.BUYER_UPLOADED_EVIDENCE;
       factors.push({
-        factor: "BUYER_EVIDENCE",
-        points: pts,
+        factor: "BUYER_UPLOADED_EVIDENCE",
+        points: W.BUYER_UPLOADED_EVIDENCE,
         description: `Buyer uploaded ${order.disputeEvidenceUrls.length} evidence photo(s)`,
       });
     }
 
-    // Buyer attempted to resolve with seller before filing (has interaction history)
     const priorInteractions = await db.orderInteraction.count({
       where: {
         orderId,
@@ -190,16 +221,14 @@ export class AutoResolutionService {
       },
     });
     if (priorInteractions > 0) {
-      const pts = 10;
-      score += pts;
+      score += W.BUYER_ATTEMPTED_RESOLUTION;
       factors.push({
         factor: "BUYER_ATTEMPTED_RESOLUTION",
-        points: pts,
+        points: W.BUYER_ATTEMPTED_RESOLUTION,
         description: `Buyer filed ${priorInteractions} interaction(s) before opening dispute`,
       });
     }
 
-    // Previous interaction was rejected by seller without counter
     const rejectedInteraction = await db.orderInteraction.findFirst({
       where: {
         orderId,
@@ -209,148 +238,151 @@ export class AutoResolutionService {
       orderBy: { createdAt: "desc" },
     });
     if (rejectedInteraction) {
-      const pts = 10;
-      score += pts;
+      score += W.SELLER_REJECTED_WITHOUT_COUNTER;
       factors.push({
         factor: "SELLER_REJECTED_WITHOUT_COUNTER",
-        points: pts,
+        points: W.SELLER_REJECTED_WITHOUT_COUNTER,
         description:
           "Seller rejected buyer's previous request without counter-offer",
       });
     }
 
-    // ── Factors that favour seller (decrease score) ─────────────────
+    // ── Factors that FAVOUR SELLER (decrease score) ─────────────────
 
-    // Buyer confirmed delivery and item was "as described"
     const deliveryOkEvent = await db.orderEvent.findFirst({
       where: { orderId, type: "DELIVERY_CONFIRMED_OK" },
-      select: { metadata: true },
     });
     if (deliveryOkEvent) {
-      const pts = -30;
-      score += pts;
+      score += W.BUYER_CONFIRMED_DELIVERY_OK;
       factors.push({
-        factor: "BUYER_CONFIRMED_OK",
-        points: pts,
+        factor: "BUYER_CONFIRMED_DELIVERY_OK",
+        points: W.BUYER_CONFIRMED_DELIVERY_OK,
         description: 'Buyer previously confirmed item arrived "as described"',
       });
     }
 
-    // Tracking shows delivered (we check if order reached DELIVERED/COMPLETED)
     if (order.completedAt) {
-      const pts = -25;
-      score += pts;
+      score += W.TRACKING_SHOWS_DELIVERED;
       factors.push({
-        factor: "TRACKING_DELIVERED",
-        points: pts,
-        description: "Order was marked as delivered/completed before dispute",
+        factor: "TRACKING_SHOWS_DELIVERED",
+        points: W.TRACKING_SHOWS_DELIVERED,
+        description: "Order was completed/delivered before dispute",
       });
     }
 
-    // Seller uploaded dispatch photos
-    if (
-      Array.isArray(dispatchMeta.dispatchPhotos) &&
-      dispatchMeta.dispatchPhotos.length > 0
-    ) {
-      const pts = -15;
-      score += pts;
+    if (hasDispatchPhotos) {
+      score += W.SELLER_HAS_DISPATCH_PHOTOS;
       factors.push({
-        factor: "SELLER_DISPATCH_PHOTOS",
-        points: pts,
-        description: `Seller uploaded ${dispatchMeta.dispatchPhotos.length} dispatch evidence photo(s)`,
+        factor: "SELLER_HAS_DISPATCH_PHOTOS",
+        points: W.SELLER_HAS_DISPATCH_PHOTOS,
+        description: `Seller uploaded ${(dispatchMeta.dispatchPhotos as unknown[]).length} dispatch photo(s)`,
       });
     }
 
-    // Seller responded to dispute with evidence
     if (order.sellerResponse) {
-      const pts = -15;
-      score += pts;
+      score += W.SELLER_RESPONDED_WITH_EVIDENCE;
       factors.push({
-        factor: "SELLER_RESPONDED",
-        points: pts,
+        factor: "SELLER_RESPONDED_WITH_EVIDENCE",
+        points: W.SELLER_RESPONDED_WITH_EVIDENCE,
         description: "Seller provided a written response to the dispute",
       });
     }
 
-    // Buyer has high dispute rate (>5 in 30 days)
     if (buyerMetrics.disputesLast30Days > 5) {
-      const pts = -20;
-      score += pts;
+      score += W.BUYER_HIGH_DISPUTE_RATE;
       factors.push({
-        factor: "HIGH_BUYER_DISPUTE_RATE",
-        points: pts,
+        factor: "BUYER_HIGH_DISPUTE_RATE",
+        points: W.BUYER_HIGH_DISPUTE_RATE,
         description: `Buyer has ${buyerMetrics.disputesLast30Days} disputes in the last 30 days`,
       });
     }
 
-    // Dispute reason is "changed mind" or similar (OTHER reason with no strong claim)
     if (order.disputeReason === "OTHER") {
-      const pts = -25;
-      score += pts;
+      score += W.DISPUTE_IS_CHANGE_OF_MIND;
       factors.push({
-        factor: "WEAK_DISPUTE_REASON",
-        points: pts,
-        description: `Dispute reason: "${order.disputeReason}" — no specific issue claimed`,
+        factor: "DISPUTE_IS_CHANGE_OF_MIND",
+        points: W.DISPUTE_IS_CHANGE_OF_MIND,
+        description: `Dispute reason: "${order.disputeReason}" — no specific issue`,
       });
     }
 
-    // Seller has low dispute rate (<5%)
     if (sellerMetrics.totalOrders >= 5 && sellerMetrics.disputeRate < 5) {
-      const pts = -10;
-      score += pts;
+      score += W.SELLER_LOW_DISPUTE_RATE;
       factors.push({
-        factor: "LOW_SELLER_DISPUTE_RATE",
-        points: pts,
+        factor: "SELLER_LOW_DISPUTE_RATE",
+        points: W.SELLER_LOW_DISPUTE_RATE,
         description: `Seller has excellent track record: ${sellerMetrics.disputeRate}% dispute rate`,
       });
     }
 
-    // ── Decision ────────────────────────────────────────────────────
-
-    // Fraud check takes priority
+    // ── Special override: photos conflict with "not as described" ────
+    // If seller has dispatch photos AND buyer claims not-as-described, always escalate
     if (
-      buyerMetrics.disputesLast30Days > FRAUD_BUYER_DISPUTES_30D ||
+      hasDispatchPhotos &&
+      (order.disputeReason === "ITEM_NOT_AS_DESCRIBED" ||
+        order.disputeReason === "ITEM_DAMAGED")
+    ) {
+      return {
+        score,
+        decision: "ESCALATE_HUMAN",
+        factors: [
+          ...factors,
+          {
+            factor: "PHOTO_CONFLICT_OVERRIDE",
+            points: 0,
+            description:
+              "Seller has dispatch photos but buyer claims damage/mismatch — requires human review",
+          },
+        ],
+        recommendation: `Escalated: Dispatch photos exist but buyer claims ${order.disputeReason.replace(/_/g, " ").toLowerCase()}. Score: ${score}. Needs human comparison.`,
+        coolingPeriodHours: 0,
+        canAutoResolve: false,
+      };
+    }
+
+    // ── Fraud check ─────────────────────────────────────────────────
+    if (
+      buyerMetrics.disputesLast30Days > W.BUYER_FRAUD_DISPUTE_LIMIT ||
       (sellerMetrics.totalOrders >= 5 &&
-        sellerMetrics.disputeRate > FRAUD_SELLER_DISPUTE_RATE)
+        sellerMetrics.disputeRate / 100 > W.SELLER_FRAUD_DISPUTE_RATE)
     ) {
       const flagTarget =
-        buyerMetrics.disputesLast30Days > FRAUD_BUYER_DISPUTES_30D
+        buyerMetrics.disputesLast30Days > W.BUYER_FRAUD_DISPUTE_LIMIT
           ? "buyer"
           : "seller";
-      const recommendation = `FRAUD FLAG: ${flagTarget === "buyer" ? `Buyer has ${buyerMetrics.disputesLast30Days} disputes in 30 days` : `Seller dispute rate ${sellerMetrics.disputeRate}%`}. Score: ${score}. Requires manual review.`;
-
-      logger.warn("auto-resolution.fraud_flagged", {
-        orderId,
-        score,
-        flagTarget,
-      });
 
       return {
         score,
         decision: "FLAG_FRAUD",
         factors,
-        recommendation,
+        recommendation: `FRAUD FLAG: ${flagTarget === "buyer" ? `Buyer has ${buyerMetrics.disputesLast30Days} disputes in 30 days` : `Seller dispute rate ${sellerMetrics.disputeRate}%`}. Score: ${score}. Manual review required.`,
+        coolingPeriodHours: 0,
+        canAutoResolve: false,
       };
     }
 
+    // ── Decision ────────────────────────────────────────────────────
     let decision: AutoResolutionDecision;
     let recommendation: string;
+    let canAutoResolve = false;
 
-    if (score >= THRESHOLD_AUTO_REFUND) {
+    if (score >= W.AUTO_REFUND_THRESHOLD) {
       decision = "AUTO_REFUND";
-      recommendation = `Auto-resolved: Refund buyer. Score: ${score >= 0 ? "+" : ""}${score}. Factors: ${factors
+      canAutoResolve = true;
+      recommendation = `Auto-refund recommended. Score: +${score}. Key factors: ${factors
         .filter((f) => f.points > 0)
         .map((f) => f.description)
         .join("; ")}.`;
-    } else if (score <= THRESHOLD_AUTO_DISMISS) {
+    } else if (score <= W.AUTO_DISMISS_THRESHOLD) {
       decision = "AUTO_DISMISS";
-      recommendation = `Auto-resolved: Dismiss in seller's favour. Score: ${score}. Factors: ${factors
+      canAutoResolve = true;
+      recommendation = `Auto-dismiss recommended. Score: ${score}. Key factors: ${factors
         .filter((f) => f.points < 0)
         .map((f) => f.description)
         .join("; ")}.`;
     } else {
       decision = "ESCALATE_HUMAN";
-      recommendation = `Escalated for admin review. Score: ${score}. No clear resolution — evidence is mixed. Top factors: ${factors
+      recommendation = `Escalated for admin review. Score: ${score}. Mixed evidence — top factors: ${factors
         .sort((a, b) => Math.abs(b.points) - Math.abs(a.points))
         .slice(0, 3)
         .map((f) => `${f.description} (${f.points >= 0 ? "+" : ""}${f.points})`)
@@ -364,15 +396,119 @@ export class AutoResolutionService {
       factorCount: factors.length,
     });
 
-    return { score, decision, factors, recommendation };
+    return {
+      score,
+      decision,
+      factors,
+      recommendation,
+      coolingPeriodHours: canAutoResolve ? W.COOLING_PERIOD_HOURS : 0,
+      canAutoResolve,
+    };
   }
 
   /**
-   * Execute an auto-resolution decision.
-   * AUTO_REFUND: transitions order to REFUNDED, initiates Stripe refund.
-   * AUTO_DISMISS: resolves dispute in seller's favour, transitions to previous state.
-   * FLAG_FRAUD: records fraud warning, no state change.
-   * ESCALATE_HUMAN: no action, just records event.
+   * Queue an auto-resolution with a 24-hour cooling period.
+   * The other party is notified and can submit counter-evidence.
+   */
+  async queueAutoResolution(orderId: string): Promise<DisputeEvaluation> {
+    const evaluation = await this.evaluateDispute(orderId);
+
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      select: {
+        buyerId: true,
+        sellerId: true,
+        listing: { select: { title: true } },
+      },
+    });
+
+    if (!order) throw new Error(`Order ${orderId} not found`);
+
+    if (evaluation.canAutoResolve) {
+      const executeAt = new Date(
+        Date.now() + evaluation.coolingPeriodHours * 60 * 60 * 1000,
+      );
+
+      // Record the queued decision
+      orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.AUTO_RESOLVED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: `Auto-resolution queued: ${evaluation.decision}. Executes in ${evaluation.coolingPeriodHours}h unless counter-evidence is provided.`,
+        metadata: {
+          decision: evaluation.decision,
+          score: evaluation.score,
+          factors: evaluation.factors,
+          recommendation: evaluation.recommendation,
+          executeAt: executeAt.toISOString(),
+          status: "QUEUED",
+        },
+      });
+
+      // Notify the party who would be adversely affected
+      const affectedPartyId =
+        evaluation.decision === "AUTO_REFUND" ? order.sellerId : order.buyerId;
+      const outcomeText =
+        evaluation.decision === "AUTO_REFUND"
+          ? "resolved with a refund to the buyer"
+          : "dismissed in the seller's favour";
+
+      createNotification({
+        userId: affectedPartyId,
+        type: "ORDER_DISPUTED",
+        title: "Dispute resolution pending",
+        body: `Based on our review, this dispute will be ${outcomeText} in 24 hours unless you provide additional evidence.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }).catch(() => {});
+
+      logger.info("auto-resolution.queued", {
+        orderId,
+        decision: evaluation.decision,
+        executeAt: executeAt.toISOString(),
+      });
+    } else {
+      // ESCALATE_HUMAN or FLAG_FRAUD — record evaluation for admin
+      orderEventService.recordEvent({
+        orderId,
+        type:
+          evaluation.decision === "FLAG_FRAUD"
+            ? ORDER_EVENT_TYPES.FRAUD_FLAGGED
+            : ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: `Auto-resolution: ${evaluation.decision}. Score: ${evaluation.score}`,
+        metadata: {
+          decision: evaluation.decision,
+          score: evaluation.score,
+          factors: evaluation.factors,
+          recommendation: evaluation.recommendation,
+          status:
+            evaluation.decision === "FLAG_FRAUD" ? "FLAGGED" : "ESCALATED",
+        },
+      });
+
+      if (evaluation.decision === "FLAG_FRAUD") {
+        audit({
+          userId: null,
+          action: "FRAUD_FLAGGED",
+          entityType: "Order",
+          entityId: orderId,
+          metadata: {
+            trigger: "AUTO_RESOLUTION",
+            score: evaluation.score,
+            recommendation: evaluation.recommendation,
+          },
+        });
+      }
+    }
+
+    return evaluation;
+  }
+
+  /**
+   * Execute an auto-resolution decision (called after cooling period).
    */
   async executeDecision(
     orderId: string,
@@ -391,253 +527,186 @@ export class AutoResolutionService {
       },
     });
 
-    if (!order) {
-      throw new Error(`Order ${orderId} not found`);
-    }
+    if (!order) throw new Error(`Order ${orderId} not found`);
 
-    switch (evaluation.decision) {
-      case "AUTO_REFUND": {
-        // Refund via Stripe
-        if (order.stripePaymentIntentId) {
-          try {
-            await paymentService.refundPayment({
-              paymentIntentId: order.stripePaymentIntentId,
-              orderId: order.id,
-              reason: "Auto-resolved dispute: buyer refund",
-            });
-          } catch (err) {
-            logger.error("auto-resolution.refund_failed", {
-              orderId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-            // Fall through — still record the event, admin can handle refund manually
-          }
-        }
-
-        // Transition to REFUNDED
+    if (evaluation.decision === "AUTO_REFUND") {
+      // Refund via Stripe
+      if (order.stripePaymentIntentId) {
         try {
-          await transitionOrder(
+          await paymentService.refundPayment({
+            paymentIntentId: order.stripePaymentIntentId,
+            orderId: order.id,
+            reason: "Auto-resolved dispute: buyer refund",
+          });
+        } catch (err) {
+          logger.error("auto-resolution.refund_failed", {
             orderId,
-            "REFUNDED",
-            {
-              disputeResolvedAt: new Date(),
-            },
-            { fromStatus: "DISPUTED" },
-          );
-        } catch {
-          // May already be in another state
-          logger.warn("auto-resolution.transition_failed", {
-            orderId,
-            targetStatus: "REFUNDED",
+            error: err instanceof Error ? err.message : String(err),
           });
         }
-
-        // Restore listing
-        if (order.listing) {
-          await db.listing
-            .updateMany({
-              where: { id: order.listing.id, status: "SOLD" },
-              data: { status: "ACTIVE" },
-            })
-            .catch(() => {});
-        }
-
-        // Record event with full reasoning
-        orderEventService.recordEvent({
-          orderId,
-          type: ORDER_EVENT_TYPES.AUTO_RESOLVED,
-          actorId: null,
-          actorRole: ACTOR_ROLES.SYSTEM,
-          summary: `Auto-resolved: Full refund to buyer. Score: ${evaluation.score}`,
-          metadata: {
-            decision: evaluation.decision,
-            score: evaluation.score,
-            factors: evaluation.factors,
-            recommendation: evaluation.recommendation,
-          },
-        });
-
-        orderEventService.recordEvent({
-          orderId,
-          type: ORDER_EVENT_TYPES.REFUNDED,
-          actorId: null,
-          actorRole: ACTOR_ROLES.SYSTEM,
-          summary: "Order refunded via auto-resolution engine",
-        });
-
-        // Notify both parties
-        createNotification({
-          userId: order.buyerId,
-          type: "SYSTEM",
-          title: "Dispute resolved — refund issued",
-          body: `Your dispute has been resolved in your favour. A full refund of $${(order.totalNzd / 100).toFixed(2)} is being processed.`,
-          orderId,
-          link: `/orders/${orderId}`,
-        }).catch(() => {});
-
-        createNotification({
-          userId: order.sellerId,
-          type: "SYSTEM",
-          title: "Dispute resolved — refund issued to buyer",
-          body: `The dispute on "${order.listing?.title ?? "your listing"}" has been resolved with a refund to the buyer.`,
-          orderId,
-          link: `/orders/${orderId}`,
-        }).catch(() => {});
-
-        audit({
-          userId: null,
-          action: "DISPUTE_RESOLVED",
-          entityType: "Order",
-          entityId: orderId,
-          metadata: {
-            trigger: "AUTO_RESOLUTION",
-            decision: "AUTO_REFUND",
-            score: evaluation.score,
-          },
-        });
-
-        break;
       }
 
-      case "AUTO_DISMISS": {
-        // Resolve dispute in seller's favour — transition back to previous state
+      try {
+        await transitionOrder(
+          orderId,
+          "REFUNDED",
+          { disputeResolvedAt: new Date() },
+          { fromStatus: "DISPUTED" },
+        );
+      } catch {
+        logger.warn("auto-resolution.transition_failed", {
+          orderId,
+          target: "REFUNDED",
+        });
+      }
+
+      // Restore listing
+      if (order.listing) {
+        await db.listing
+          .updateMany({
+            where: { id: order.listing.id, status: "SOLD" },
+            data: { status: "ACTIVE" },
+          })
+          .catch(() => {});
+      }
+
+      orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.REFUNDED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: `Auto-resolved: Full refund to buyer. Score: ${evaluation.score}`,
+        metadata: {
+          decision: "AUTO_REFUND",
+          score: evaluation.score,
+          factors: evaluation.factors,
+          status: "EXECUTED",
+        },
+      });
+
+      createNotification({
+        userId: order.buyerId,
+        type: "SYSTEM",
+        title: "Dispute resolved — refund issued",
+        body: `Your dispute has been resolved in your favour. A full refund of $${(order.totalNzd / 100).toFixed(2)} is being processed.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }).catch(() => {});
+
+      createNotification({
+        userId: order.sellerId,
+        type: "SYSTEM",
+        title: "Dispute resolved — refund to buyer",
+        body: `The dispute on "${order.listing?.title}" has been resolved with a refund to the buyer.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }).catch(() => {});
+
+      audit({
+        userId: null,
+        action: "DISPUTE_RESOLVED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: {
+          trigger: "AUTO_RESOLUTION",
+          decision: "AUTO_REFUND",
+          score: evaluation.score,
+        },
+      });
+    } else if (evaluation.decision === "AUTO_DISMISS") {
+      try {
+        await db.order.update({
+          where: { id: orderId },
+          data: { disputeResolvedAt: new Date() },
+        });
+        await transitionOrder(
+          orderId,
+          "COMPLETED",
+          { completedAt: new Date() },
+          { fromStatus: "DISPUTED" },
+        );
+      } catch {
+        logger.warn("auto-resolution.dismiss_failed", { orderId });
+      }
+
+      if (order.stripePaymentIntentId) {
         try {
-          await db.order.update({
-            where: { id: orderId },
-            data: { disputeResolvedAt: new Date() },
+          await paymentService.capturePayment({
+            paymentIntentId: order.stripePaymentIntentId,
+            orderId: order.id,
           });
-          // Move from DISPUTED back to DISPATCHED or DELIVERED
-          // Since we can't easily know the previous state, mark as COMPLETED
-          // (escrow was already held, seller should be paid)
-          await transitionOrder(
+        } catch (err) {
+          logger.warn("auto-resolution.capture_failed", {
             orderId,
-            "COMPLETED",
-            { completedAt: new Date() },
-            { fromStatus: "DISPUTED" },
-          );
-        } catch {
-          logger.warn("auto-resolution.dismiss_transition_failed", { orderId });
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
-
-        // Capture payment for seller
-        if (order.stripePaymentIntentId) {
-          try {
-            await paymentService.capturePayment({
-              paymentIntentId: order.stripePaymentIntentId,
-              orderId: order.id,
-            });
-          } catch (err) {
-            logger.warn("auto-resolution.capture_failed", {
-              orderId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
-        }
-
-        orderEventService.recordEvent({
-          orderId,
-          type: ORDER_EVENT_TYPES.AUTO_RESOLVED,
-          actorId: null,
-          actorRole: ACTOR_ROLES.SYSTEM,
-          summary: `Auto-resolved: Dismissed in seller's favour. Score: ${evaluation.score}`,
-          metadata: {
-            decision: evaluation.decision,
-            score: evaluation.score,
-            factors: evaluation.factors,
-            recommendation: evaluation.recommendation,
-          },
-        });
-
-        orderEventService.recordEvent({
-          orderId,
-          type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
-          actorId: null,
-          actorRole: ACTOR_ROLES.SYSTEM,
-          summary: "Dispute dismissed — resolved in seller's favour",
-        });
-
-        createNotification({
-          userId: order.buyerId,
-          type: "SYSTEM",
-          title: "Dispute resolved",
-          body: "After review, the dispute has been resolved in the seller's favour. Payment will be released to the seller.",
-          orderId,
-          link: `/orders/${orderId}`,
-        }).catch(() => {});
-
-        createNotification({
-          userId: order.sellerId,
-          type: "ORDER_COMPLETED",
-          title: "Dispute resolved in your favour",
-          body: `The dispute on "${order.listing?.title ?? "your listing"}" has been dismissed. Payment is being released.`,
-          orderId,
-          link: `/orders/${orderId}`,
-        }).catch(() => {});
-
-        audit({
-          userId: null,
-          action: "DISPUTE_RESOLVED",
-          entityType: "Order",
-          entityId: orderId,
-          metadata: {
-            trigger: "AUTO_RESOLUTION",
-            decision: "AUTO_DISMISS",
-            score: evaluation.score,
-          },
-        });
-
-        break;
       }
 
-      case "FLAG_FRAUD": {
-        // Don't resolve — just flag for admin
-        orderEventService.recordEvent({
-          orderId,
-          type: ORDER_EVENT_TYPES.FRAUD_FLAGGED,
-          actorId: null,
-          actorRole: ACTOR_ROLES.SYSTEM,
-          summary: `Fraud warning flagged by auto-resolution engine. Score: ${evaluation.score}`,
-          metadata: {
-            decision: evaluation.decision,
-            score: evaluation.score,
-            factors: evaluation.factors,
-            recommendation: evaluation.recommendation,
-          },
-        });
+      orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: `Auto-resolved: Dismissed in seller's favour. Score: ${evaluation.score}`,
+        metadata: {
+          decision: "AUTO_DISMISS",
+          score: evaluation.score,
+          factors: evaluation.factors,
+          status: "EXECUTED",
+        },
+      });
 
-        audit({
-          userId: null,
-          action: "FRAUD_FLAGGED",
-          entityType: "Order",
-          entityId: orderId,
-          metadata: {
-            trigger: "AUTO_RESOLUTION",
-            score: evaluation.score,
-            recommendation: evaluation.recommendation,
-          },
-        });
+      createNotification({
+        userId: order.buyerId,
+        type: "SYSTEM",
+        title: "Dispute resolved",
+        body: "After review, the dispute has been resolved in the seller's favour. Payment will be released.",
+        orderId,
+        link: `/orders/${orderId}`,
+      }).catch(() => {});
 
-        break;
-      }
+      createNotification({
+        userId: order.sellerId,
+        type: "ORDER_COMPLETED",
+        title: "Dispute resolved in your favour",
+        body: `The dispute on "${order.listing?.title}" has been dismissed. Payment is being released.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }).catch(() => {});
 
-      case "ESCALATE_HUMAN": {
-        // Record event for admin visibility — no state change
-        orderEventService.recordEvent({
-          orderId,
-          type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
-          actorId: null,
-          actorRole: ACTOR_ROLES.SYSTEM,
-          summary: `Auto-resolution: Escalated for admin review. Score: ${evaluation.score}`,
-          metadata: {
-            decision: evaluation.decision,
-            score: evaluation.score,
-            factors: evaluation.factors,
-            recommendation: evaluation.recommendation,
-          },
-        });
-
-        break;
-      }
+      audit({
+        userId: null,
+        action: "DISPUTE_RESOLVED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: {
+          trigger: "AUTO_RESOLUTION",
+          decision: "AUTO_DISMISS",
+          score: evaluation.score,
+        },
+      });
+    } else if (evaluation.decision === "FLAG_FRAUD") {
+      orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.FRAUD_FLAGGED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: `Fraud warning flagged. Score: ${evaluation.score}`,
+        metadata: {
+          decision: "FLAG_FRAUD",
+          score: evaluation.score,
+          factors: evaluation.factors,
+          status: "FLAGGED",
+        },
+      });
+      audit({
+        userId: null,
+        action: "FRAUD_FLAGGED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: { trigger: "AUTO_RESOLUTION", score: evaluation.score },
+      });
     }
 
     logger.info("auto-resolution.executed", {
