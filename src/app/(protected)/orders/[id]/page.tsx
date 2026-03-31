@@ -10,11 +10,7 @@ import Footer from "@/components/Footer";
 import { Button, OrderStatusBadge, Alert } from "@/components/ui/primitives";
 import { formatPrice, relativeTime } from "@/lib/utils";
 import type { OrderStatus } from "@/types";
-import {
-  confirmDelivery,
-  markDispatched,
-  cancelOrder,
-} from "@/server/actions/orders";
+import { confirmDelivery, markDispatched } from "@/server/actions/orders";
 import {
   openDispute,
   uploadDisputeEvidence,
@@ -22,6 +18,12 @@ import {
 } from "@/server/actions/disputes";
 import { fetchOrderDetail } from "@/server/actions/orderDetail";
 import { getOrderTimeline } from "@/server/actions/orderEvents";
+import {
+  requestCancellation,
+  respondToCancellation,
+  getOrderInteractions,
+} from "@/server/actions/interactions";
+import type { InteractionData } from "@/server/actions/interactions";
 import OrderTimeline from "@/components/OrderTimeline";
 import type { TimelineEvent } from "@/components/OrderTimeline";
 
@@ -170,60 +172,6 @@ function getStatusInfo(order: OrderDetailData): {
   }
 }
 
-// ── Client-side cancellation status (mirrors order.service.ts logic) ────────
-const CANCEL_FREE_WINDOW_MINUTES = 60;
-const CANCEL_REQUEST_WINDOW_HOURS = 24;
-
-function getCancellationStatusClient(order: OrderDetailData): {
-  canCancel: boolean;
-  requiresReason: boolean;
-  message: string;
-  windowType: "free" | "request" | "closed" | "na";
-} {
-  if (order.status !== "payment_held") {
-    return {
-      canCancel: false,
-      requiresReason: false,
-      windowType: "na",
-      message:
-        order.status === "dispatched"
-          ? "Order already dispatched. Open a dispute if there is an issue."
-          : "This order cannot be cancelled at this stage.",
-    };
-  }
-
-  const minutesElapsed = Math.floor(
-    (Date.now() - new Date(order.createdAt).getTime()) / (1000 * 60),
-  );
-
-  if (minutesElapsed <= CANCEL_FREE_WINDOW_MINUTES) {
-    const minutesLeft = CANCEL_FREE_WINDOW_MINUTES - minutesElapsed;
-    return {
-      canCancel: true,
-      requiresReason: false,
-      windowType: "free",
-      message: `Free cancellation available for another ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""}.`,
-    };
-  }
-
-  if (minutesElapsed <= CANCEL_REQUEST_WINDOW_HOURS * 60) {
-    return {
-      canCancel: true,
-      requiresReason: true,
-      windowType: "request",
-      message: "Cancellation requires a reason after the first hour.",
-    };
-  }
-
-  return {
-    canCancel: false,
-    requiresReason: false,
-    windowType: "closed",
-    message:
-      "Cancellation window has closed. Open a dispute if there is an issue.",
-  };
-}
-
 // ── Synthetic events for legacy orders ───────────────────────────────────────
 // Orders created before the OrderEvent system have no events in the DB.
 // Build a minimal timeline from the order's existing timestamps.
@@ -355,16 +303,17 @@ export default function OrderDetailPage() {
   const [disputeDescription, setDisputeDescription] = useState("");
   const [disputePhotos, setDisputePhotos] = useState<File[]>([]);
 
-  // Cancel order modal
-  const [showCancel, setShowCancel] = useState(false);
-  const [cancelReason, setCancelReason] = useState("");
-
-  // Cancellation status (computed from order data)
-  const cancellationStatus = order ? getCancellationStatusClient(order) : null;
+  // (Old cancel modal state removed — replaced by interaction-based flow)
 
   // Seller dispute response
   const [sellerResponseText, setSellerResponseText] = useState("");
   const [showSellerResponse, setShowSellerResponse] = useState(false);
+
+  // Cancellation interaction (new interaction-based flow)
+  const [showCancelRequest, setShowCancelRequest] = useState(false);
+  const [cancelRequestReason, setCancelRequestReason] = useState("");
+  const [interactions, setInteractions] = useState<InteractionData[]>([]);
+  const [rejectNote, setRejectNote] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -380,6 +329,12 @@ export default function OrderDetailPage() {
           } else {
             // Build synthetic events for legacy orders (created before OrderEvent system)
             setTimelineEvents(buildSyntheticEvents(result.data));
+          }
+
+          // Fetch interactions
+          const intResult = await getOrderInteractions(orderId);
+          if (intResult.success) {
+            setInteractions(intResult.data);
           }
         } else {
           setError(result.error);
@@ -504,24 +459,38 @@ export default function OrderDetailPage() {
     }
   }
 
-  async function handleCancelOrder() {
-    if (cancellationStatus?.requiresReason && cancelReason.trim().length < 10) {
+  // ── Cancellation request handlers ─────────────────────────────────────────
+  async function handleRequestCancellation() {
+    if (cancelRequestReason.trim().length < 10) {
       setError("Please provide a reason (at least 10 characters).");
       return;
     }
     setError(null);
     setActionLoading(true);
     try {
-      const result = await cancelOrder({
+      const result = await requestCancellation({
         orderId,
-        reason: cancelReason.trim() || undefined,
+        reason: cancelRequestReason.trim(),
       });
       if (result.success) {
-        setActionSuccess("Order cancelled successfully.");
-        setShowCancel(false);
-        setCancelReason("");
+        setShowCancelRequest(false);
+        setCancelRequestReason("");
+        if (result.data.autoApproved) {
+          setActionSuccess(
+            "Order cancelled and refund initiated (free cancellation window).",
+          );
+        } else {
+          setActionSuccess(
+            "Cancellation request sent. The other party has 48 hours to respond.",
+          );
+        }
+        // Refresh all data
         const updated = await fetchOrderDetail(orderId);
         if (updated.success) setOrder(updated.data);
+        const tlResult = await getOrderTimeline(orderId);
+        if (tlResult.success) setTimelineEvents(tlResult.data);
+        const intResult = await getOrderInteractions(orderId);
+        if (intResult.success) setInteractions(intResult.data);
       } else {
         setError(result.error);
       }
@@ -529,6 +498,50 @@ export default function OrderDetailPage() {
       setActionLoading(false);
     }
   }
+
+  async function handleRespondToCancellation(
+    interactionId: string,
+    action: "ACCEPT" | "REJECT",
+  ) {
+    if (action === "REJECT" && rejectNote.trim().length < 10) {
+      setError(
+        "Please provide a reason for rejecting (at least 10 characters).",
+      );
+      return;
+    }
+    setError(null);
+    setActionLoading(true);
+    try {
+      const result = await respondToCancellation({
+        interactionId,
+        action,
+        responseNote: action === "REJECT" ? rejectNote.trim() : undefined,
+      });
+      if (result.success) {
+        setRejectNote("");
+        setActionSuccess(
+          action === "ACCEPT"
+            ? "Cancellation approved. Refund initiated."
+            : "Cancellation rejected.",
+        );
+        const updated = await fetchOrderDetail(orderId);
+        if (updated.success) setOrder(updated.data);
+        const tlResult = await getOrderTimeline(orderId);
+        if (tlResult.success) setTimelineEvents(tlResult.data);
+        const intResult = await getOrderInteractions(orderId);
+        if (intResult.success) setInteractions(intResult.data);
+      } else {
+        setError(result.error);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // Computed: active pending cancellation request
+  const pendingCancelRequest = interactions.find(
+    (i) => i.type === "CANCEL_REQUEST" && i.status === "PENDING",
+  );
 
   if (loading) {
     return (
@@ -772,6 +785,123 @@ export default function OrderDetailPage() {
             )}
           </div>
 
+          {/* Pending cancellation request — notification for the other party */}
+          {pendingCancelRequest && (
+            <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="shrink-0 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center mt-0.5">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#D97706"
+                    strokeWidth="2.5"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13.5px] font-semibold text-amber-900">
+                    Cancellation requested
+                  </p>
+                  <p className="text-[12.5px] text-amber-800 mt-1">
+                    {pendingCancelRequest.initiatorRole === "BUYER"
+                      ? "The buyer"
+                      : "The seller"}{" "}
+                    has requested to cancel this order.
+                  </p>
+                  <p className="text-[12px] text-amber-700 mt-1 italic">
+                    &ldquo;{pendingCancelRequest.reason}&rdquo;
+                  </p>
+                  <p className="text-[11px] text-amber-600 mt-2">
+                    Expires{" "}
+                    {new Date(
+                      pendingCancelRequest.expiresAt,
+                    ).toLocaleDateString("en-NZ", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}{" "}
+                    — auto-approves if no response
+                  </p>
+
+                  {/* If current user is NOT the initiator, show accept/reject */}
+                  {pendingCancelRequest.initiator.id !==
+                    (order.isBuyer ? order.buyerId : order.sellerId) && (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          loading={actionLoading}
+                          onClick={() =>
+                            handleRespondToCancellation(
+                              pendingCancelRequest.id,
+                              "ACCEPT",
+                            )
+                          }
+                        >
+                          Accept cancellation
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            // Toggle reject note textarea
+                            setRejectNote(rejectNote ? "" : " ");
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                      {rejectNote !== "" && (
+                        <div>
+                          <textarea
+                            value={rejectNote}
+                            onChange={(e) => setRejectNote(e.target.value)}
+                            placeholder="Explain why you're rejecting (min 10 characters)..."
+                            rows={3}
+                            maxLength={500}
+                            className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                              text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                              focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+                          />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            loading={actionLoading}
+                            disabled={rejectNote.trim().length < 10}
+                            onClick={() =>
+                              handleRespondToCancellation(
+                                pendingCancelRequest.id,
+                                "REJECT",
+                              )
+                            }
+                            className="mt-2"
+                          >
+                            Submit rejection
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* If current user IS the initiator, show pending status */}
+                  {pendingCancelRequest.initiator.id ===
+                    (order.isBuyer ? order.buyerId : order.sellerId) && (
+                    <p className="mt-3 text-[12px] text-amber-700 font-medium">
+                      Waiting for the other party to respond...
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Price breakdown + details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
@@ -923,16 +1053,18 @@ export default function OrderDetailPage() {
                 </Button>
               )}
 
-            {/* Cancel order — both buyer and seller during cancellation window */}
-            {cancellationStatus?.canCancel && (
-              <Button
-                variant="danger"
-                size="md"
-                onClick={() => setShowCancel(true)}
-              >
-                Cancel order
-              </Button>
-            )}
+            {/* Cancel order — interaction-based flow */}
+            {(order.status === "payment_held" ||
+              order.status === "awaiting_payment") &&
+              !pendingCancelRequest && (
+                <Button
+                  variant="danger"
+                  size="md"
+                  onClick={() => setShowCancelRequest(true)}
+                >
+                  Request cancellation
+                </Button>
+              )}
 
             {/* Buyer: leave review */}
             {order.isBuyer &&
@@ -945,14 +1077,16 @@ export default function OrderDetailPage() {
                 </Link>
               )}
 
-            {/* Message */}
-            <Link
-              href={`/messages/new?listingId=${order.listingId}&sellerId=${order.isBuyer ? order.sellerId : order.buyerId}`}
-            >
-              <Button variant="secondary" size="md">
-                Message {order.isBuyer ? "seller" : "buyer"}
-              </Button>
-            </Link>
+            {/* Message — hidden for cancelled/refunded orders */}
+            {order.status !== "cancelled" && order.status !== "refunded" && (
+              <Link
+                href={`/messages/new?listingId=${order.listingId}&sellerId=${order.isBuyer ? order.sellerId : order.buyerId}&orderContext=${order.status}&itemName=${encodeURIComponent(order.listingTitle)}`}
+              >
+                <Button variant="secondary" size="md">
+                  Message {order.isBuyer ? "seller" : "buyer"}
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
       </main>
@@ -1122,9 +1256,9 @@ export default function OrderDetailPage() {
         </ModalOverlay>
       )}
 
-      {/* ── Cancel Order Modal ──────────────────────────────────────── */}
-      {showCancel && cancellationStatus && (
-        <ModalOverlay onClose={() => setShowCancel(false)}>
+      {/* ── Cancellation Request Modal ─────────────────────────────── */}
+      {showCancelRequest && (
+        <ModalOverlay onClose={() => setShowCancelRequest(false)}>
           <div className="text-center">
             <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
               <svg
@@ -1140,61 +1274,42 @@ export default function OrderDetailPage() {
               </svg>
             </div>
             <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2">
-              Cancel this order?
+              Request cancellation
             </h2>
-            <p className="text-[13px] text-[#73706A] mb-1">
-              {cancellationStatus.message}
+            <p className="text-[13px] text-[#73706A] mb-4">
+              If the order was placed less than 2 hours ago, it will be
+              cancelled immediately. Otherwise, the other party has 48 hours to
+              respond.
             </p>
-            {cancellationStatus.windowType === "free" && (
-              <p className="text-[12px] text-emerald-600 font-medium mb-4">
-                Free cancellation — no questions asked
-              </p>
-            )}
-            {cancellationStatus.windowType === "request" && (
-              <p className="text-[12px] text-amber-600 font-medium mb-4">
-                A reason is required for cancellation after the first hour
-              </p>
-            )}
 
-            {cancellationStatus.requiresReason && (
-              <div className="text-left mb-4">
-                <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                  Reason for cancellation
-                </label>
-                <textarea
-                  value={cancelReason}
-                  onChange={(e) => setCancelReason(e.target.value)}
-                  placeholder="Please explain why you need to cancel (min 10 characters)..."
-                  rows={3}
-                  maxLength={500}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
-                    text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
-                    focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
-                />
-                <p className="text-[11px] text-[#9E9A91] mt-1">
-                  {cancelReason.length}/500 characters
-                </p>
-              </div>
-            )}
-
-            <div className="rounded-xl bg-red-50 border border-red-200 p-3 mb-4 text-left">
-              <p className="text-[12px] text-red-800 font-semibold flex items-center gap-1.5">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                This action cannot be undone
+            <div className="text-left mb-4">
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Reason for cancellation
+              </label>
+              <textarea
+                value={cancelRequestReason}
+                onChange={(e) => setCancelRequestReason(e.target.value)}
+                placeholder="Please explain why you need to cancel (min 10 characters)..."
+                rows={3}
+                maxLength={500}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                  focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+              />
+              <p className="text-[11px] text-[#9E9A91] mt-1">
+                {cancelRequestReason.length}/500 characters
               </p>
-              <p className="text-[11.5px] text-red-700 mt-1">
-                The listing will be made available to other buyers again.
+            </div>
+
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 mb-4 text-left">
+              <p className="text-[12px] text-amber-800 font-semibold">
+                What happens next?
+              </p>
+              <p className="text-[11.5px] text-amber-700 mt-1">
+                Within the 2-hour free window: order is cancelled immediately
+                and a full refund is issued. After 2 hours: the other party has
+                48 hours to accept or reject. If no response, the cancellation
+                is auto-approved.
               </p>
             </div>
 
@@ -1203,22 +1318,19 @@ export default function OrderDetailPage() {
                 variant="danger"
                 fullWidth
                 size="md"
-                onClick={handleCancelOrder}
+                onClick={handleRequestCancellation}
                 loading={actionLoading}
-                disabled={
-                  cancellationStatus.requiresReason &&
-                  cancelReason.trim().length < 10
-                }
+                disabled={cancelRequestReason.trim().length < 10}
               >
-                Yes, cancel this order
+                Submit cancellation request
               </Button>
               <Button
                 variant="ghost"
                 fullWidth
                 size="md"
                 onClick={() => {
-                  setShowCancel(false);
-                  setCancelReason("");
+                  setShowCancelRequest(false);
+                  setCancelRequestReason("");
                 }}
               >
                 Keep order
