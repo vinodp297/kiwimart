@@ -34,9 +34,14 @@ export async function GET(
     // Basic validation: prevent path traversal, limit to known prefixes.
     // listings/{userId}/{filename}            — listing images
     // profiles/{userId}/{type}/{filename}     — avatar / cover images
+    // dispatch/{userId}/{filename}            — dispatch evidence photos
+    // delivery/{userId}/{filename}            — delivery evidence photos
+    // disputes/{userId}/{filename}            — dispute evidence photos
     if (
       r2Key.includes("..") ||
-      !r2Key.match(/^(listings|profiles)\/[a-zA-Z0-9_-]+(\/[a-zA-Z0-9._-]+)+$/)
+      !r2Key.match(
+        /^(listings|profiles|dispatch|delivery|disputes)\/[a-zA-Z0-9_-]+(\/[a-zA-Z0-9._-]+)+$/,
+      )
     ) {
       return NextResponse.json(
         { error: "Invalid image path" },

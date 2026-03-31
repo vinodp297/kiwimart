@@ -4,6 +4,9 @@
 // Renders a vertical timeline of OrderEvent records. Replaces the old static
 // 5-step horizontal stepper with a full event history.
 
+import { useState } from "react";
+import { getImageUrl } from "@/lib/image";
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface TimelineEvent {
@@ -55,6 +58,12 @@ const EVENT_COLORS: Record<string, DotColor> = {
   REVIEW_SUBMITTED: "blue",
   DISPUTE_RESPONDED: "blue",
   DISPUTE_RESOLVED: "blue",
+  DELIVERY_ISSUE_REPORTED: "amber",
+  DELIVERY_CONFIRMED_OK: "green",
+  AUTO_RESOLVED: "blue",
+  FRAUD_FLAGGED: "red",
+  DELIVERY_REMINDER_SENT: "amber",
+  AUTO_COMPLETED: "green",
 };
 
 const DOT_STYLES: Record<DotColor, { bg: string; ring: string }> = {
@@ -157,6 +166,42 @@ export default function OrderTimeline({ events, currentStatus }: Props) {
                   </p>
                 )}
 
+                {!!meta.courier && (
+                  <p className="mt-1 text-[12px] text-[#73706A]">
+                    Courier:{" "}
+                    <span className="font-medium">{String(meta.courier)}</span>
+                  </p>
+                )}
+
+                {!!meta.estimatedDeliveryDate && (
+                  <p className="mt-1 text-[12px] text-[#73706A]">
+                    Est. delivery:{" "}
+                    <span className="font-medium">
+                      {new Date(
+                        String(meta.estimatedDeliveryDate),
+                      ).toLocaleDateString("en-NZ", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </span>
+                  </p>
+                )}
+
+                {Array.isArray(meta.dispatchPhotos) &&
+                  meta.dispatchPhotos.length > 0 && (
+                    <DispatchPhotoGrid
+                      photos={meta.dispatchPhotos as string[]}
+                    />
+                  )}
+
+                {Array.isArray(meta.deliveryPhotos) &&
+                  meta.deliveryPhotos.length > 0 && (
+                    <DispatchPhotoGrid
+                      photos={meta.deliveryPhotos as string[]}
+                    />
+                  )}
+
                 {!!meta.reason && (
                   <p className="mt-1 text-[12px] text-[#73706A] italic">
                     Reason:{" "}
@@ -202,6 +247,61 @@ export default function OrderTimeline({ events, currentStatus }: Props) {
         })}
       </div>
     </div>
+  );
+}
+
+// ── Dispatch / Delivery Photo Grid ─────────────────────────────────────────
+
+function DispatchPhotoGrid({ photos }: { photos: string[] }) {
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  return (
+    <>
+      <div className="mt-2 flex gap-2 flex-wrap">
+        {photos.map((key, i) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setLightbox(key)}
+            className="w-16 h-16 rounded-lg overflow-hidden border border-[#E3E0D9]
+              hover:ring-2 hover:ring-[#D4A843]/40 transition focus:outline-none
+              focus:ring-2 focus:ring-[#D4A843]"
+          >
+            <img
+              src={getImageUrl(key)}
+              alt={`Evidence photo ${i + 1}`}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          </button>
+        ))}
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[600] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white text-2xl
+              w-10 h-10 flex items-center justify-center rounded-full bg-black/40"
+          >
+            &times;
+          </button>
+          <img
+            src={getImageUrl(lightbox)}
+            alt="Evidence photo"
+            className="max-w-full max-h-[85vh] rounded-xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
   );
 }
 

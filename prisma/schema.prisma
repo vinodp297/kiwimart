@@ -116,6 +116,7 @@ enum AuditAction {
   SELLER_VERIFICATION_APPLIED
   SELLER_VERIFICATION_APPROVED
   SELLER_VERIFICATION_REJECTED
+  FRAUD_FLAGGED
 }
 
 enum VerificationStatus {
@@ -262,6 +263,7 @@ model User {
   orderEvents            OrderEvent[]        @relation("OrderEventActor")
   initiatedInteractions  OrderInteraction[]  @relation("InteractionInitiator")
   respondedInteractions  OrderInteraction[]  @relation("InteractionResponder")
+  trustMetrics           TrustMetrics?
 
   @@index([email])
   @@index([username])
@@ -598,6 +600,33 @@ model OrderInteraction {
 
   @@index([orderId, status])
   @@index([expiresAt, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trust Metrics (cached — recomputed periodically)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model TrustMetrics {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  totalOrders           Int      @default(0)
+  completedOrders       Int      @default(0)
+  disputeCount          Int      @default(0)
+  disputeRate           Float    @default(0)    // disputeCount / totalOrders * 100
+  disputesLast30Days    Int      @default(0)
+  averageResponseHours  Float?                  // avg time to respond to disputes
+  averageRating         Float?                  // from reviews (1-5 scale)
+  dispatchPhotoRate     Float    @default(0)    // % of dispatched orders with photos
+  accountAgeDays        Int      @default(0)
+  isFlaggedForFraud     Boolean  @default(false)
+  lastComputedAt        DateTime @default(now())
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isFlaggedForFraud])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

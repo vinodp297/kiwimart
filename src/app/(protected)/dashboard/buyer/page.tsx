@@ -29,6 +29,7 @@ import { sendMessage as sendMessageAction } from "@/server/actions/messages";
 import { toggleWatch } from "@/server/actions/listings";
 import { togglePriceAlert } from "@/server/actions/watchlist";
 import { confirmDelivery } from "@/server/actions/orders";
+import { getOrderStatusInfo } from "@/lib/orderStatusMessages";
 import { resendVerificationEmail } from "@/server/actions/auth";
 
 import {
@@ -643,6 +644,23 @@ function OrderCard({
   const isCompleted = order.status === "completed";
   const isPaymentHeld = order.status === "payment_held";
 
+  const statusMsg = getOrderStatusInfo({
+    status: order.status,
+    total: order.total,
+    createdAt: order.createdAt,
+    dispatchedAt: order.dispatchedAt,
+    completedAt: null,
+    disputeOpenedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    cancelledBy: null,
+    trackingNumber: order.trackingNumber,
+    sellerRespondedAt: null,
+    listingTitle: order.listingTitle,
+    otherPartyName: order.sellerName,
+    isBuyer: true,
+  });
+
   return (
     <>
       <article
@@ -667,9 +685,14 @@ function OrderCard({
           </Link>
           <div className="flex flex-wrap items-center gap-3 mt-1.5">
             <OrderStatusBadge status={order.status as OrderStatus} />
-            {isPaymentHeld && (
+            {statusMsg.nextAction && (
+              <span className="text-[11.5px] text-[#D4A843] font-medium">
+                {statusMsg.nextAction}
+              </span>
+            )}
+            {isPaymentHeld && !statusMsg.nextAction && (
               <span className="text-[11.5px] text-emerald-600 font-medium">
-                Payment held securely in escrow
+                Payment held securely
               </span>
             )}
             <span className="text-[12px] text-[#9E9A91]">
