@@ -21,6 +21,12 @@ import { getOrderTimeline } from "@/server/actions/orderEvents";
 import {
   requestCancellation,
   respondToCancellation,
+  requestReturn,
+  respondToReturn,
+  requestPartialRefund,
+  respondToPartialRefund,
+  notifyShippingDelay,
+  respondToShippingDelay,
   getOrderInteractions,
 } from "@/server/actions/interactions";
 import type { InteractionData } from "@/server/actions/interactions";
@@ -315,6 +321,22 @@ export default function OrderDetailPage() {
   const [interactions, setInteractions] = useState<InteractionData[]>([]);
   const [rejectNote, setRejectNote] = useState("");
 
+  // Return request modal
+  const [showReturnRequest, setShowReturnRequest] = useState(false);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnType, setReturnType] = useState("damaged");
+  const [returnResolution, setReturnResolution] = useState("full_refund");
+
+  // Partial refund modal
+  const [showPartialRefund, setShowPartialRefund] = useState(false);
+  const [partialRefundReason, setPartialRefundReason] = useState("");
+  const [partialRefundAmount, setPartialRefundAmount] = useState("");
+
+  // Shipping delay modal
+  const [showShippingDelay, setShowShippingDelay] = useState(false);
+  const [delayReason, setDelayReason] = useState("");
+  const [newEstimatedDate, setNewEstimatedDate] = useState("");
+
   useEffect(() => {
     async function load() {
       try {
@@ -538,10 +560,185 @@ export default function OrderDetailPage() {
     }
   }
 
-  // Computed: active pending cancellation request
+  // Computed: active pending interactions
   const pendingCancelRequest = interactions.find(
     (i) => i.type === "CANCEL_REQUEST" && i.status === "PENDING",
   );
+  const pendingReturnRequest = interactions.find(
+    (i) => i.type === "RETURN_REQUEST" && i.status === "PENDING",
+  );
+  const pendingPartialRefund = interactions.find(
+    (i) =>
+      i.type === "PARTIAL_REFUND_REQUEST" &&
+      (i.status === "PENDING" || i.status === "COUNTERED"),
+  );
+  const pendingShippingDelay = interactions.find(
+    (i) => i.type === "SHIPPING_DELAY" && i.status === "PENDING",
+  );
+
+  // Helper to refresh all data after an interaction response
+  async function refreshOrderData() {
+    const updated = await fetchOrderDetail(orderId);
+    if (updated.success) setOrder(updated.data);
+    const tlResult = await getOrderTimeline(orderId);
+    if (tlResult.success) setTimelineEvents(tlResult.data);
+    const intResult = await getOrderInteractions(orderId);
+    if (intResult.success) setInteractions(intResult.data);
+  }
+
+  async function handleRequestReturn() {
+    if (returnReason.trim().length < 10) {
+      setError("Please provide a reason (at least 10 characters).");
+      return;
+    }
+    setError(null);
+    setActionLoading(true);
+    try {
+      const result = await requestReturn({
+        orderId,
+        reason: returnReason.trim(),
+        details: {
+          returnReason: returnType as
+            | "damaged"
+            | "not_as_described"
+            | "wrong_item"
+            | "changed_mind",
+          preferredResolution: returnResolution as
+            | "full_refund"
+            | "replacement"
+            | "exchange",
+        },
+      });
+      if (result.success) {
+        setShowReturnRequest(false);
+        setReturnReason("");
+        setActionSuccess(
+          "Return request sent. The seller has 72 hours to respond.",
+        );
+        await refreshOrderData();
+      } else {
+        setError(result.error);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleRequestPartialRefund() {
+    if (partialRefundReason.trim().length < 10) {
+      setError("Please provide a reason (at least 10 characters).");
+      return;
+    }
+    const amount = parseFloat(partialRefundAmount);
+    if (!amount || amount <= 0) {
+      setError("Please enter a valid amount.");
+      return;
+    }
+    setError(null);
+    setActionLoading(true);
+    try {
+      const result = await requestPartialRefund({
+        orderId,
+        reason: partialRefundReason.trim(),
+        amount,
+      });
+      if (result.success) {
+        setShowPartialRefund(false);
+        setPartialRefundReason("");
+        setPartialRefundAmount("");
+        setActionSuccess(
+          "Partial refund request sent. The other party has 48 hours to respond.",
+        );
+        await refreshOrderData();
+      } else {
+        setError(result.error);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleNotifyShippingDelay() {
+    if (delayReason.trim().length < 10) {
+      setError("Please provide a reason (at least 10 characters).");
+      return;
+    }
+    setError(null);
+    setActionLoading(true);
+    try {
+      const result = await notifyShippingDelay({
+        orderId,
+        reason: delayReason.trim(),
+        estimatedNewDate: newEstimatedDate || undefined,
+      });
+      if (result.success) {
+        setShowShippingDelay(false);
+        setDelayReason("");
+        setNewEstimatedDate("");
+        setActionSuccess("Shipping delay notification sent to the buyer.");
+        await refreshOrderData();
+      } else {
+        setError(result.error);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleRespondToInteraction(
+    interactionId: string,
+    type: string,
+    action: "ACCEPT" | "REJECT",
+    note?: string,
+  ) {
+    if (action === "REJECT" && (!note || note.trim().length < 10)) {
+      setError(
+        "Please provide a reason for rejecting (at least 10 characters).",
+      );
+      return;
+    }
+    setError(null);
+    setActionLoading(true);
+    try {
+      let result: { success: boolean; error?: string };
+      if (type === "RETURN_REQUEST") {
+        result = await respondToReturn({
+          interactionId,
+          action,
+          responseNote: note,
+        });
+      } else if (type === "PARTIAL_REFUND_REQUEST") {
+        result = await respondToPartialRefund({
+          interactionId,
+          action,
+          responseNote: note,
+        });
+      } else if (type === "SHIPPING_DELAY") {
+        result = await respondToShippingDelay({
+          interactionId,
+          action,
+          responseNote: note,
+        });
+      } else {
+        result = await respondToCancellation({
+          interactionId,
+          action,
+          responseNote: note,
+        });
+      }
+      if (result.success) {
+        setRejectNote("");
+        setActionSuccess(
+          action === "ACCEPT" ? "Request accepted." : "Request rejected.",
+        );
+        await refreshOrderData();
+      } else {
+        setError(result.error ?? "Something went wrong.");
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -902,6 +1099,200 @@ export default function OrderDetailPage() {
             </div>
           )}
 
+          {/* Pending interactions — return, partial refund, shipping delay */}
+          {[pendingReturnRequest, pendingPartialRefund, pendingShippingDelay]
+            .filter(Boolean)
+            .map((interaction) => {
+              const ix = interaction!;
+              const currentUserId = order.isBuyer
+                ? order.buyerId
+                : order.sellerId;
+              const isInitiator = ix.initiator.id === currentUserId;
+              const typeLabels: Record<string, string> = {
+                RETURN_REQUEST: "Return requested",
+                PARTIAL_REFUND_REQUEST: "Partial refund requested",
+                SHIPPING_DELAY: "Shipping delay",
+              };
+              const details = ix.details ?? {};
+              return (
+                <div
+                  key={ix.id}
+                  className="bg-amber-50 rounded-2xl border border-amber-200 p-5 mb-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center mt-0.5">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#D97706"
+                        strokeWidth="2.5"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 8v4M12 16h.01" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13.5px] font-semibold text-amber-900">
+                        {typeLabels[ix.type] ?? ix.type.replace(/_/g, " ")}
+                        {ix.status === "COUNTERED" && " — counter-offer"}
+                      </p>
+                      <p className="text-[12.5px] text-amber-800 mt-1">
+                        {ix.initiatorRole === "BUYER"
+                          ? "The buyer"
+                          : "The seller"}{" "}
+                        {ix.type === "SHIPPING_DELAY"
+                          ? "notified a shipping delay."
+                          : `made this request.`}
+                      </p>
+                      <p className="text-[12px] text-amber-700 mt-1 italic">
+                        &ldquo;{ix.reason}&rdquo;
+                      </p>
+                      {!!details.requestedAmount && (
+                        <p className="text-[12px] text-amber-800 mt-1 font-medium">
+                          Amount: $
+                          {(Number(details.requestedAmount) / 100).toFixed(2)}{" "}
+                          NZD
+                        </p>
+                      )}
+                      {ix.status === "COUNTERED" && !!details.counterAmount && (
+                        <p className="text-[12px] text-amber-900 mt-1 font-semibold">
+                          Counter-offer: $
+                          {(Number(details.counterAmount) / 100).toFixed(2)} NZD
+                        </p>
+                      )}
+                      {!!details.returnReason && (
+                        <p className="text-[12px] text-amber-700 mt-1">
+                          Type:{" "}
+                          {String(details.returnReason).replace(/_/g, " ")}
+                        </p>
+                      )}
+                      {!!details.newEstimatedDate && (
+                        <p className="text-[12px] text-amber-700 mt-1">
+                          New estimate: {String(details.newEstimatedDate)}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-amber-600 mt-2">
+                        Expires{" "}
+                        {new Date(ix.expiresAt).toLocaleDateString("en-NZ", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </p>
+
+                      {/* Respond buttons for the OTHER party */}
+                      {!isInitiator && ix.status === "PENDING" && (
+                        <div className="mt-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="gold"
+                              size="sm"
+                              loading={actionLoading}
+                              onClick={() =>
+                                handleRespondToInteraction(
+                                  ix.id,
+                                  ix.type,
+                                  "ACCEPT",
+                                )
+                              }
+                            >
+                              Accept
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setRejectNote(rejectNote ? "" : " ")
+                              }
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                          {rejectNote !== "" && (
+                            <div>
+                              <textarea
+                                value={rejectNote}
+                                onChange={(e) => setRejectNote(e.target.value)}
+                                placeholder="Explain why you're rejecting (min 10 characters)..."
+                                rows={3}
+                                maxLength={500}
+                                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                                  text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                                  focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+                              />
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                loading={actionLoading}
+                                disabled={rejectNote.trim().length < 10}
+                                onClick={() =>
+                                  handleRespondToInteraction(
+                                    ix.id,
+                                    ix.type,
+                                    "REJECT",
+                                    rejectNote.trim(),
+                                  )
+                                }
+                                className="mt-2"
+                              >
+                                Submit rejection
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Counter-offer: show accept/reject for the original requester */}
+                      {isInitiator && ix.status === "COUNTERED" && (
+                        <div className="mt-4 flex items-center gap-2">
+                          <Button
+                            variant="gold"
+                            size="sm"
+                            loading={actionLoading}
+                            onClick={() =>
+                              handleRespondToInteraction(
+                                ix.id,
+                                ix.type,
+                                "ACCEPT",
+                              )
+                            }
+                          >
+                            Accept counter-offer
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            loading={actionLoading}
+                            onClick={() =>
+                              handleRespondToInteraction(
+                                ix.id,
+                                ix.type,
+                                "REJECT",
+                                "Counter-offer rejected",
+                              )
+                            }
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Status for initiator */}
+                      {isInitiator && ix.status === "PENDING" && (
+                        <p className="mt-3 text-[12px] text-amber-700 font-medium">
+                          Waiting for the other party to respond...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
           {/* Price breakdown + details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
             <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
@@ -1063,6 +1454,47 @@ export default function OrderDetailPage() {
                   onClick={() => setShowCancelRequest(true)}
                 >
                   Request cancellation
+                </Button>
+              )}
+
+            {/* Buyer: request return (completed/delivered) */}
+            {order.isBuyer &&
+              (order.status === "completed" || order.status === "delivered") &&
+              !pendingReturnRequest && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setShowReturnRequest(true)}
+                >
+                  Request return
+                </Button>
+              )}
+
+            {/* Buyer or Seller: request partial refund (completed/delivered) */}
+            {(order.status === "completed" || order.status === "delivered") &&
+              !pendingPartialRefund && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setShowPartialRefund(true)}
+                >
+                  {order.isBuyer
+                    ? "Request partial refund"
+                    : "Offer partial refund"}
+                </Button>
+              )}
+
+            {/* Seller: notify shipping delay (before dispatch) */}
+            {!order.isBuyer &&
+              (order.status === "payment_held" ||
+                order.status === "awaiting_payment") &&
+              !pendingShippingDelay && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={() => setShowShippingDelay(true)}
+                >
+                  Notify shipping delay
                 </Button>
               )}
 
@@ -1336,6 +1768,208 @@ export default function OrderDetailPage() {
                 Keep order
               </Button>
             </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Return Request Modal ──────────────────────────────────── */}
+      {showReturnRequest && (
+        <ModalOverlay onClose={() => setShowReturnRequest(false)}>
+          <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+            Request a return
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Return reason
+              </label>
+              <select
+                value={returnType}
+                onChange={(e) => setReturnType(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843]"
+              >
+                <option value="damaged">Item damaged</option>
+                <option value="not_as_described">Not as described</option>
+                <option value="wrong_item">Wrong item sent</option>
+                <option value="changed_mind">Changed my mind</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Preferred resolution
+              </label>
+              <select
+                value={returnResolution}
+                onChange={(e) => setReturnResolution(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843]"
+              >
+                <option value="full_refund">Full refund</option>
+                <option value="replacement">Replacement</option>
+                <option value="exchange">Exchange</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Details
+              </label>
+              <textarea
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                placeholder="Describe the issue in detail (min 10 characters)..."
+                rows={4}
+                maxLength={500}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                  focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+              />
+              <p className="text-[11px] text-[#9E9A91] mt-1">
+                {returnReason.length}/500 characters
+              </p>
+            </div>
+            <Alert variant="info">
+              The seller has 72 hours to respond. If they don&apos;t respond,
+              this will automatically escalate to a dispute.
+            </Alert>
+            <Button
+              variant="gold"
+              fullWidth
+              size="md"
+              onClick={handleRequestReturn}
+              loading={actionLoading}
+              disabled={returnReason.trim().length < 10}
+            >
+              Submit return request
+            </Button>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Partial Refund Modal ───────────────────────────────────── */}
+      {showPartialRefund && order && (
+        <ModalOverlay onClose={() => setShowPartialRefund(false)}>
+          <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+            {order.isBuyer ? "Request partial refund" : "Offer partial refund"}
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Amount (NZD)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[13px] text-[#9E9A91] font-medium">
+                  $
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={(order.total / 100).toFixed(2)}
+                  value={partialRefundAmount}
+                  onChange={(e) => setPartialRefundAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                    text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843]"
+                />
+              </div>
+              <p className="text-[11px] text-[#9E9A91] mt-1">
+                Maximum: ${(order.total / 100).toFixed(2)} NZD
+              </p>
+            </div>
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Reason
+              </label>
+              <textarea
+                value={partialRefundReason}
+                onChange={(e) => setPartialRefundReason(e.target.value)}
+                placeholder="Explain why a partial refund is appropriate (min 10 characters)..."
+                rows={4}
+                maxLength={500}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                  focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+              />
+              <p className="text-[11px] text-[#9E9A91] mt-1">
+                {partialRefundReason.length}/500 characters
+              </p>
+            </div>
+            <Alert variant="info">
+              The other party has 48 hours to accept, reject, or counter-offer.
+              Accepted partial refunds will be processed by the KiwiMart team.
+            </Alert>
+            <Button
+              variant="gold"
+              fullWidth
+              size="md"
+              onClick={handleRequestPartialRefund}
+              loading={actionLoading}
+              disabled={
+                partialRefundReason.trim().length < 10 ||
+                !partialRefundAmount ||
+                parseFloat(partialRefundAmount) <= 0
+              }
+            >
+              Submit request
+            </Button>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* ── Shipping Delay Modal ───────────────────────────────────── */}
+      {showShippingDelay && (
+        <ModalOverlay onClose={() => setShowShippingDelay(false)}>
+          <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+            Notify shipping delay
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                Reason for delay
+              </label>
+              <textarea
+                value={delayReason}
+                onChange={(e) => setDelayReason(e.target.value)}
+                placeholder="Explain the reason for the delay (min 10 characters)..."
+                rows={4}
+                maxLength={500}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                  focus:ring-[#D4A843]/25 focus:border-[#D4A843] resize-none transition"
+              />
+              <p className="text-[11px] text-[#9E9A91] mt-1">
+                {delayReason.length}/500 characters
+              </p>
+            </div>
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                New estimated dispatch date (optional)
+              </label>
+              <input
+                type="date"
+                value={newEstimatedDate}
+                onChange={(e) => setNewEstimatedDate(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                  text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843]"
+              />
+            </div>
+            <Alert variant="info">
+              The buyer will be notified of the delay. They can acknowledge it
+              or request a cancellation if preferred. If no response in 7 days,
+              it auto-resolves.
+            </Alert>
+            <Button
+              variant="gold"
+              fullWidth
+              size="md"
+              onClick={handleNotifyShippingDelay}
+              loading={actionLoading}
+              disabled={delayReason.trim().length < 10}
+            >
+              Send notification
+            </Button>
           </div>
         </ModalOverlay>
       )}
