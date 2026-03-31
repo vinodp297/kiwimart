@@ -30,6 +30,11 @@ import { createNotification } from "@/modules/notifications/notification.service
 import { sendOrderConfirmationEmail } from "@/server/email";
 import { z } from "zod";
 import { transitionOrder } from "@/modules/orders/order.transitions";
+import {
+  orderEventService,
+  ORDER_EVENT_TYPES,
+  ACTOR_ROLES,
+} from "@/modules/orders/order-event.service";
 
 // ── Zod Schemas ──────────────────────────────────────────────────────────────
 
@@ -253,6 +258,16 @@ export async function createOrder(params: {
       ip,
     });
 
+    orderEventService.recordEvent({
+      orderId: order.id,
+      type: ORDER_EVENT_TYPES.CANCELLED,
+      actorId: null,
+      actorRole: ACTOR_ROLES.SYSTEM,
+      summary:
+        "Order cancelled: seller payment account not properly configured",
+      metadata: { trigger: "INVALID_CONNECT_ACCOUNT" },
+    });
+
     return {
       success: false,
       error:
@@ -290,6 +305,15 @@ export async function createOrder(params: {
       entityId: order.id,
       metadata: { listingId: listing.id, totalNzd },
       ip,
+    });
+
+    orderEventService.recordEvent({
+      orderId: order.id,
+      type: ORDER_EVENT_TYPES.ORDER_CREATED,
+      actorId: user.id,
+      actorRole: ACTOR_ROLES.BUYER,
+      summary: `Order placed for "${listing.title}" — $${(totalNzd / 100).toFixed(2)} NZD`,
+      metadata: { listingId: listing.id, totalNzd },
     });
 
     // Notify seller of new order + send buyer confirmation (fire-and-forget)
@@ -376,6 +400,15 @@ export async function createOrder(params: {
           stripeErr instanceof Error ? stripeErr.message : String(stripeErr),
       },
       ip,
+    });
+
+    orderEventService.recordEvent({
+      orderId: order.id,
+      type: ORDER_EVENT_TYPES.CANCELLED,
+      actorId: null,
+      actorRole: ACTOR_ROLES.SYSTEM,
+      summary: "Order cancelled: payment setup failed",
+      metadata: { trigger: "STRIPE_CREATION_FAILED" },
     });
 
     return {

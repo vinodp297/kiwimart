@@ -26,15 +26,20 @@ export function getImageUrl(r2Key: string | null | undefined): string {
     process.env.NEXT_PUBLIC_CDN_URL ??
     "";
 
-  if (base) {
+  // The R2 S3 API endpoint (*.r2.cloudflarestorage.com) requires AWS4 auth
+  // headers and is NOT publicly accessible. If set as the "public" URL,
+  // browsers and next/image get 403/404 on every image request. Detect this
+  // misconfiguration and fall through to the authenticated proxy route.
+  const isPublicUrl = base && !base.includes("r2.cloudflarestorage.com");
+
+  if (isPublicUrl) {
     // Public R2 URL or CDN configured — use direct URL
     return `${base.replace(/\/$/, "")}/${r2Key}`;
   }
 
-  // No public R2 URL configured — use the image proxy API route.
-  // This works regardless of whether the R2 bucket is publicly accessible.
-  // The proxy fetches from R2 using the S3 client and serves the image
-  // with proper cache headers (1h browser, 24h CDN).
+  // Use the image proxy API route. The proxy fetches from R2 using the
+  // authenticated S3 client and serves the image with proper cache headers
+  // (1h browser, 24h CDN).
   return `/api/images/${r2Key}`;
 }
 

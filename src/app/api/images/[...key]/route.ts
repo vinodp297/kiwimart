@@ -31,10 +31,12 @@ export async function GET(
     const { key } = await params;
     const r2Key = key.join("/");
 
-    // Basic validation: prevent path traversal and limit to listing images
+    // Basic validation: prevent path traversal, limit to known prefixes.
+    // listings/{userId}/{filename}            — listing images
+    // profiles/{userId}/{type}/{filename}     — avatar / cover images
     if (
       r2Key.includes("..") ||
-      !r2Key.match(/^listings\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9._-]+$/)
+      !r2Key.match(/^(listings|profiles)\/[a-zA-Z0-9_-]+(\/[a-zA-Z0-9._-]+)+$/)
     ) {
       return NextResponse.json(
         { error: "Invalid image path" },

@@ -123,20 +123,6 @@ const CATEGORIES = [
     ],
   },
   {
-    id: "vehicles",
-    name: "Vehicles",
-    icon: "🚗",
-    slug: "vehicles",
-    displayOrder: 5,
-    subcategories: [
-      "Cars",
-      "Bikes",
-      "Boats & Marine",
-      "Motorcycles",
-      "Car Parts & Accessories",
-    ],
-  },
-  {
     id: "property",
     name: "Property",
     icon: "🏘️",
@@ -1217,56 +1203,6 @@ async function main() {
       expiresAt: future(23 * DAY),
     },
     ["https://images.unsplash.com/photo-1580480055273-228ff5388ef8?w=800"],
-  );
-
-  // ── VEHICLES (3 listings) ─────────────────────────────────────────────────
-
-  await L(
-    {
-      sellerId: techdeals.id,
-      title: "2019 Toyota Corolla GX Hatch — Low Km, One Owner",
-      description:
-        "Reliable daily driver. 52,000km, full Toyota service history. WOF until Nov 2026. Reversing camera, Bluetooth, Apple CarPlay.",
-      priceNzd: 2399900,
-      condition: "GOOD",
-      status: "ACTIVE",
-      categoryId: "vehicles",
-      subcategoryName: "Cars",
-      region: "Auckland",
-      suburb: "Newmarket",
-      shippingOption: "PICKUP",
-      isNegotiable: true,
-      offersEnabled: true,
-      viewCount: 523,
-      watcherCount: 31,
-      publishedAt: ago(5 * DAY),
-      expiresAt: future(25 * DAY),
-    },
-    ["https://images.unsplash.com/photo-1590362891991-f776e747a588?w=800"],
-  );
-
-  await L(
-    {
-      sellerId: outdoorgear.id,
-      title: "Suzuki DR650 Adventure Motorcycle — 2020",
-      description:
-        "15,000km, excellent condition. Bark busters, aftermarket exhaust, rally windscreen. Ready for adventure touring.",
-      priceNzd: 899900,
-      condition: "GOOD",
-      status: "ACTIVE",
-      categoryId: "vehicles",
-      subcategoryName: "Motorcycles",
-      region: "Canterbury",
-      suburb: "Christchurch City",
-      shippingOption: "PICKUP",
-      isNegotiable: true,
-      offersEnabled: true,
-      viewCount: 187,
-      watcherCount: 12,
-      publishedAt: ago(3 * DAY),
-      expiresAt: future(27 * DAY),
-    },
-    ["https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=800"],
   );
 
   // ── BABY & KIDS (3 listings) ──────────────────────────────────────────────

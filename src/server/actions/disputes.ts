@@ -16,6 +16,11 @@ import { logger } from "@/shared/logger";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
 import db from "@/lib/db";
+import {
+  orderEventService,
+  ORDER_EVENT_TYPES,
+  ACTOR_ROLES,
+} from "@/modules/orders/order-event.service";
 import type { ActionResult } from "@/types";
 import { z } from "zod";
 
@@ -276,6 +281,15 @@ export async function respondToDispute(
       entityType: "Order",
       entityId: order.id,
       metadata: { response: parsed.data.response.slice(0, 100) },
+    });
+
+    orderEventService.recordEvent({
+      orderId: order.id,
+      type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+      actorId: user.id,
+      actorRole: ACTOR_ROLES.SELLER,
+      summary: `Seller responded to dispute`,
+      metadata: { response: parsed.data.response.slice(0, 200) },
     });
 
     logger.info("dispute.seller_responded", {

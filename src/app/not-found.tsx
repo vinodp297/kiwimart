@@ -3,13 +3,13 @@
 // Next.js App Router convention: file must be named not-found.tsx
 // Sprint 3: no changes needed — this is purely presentational.
 
-import Link from 'next/link';
-import type { Metadata } from 'next';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
+import Link from "next/link";
+import type { Metadata } from "next";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: '404 — Page not found',
+  title: "404 — Page not found",
 };
 
 export default function NotFound() {
@@ -22,10 +22,7 @@ export default function NotFound() {
       >
         <div className="max-w-md w-full text-center">
           {/* Illustration */}
-          <div
-            className="relative mx-auto w-40 h-40 mb-8"
-            aria-hidden
-          >
+          <div className="relative mx-auto w-40 h-40 mb-8" aria-hidden>
             <div
               className="absolute inset-0 rounded-full bg-[#F5ECD4] flex items-center
                 justify-center"
@@ -62,8 +59,12 @@ export default function NotFound() {
                 hover:bg-[#D4A843] transition-colors duration-200"
             >
               <svg
-                width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.5"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
               >
                 <path d="m15 18-6-6 6-6" />
               </svg>
@@ -82,14 +83,22 @@ export default function NotFound() {
 
           {/* Popular categories */}
           <div className="mt-8 pt-6 border-t border-[#E3E0D9]">
-            <p className="text-[12px] text-[#9E9A91] mb-3">Popular categories</p>
+            <p className="text-[12px] text-[#9E9A91] mb-3">
+              Popular categories
+            </p>
             <div className="flex flex-wrap justify-center gap-2">
               {[
-                { href: '/search?category=electronics', label: 'Electronics' },
-                { href: '/search?category=fashion', label: 'Fashion' },
-                { href: '/search?category=home-garden', label: 'Home & Garden' },
-                { href: '/search?category=sport-outdoors', label: 'Sports' },
-                { href: '/search?category=vehicles', label: 'Vehicles' },
+                { href: "/search?category=electronics", label: "Electronics" },
+                { href: "/search?category=fashion", label: "Fashion" },
+                {
+                  href: "/search?category=home-garden",
+                  label: "Home & Garden",
+                },
+                { href: "/search?category=sport-outdoors", label: "Sports" },
+                {
+                  href: "/search?category=collectibles",
+                  label: "Collectibles",
+                },
               ].map(({ href, label }) => (
                 <Link
                   key={href}
@@ -108,10 +117,10 @@ export default function NotFound() {
           <div className="mt-6">
             <div className="flex flex-wrap justify-center gap-3">
               {[
-                { href: '/sell', label: 'Sell an item' },
-                { href: '/login', label: 'Sign in' },
-                { href: '/register', label: 'Register' },
-                { href: '/safety', label: 'Safety guide' },
+                { href: "/sell", label: "Sell an item" },
+                { href: "/login", label: "Sign in" },
+                { href: "/register", label: "Register" },
+                { href: "/safety", label: "Safety guide" },
               ].map(({ href, label }) => (
                 <Link
                   key={href}
@@ -130,4 +139,3 @@ export default function NotFound() {
     </>
   );
 }
-

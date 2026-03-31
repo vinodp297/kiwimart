@@ -705,10 +705,7 @@ export default function OrderDetailPage() {
                       {order.disputeNotes}
                     </p>
                   )}
-                  <p className="mt-1.5 text-[11.5px] opacity-75">
-                    Our Trust &amp; Safety team will review and respond within
-                    48 hours.
-                  </p>
+                  {/* Trust & Safety message is shown in the top status banner */}
                 </div>
 
                 {/* Seller's response (if submitted) */}
