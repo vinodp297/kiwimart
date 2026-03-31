@@ -3,13 +3,13 @@ import { safeActionError } from "@/shared/errors";
 // src/server/actions/verification.application.ts
 // ─── Seller Verification Application Actions ─────────────────────────────────
 
-import { z } from "zod";
 import db from "@/lib/db";
 import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
+import { reviewVerificationSchema as ReviewSchema } from "@/server/validators";
 
 // ── Apply for Seller Verification ───────────────────────────────────────────
 
@@ -123,12 +123,6 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
 }
 
 // ── Approve / Reject Verification (Admin) ───────────────────────────────────
-
-const ReviewSchema = z.object({
-  sellerId: z.string().min(1),
-  decision: z.enum(["APPROVED", "REJECTED"]),
-  notes: z.string().max(500).optional(),
-});
 
 export async function reviewVerificationApplication(
   raw: unknown,

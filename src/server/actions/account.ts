@@ -18,32 +18,14 @@ import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
 import { hashPassword, verifyPassword } from "@/server/lib/password";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
+import {
+  changePasswordSchema,
+  updateProfileSchema,
+  type ChangePasswordInput,
+  type UpdateProfileActionInput,
+} from "@/server/validators";
 
-// ── Validation Schemas ──────────────────────────────────────────────────────
-
-const changePasswordSchema = z
-  .object({
-    currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: z
-      .string()
-      .min(12, "Password must be at least 12 characters")
-      .max(128, "Password is too long")
-      .regex(/[A-Z]/, "Must contain at least one uppercase letter")
-      .regex(/[a-z]/, "Must contain at least one lowercase letter")
-      .regex(/[0-9]/, "Must contain at least one number"),
-    confirmPassword: z.string().min(1, "Please confirm your new password"),
-  })
-  .refine((data) => data.newPassword === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  })
-  .refine((data) => data.currentPassword !== data.newPassword, {
-    message: "New password must be different from current password",
-    path: ["newPassword"],
-  });
-
-export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type { ChangePasswordInput };
 
 // ── changePassword ──────────────────────────────────────────────────────────
 
@@ -130,16 +112,7 @@ export async function changePassword(
 
 // ── updateProfile ────────────────────────────────────────────────────────────
 
-const updateProfileSchema = z.object({
-  displayName: z
-    .string()
-    .min(2, "Display name must be at least 2 characters")
-    .max(60),
-  region: z.string().max(100).optional(),
-  bio: z.string().max(500, "Bio must be under 500 characters").optional(),
-});
-
-export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type UpdateProfileInput = UpdateProfileActionInput;
 
 export async function updateProfile(
   input: UpdateProfileInput,

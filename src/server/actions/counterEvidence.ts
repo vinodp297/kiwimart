@@ -16,13 +16,7 @@ import {
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
-
-const submitCounterEvidenceSchema = z.object({
-  orderId: z.string().min(1),
-  description: z.string().min(10).max(2000).trim(),
-  evidenceKeys: z.array(z.string()).max(4).optional(),
-});
+import { submitCounterEvidenceSchema } from "@/server/validators";
 
 export async function submitCounterEvidence(
   raw: unknown,

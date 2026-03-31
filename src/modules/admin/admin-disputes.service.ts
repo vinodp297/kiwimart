@@ -203,26 +203,12 @@ function daysAgo(date: Date): number {
   return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-async function getAutoResolutionEvent(orderId: string) {
-  // Get the most recent auto-resolution event
-  const event = await db.orderEvent.findFirst({
-    where: {
-      orderId,
-      type: { in: ["AUTO_RESOLVED", "DISPUTE_RESPONDED", "FRAUD_FLAGGED"] },
-      metadata: {
-        path: ["decision"],
-        not: Prisma.JsonNull,
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    select: { metadata: true },
-  });
-
-  if (!event?.metadata) return null;
-
-  const meta = event.metadata as Record<string, unknown>;
+function parseAutoResolutionMeta(
+  metadata: unknown,
+): DisputeQueueItem["autoResolution"] {
+  if (!metadata) return null;
+  const meta = metadata as Record<string, unknown>;
   if (!meta.decision) return null;
-
   return {
     decision: String(meta.decision),
     score: Number(meta.score ?? 0),
@@ -237,6 +223,42 @@ async function getAutoResolutionEvent(orderId: string) {
         }>)
       : [],
   };
+}
+
+async function getAutoResolutionEvent(orderId: string) {
+  const event = await db.orderEvent.findFirst({
+    where: {
+      orderId,
+      type: { in: ["AUTO_RESOLVED", "DISPUTE_RESPONDED", "FRAUD_FLAGGED"] },
+      metadata: { path: ["decision"], not: Prisma.JsonNull },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+  return parseAutoResolutionMeta(event?.metadata);
+}
+
+/** Batch-fetch auto-resolution events for multiple orders (avoids N+1). */
+async function batchAutoResolutionEvents(
+  orderIds: string[],
+): Promise<Map<string, DisputeQueueItem["autoResolution"]>> {
+  if (orderIds.length === 0) return new Map();
+  const events = await db.orderEvent.findMany({
+    where: {
+      orderId: { in: orderIds },
+      type: { in: ["AUTO_RESOLVED", "DISPUTE_RESPONDED", "FRAUD_FLAGGED"] },
+      metadata: { path: ["decision"], not: Prisma.JsonNull },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { orderId: true, metadata: true },
+  });
+  // Keep only the newest event per order
+  const map = new Map<string, DisputeQueueItem["autoResolution"]>();
+  for (const ev of events) {
+    if (map.has(ev.orderId)) continue;
+    map.set(ev.orderId, parseAutoResolutionMeta(ev.metadata));
+  }
+  return map;
 }
 
 // ── Service ──────────────────────────────────────────────────────────────
@@ -399,10 +421,14 @@ export class AdminDisputesService {
       });
     }
 
-    // Enrich with auto-resolution data
+    // Batch-fetch auto-resolution data for all disputes (no N+1)
+    const autoResMap = await batchAutoResolutionEvents(
+      disputes.map((d) => d.id),
+    );
+
     const items: DisputeQueueItem[] = [];
     for (const d of disputes) {
-      const autoRes = await getAutoResolutionEvent(d.id);
+      const autoRes = autoResMap.get(d.id) ?? null;
       const item: DisputeQueueItem = {
         ...d,
         autoResolution: autoRes,

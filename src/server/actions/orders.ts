@@ -28,38 +28,18 @@ import { logger } from "@/shared/logger";
 import { orderService } from "@/modules/orders/order.service";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendOrderConfirmationEmail } from "@/server/email";
-import { z } from "zod";
 import { transitionOrder } from "@/modules/orders/order.transitions";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
-
-// ── Zod Schemas ──────────────────────────────────────────────────────────────
-
-const CreateOrderSchema = z.object({
-  listingId: z.string().min(1, "Listing ID is required"),
-  idempotencyKey: z.string().max(128).optional(),
-  shippingAddress: z
-    .object({
-      name: z.string().min(2, "Name is required").max(100),
-      line1: z.string().min(5, "Street address is required").max(200),
-      line2: z.string().max(200).optional(),
-      city: z.string().min(2, "City is required").max(100),
-      region: z.string().min(2, "Region is required").max(100),
-      postcode: z.string().regex(/^\d{4}$/, "Invalid NZ postcode"),
-    })
-    .optional(),
-});
-
-const ConfirmDeliverySchema = z.object({
-  orderId: z.string().min(1, "Order ID is required"),
-  itemAsDescribed: z.boolean(),
-  issueType: z.string().optional(),
-  deliveryPhotos: z.array(z.string()).max(4).optional(),
-  notes: z.string().max(2000).optional(),
-});
+import {
+  createOrderSchema as CreateOrderSchema,
+  confirmDeliverySchema as ConfirmDeliverySchema,
+  markDispatchedSchema as MarkDispatchedSchema,
+  cancelOrderSchema as CancelOrderSchema,
+} from "@/server/validators";
 
 const VALID_COURIERS = [
   "NZ Post",
@@ -69,33 +49,6 @@ const VALID_COURIERS = [
   "Castle Parcels",
   "Other",
 ] as const;
-
-const MarkDispatchedSchema = z.object({
-  orderId: z.string().min(1, "Order ID is required"),
-  trackingNumber: z.string().min(1, "Tracking number is required").max(100),
-  courier: z.string().min(1, "Courier is required"),
-  trackingUrl: z.string().max(500).optional(),
-  estimatedDeliveryDate: z
-    .string()
-    .min(1, "Estimated delivery date is required")
-    .refine(
-      (val) => {
-        const d = new Date(val);
-        if (isNaN(d.getTime())) return false;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const diffDays = Math.round(
-          (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-        );
-        return diffDays >= 1 && diffDays <= 14;
-      },
-      { message: "Estimated delivery must be 1-14 days from today." },
-    ),
-  dispatchPhotos: z
-    .array(z.string().min(1))
-    .min(1, "At least 1 dispatch photo is required.")
-    .max(4, "Maximum 4 dispatch photos."),
-});
 
 // ── createOrder ───────────────────────────────────────────────────────────────
 
@@ -501,11 +454,6 @@ export async function confirmDelivery(
 }
 
 // ── cancelOrder — buyer/seller cancels order within time window ──────────────
-
-const CancelOrderSchema = z.object({
-  orderId: z.string().min(1, "Order ID is required"),
-  reason: z.string().max(500).optional(),
-});
 
 export async function cancelOrder(params: {
   orderId: string;

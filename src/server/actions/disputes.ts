@@ -23,30 +23,11 @@ import {
 } from "@/modules/orders/order-event.service";
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
-
-const openDisputeSchema = z.object({
-  orderId: z.string().min(1),
-  reason: z.enum([
-    "ITEM_NOT_RECEIVED",
-    "ITEM_NOT_AS_DESCRIBED",
-    "ITEM_DAMAGED",
-    "WRONG_ITEM_SENT",
-    "COUNTERFEIT_ITEM",
-    "SELLER_UNRESPONSIVE",
-    "SELLER_CANCELLED",
-    "REFUND_NOT_PROCESSED",
-    "OTHER",
-  ]),
-  description: z
-    .string()
-    .min(20, "Please describe the issue in at least 20 characters.")
-    .max(2000)
-    .trim(),
-  evidenceUrls: z.array(z.string().min(1)).max(3).optional(),
-});
-
-export type OpenDisputeInput = z.infer<typeof openDisputeSchema>;
+import {
+  openDisputeSchema,
+  respondToDisputeSchema,
+  type OpenDisputeInput,
+} from "@/server/validators";
 
 export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
   try {
@@ -216,15 +197,6 @@ export async function uploadDisputeEvidence(
 // ── Seller dispute response ──────────────────────────────────────────���───
 // Allows the seller to submit a written response to a buyer-opened dispute.
 // Sets sellerResponse + sellerRespondedAt and notifies the buyer.
-
-const respondToDisputeSchema = z.object({
-  orderId: z.string().min(1),
-  response: z
-    .string()
-    .min(20, "Please describe your response in at least 20 characters.")
-    .max(2000)
-    .trim(),
-});
 
 export async function respondToDispute(
   raw: unknown,

@@ -6,7 +6,12 @@ import { safeActionError } from "@/shared/errors";
 import { requireUser } from "@/server/lib/requireUser";
 import db from "@/lib/db";
 import type { ActionResult } from "@/types";
-import { z } from "zod";
+import {
+  completeOnboardingSchema,
+  type CompleteOnboardingInput,
+} from "@/server/validators";
+
+export type { CompleteOnboardingInput };
 
 const NZ_REGIONS = [
   "Auckland",
@@ -26,13 +31,6 @@ const NZ_REGIONS = [
   "Gisborne",
   "West Coast",
 ] as const;
-
-const completeOnboardingSchema = z.object({
-  intent: z.enum(["BUY", "SELL", "BOTH"]),
-  region: z.string().optional(),
-});
-
-export type CompleteOnboardingInput = z.infer<typeof completeOnboardingSchema>;
 
 // ── completeOnboarding ────────────────────────────────────────────────────────
 
