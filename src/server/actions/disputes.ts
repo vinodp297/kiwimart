@@ -92,45 +92,16 @@ export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
 
     await orderService.openDispute(parsed.data, user.id, ip);
 
-    // Run auto-resolution engine immediately (fire-and-forget)
+    // Queue auto-resolution with 24h cooling period (fire-and-forget)
     autoResolutionService
-      .evaluateDispute(parsed.data.orderId)
-      .then(async (evaluation) => {
-        if (
-          evaluation.decision === "AUTO_REFUND" ||
-          evaluation.decision === "AUTO_DISMISS"
-        ) {
-          await autoResolutionService.executeDecision(
-            parsed.data.orderId,
-            evaluation,
-          );
-          logger.info("dispute.auto_resolved_on_open", {
-            orderId: parsed.data.orderId,
-            decision: evaluation.decision,
-            score: evaluation.score,
-          });
-        } else {
-          // Record the evaluation for admin visibility even if not auto-resolving
-          orderEventService.recordEvent({
-            orderId: parsed.data.orderId,
-            type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
-            actorId: null,
-            actorRole: ACTOR_ROLES.SYSTEM,
-            summary: `Auto-resolution evaluated: ${evaluation.decision}. Score: ${evaluation.score}`,
-            metadata: {
-              decision: evaluation.decision,
-              score: evaluation.score,
-              factors: evaluation.factors,
-              recommendation: evaluation.recommendation,
-            },
-          });
-          if (evaluation.decision === "FLAG_FRAUD") {
-            await autoResolutionService.executeDecision(
-              parsed.data.orderId,
-              evaluation,
-            );
-          }
-        }
+      .queueAutoResolution(parsed.data.orderId)
+      .then((evaluation) => {
+        logger.info("dispute.auto_resolution.queued", {
+          orderId: parsed.data.orderId,
+          decision: evaluation.decision,
+          score: evaluation.score,
+          canAutoResolve: evaluation.canAutoResolve,
+        });
       })
       .catch((err) => {
         logger.error("dispute.auto_resolution.failed", {
@@ -346,24 +317,15 @@ export async function respondToDispute(
       sellerId: user.id,
     });
 
-    // Re-run auto-resolution with updated evidence (fire-and-forget)
+    // Re-evaluate with updated evidence (fire-and-forget)
     autoResolutionService
-      .evaluateDispute(parsed.data.orderId)
-      .then(async (evaluation) => {
-        if (
-          evaluation.decision === "AUTO_REFUND" ||
-          evaluation.decision === "AUTO_DISMISS"
-        ) {
-          await autoResolutionService.executeDecision(
-            parsed.data.orderId,
-            evaluation,
-          );
-          logger.info("dispute.auto_resolved_after_response", {
-            orderId: parsed.data.orderId,
-            decision: evaluation.decision,
-            score: evaluation.score,
-          });
-        }
+      .queueAutoResolution(parsed.data.orderId)
+      .then((evaluation) => {
+        logger.info("dispute.auto_resolution_after_response", {
+          orderId: parsed.data.orderId,
+          decision: evaluation.decision,
+          score: evaluation.score,
+        });
       })
       .catch((err) => {
         logger.error("dispute.auto_resolution_after_response.failed", {
