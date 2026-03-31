@@ -21,6 +21,9 @@ import {
   respondToDispute,
 } from "@/server/actions/disputes";
 import { fetchOrderDetail } from "@/server/actions/orderDetail";
+import { getOrderTimeline } from "@/server/actions/orderEvents";
+import OrderTimeline from "@/components/OrderTimeline";
+import type { TimelineEvent } from "@/components/OrderTimeline";
 
 // ── Courier URL detection ────────────────────────────────────────────────────
 function getCourierUrl(trackingNumber: string): string {
@@ -221,6 +224,111 @@ function getCancellationStatusClient(order: OrderDetailData): {
   };
 }
 
+// ── Synthetic events for legacy orders ───────────────────────────────────────
+// Orders created before the OrderEvent system have no events in the DB.
+// Build a minimal timeline from the order's existing timestamps.
+
+function buildSyntheticEvents(order: OrderDetailData): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+  let counter = 0;
+  const synId = () => `synthetic-${counter++}`;
+
+  // ORDER_CREATED always exists
+  events.push({
+    id: synId(),
+    type: "ORDER_CREATED",
+    actorRole: "BUYER",
+    summary: "Order placed",
+    metadata: null,
+    createdAt: order.createdAt,
+    actor: null,
+  });
+
+  // PAYMENT_HELD — if order moved past AWAITING_PAYMENT
+  const pastPayment = [
+    "payment_held",
+    "dispatched",
+    "delivered",
+    "completed",
+    "disputed",
+    "refunded",
+  ].includes(order.status);
+  if (pastPayment) {
+    events.push({
+      id: synId(),
+      type: "PAYMENT_HELD",
+      actorRole: "SYSTEM",
+      summary: "Payment authorized and held in escrow",
+      metadata: null,
+      createdAt: order.createdAt, // best available timestamp
+      actor: null,
+    });
+  }
+
+  // DISPATCHED
+  if (order.dispatchedAt) {
+    events.push({
+      id: synId(),
+      type: "DISPATCHED",
+      actorRole: "SELLER",
+      summary: order.trackingNumber
+        ? `Seller dispatched order — tracking: ${order.trackingNumber}`
+        : "Seller dispatched order",
+      metadata: order.trackingNumber
+        ? {
+            trackingNumber: order.trackingNumber,
+            trackingUrl: order.trackingUrl,
+          }
+        : null,
+      createdAt: order.dispatchedAt,
+      actor: null,
+    });
+  }
+
+  // Terminal states
+  if (order.completedAt && order.status === "completed") {
+    events.push({
+      id: synId(),
+      type: "COMPLETED",
+      actorRole: "BUYER",
+      summary: "Buyer confirmed delivery — payment released to seller",
+      metadata: null,
+      createdAt: order.completedAt,
+      actor: null,
+    });
+  }
+
+  if (order.disputeOpenedAt) {
+    events.push({
+      id: synId(),
+      type: "DISPUTE_OPENED",
+      actorRole: "BUYER",
+      summary: order.disputeReason
+        ? `Buyer opened dispute: ${order.disputeReason.replace(/_/g, " ").toLowerCase()}`
+        : "Buyer opened dispute",
+      metadata: order.disputeReason ? { reason: order.disputeReason } : null,
+      createdAt: order.disputeOpenedAt,
+      actor: null,
+    });
+  }
+
+  if (order.cancelledAt) {
+    events.push({
+      id: synId(),
+      type: "CANCELLED",
+      actorRole: order.cancelledBy === "SELLER" ? "SELLER" : "BUYER",
+      summary: order.cancelReason
+        ? `Order cancelled: ${order.cancelReason}`
+        : "Order cancelled",
+      metadata: order.cancelReason ? { reason: order.cancelReason } : null,
+      createdAt: order.cancelledAt,
+      actor: null,
+    });
+  }
+
+  return events;
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = params.id as string;
@@ -230,6 +338,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetailData | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
 
   // Dispatch modal
   const [showDispatch, setShowDispatch] = useState(false);
@@ -263,6 +372,15 @@ export default function OrderDetailPage() {
         const result = await fetchOrderDetail(orderId);
         if (result.success) {
           setOrder(result.data);
+
+          // Fetch real timeline events
+          const tlResult = await getOrderTimeline(orderId);
+          if (tlResult.success && tlResult.data.length > 0) {
+            setTimelineEvents(tlResult.data);
+          } else {
+            // Build synthetic events for legacy orders (created before OrderEvent system)
+            setTimelineEvents(buildSyntheticEvents(result.data));
+          }
         } else {
           setError(result.error);
         }
@@ -450,77 +568,8 @@ export default function OrderDetailPage() {
 
   if (!order) return null;
 
-  // ── Timeline steps with dates (Fix 2 + Fix 3) ─────────────────────────────
   const isDisputed = order.status === "disputed";
   const isCancelled = order.status === "cancelled";
-
-  const statusSteps: {
-    label: string;
-    done: boolean;
-    active: boolean;
-    date: string | null;
-    variant?: "warning" | "danger";
-  }[] = [
-    {
-      label: "Order placed",
-      done: true,
-      active: false,
-      date: fmtDate(order.createdAt),
-    },
-    {
-      label: "Payment received",
-      done:
-        ["payment_held", "dispatched", "delivered", "completed"].includes(
-          order.status,
-        ) || isDisputed,
-      active: order.status === "payment_held",
-      date: fmtDate(order.createdAt), // payment happens at order creation
-    },
-    {
-      label: "Dispatched",
-      done:
-        ["dispatched", "delivered", "completed"].includes(order.status) ||
-        isDisputed,
-      active: order.status === "dispatched",
-      date: fmtDate(order.dispatchedAt),
-    },
-    {
-      label: "Delivered",
-      done: ["delivered", "completed"].includes(order.status),
-      active: order.status === "delivered",
-      date: fmtDate(order.deliveredAt),
-    },
-    // Show dispute milestone if disputed (Fix 3)
-    ...(isDisputed
-      ? [
-          {
-            label: "Disputed",
-            done: true,
-            active: true,
-            date: fmtDate(order.disputeOpenedAt),
-            variant: "danger" as const,
-          },
-        ]
-      : isCancelled
-        ? [
-            {
-              label: "Cancelled",
-              done: true,
-              active: true,
-              date: fmtDate(order.cancelledAt),
-              variant: "danger" as const,
-            },
-          ]
-        : [
-            {
-              label: "Completed",
-              done: order.status === "completed",
-              active: order.status === "completed",
-              date: fmtDate(order.completedAt),
-            },
-          ]),
-  ];
-
   const statusInfo = getStatusInfo(order);
 
   return (
@@ -607,88 +656,12 @@ export default function OrderDetailPage() {
             </div>
           )}
 
-          {/* Timeline */}
-          <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6 mb-6">
-            <h2 className="text-[13.5px] font-semibold text-[#141414] mb-5">
-              Order timeline
-            </h2>
-            <div className="flex items-start justify-between relative">
-              {/* Line */}
-              <div className="absolute top-3 left-3 right-3 h-0.5 bg-[#E3E0D9]" />
-              <div
-                className={`absolute top-3 left-3 h-0.5 transition-all duration-500 ${
-                  isDisputed || isCancelled ? "bg-red-400" : "bg-[#D4A843]"
-                }`}
-                style={{
-                  width: `${((statusSteps.filter((s) => s.done).length - 1) / (statusSteps.length - 1)) * 100}%`,
-                }}
-              />
+          {/* Timeline — dynamic event-driven, replaces static stepper */}
+          <OrderTimeline events={timelineEvents} currentStatus={order.status} />
 
-              {statusSteps.map((step) => (
-                <div
-                  key={step.label}
-                  className="relative flex flex-col items-center z-10"
-                  style={{ flex: 1 }}
-                >
-                  <div
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all
-                      ${
-                        step.variant === "danger"
-                          ? "bg-red-500 border-red-500"
-                          : step.done
-                            ? "bg-[#D4A843] border-[#D4A843]"
-                            : step.active
-                              ? "bg-white border-[#D4A843]"
-                              : "bg-[#F8F7F4] border-[#E3E0D9]"
-                      }`}
-                  >
-                    {step.variant === "danger" && step.done ? (
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="3"
-                      >
-                        <path d="M18 6 6 18M6 6l12 12" />
-                      </svg>
-                    ) : step.done ? (
-                      <svg
-                        width="10"
-                        height="10"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="3"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    ) : null}
-                  </div>
-                  <span
-                    className={`text-[10.5px] mt-2 text-center whitespace-nowrap
-                    ${
-                      step.variant === "danger"
-                        ? "text-red-600 font-semibold"
-                        : step.done || step.active
-                          ? "text-[#141414] font-medium"
-                          : "text-[#9E9A91]"
-                    }`}
-                  >
-                    {step.label}
-                  </span>
-                  {/* Date under each milestone (Fix 2) */}
-                  {step.date && step.done && (
-                    <span className="text-[9.5px] text-[#9E9A91] mt-0.5 text-center whitespace-nowrap">
-                      {step.date}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Dispute details if disputed (Fix 3) */}
+          {/* Dispute details — separate from timeline for seller response form */}
+          <div className="mb-6">
+            {/* Dispute details if disputed */}
             {isDisputed && (
               <div className="mt-5 space-y-3">
                 {/* Buyer's dispute claim */}
