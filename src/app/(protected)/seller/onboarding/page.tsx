@@ -1,21 +1,21 @@
 // src/app/(protected)/seller/onboarding/page.tsx
 // ─── Seller Onboarding Hub ─────────────────────────────────────────────────────
 
-import { redirect } from 'next/navigation'
-import NavBar from '@/components/NavBar'
-import Footer from '@/components/Footer'
-import { auth } from '@/lib/auth'
-import db from '@/lib/db'
-import { getSellerTier, SELLER_TIERS } from '@/lib/sellerTiers'
-import SellerOnboardingClient from './SellerOnboardingClient'
-import type { Metadata } from 'next'
+import { redirect } from "next/navigation";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { getSellerTier, SELLER_TIERS } from "@/lib/seller-tiers";
+import SellerOnboardingClient from "./SellerOnboardingClient";
+import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: 'Seller Hub' }
-export const dynamic = 'force-dynamic'
+export const metadata: Metadata = { title: "Seller Hub" };
+export const dynamic = "force-dynamic";
 
 export default async function SellerOnboardingPage() {
-  const session = await auth()
-  if (!session?.user?.id) redirect('/auth/signin')
+  const session = await auth();
+  if (!session?.user?.id) redirect("/auth/signin");
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
@@ -31,12 +31,12 @@ export default async function SellerOnboardingPage() {
       idSubmittedAt: true,
       stripeOnboarded: true,
     },
-  })
+  });
 
-  if (!user) redirect('/auth/signin')
-  if (!user.sellerEnabled) redirect('/dashboard/buyer')
+  if (!user) redirect("/auth/signin");
+  if (!user.sellerEnabled) redirect("/dashboard/buyer");
 
-  const tier = getSellerTier(user)
+  const tier = getSellerTier(user);
 
   return (
     <>
@@ -63,7 +63,8 @@ export default async function SellerOnboardingPage() {
               id: user.id,
               name: user.displayName,
               email: user.email,
-              sellerTermsAcceptedAt: user.sellerTermsAcceptedAt?.toISOString() ?? null,
+              sellerTermsAcceptedAt:
+                user.sellerTermsAcceptedAt?.toISOString() ?? null,
               phoneVerified: user.phoneVerified,
               idVerified: user.idVerified,
               idVerifiedAt: user.idVerifiedAt?.toISOString() ?? null,
@@ -77,5 +78,5 @@ export default async function SellerOnboardingPage() {
       </main>
       <Footer />
     </>
-  )
+  );
 }

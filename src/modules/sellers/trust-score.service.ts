@@ -35,13 +35,13 @@ function calculateTrustScore(data: TrustScoreData): number {
 }
 
 import { calculateSellerTier } from "@/lib/seller-tiers";
-import type { SellerTier } from "@/lib/seller-tiers";
+import type { PerformanceTier } from "@/lib/seller-tiers";
 export { calculateSellerTier };
-export type { SellerTier };
+export type { PerformanceTier };
 
 export interface SellerTrustProfile {
   trustScore: number;
-  tier: SellerTier;
+  tier: PerformanceTier;
   data: TrustScoreData;
   completedSales: number;
   totalOrders: number;

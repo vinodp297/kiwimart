@@ -21,7 +21,7 @@ import {
   TIER_REQUIREMENTS,
   TIER_CONFIG,
 } from "@/lib/seller-tiers";
-import type { SellerTier } from "@/lib/seller-tiers";
+import type { PerformanceTier } from "@/lib/seller-tiers";
 import type { OrderStatus, Condition } from "@/types";
 import { fetchSellerDashboard } from "@/server/actions/dashboard";
 import type {

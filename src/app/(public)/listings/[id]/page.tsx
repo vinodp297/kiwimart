@@ -181,12 +181,12 @@ export default async function ListingDetailPage({
           10
         : 0,
     reviewCount: listing.seller._count.reviews,
-    verified: listing.seller.idVerified,
+    verified: false,
     memberSince: listing.seller.createdAt.toISOString(),
     activeListingCount: listing.seller._count.listings,
     soldCount: listing.seller._count.sellerOrders,
     responseTimeLabel,
-    badges: (listing.seller.idVerified ? ["verified_id"] : []) as SellerBadge[],
+    badges: [] as SellerBadge[],
   };
 
   const detail: ListingDetail = {

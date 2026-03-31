@@ -204,7 +204,7 @@ export default async function SellerProfilePage({
     suburb: user.suburb ?? "",
     rating: avgRating,
     reviewCount: user._count.reviews,
-    verified: user.idVerified,
+    verified: false,
     memberSince: user.createdAt.toISOString(),
     activeListingCount: user._count.listings,
     soldCount: user._count.sellerOrders,
@@ -213,7 +213,7 @@ export default async function SellerProfilePage({
     trustScore: trustProfile?.trustScore ?? null,
     tier: trustProfile?.tier ?? null,
     isVerifiedSeller: user.isVerifiedSeller,
-    badges: (user.idVerified ? ["verified_id"] : []) as SellerBadge[],
+    badges: [] as SellerBadge[],
   };
 
   // Fetch seller's active listings
@@ -269,7 +269,7 @@ export default async function SellerProfilePage({
       sellerName: user.displayName,
       sellerUsername: user.username,
       sellerRating: seller.rating,
-      sellerVerified: user.idVerified,
+      sellerVerified: false,
       viewCount: row.viewCount,
       watcherCount: row.watcherCount,
       createdAt: row.createdAt.toISOString(),
