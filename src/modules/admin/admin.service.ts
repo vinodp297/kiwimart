@@ -14,6 +14,7 @@ import {
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
+import { createNotification } from "@/modules/notifications/notification.service";
 import type { ReportAction, DisputeFavour } from "./admin.types";
 
 export class AdminService {
@@ -260,6 +261,332 @@ export class AdminService {
     });
 
     logger.info("admin.dispute.resolved", { orderId, favour, adminUserId });
+  }
+
+  /**
+   * Resolve dispute with partial refund.
+   */
+  async resolveDisputePartialRefund(
+    orderId: string,
+    amountCents: number,
+    reason: string,
+    adminUserId: string,
+  ): Promise<void> {
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        totalNzd: true,
+        buyerId: true,
+        sellerId: true,
+        stripePaymentIntentId: true,
+        listing: { select: { title: true } },
+      },
+    });
+
+    if (!order) throw AppError.notFound("Order");
+    if (order.status !== "DISPUTED") {
+      throw new AppError("ORDER_WRONG_STATE", "Order is not in dispute.", 400);
+    }
+    if (!order.stripePaymentIntentId) {
+      throw AppError.missingPaymentIntent();
+    }
+    if (amountCents > order.totalNzd) {
+      throw new AppError(
+        "VALIDATION_ERROR",
+        "Partial refund cannot exceed order total.",
+        400,
+      );
+    }
+
+    const paymentIntentId = order.stripePaymentIntentId;
+
+    await withLock(`dispute:${orderId}`, async () => {
+      await transitionOrder(
+        orderId,
+        "COMPLETED",
+        {
+          completedAt: new Date(),
+          disputeResolvedAt: new Date(),
+        },
+        { fromStatus: order.status },
+      );
+
+      try {
+        await paymentService.refundPayment({
+          paymentIntentId,
+          orderId,
+          reason: `Partial refund ($${(amountCents / 100).toFixed(2)}): ${reason}`,
+        });
+      } catch (err) {
+        logger.error("admin.dispute.partial_refund_failed", {
+          orderId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      // Capture remaining amount
+      try {
+        await paymentService.capturePayment({
+          paymentIntentId,
+          orderId,
+        });
+      } catch {
+        // Payment may already be captured
+      }
+    });
+
+    const refundDollars = (amountCents / 100).toFixed(2);
+
+    audit({
+      userId: adminUserId,
+      action: "DISPUTE_RESOLVED",
+      entityType: "Order",
+      entityId: orderId,
+      metadata: {
+        favour: "partial",
+        refundAmount: amountCents,
+        reason,
+      },
+    });
+
+    orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
+      actorId: adminUserId,
+      actorRole: ACTOR_ROLES.ADMIN,
+      summary: `Partial refund of $${refundDollars} issued to buyer. Reason: ${reason}`,
+      metadata: {
+        favour: "partial",
+        refundAmount: amountCents,
+        reason,
+      },
+    });
+
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Dispute resolved — partial refund",
+      body: `A partial refund of $${refundDollars} has been issued for "${order.listing.title}".`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }).catch(() => {});
+
+    createNotification({
+      userId: order.sellerId,
+      type: "SYSTEM",
+      title: "Dispute resolved — partial refund to buyer",
+      body: `A partial refund of $${refundDollars} was issued for "${order.listing.title}". The remaining balance will be released.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }).catch(() => {});
+
+    logger.info("admin.dispute.partial_refund", {
+      orderId,
+      amountCents,
+      adminUserId,
+    });
+  }
+
+  /**
+   * Override an auto-resolution decision during cooling period or after execution.
+   */
+  async overrideAutoResolution(
+    orderId: string,
+    newDecision: "refund" | "dismiss" | "partial_refund",
+    reason: string,
+    adminUserId: string,
+    partialAmountCents?: number,
+  ): Promise<void> {
+    // Find the auto-resolution event to record the override
+    const autoResEvent = await db.orderEvent.findFirst({
+      where: {
+        orderId,
+        type: "AUTO_RESOLVED",
+        metadata: {
+          path: ["decision"],
+          not: { equals: null },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { metadata: true },
+    });
+
+    const originalDecision = autoResEvent
+      ? String(
+          (autoResEvent.metadata as Record<string, unknown>).decision ?? "",
+        )
+      : "UNKNOWN";
+
+    // Record the override event
+    orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
+      actorId: adminUserId,
+      actorRole: ACTOR_ROLES.ADMIN,
+      summary: `Admin override — Original: ${originalDecision}. New decision: ${newDecision.toUpperCase()}. Reason: ${reason}`,
+      metadata: {
+        type: "ADMIN_OVERRIDE",
+        originalDecision,
+        newDecision,
+        reason,
+        partialAmountCents,
+      },
+    });
+
+    // Execute the new decision
+    if (newDecision === "refund") {
+      await this.resolveDispute(orderId, "buyer", adminUserId);
+    } else if (newDecision === "dismiss") {
+      await this.resolveDispute(orderId, "seller", adminUserId);
+    } else if (newDecision === "partial_refund" && partialAmountCents) {
+      await this.resolveDisputePartialRefund(
+        orderId,
+        partialAmountCents,
+        reason,
+        adminUserId,
+      );
+    }
+
+    audit({
+      userId: adminUserId,
+      action: "ADMIN_ACTION",
+      entityType: "Order",
+      entityId: orderId,
+      metadata: {
+        action: "override_auto_resolution",
+        originalDecision,
+        newDecision,
+        reason,
+      },
+    });
+
+    logger.info("admin.dispute.override", {
+      orderId,
+      originalDecision,
+      newDecision,
+      adminUserId,
+    });
+  }
+
+  /**
+   * Request more information from a party in a dispute.
+   */
+  async requestMoreInfo(
+    orderId: string,
+    target: "buyer" | "seller" | "both",
+    message: string,
+    adminUserId: string,
+  ): Promise<void> {
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        buyerId: true,
+        sellerId: true,
+        listing: { select: { title: true } },
+      },
+    });
+
+    if (!order) throw AppError.notFound("Order");
+
+    const targets =
+      target === "both"
+        ? [order.buyerId, order.sellerId]
+        : target === "buyer"
+          ? [order.buyerId]
+          : [order.sellerId];
+
+    for (const userId of targets) {
+      createNotification({
+        userId,
+        type: "ORDER_DISPUTED",
+        title: "More information requested",
+        body: `Our team needs more information about the dispute on "${order.listing.title}": ${message}`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }).catch(() => {});
+    }
+
+    orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+      actorId: adminUserId,
+      actorRole: ACTOR_ROLES.ADMIN,
+      summary: `Admin requested more information from ${target}: ${message.slice(0, 200)}`,
+      metadata: { target, message },
+    });
+
+    audit({
+      userId: adminUserId,
+      action: "ADMIN_ACTION",
+      entityType: "Order",
+      entityId: orderId,
+      metadata: {
+        action: "request_info",
+        target,
+        message: message.slice(0, 200),
+      },
+    });
+
+    logger.info("admin.dispute.request_info", {
+      orderId,
+      target,
+      adminUserId,
+    });
+  }
+
+  /**
+   * Flag a user for fraud from the dispute panel.
+   */
+  async flagUserForFraud(
+    userId: string,
+    orderId: string,
+    reason: string,
+    adminUserId: string,
+  ): Promise<void> {
+    await db.trustMetrics.upsert({
+      where: { userId },
+      create: {
+        userId,
+        totalOrders: 0,
+        completedOrders: 0,
+        disputeCount: 0,
+        disputeRate: 0,
+        disputesLast30Days: 0,
+        averageResponseHours: null,
+        averageRating: null,
+        dispatchPhotoRate: 0,
+        accountAgeDays: 0,
+        isFlaggedForFraud: true,
+        lastComputedAt: new Date(),
+      },
+      update: { isFlaggedForFraud: true },
+    });
+
+    orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.FRAUD_FLAGGED,
+      actorId: adminUserId,
+      actorRole: ACTOR_ROLES.ADMIN,
+      summary: `Admin flagged user ${userId} for fraud: ${reason}`,
+      metadata: { flaggedUserId: userId, reason },
+    });
+
+    audit({
+      userId: adminUserId,
+      action: "FRAUD_FLAGGED",
+      entityType: "User",
+      entityId: userId,
+      metadata: { orderId, reason },
+    });
+
+    logger.info("admin.fraud.flagged", {
+      flaggedUserId: userId,
+      orderId,
+      adminUserId,
+    });
   }
 }
 
