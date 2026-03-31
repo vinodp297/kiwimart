@@ -353,3 +353,96 @@ export async function getSignedImageUrl(r2Key: string): Promise<string> {
   });
   return getSignedUrl(r2, command, { expiresIn: 3600 }); // 1 hour
 }
+
+// ── deleteListingImage — removes an image from a listing ───────────────────
+
+export async function deleteListingImage(params: {
+  imageId: string;
+  listingId: string;
+}): Promise<ActionResult<{ deleted: boolean }>> {
+  try {
+    const user = await requireUser();
+
+    // Verify listing ownership
+    const listing = await db.listing.findUnique({
+      where: { id: params.listingId },
+      select: { sellerId: true, _count: { select: { images: true } } },
+    });
+
+    if (!listing || (listing.sellerId !== user.id && !user.isAdmin)) {
+      return { success: false, error: "Not authorised." };
+    }
+
+    if (listing._count.images <= 1) {
+      return {
+        success: false,
+        error: "Listings must have at least one photo.",
+      };
+    }
+
+    // Delete the image record
+    const image = await db.listingImage.findFirst({
+      where: { id: params.imageId, listingId: params.listingId },
+    });
+    if (!image) {
+      return { success: false, error: "Image not found." };
+    }
+
+    await db.listingImage.delete({ where: { id: params.imageId } });
+
+    // Re-order remaining images
+    const remaining = await db.listingImage.findMany({
+      where: { listingId: params.listingId },
+      orderBy: { order: "asc" },
+      select: { id: true },
+    });
+    await Promise.all(
+      remaining.map((img, i) =>
+        db.listingImage.update({ where: { id: img.id }, data: { order: i } }),
+      ),
+    );
+
+    logger.info("image:deleted", {
+      imageId: params.imageId,
+      listingId: params.listingId,
+      userId: user.id,
+    });
+
+    return { success: true, data: { deleted: true } };
+  } catch (err) {
+    return { success: false, error: safeActionError(err) };
+  }
+}
+
+// ── reorderListingImages — updates sort order for listing images ────────────
+
+export async function reorderListingImages(params: {
+  listingId: string;
+  imageIds: string[];
+}): Promise<ActionResult<{ reordered: boolean }>> {
+  try {
+    const user = await requireUser();
+
+    const listing = await db.listing.findUnique({
+      where: { id: params.listingId },
+      select: { sellerId: true },
+    });
+
+    if (!listing || (listing.sellerId !== user.id && !user.isAdmin)) {
+      return { success: false, error: "Not authorised." };
+    }
+
+    await Promise.all(
+      params.imageIds.map((id, order) =>
+        db.listingImage.update({
+          where: { id },
+          data: { order },
+        }),
+      ),
+    );
+
+    return { success: true, data: { reordered: true } };
+  } catch (err) {
+    return { success: false, error: safeActionError(err) };
+  }
+}

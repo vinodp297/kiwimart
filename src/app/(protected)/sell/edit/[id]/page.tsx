@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/primitives";
 import CATEGORIES from "@/data/categories";
 import { getListingForEdit, updateListing } from "@/server/actions/listings";
+import {
+  requestImageUpload,
+  confirmImageUpload,
+  deleteListingImage,
+  reorderListingImages,
+} from "@/server/actions/images";
 import { getImageUrl } from "@/lib/image";
 import type { Condition, ShippingOption, NZRegion } from "@/types";
 
@@ -111,6 +117,8 @@ export default function EditListingPage() {
   const [existingImages, setExistingImages] = useState<
     { id: string; r2Key: string; thumbnailKey: string | null; url: string }[]
   >([]);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [listingStatus, setListingStatus] = useState("");
 
@@ -302,37 +310,207 @@ export default function EditListingPage() {
             )}
           </div>
 
-          {/* Existing images preview */}
-          {existingImages.length > 0 && (
-            <div className="bg-white rounded-2xl border border-[#E3E0D9] p-4 mb-6">
-              <p className="text-[12.5px] font-semibold text-[#9E9A91] uppercase tracking-wide mb-3">
-                Current photos ({existingImages.length})
-              </p>
-              <div className="flex gap-2 overflow-x-auto">
-                {existingImages.map((img, i) => (
-                  <div
-                    key={img.id}
-                    className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border-2 border-[#E3E0D9]"
-                  >
-                    <img
-                      src={img.url}
-                      alt={`Photo ${i + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                    {i === 0 && (
-                      <div className="absolute bottom-0.5 left-0.5 bg-[#D4A843] text-[#141414] text-[8px] font-bold px-1 py-0.5 rounded-full">
-                        COVER
-                      </div>
+          {/* Image management */}
+          <div className="bg-white rounded-2xl border border-[#E3E0D9] p-4 mb-6">
+            <p className="text-[12.5px] font-semibold text-[#9E9A91] uppercase tracking-wide mb-3">
+              Photos ({existingImages.length}/10)
+            </p>
+
+            {imageError && (
+              <Alert variant="error" className="mb-3">
+                {imageError}
+              </Alert>
+            )}
+
+            {/* Image grid with controls */}
+            <div className="flex gap-2 flex-wrap">
+              {existingImages.map((img, i) => (
+                <div
+                  key={img.id}
+                  className="relative w-20 h-20 shrink-0 rounded-xl overflow-hidden border-2 border-[#E3E0D9] group"
+                >
+                  <img
+                    src={img.url}
+                    alt={`Photo ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  {i === 0 && (
+                    <div className="absolute bottom-0.5 left-0.5 bg-[#D4A843] text-[#141414] text-[8px] font-bold px-1 py-0.5 rounded-full">
+                      COVER
+                    </div>
+                  )}
+
+                  {/* Overlay controls */}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                    {/* Move left */}
+                    {i > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const newOrder = [...existingImages];
+                          const temp = newOrder[i]!;
+                          newOrder[i] = newOrder[i - 1]!;
+                          newOrder[i - 1] = temp;
+                          setExistingImages(newOrder);
+                          await reorderListingImages({
+                            listingId,
+                            imageIds: newOrder.map((im) => im.id),
+                          });
+                        }}
+                        className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center text-[10px] text-[#141414] hover:bg-white"
+                        title="Move left"
+                      >
+                        ←
+                      </button>
                     )}
+                    {/* Move right */}
+                    {i < existingImages.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const newOrder = [...existingImages];
+                          const temp = newOrder[i]!;
+                          newOrder[i] = newOrder[i + 1]!;
+                          newOrder[i + 1] = temp;
+                          setExistingImages(newOrder);
+                          await reorderListingImages({
+                            listingId,
+                            imageIds: newOrder.map((im) => im.id),
+                          });
+                        }}
+                        className="w-6 h-6 bg-white/90 rounded-full flex items-center justify-center text-[10px] text-[#141414] hover:bg-white"
+                        title="Move right"
+                      >
+                        →
+                      </button>
+                    )}
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (
+                          existingImages.length <= 1 ||
+                          !confirm("Remove this photo?")
+                        )
+                          return;
+                        const result = await deleteListingImage({
+                          imageId: img.id,
+                          listingId,
+                        });
+                        if (result.success) {
+                          setExistingImages((prev) =>
+                            prev.filter((im) => im.id !== img.id),
+                          );
+                        } else {
+                          setImageError(
+                            result.error ?? "Failed to remove image.",
+                          );
+                        }
+                      }}
+                      className="w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center text-[10px] text-white hover:bg-red-600"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
                   </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-[#9E9A91] mt-2">
-                To change photos, remove and re-list the item. Photo editing
-                coming soon.
-              </p>
+                </div>
+              ))}
+
+              {/* Add new image */}
+              {existingImages.length < 10 && (
+                <label
+                  className={`w-20 h-20 shrink-0 rounded-xl border-2 border-dashed border-[#D4A843]/40
+                    flex flex-col items-center justify-center cursor-pointer hover:bg-[#F5ECD4]/30 transition-colors
+                    ${imageUploading ? "opacity-50 pointer-events-none" : ""}`}
+                >
+                  <span className="text-[#D4A843] text-lg">+</span>
+                  <span className="text-[9px] text-[#9E9A91]">
+                    {imageUploading ? "Uploading…" : "Add"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setImageError("");
+                      setImageUploading(true);
+
+                      try {
+                        // Phase 1: Get presigned URL
+                        const uploadResult = await requestImageUpload({
+                          fileName: file.name,
+                          contentType: file.type,
+                          sizeBytes: file.size,
+                          listingId,
+                        });
+                        if (!uploadResult.success) {
+                          setImageError(uploadResult.error ?? "Upload failed.");
+                          setImageUploading(false);
+                          return;
+                        }
+
+                        // Phase 2: Upload to R2
+                        const xhr = new XMLHttpRequest();
+                        await new Promise<void>((resolve, reject) => {
+                          xhr.open("PUT", uploadResult.data.uploadUrl);
+                          xhr.setRequestHeader("Content-Type", file.type);
+                          xhr.onload = () =>
+                            xhr.status >= 200 && xhr.status < 300
+                              ? resolve()
+                              : reject(new Error("Upload failed"));
+                          xhr.onerror = () =>
+                            reject(new Error("Upload failed"));
+                          xhr.send(file);
+                        });
+
+                        // Phase 3: Confirm and process
+                        const confirmResult = await confirmImageUpload({
+                          imageId: uploadResult.data.imageId,
+                          r2Key: uploadResult.data.r2Key,
+                        });
+                        if (!confirmResult.success) {
+                          setImageError(
+                            confirmResult.error ?? "Processing failed.",
+                          );
+                          setImageUploading(false);
+                          return;
+                        }
+
+                        // Add to existing images
+                        const processedData = confirmResult.data;
+                        setExistingImages((prev) => [
+                          ...prev,
+                          {
+                            id: uploadResult.data.imageId,
+                            r2Key:
+                              processedData.r2Key ?? uploadResult.data.r2Key,
+                            thumbnailKey: processedData.thumbnailKey ?? null,
+                            url: getImageUrl(
+                              processedData.thumbnailKey ??
+                                processedData.r2Key ??
+                                uploadResult.data.r2Key,
+                            ),
+                          },
+                        ]);
+                      } catch {
+                        setImageError("Image upload failed. Please try again.");
+                      }
+
+                      setImageUploading(false);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
             </div>
-          )}
+
+            <p className="text-[11px] text-[#9E9A91] mt-2">
+              Hover over a photo to reorder or remove. The first photo is the
+              cover image.
+            </p>
+          </div>
 
           {submitError && (
             <Alert variant="error" className="mb-4">

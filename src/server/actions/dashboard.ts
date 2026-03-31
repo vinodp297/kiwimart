@@ -456,6 +456,8 @@ export interface SellerOrderRow {
   status: string;
   createdAt: string;
   trackingNumber: string | null;
+  disputeOpenedAt: string | null;
+  sellerResponse: string | null;
 }
 
 export async function fetchSellerDashboard(): Promise<
@@ -583,6 +585,8 @@ export async function fetchSellerDashboard(): Promise<
           status: true,
           createdAt: true,
           trackingNumber: true,
+          disputeOpenedAt: true,
+          sellerResponse: true,
           listing: {
             select: {
               title: true,
@@ -666,6 +670,8 @@ export async function fetchSellerDashboard(): Promise<
       status: STATUS_MAP[o.status] ?? o.status.toLowerCase(),
       createdAt: o.createdAt.toISOString(),
       trackingNumber: o.trackingNumber,
+      disputeOpenedAt: o.disputeOpenedAt?.toISOString() ?? null,
+      sellerResponse: o.sellerResponse,
     }));
 
     const mappedPayouts: SellerPayoutRow[] = payouts.map((p) => ({
