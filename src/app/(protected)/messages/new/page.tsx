@@ -5,32 +5,37 @@
 // URL: /messages/new?listingId=xxx&sellerId=xxx   (listing-specific)
 //      /messages/new?sellerId=xxx                  (direct from seller profile)
 
-import { redirect } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import { getImageUrl } from '@/lib/image';
-import { NewMessageForm } from './NewMessageForm';
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { getImageUrl } from "@/lib/image";
+import { NewMessageForm } from "./NewMessageForm";
 
 interface Props {
-  searchParams: Promise<{ listingId?: string; sellerId?: string }>;
+  searchParams: Promise<{
+    listingId?: string;
+    sellerId?: string;
+    orderContext?: string;
+    itemName?: string;
+  }>;
 }
 
 export default async function NewMessagePage({ searchParams }: Props) {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect('/login?from=/messages/new');
+    redirect("/login?from=/messages/new");
   }
 
-  const { listingId, sellerId } = await searchParams;
+  const { listingId, sellerId, orderContext, itemName } = await searchParams;
 
   // sellerId is always required
   if (!sellerId) {
-    redirect('/search');
+    redirect("/search");
   }
 
   // Cannot message yourself
   if (sellerId === session.user.id) {
-    redirect(listingId ? `/listings/${listingId}` : '/search');
+    redirect(listingId ? `/listings/${listingId}` : "/search");
   }
 
   // ── Listing-specific mode (listingId provided) ────────────────────────────
@@ -39,7 +44,12 @@ export default async function NewMessagePage({ searchParams }: Props) {
     title: string;
     priceNzd: number;
     status: string;
-    seller: { id: string; displayName: string; username: string; avatarKey: string | null };
+    seller: {
+      id: string;
+      displayName: string;
+      username: string;
+      avatarKey: string | null;
+    };
     images: { r2Key: string }[];
   } | null = null;
 
@@ -60,7 +70,7 @@ export default async function NewMessagePage({ searchParams }: Props) {
           },
         },
         images: {
-          orderBy: { order: 'asc' },
+          orderBy: { order: "asc" },
           select: { r2Key: true },
           take: 1,
         },
@@ -68,7 +78,7 @@ export default async function NewMessagePage({ searchParams }: Props) {
     });
 
     if (!listing) {
-      redirect('/search');
+      redirect("/search");
     }
 
     // Verify sellerId matches the actual seller
@@ -78,7 +88,12 @@ export default async function NewMessagePage({ searchParams }: Props) {
   }
 
   // ── Direct-message mode (no listingId) ────────────────────────────────────
-  let sellerInfo: { id: string; displayName: string; username: string; avatarKey: string | null } | null = null;
+  let sellerInfo: {
+    id: string;
+    displayName: string;
+    username: string;
+    avatarKey: string | null;
+  } | null = null;
 
   if (!listingId) {
     sellerInfo = await db.user.findFirst({
@@ -87,7 +102,7 @@ export default async function NewMessagePage({ searchParams }: Props) {
     });
 
     if (!sellerInfo) {
-      redirect('/search');
+      redirect("/search");
     }
   }
 
@@ -106,43 +121,55 @@ export default async function NewMessagePage({ searchParams }: Props) {
 
   // If a thread already exists, go straight to it in the dashboard
   if (existingThread) {
-    redirect('/dashboard/buyer');
+    redirect("/dashboard/buyer");
   }
 
-  const thumbUrl = listingId && listing
-    ? getImageUrl(listing.images[0]?.r2Key ?? null)
-    : null;
-  const sellerInitial = seller.displayName[0]?.toUpperCase() ?? '?';
+  const thumbUrl =
+    listingId && listing ? getImageUrl(listing.images[0]?.r2Key ?? null) : null;
+  const sellerInitial = seller.displayName[0]?.toUpperCase() ?? "?";
 
   return (
     <div className="min-h-screen bg-[#FAFAF8]">
       <div className="max-w-2xl mx-auto px-4 py-8">
-
         {/* Back link */}
         <a
-          href={listingId ? `/listings/${listingId}` : `/sellers/${seller.username}`}
+          href={
+            listingId ? `/listings/${listingId}` : `/sellers/${seller.username}`
+          }
           className="inline-flex items-center gap-1.5 text-[13px]
             text-[#73706A] hover:text-[#141414] transition-colors mb-6"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <polyline points="15 18 9 12 15 6" />
           </svg>
-          {listingId ? 'Back to listing' : 'Back to seller profile'}
+          {listingId ? "Back to listing" : "Back to seller profile"}
         </a>
 
         {/* Page heading */}
-        <h1 className="font-[family-name:var(--font-playfair)]
-          text-2xl font-semibold text-[#141414] mb-6">
+        <h1
+          className="font-[family-name:var(--font-playfair)]
+          text-2xl font-semibold text-[#141414] mb-6"
+        >
           Message seller
         </h1>
 
         {/* Listing preview card — only shown in listing-specific mode */}
         {listing && (
-          <div className="bg-white border border-[#E3E0D9]
-            rounded-xl p-4 mb-6 flex gap-4 items-center">
-            <div className="w-16 h-16 bg-[#F2EFE8]
-              rounded-lg flex-shrink-0 overflow-hidden">
+          <div
+            className="bg-white border border-[#E3E0D9]
+            rounded-xl p-4 mb-6 flex gap-4 items-center"
+          >
+            <div
+              className="w-16 h-16 bg-[#F2EFE8]
+              rounded-lg flex-shrink-0 overflow-hidden"
+            >
               {thumbUrl ? (
                 <img
                   src={thumbUrl}
@@ -150,10 +177,18 @@ export default async function NewMessagePage({ searchParams }: Props) {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center
-                  text-[#9E9A91]">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="1.5">
+                <div
+                  className="w-full h-full flex items-center justify-center
+                  text-[#9E9A91]"
+                >
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
                     <rect x="3" y="3" width="18" height="18" rx="2" />
                     <circle cx="8.5" cy="8.5" r="1.5" />
                     <polyline points="21 15 16 10 5 21" />
@@ -174,9 +209,11 @@ export default async function NewMessagePage({ searchParams }: Props) {
 
         {/* Seller info */}
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-full
+          <div
+            className="w-10 h-10 rounded-full
             bg-[#141414] flex items-center justify-center
-            text-white font-semibold text-[14px] flex-shrink-0">
+            text-white font-semibold text-[14px] flex-shrink-0"
+          >
             {sellerInitial}
           </div>
           <div>
@@ -192,8 +229,9 @@ export default async function NewMessagePage({ searchParams }: Props) {
           listingId={listingId ?? null}
           sellerId={sellerId}
           listingTitle={listing?.title ?? null}
+          orderContext={orderContext}
+          itemName={itemName}
         />
-
       </div>
     </div>
   );

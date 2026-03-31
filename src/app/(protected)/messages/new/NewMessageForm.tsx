@@ -11,14 +11,43 @@ interface Props {
   listingId: string | null;
   sellerId: string;
   listingTitle: string | null;
+  orderContext?: string;
+  itemName?: string;
 }
 
-export function NewMessageForm({ listingId, sellerId, listingTitle }: Props) {
+function getDefaultMessage(
+  listingTitle: string | null,
+  orderContext?: string,
+  itemName?: string,
+): string {
+  const name = itemName || listingTitle;
+  if (orderContext && name) {
+    switch (orderContext) {
+      case "awaiting_payment":
+      case "payment_held":
+        return `Hi, I have a question about my order for "${name}"`;
+      case "dispatched":
+        return `Hi, I have a question about the delivery of "${name}"`;
+      case "disputed":
+        return `Hi, regarding my dispute on "${name}" — `;
+      case "completed":
+        return `Hi, I have a question about "${name}" that I purchased`;
+    }
+  }
+  if (listingTitle) return `Hi, is "${listingTitle}" still available?`;
+  return "Hi, I have a question for you.";
+}
+
+export function NewMessageForm({
+  listingId,
+  sellerId,
+  listingTitle,
+  orderContext,
+  itemName,
+}: Props) {
   const router = useRouter();
   const [message, setMessage] = useState(
-    listingTitle
-      ? `Hi, is "${listingTitle}" still available?`
-      : "Hi, I have a question for you.",
+    getDefaultMessage(listingTitle, orderContext, itemName),
   );
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
