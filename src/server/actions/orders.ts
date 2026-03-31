@@ -55,12 +55,46 @@ const CreateOrderSchema = z.object({
 
 const ConfirmDeliverySchema = z.object({
   orderId: z.string().min(1, "Order ID is required"),
+  itemAsDescribed: z.boolean(),
+  issueType: z.string().optional(),
+  deliveryPhotos: z.array(z.string()).max(4).optional(),
+  notes: z.string().max(2000).optional(),
 });
+
+const VALID_COURIERS = [
+  "NZ Post",
+  "CourierPost",
+  "Aramex",
+  "Post Haste",
+  "Castle Parcels",
+  "Other",
+] as const;
 
 const MarkDispatchedSchema = z.object({
   orderId: z.string().min(1, "Order ID is required"),
-  trackingNumber: z.string().max(100).optional(),
+  trackingNumber: z.string().min(1, "Tracking number is required").max(100),
+  courier: z.string().min(1, "Courier is required"),
   trackingUrl: z.string().max(500).optional(),
+  estimatedDeliveryDate: z
+    .string()
+    .min(1, "Estimated delivery date is required")
+    .refine(
+      (val) => {
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return false;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffDays = Math.round(
+          (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        return diffDays >= 1 && diffDays <= 14;
+      },
+      { message: "Estimated delivery must be 1-14 days from today." },
+    ),
+  dispatchPhotos: z
+    .array(z.string().min(1))
+    .min(1, "At least 1 dispatch photo is required.")
+    .max(4, "Maximum 4 dispatch photos."),
 });
 
 // ── createOrder ───────────────────────────────────────────────────────────────
@@ -422,10 +456,22 @@ export async function createOrder(params: {
 
 export async function confirmDelivery(
   orderId: string,
+  feedback?: {
+    itemAsDescribed: boolean;
+    issueType?: string;
+    deliveryPhotos?: string[];
+    notes?: string;
+  },
 ): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
-    const parsed = ConfirmDeliverySchema.safeParse({ orderId });
+    const parsed = ConfirmDeliverySchema.safeParse({
+      orderId,
+      itemAsDescribed: feedback?.itemAsDescribed ?? true,
+      issueType: feedback?.issueType,
+      deliveryPhotos: feedback?.deliveryPhotos,
+      notes: feedback?.notes,
+    });
     if (!parsed.success) {
       return {
         success: false,
@@ -434,7 +480,14 @@ export async function confirmDelivery(
           "Please check your input and try again.",
       };
     }
-    await orderService.confirmDelivery(parsed.data.orderId, user.id);
+
+    // Always confirm delivery (buyer received the item)
+    await orderService.confirmDelivery(parsed.data.orderId, user.id, {
+      itemAsDescribed: parsed.data.itemAsDescribed,
+      issueType: parsed.data.issueType,
+      deliveryPhotos: parsed.data.deliveryPhotos,
+      notes: parsed.data.notes,
+    });
     return { success: true, data: undefined };
   } catch (err) {
     return {
@@ -490,8 +543,11 @@ export async function cancelOrder(params: {
 
 export async function markDispatched(params: {
   orderId: string;
-  trackingNumber?: string;
+  trackingNumber: string;
+  courier: string;
   trackingUrl?: string;
+  estimatedDeliveryDate: string;
+  dispatchPhotos: string[];
 }): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
@@ -513,6 +569,101 @@ export async function markDispatched(params: {
         err,
         "We couldn't update the dispatch status. Please try again.",
       ),
+    };
+  }
+}
+
+export { VALID_COURIERS };
+
+// ── Upload order evidence photos (dispatch/delivery) ────────────────────────
+// Reuses the dispute evidence pattern: server-side upload to R2 with magic byte
+// validation. Returns R2 keys (not public URLs) for storage in event metadata.
+
+import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
+import { validateImageFile } from "@/server/lib/fileValidation";
+
+const EVIDENCE_MAX_SIZE = 5 * 1024 * 1024; // 5MB
+const EVIDENCE_MAX_FILES = 4;
+
+export async function uploadOrderEvidence(
+  formData: FormData,
+  context: "dispatch" | "delivery",
+): Promise<ActionResult<{ keys: string[] }>> {
+  try {
+    const user = await requireUser();
+
+    const limit = await rateLimit("order", user.id);
+    if (!limit.success) {
+      return {
+        success: false,
+        error: "Too many uploads. Please try again later.",
+      };
+    }
+
+    const files = formData.getAll("files") as File[];
+    if (files.length === 0) {
+      return { success: false, error: "No files provided." };
+    }
+    if (files.length > EVIDENCE_MAX_FILES) {
+      return {
+        success: false,
+        error: `Maximum ${EVIDENCE_MAX_FILES} photos allowed.`,
+      };
+    }
+
+    const uploadedKeys: string[] = [];
+
+    for (const file of files) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+
+      const validation = validateImageFile({
+        buffer,
+        mimetype: file.type,
+        size: file.size,
+        originalname: file.name,
+      });
+      if (!validation.valid) {
+        return { success: false, error: validation.error ?? "Invalid file." };
+      }
+
+      if (file.size > EVIDENCE_MAX_SIZE) {
+        return { success: false, error: "Each photo must be under 5MB." };
+      }
+
+      const ext =
+        file.type === "image/jpeg"
+          ? "jpg"
+          : file.type === "image/png"
+            ? "png"
+            : "webp";
+      const key = `${context}/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      await r2.send(
+        new PutObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: key,
+          Body: buffer,
+          ContentType: file.type,
+        }),
+      );
+
+      uploadedKeys.push(key);
+    }
+
+    logger.info(`order.${context}_evidence.uploaded`, {
+      userId: user.id,
+      count: uploadedKeys.length,
+    });
+
+    return { success: true, data: { keys: uploadedKeys } };
+  } catch (err) {
+    logger.error(`order.${context}_evidence.upload.failed`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      success: false,
+      error: "Failed to upload photos. Please try again.",
     };
   }
 }

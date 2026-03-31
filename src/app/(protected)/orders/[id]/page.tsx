@@ -10,7 +10,12 @@ import Footer from "@/components/Footer";
 import { Button, OrderStatusBadge, Alert } from "@/components/ui/primitives";
 import { formatPrice, relativeTime } from "@/lib/utils";
 import type { OrderStatus } from "@/types";
-import { confirmDelivery, markDispatched } from "@/server/actions/orders";
+import {
+  confirmDelivery,
+  markDispatched,
+  uploadOrderEvidence,
+  VALID_COURIERS,
+} from "@/server/actions/orders";
 import {
   openDispute,
   uploadDisputeEvidence,
@@ -32,6 +37,10 @@ import {
 import type { InteractionData } from "@/server/actions/interactions";
 import OrderTimeline from "@/components/OrderTimeline";
 import type { TimelineEvent } from "@/components/OrderTimeline";
+import {
+  getOrderStatusInfo,
+  type OrderForStatus,
+} from "@/lib/orderStatusMessages";
 
 // ── Courier URL detection ────────────────────────────────────────────────────
 function getCourierUrl(trackingNumber: string): string {
@@ -294,14 +303,28 @@ export default function OrderDetailPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
 
-  // Dispatch modal
+  // Dispatch wizard (3-step)
   const [showDispatch, setShowDispatch] = useState(false);
+  const [dispatchStep, setDispatchStep] = useState(1);
   const [courierService, setCourierService] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
+  const [estimatedDeliveryDate, setEstimatedDeliveryDate] = useState("");
+  const [dispatchPhotos, setDispatchPhotos] = useState<File[]>([]);
+  const [dispatchPhotoKeys, setDispatchPhotoKeys] = useState<string[]>([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [dispatchSuccess, setDispatchSuccess] = useState(false);
 
   // Confirm delivery modal
   const [showConfirm, setShowConfirm] = useState(false);
+  const [itemAsDescribed, setItemAsDescribed] = useState<"yes" | "no" | null>(
+    null,
+  );
+  const [deliveryIssueType, setDeliveryIssueType] = useState("");
+  const [deliveryPhotos, setDeliveryPhotos] = useState<File[]>([]);
+  const [deliveryPhotoKeys, setDeliveryPhotoKeys] = useState<string[]>([]);
+  const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [uploadingDeliveryPhotos, setUploadingDeliveryPhotos] = useState(false);
 
   // Dispute modal
   const [showDispute, setShowDispute] = useState(false);
@@ -372,33 +395,126 @@ export default function OrderDetailPage() {
     load();
   }, [orderId]);
 
+  async function handleUploadDispatchPhotos(files: File[]) {
+    if (files.length === 0) return;
+    setUploadingPhotos(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      const result = await uploadOrderEvidence(fd, "dispatch");
+      if (result.success) {
+        setDispatchPhotoKeys((prev) => [...prev, ...result.data.keys]);
+        setDispatchPhotos((prev) => [...prev, ...files]);
+      } else {
+        setError(result.error);
+      }
+    } catch {
+      setError("Failed to upload photos.");
+    }
+    setUploadingPhotos(false);
+  }
+
   async function handleDispatch() {
+    if (!courierService) {
+      setError("Please select a courier service.");
+      return;
+    }
+    if (!trackingNumber) {
+      setError("Please enter a tracking number.");
+      return;
+    }
+    if (!estimatedDeliveryDate) {
+      setError("Please select an estimated delivery date.");
+      return;
+    }
+    if (dispatchPhotoKeys.length === 0) {
+      setError("Please upload at least 1 dispatch photo.");
+      return;
+    }
+    setError(null);
     setActionLoading(true);
     const result = await markDispatched({
       orderId,
-      trackingNumber: trackingNumber || undefined,
+      trackingNumber,
+      courier: courierService,
       trackingUrl: trackingUrl || undefined,
+      estimatedDeliveryDate,
+      dispatchPhotos: dispatchPhotoKeys,
     });
     if (result.success) {
-      setActionSuccess("Order marked as dispatched.");
-      setShowDispatch(false);
-      // Reload order
+      setDispatchSuccess(true);
       const updated = await fetchOrderDetail(orderId);
       if (updated.success) setOrder(updated.data);
+      const tlResult = await getOrderTimeline(orderId);
+      if (tlResult.success && tlResult.data.length > 0) {
+        setTimelineEvents(tlResult.data);
+      }
     } else {
       setError(result.error);
     }
     setActionLoading(false);
   }
 
+  async function handleUploadDeliveryPhotos(files: File[]) {
+    if (files.length === 0) return;
+    setUploadingDeliveryPhotos(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      const result = await uploadOrderEvidence(fd, "delivery");
+      if (result.success) {
+        setDeliveryPhotoKeys((prev) => [...prev, ...result.data.keys]);
+        setDeliveryPhotos((prev) => [...prev, ...files]);
+      } else {
+        setError(result.error);
+      }
+    } catch {
+      setError("Failed to upload photos.");
+    }
+    setUploadingDeliveryPhotos(false);
+  }
+
   async function handleConfirmDelivery() {
+    if (itemAsDescribed === null) {
+      setError("Please confirm whether the item arrived as described.");
+      return;
+    }
+    if (itemAsDescribed === "no" && !deliveryIssueType) {
+      setError("Please select what's wrong with the item.");
+      return;
+    }
+    setError(null);
     setActionLoading(true);
-    const result = await confirmDelivery(orderId);
+
+    // Always confirm delivery (they received something)
+    const result = await confirmDelivery(orderId, {
+      itemAsDescribed: itemAsDescribed === "yes",
+      issueType: itemAsDescribed === "no" ? deliveryIssueType : undefined,
+      deliveryPhotos:
+        deliveryPhotoKeys.length > 0 ? deliveryPhotoKeys : undefined,
+      notes: deliveryNotes || undefined,
+    });
+
     if (result.success) {
-      setActionSuccess("Delivery confirmed. Payment released to seller.");
+      if (itemAsDescribed === "yes") {
+        setActionSuccess("Delivery confirmed. Payment released to seller.");
+      } else {
+        setActionSuccess(
+          "Delivery confirmed with issue reported. The seller has been notified.",
+        );
+      }
       setShowConfirm(false);
       const updated = await fetchOrderDetail(orderId);
       if (updated.success) setOrder(updated.data);
+      const tlResult = await getOrderTimeline(orderId);
+      if (tlResult.success && tlResult.data.length > 0) {
+        setTimelineEvents(tlResult.data);
+      }
+      // Refetch interactions (a DELIVERY_ISSUE may have been created)
+      const intResult = await getOrderInteractions(orderId);
+      if (intResult.success) setInteractions(intResult.data);
     } else {
       setError(result.error);
     }
@@ -782,6 +898,34 @@ export default function OrderDetailPage() {
   const isCancelled = order.status === "cancelled";
   const statusInfo = getStatusInfo(order);
 
+  // Rich status messages for "what happens next" card
+  // Extract dispatch metadata for estimated delivery date / courier
+  const dispatchEvent = timelineEvents.find((e) => e.type === "DISPATCHED");
+  const dispatchMeta = (dispatchEvent?.metadata ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const richStatus = getOrderStatusInfo(
+    {
+      status: order.status,
+      total: order.total,
+      createdAt: order.createdAt,
+      dispatchedAt: order.dispatchedAt,
+      completedAt: order.completedAt,
+      disputeOpenedAt: order.disputeOpenedAt,
+      cancelledAt: order.cancelledAt,
+      cancelReason: order.cancelReason,
+      cancelledBy: order.cancelledBy,
+      trackingNumber: order.trackingNumber,
+      sellerRespondedAt: order.sellerRespondedAt,
+      listingTitle: order.listingTitle,
+      otherPartyName: order.otherPartyName,
+      isBuyer: order.isBuyer,
+    },
+    dispatchMeta.estimatedDeliveryDate as string | null,
+    dispatchMeta.courier as string | null,
+  );
+
   return (
     <>
       <NavBar />
@@ -863,6 +1007,96 @@ export default function OrderDetailPage() {
                   {statusInfo.message}
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* ── Rich status card with progress + "what happens next" ─── */}
+          {richStatus.whatHappensNext && (
+            <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 mb-6">
+              {/* Progress bar */}
+              {richStatus.progressStep > 0 && richStatus.progressTotal > 0 && (
+                <div className="mb-4">
+                  <div className="flex justify-between text-[11px] text-[#9E9A91] mb-1.5">
+                    <span>
+                      Step {richStatus.progressStep} of{" "}
+                      {richStatus.progressTotal}
+                    </span>
+                    {richStatus.timeRemaining && (
+                      <span className="text-[#D4A843] font-medium">
+                        {richStatus.timeRemaining} remaining
+                      </span>
+                    )}
+                  </div>
+                  <div className="h-1.5 bg-[#F0EDE8] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#D4A843] rounded-full transition-all duration-500"
+                      style={{
+                        width: `${(richStatus.progressStep / richStatus.progressTotal) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Celebration message */}
+              {richStatus.celebrationMessage && (
+                <p className="text-[13.5px] font-semibold text-emerald-700 mb-2">
+                  {richStatus.celebrationMessage}
+                </p>
+              )}
+
+              {/* What happens next */}
+              <div className="flex items-start gap-2">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#D4A843"
+                  strokeWidth="2"
+                  className="shrink-0 mt-0.5"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 16v-4M12 8h.01" />
+                </svg>
+                <p className="text-[12.5px] text-[#73706A] leading-relaxed">
+                  {richStatus.whatHappensNext}
+                </p>
+              </div>
+
+              {/* Tracking info for dispatched orders */}
+              {order.status === "dispatched" && order.trackingNumber && (
+                <div className="mt-3 p-3 bg-[#FAFAF8] rounded-xl border border-[#E3E0D9] flex items-center justify-between">
+                  <div className="text-[12.5px]">
+                    <span className="text-[#9E9A91]">Tracking: </span>
+                    {order.trackingUrl ? (
+                      <a
+                        href={order.trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#D4A843] font-medium hover:underline font-mono"
+                      >
+                        {order.trackingNumber}
+                      </a>
+                    ) : (
+                      <a
+                        href={getCourierUrl(order.trackingNumber)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#D4A843] font-medium hover:underline font-mono"
+                      >
+                        {order.trackingNumber}
+                      </a>
+                    )}
+                    {!!dispatchMeta.courier && (
+                      <span className="text-[#9E9A91]">
+                        {" "}
+                        via {String(dispatchMeta.courier)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1524,137 +1758,611 @@ export default function OrderDetailPage() {
       </main>
       <Footer />
 
-      {/* ── Dispatch Modal (with seller guidance) ────────────────── */}
+      {/* ── Dispatch Wizard (3-step) ───────────────────────────────── */}
       {showDispatch && (
-        <ModalOverlay onClose={() => setShowDispatch(false)}>
-          <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
-            Mark as dispatched
-          </h2>
-          <div className="space-y-4">
-            <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-[12px] text-amber-800">
-              <p className="font-semibold mb-1">Dispatch checklist:</p>
-              <ul className="space-y-1 list-disc list-inside">
-                <li>Pack securely in appropriate packaging</li>
-                <li>Use a tracked courier service</li>
-                <li>Dispatch within 5 business days</li>
-              </ul>
-            </div>
-            <div>
-              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                Courier service
-              </label>
-              <select
-                value={courierService}
-                onChange={(e) => setCourierService(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
-                  text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25
-                  focus:border-[#D4A843] transition"
+        <ModalOverlay
+          onClose={() => {
+            setShowDispatch(false);
+            setDispatchStep(1);
+            setDispatchSuccess(false);
+          }}
+        >
+          {dispatchSuccess ? (
+            /* ── Success State ─────────────────────────────────────── */
+            <div className="text-center py-4">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#10b981"
+                  strokeWidth="2.5"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2">
+                Dispatched!
+              </h2>
+              <p className="text-[13px] text-[#73706A] mb-4">
+                {order.otherPartyName} will be notified immediately.
+                {estimatedDeliveryDate && (
+                  <>
+                    {" "}
+                    Estimated delivery:{" "}
+                    <strong>
+                      {new Date(estimatedDeliveryDate).toLocaleDateString(
+                        "en-NZ",
+                        { weekday: "short", day: "numeric", month: "short" },
+                      )}
+                    </strong>
+                    .
+                  </>
+                )}
+              </p>
+              <div className="bg-sky-50 rounded-xl border border-sky-200 p-4 text-left mb-4">
+                <p className="text-[12.5px] text-sky-800 font-semibold mb-1">
+                  What happens next
+                </p>
+                <ul className="text-[12px] text-sky-700 space-y-1 list-disc list-inside">
+                  <li>
+                    The buyer has up to 14 days after delivery to confirm
+                    receipt
+                  </li>
+                  <li>Payment will be released once they confirm</li>
+                  <li>
+                    If they don&apos;t respond, payment is released
+                    automatically
+                  </li>
+                </ul>
+              </div>
+              <Button
+                variant="gold"
+                fullWidth
+                size="md"
+                onClick={() => {
+                  setShowDispatch(false);
+                  setDispatchStep(1);
+                  setDispatchSuccess(false);
+                }}
               >
-                <option value="">Select courier...</option>
-                <option value="nzpost">NZ Post</option>
-                <option value="courierpost">CourierPost</option>
-                <option value="aramex">Aramex NZ</option>
-                <option value="pbt">PBT Courier</option>
-                <option value="dhl">DHL</option>
-                <option value="other">Other</option>
-              </select>
+                Done
+              </Button>
             </div>
+          ) : (
+            /* ── Wizard Steps ──────────────────────────────────────── */
             <div>
-              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                Tracking number
-              </label>
-              <input
-                value={trackingNumber}
-                onChange={(e) => setTrackingNumber(e.target.value)}
-                placeholder="e.g. NZ123456789"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
-                  text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
-                  focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
-              />
+              {/* Step indicators */}
+              <div className="flex items-center gap-2 mb-5">
+                {[1, 2, 3].map((s) => (
+                  <div key={s} className="flex items-center gap-2 flex-1">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-semibold shrink-0
+                      ${dispatchStep >= s ? "bg-[#D4A843] text-white" : "bg-[#F0EDE8] text-[#9E9A91]"}`}
+                    >
+                      {dispatchStep > s ? (
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                        >
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        s
+                      )}
+                    </div>
+                    {s < 3 && (
+                      <div
+                        className={`flex-1 h-0.5 ${dispatchStep > s ? "bg-[#D4A843]" : "bg-[#E3E0D9]"}`}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="max-h-[65vh] overflow-y-auto pr-1">
+                {/* ── Step 1: Photos ──────────────────────────────── */}
+                {dispatchStep === 1 && (
+                  <div className="space-y-4">
+                    <div>
+                      <h2 className="font-[family-name:var(--font-playfair)] text-[1.05rem] font-semibold text-[#141414] mb-1">
+                        Photo your item before packing
+                      </h2>
+                      <p className="text-[12.5px] text-[#73706A]">
+                        These photos protect you if a buyer claims damage. Show
+                        the item from multiple angles.
+                      </p>
+                    </div>
+
+                    {dispatchPhotos.length > 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {dispatchPhotos.map((f, i) => (
+                          <div
+                            key={i}
+                            className="relative w-20 h-20 rounded-xl overflow-hidden border border-[#E3E0D9]"
+                          >
+                            <img
+                              src={URL.createObjectURL(f)}
+                              alt={`Photo ${i + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDispatchPhotos((p) =>
+                                  p.filter((_, idx) => idx !== i),
+                                );
+                                setDispatchPhotoKeys((k) =>
+                                  k.filter((_, idx) => idx !== i),
+                                );
+                              }}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center"
+                            >
+                              &times;
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {dispatchPhotos.length < 4 && (
+                      <label
+                        className={`flex flex-col items-center justify-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed cursor-pointer transition
+                        ${uploadingPhotos ? "border-[#D4A843]/40 text-[#9E9A91] cursor-wait" : "border-[#E3E0D9] text-[#73706A] hover:border-[#D4A843] hover:text-[#D4A843]"}`}
+                      >
+                        {uploadingPhotos ? (
+                          <span className="text-[13px] font-medium">
+                            Uploading...
+                          </span>
+                        ) : (
+                          <>
+                            <svg
+                              width="24"
+                              height="24"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                            >
+                              <rect x="3" y="3" width="18" height="18" rx="2" />
+                              <circle cx="8.5" cy="8.5" r="1.5" />
+                              <path d="m21 15-5-5L5 21" />
+                            </svg>
+                            <span className="text-[13px] font-medium">
+                              Add photos (1-4 required)
+                            </span>
+                            <span className="text-[11px] text-[#9E9A91]">
+                              JPG, PNG, or WebP up to 5MB each
+                            </span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          multiple
+                          className="hidden"
+                          disabled={uploadingPhotos}
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files ?? []);
+                            handleUploadDispatchPhotos(
+                              files.slice(0, 4 - dispatchPhotos.length),
+                            );
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+
+                    <Button
+                      variant="gold"
+                      fullWidth
+                      size="md"
+                      disabled={
+                        dispatchPhotoKeys.length === 0 || uploadingPhotos
+                      }
+                      onClick={() => setDispatchStep(2)}
+                    >
+                      Next: Shipping details
+                    </Button>
+                  </div>
+                )}
+
+                {/* ── Step 2: Shipping details ───────────────────── */}
+                {dispatchStep === 2 && (
+                  <div className="space-y-4">
+                    <h2 className="font-[family-name:var(--font-playfair)] text-[1.05rem] font-semibold text-[#141414] mb-1">
+                      Shipping details
+                    </h2>
+                    <p className="text-[12.5px] text-[#73706A] -mt-2">
+                      The buyer will see the estimated date. We&apos;ll send
+                      them reminders if it passes.
+                    </p>
+
+                    <div>
+                      <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                        Courier <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={courierService}
+                        onChange={(e) => setCourierService(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
+                      >
+                        <option value="">Select courier...</option>
+                        {VALID_COURIERS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                        Tracking number <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={trackingNumber}
+                        onChange={(e) => setTrackingNumber(e.target.value)}
+                        placeholder="e.g. NZ123456789"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                        Tracking URL{" "}
+                        <span className="text-[#9E9A91] font-normal">
+                          (optional)
+                        </span>
+                      </label>
+                      <input
+                        value={trackingUrl}
+                        onChange={(e) => setTrackingUrl(e.target.value)}
+                        placeholder="e.g. https://nzpost.co.nz/track/..."
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                        Estimated delivery date{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={estimatedDeliveryDate}
+                        onChange={(e) =>
+                          setEstimatedDeliveryDate(e.target.value)
+                        }
+                        min={
+                          new Date(Date.now() + 86400000)
+                            .toISOString()
+                            .split("T")[0]
+                        }
+                        max={
+                          new Date(Date.now() + 14 * 86400000)
+                            .toISOString()
+                            .split("T")[0]
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
+                      />
+                      <p className="text-[11px] text-[#9E9A91] mt-1">
+                        1-14 business days from today
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        variant="ghost"
+                        size="md"
+                        onClick={() => setDispatchStep(1)}
+                        className="flex-1"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        variant="gold"
+                        size="md"
+                        className="flex-1"
+                        disabled={
+                          !courierService ||
+                          !trackingNumber ||
+                          !estimatedDeliveryDate
+                        }
+                        onClick={() => setDispatchStep(3)}
+                      >
+                        Next: Review
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Step 3: Confirm & dispatch ─────────────────── */}
+                {dispatchStep === 3 && (
+                  <div className="space-y-4">
+                    <h2 className="font-[family-name:var(--font-playfair)] text-[1.05rem] font-semibold text-[#141414]">
+                      Confirm &amp; dispatch
+                    </h2>
+
+                    {/* Summary card */}
+                    <div className="bg-[#FAFAF8] rounded-xl border border-[#E3E0D9] p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        {order.listingThumbnail && (
+                          <img
+                            src={order.listingThumbnail}
+                            alt=""
+                            className="w-12 h-12 rounded-lg object-cover border border-[#E3E0D9]"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-semibold text-[#141414] line-clamp-1">
+                            {order.listingTitle}
+                          </p>
+                          <p className="text-[12px] text-[#73706A]">
+                            To: {order.otherPartyName}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[12px]">
+                        <div>
+                          <span className="text-[#9E9A91]">Courier:</span>{" "}
+                          <span className="text-[#141414] font-medium">
+                            {courierService}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#9E9A91]">Tracking:</span>{" "}
+                          <span className="text-[#141414] font-medium font-mono">
+                            {trackingNumber}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#9E9A91]">Est. delivery:</span>{" "}
+                          <span className="text-[#141414] font-medium">
+                            {estimatedDeliveryDate
+                              ? new Date(
+                                  estimatedDeliveryDate,
+                                ).toLocaleDateString("en-NZ", {
+                                  weekday: "short",
+                                  day: "numeric",
+                                  month: "short",
+                                })
+                              : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[#9E9A91]">Photos:</span>{" "}
+                          <span className="text-[#141414] font-medium">
+                            {dispatchPhotoKeys.length} uploaded
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-sky-50 rounded-xl border border-sky-200 p-3 text-[12px] text-sky-800">
+                      Once confirmed, {order.otherPartyName} will be notified
+                      immediately with your tracking details.
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        variant="ghost"
+                        size="md"
+                        onClick={() => setDispatchStep(2)}
+                        className="flex-1"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        variant="gold"
+                        size="md"
+                        className="flex-1"
+                        onClick={handleDispatch}
+                        loading={actionLoading}
+                      >
+                        Confirm dispatch
+                      </Button>
+                    </div>
+
+                    <p className="text-[11px] text-[#9E9A91] text-center">
+                      Payment is released only after the buyer confirms delivery
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                Tracking URL{" "}
-                <span className="text-[#9E9A91] font-normal">(optional)</span>
-              </label>
-              <input
-                value={trackingUrl}
-                onChange={(e) => setTrackingUrl(e.target.value)}
-                placeholder="e.g. https://nzpost.co.nz/track/..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
-                  text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
-                  focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
-              />
-            </div>
-            <Button
-              variant="gold"
-              fullWidth
-              size="md"
-              onClick={handleDispatch}
-              loading={actionLoading}
-            >
-              Confirm dispatch
-            </Button>
-            <p className="text-[11px] text-[#9E9A91] text-center">
-              Payment is released to you only after the buyer confirms delivery
-            </p>
-          </div>
+          )}
         </ModalOverlay>
       )}
 
-      {/* ── Confirm Delivery Modal (Fix 5 — enhanced) ──────────────── */}
+      {/* ── Confirm Delivery Modal (enhanced with structured feedback) ── */}
       {showConfirm && (
         <ModalOverlay onClose={() => setShowConfirm(false)}>
-          <div className="text-center">
-            <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mx-auto mb-4">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#d97706"
-                strokeWidth="2"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-            </div>
-            <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2">
-              Confirm delivery
-            </h2>
-            <p className="text-[13px] text-[#73706A] mb-2">
-              Confirming delivery will release{" "}
-              <span className="font-semibold text-[#141414]">
-                {formatPrice(order.total)}
-              </span>{" "}
-              to{" "}
-              <span className="font-semibold text-[#141414]">
-                {order.otherPartyName}
-              </span>
-              .
-            </p>
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 mb-4 text-left">
-              <p className="text-[12px] text-amber-800 font-semibold flex items-center gap-1.5">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
+          <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2 text-center">
+            Confirm delivery
+          </h2>
+          <p className="text-[13px] text-[#73706A] mb-4 text-center">
+            Confirming delivery will release{" "}
+            <span className="font-semibold text-[#141414]">
+              {formatPrice(order.total)}
+            </span>{" "}
+            to{" "}
+            <span className="font-semibold text-[#141414]">
+              {order.otherPartyName}
+            </span>
+            .
+          </p>
+
+          <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+            {/* Item condition question */}
+            <div>
+              <label className="text-[12.5px] font-semibold text-[#141414] mb-2 block">
+                Did the item arrive as described?{" "}
+                <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setItemAsDescribed("yes")}
+                  className={`flex-1 py-2.5 rounded-xl border text-[13px] font-medium transition
+                    ${itemAsDescribed === "yes" ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-[#E3E0D9] text-[#73706A] hover:border-[#D4A843]"}`}
                 >
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                This action cannot be undone
-              </p>
-              <p className="text-[11.5px] text-amber-700 mt-1">
-                Only confirm if you have received the item and are satisfied
-                with it.
-              </p>
+                  Yes, all good
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setItemAsDescribed("no")}
+                  className={`flex-1 py-2.5 rounded-xl border text-[13px] font-medium transition
+                    ${itemAsDescribed === "no" ? "border-red-500 bg-red-50 text-red-700" : "border-[#E3E0D9] text-[#73706A] hover:border-[#D4A843]"}`}
+                >
+                  No, there&apos;s an issue
+                </button>
+              </div>
             </div>
+
+            {/* Issue details (shown if "No") */}
+            {itemAsDescribed === "no" && (
+              <>
+                <div>
+                  <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                    What&apos;s wrong? <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={deliveryIssueType}
+                    onChange={(e) => setDeliveryIssueType(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                      text-[#141414] outline-none focus:ring-2 focus:ring-[#D4A843]/25
+                      focus:border-[#D4A843] transition"
+                  >
+                    <option value="">Select issue...</option>
+                    <option value="DAMAGED">Damaged</option>
+                    <option value="WRONG_ITEM">Wrong item</option>
+                    <option value="MISSING_PARTS">Missing parts</option>
+                    <option value="NOT_AS_DESCRIBED">Not as described</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+
+                {/* Photos of received item */}
+                <div>
+                  <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                    Photos of received item{" "}
+                    <span className="text-[#9E9A91] font-normal">
+                      (optional, max 4)
+                    </span>
+                  </label>
+                  {deliveryPhotos.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      {deliveryPhotos.map((f, i) => (
+                        <div
+                          key={i}
+                          className="relative w-14 h-14 rounded-lg overflow-hidden border border-[#E3E0D9]"
+                        >
+                          <img
+                            src={URL.createObjectURL(f)}
+                            alt={`Delivery photo ${i + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeliveryPhotos((p) =>
+                                p.filter((_, idx) => idx !== i),
+                              );
+                              setDeliveryPhotoKeys((k) =>
+                                k.filter((_, idx) => idx !== i),
+                              );
+                            }}
+                            className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white
+                              text-[9px] flex items-center justify-center shadow"
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {deliveryPhotos.length < 4 && (
+                    <label
+                      className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl border-2
+                        border-dashed cursor-pointer transition text-[12px] font-medium
+                        ${uploadingDeliveryPhotos ? "border-[#D4A843]/40 text-[#9E9A91] cursor-wait" : "border-[#E3E0D9] text-[#73706A] hover:border-[#D4A843] hover:text-[#D4A843]"}`}
+                    >
+                      {uploadingDeliveryPhotos ? "Uploading..." : "Add photos"}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        multiple
+                        className="hidden"
+                        disabled={uploadingDeliveryPhotos}
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files ?? []);
+                          const remaining = 4 - deliveryPhotos.length;
+                          handleUploadDeliveryPhotos(files.slice(0, remaining));
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                    Notes{" "}
+                    <span className="text-[#9E9A91] font-normal">
+                      (optional)
+                    </span>
+                  </label>
+                  <textarea
+                    value={deliveryNotes}
+                    onChange={(e) => setDeliveryNotes(e.target.value)}
+                    placeholder="Describe the issue..."
+                    rows={3}
+                    maxLength={2000}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
+                      text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2
+                      focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition resize-none"
+                  />
+                </div>
+
+                <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-left">
+                  <p className="text-[12px] text-amber-800">
+                    The seller will be notified of the issue and has 72 hours to
+                    respond. If unresolved, it will be escalated to our team.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {itemAsDescribed === "yes" && (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-left">
+                <p className="text-[12px] text-amber-800 font-semibold flex items-center gap-1.5">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  This action cannot be undone
+                </p>
+                <p className="text-[11.5px] text-amber-700 mt-1">
+                  Payment will be released to the seller immediately.
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
               <Button
                 variant="gold"
@@ -1662,8 +2370,15 @@ export default function OrderDetailPage() {
                 size="md"
                 onClick={handleConfirmDelivery}
                 loading={actionLoading}
+                disabled={
+                  itemAsDescribed === null ||
+                  (itemAsDescribed === "no" && !deliveryIssueType) ||
+                  uploadingDeliveryPhotos
+                }
               >
-                Yes, I received it — release {formatPrice(order.total)}
+                {itemAsDescribed === "no"
+                  ? "Confirm delivery & report issue"
+                  : `Yes, I received it — release ${formatPrice(order.total)}`}
               </Button>
               <Button
                 variant="ghost"

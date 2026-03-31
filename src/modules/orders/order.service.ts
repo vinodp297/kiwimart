@@ -19,10 +19,26 @@ import {
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "./order-event.service";
+import {
+  orderInteractionService,
+  INTERACTION_TYPES,
+  AUTO_ACTIONS,
+} from "./order-interaction.service";
 import type { DispatchOrderInput, OpenDisputeInput } from "./order.types";
 
+export interface DeliveryFeedback {
+  itemAsDescribed: boolean;
+  issueType?: string;
+  deliveryPhotos?: string[];
+  notes?: string;
+}
+
 export class OrderService {
-  async confirmDelivery(orderId: string, buyerId: string): Promise<void> {
+  async confirmDelivery(
+    orderId: string,
+    buyerId: string,
+    feedback?: DeliveryFeedback,
+  ): Promise<void> {
     logger.info("order.confirm_delivery.attempting", { orderId, buyerId });
 
     const order = await db.order.findUnique({
@@ -119,6 +135,33 @@ export class OrderService {
       metadata: { newStatus: "COMPLETED", previousStatus: order.status },
     });
 
+    // Record delivery confirmation event with feedback metadata
+    if (feedback?.itemAsDescribed) {
+      orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.DELIVERY_CONFIRMED_OK,
+        actorId: buyerId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: "Buyer confirmed delivery — item arrived as described",
+        metadata: { deliveryConfirmed: true, itemAsDescribed: true },
+      });
+    } else if (feedback && !feedback.itemAsDescribed) {
+      orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.DELIVERY_ISSUE_REPORTED,
+        actorId: buyerId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: `Buyer reported delivery issue: ${feedback.issueType?.replace(/_/g, " ").toLowerCase() ?? "unknown"}`,
+        metadata: {
+          deliveryConfirmed: true,
+          itemAsDescribed: false,
+          issueType: feedback.issueType,
+          deliveryPhotos: feedback.deliveryPhotos,
+          notes: feedback.notes,
+        },
+      });
+    }
+
     orderEventService.recordEvent({
       orderId,
       type: ORDER_EVENT_TYPES.COMPLETED,
@@ -126,6 +169,42 @@ export class OrderService {
       actorRole: ACTOR_ROLES.BUYER,
       summary: "Buyer confirmed delivery — payment released to seller",
     });
+
+    // If buyer reported an issue, auto-create a DELIVERY_ISSUE interaction
+    if (feedback && !feedback.itemAsDescribed && feedback.issueType) {
+      try {
+        const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+        await orderInteractionService.createInteraction({
+          orderId,
+          type: INTERACTION_TYPES.DELIVERY_ISSUE,
+          initiatedById: buyerId,
+          initiatorRole: "BUYER",
+          reason: `Delivery issue: ${feedback.issueType.replace(/_/g, " ").toLowerCase()}${feedback.notes ? ` — ${feedback.notes}` : ""}`,
+          details: {
+            issueType: feedback.issueType,
+            deliveryPhotos: feedback.deliveryPhotos,
+            notes: feedback.notes,
+          },
+          expiresAt,
+          autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
+        });
+
+        // Notify seller about the delivery issue
+        createNotification({
+          userId: order.sellerId,
+          type: "ORDER_DISPUTED",
+          title: "Buyer reported a delivery issue",
+          body: `The buyer reported an issue: ${feedback.issueType.replace(/_/g, " ").toLowerCase()}. You have 72 hours to respond.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }).catch(() => {});
+      } catch (err) {
+        logger.warn("order.delivery_issue.interaction_failed", {
+          orderId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     // Notify seller that payment has been released
     const listing = await db.listing.findUnique({
@@ -191,7 +270,7 @@ export class OrderService {
       "DISPATCHED",
       {
         dispatchedAt: new Date(),
-        trackingNumber: input.trackingNumber ?? null,
+        trackingNumber: input.trackingNumber,
         trackingUrl: input.trackingUrl ?? null,
       },
       { fromStatus: order.status },
@@ -230,10 +309,13 @@ export class OrderService {
       type: ORDER_EVENT_TYPES.DISPATCHED,
       actorId: sellerId,
       actorRole: ACTOR_ROLES.SELLER,
-      summary: `Seller dispatched order${input.trackingNumber ? ` — tracking: ${input.trackingNumber}` : ""}`,
+      summary: `Seller dispatched order via ${input.courier} — tracking: ${input.trackingNumber}`,
       metadata: {
         trackingNumber: input.trackingNumber,
         trackingUrl: input.trackingUrl,
+        courier: input.courier,
+        estimatedDeliveryDate: input.estimatedDeliveryDate,
+        dispatchPhotos: input.dispatchPhotos,
       },
     });
 

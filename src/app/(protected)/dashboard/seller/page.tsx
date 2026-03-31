@@ -31,7 +31,7 @@ import type {
   SellerOrderRow,
   SellerPayoutRow,
 } from "@/server/actions/dashboard";
-import { markDispatched } from "@/server/actions/orders";
+// Dispatch is now handled on the order detail page with enhanced evidence collection
 import { replyToReview } from "@/server/actions/reviews";
 import { getStripeAccountStatus } from "@/server/actions/stripe";
 import { ImageCropModal } from "@/components/ui/ImageCropModal";
@@ -42,6 +42,7 @@ import {
 } from "@/server/actions/profile-images";
 import { getTagConfig } from "@/lib/review-tags";
 import type { ReviewTagType } from "@/lib/review-tags";
+import { getOrderStatusInfo } from "@/lib/orderStatusMessages";
 
 import {
   ResponsiveContainer,
@@ -1300,142 +1301,79 @@ function SellerListingRow({
 // ── Seller Order Card ─────────────────────────────────────────────────────────
 
 function SellerOrderCard({ order }: { order: SellerOrderRow }) {
-  const [showDispatch, setShowDispatch] = useState(false);
-  const [trackingNumber, setTrackingNumber] = useState("");
-  const [trackingUrl, setTrackingUrl] = useState("");
-  const [dispatching, setDispatching] = useState(false);
-
-  async function handleDispatch() {
-    setDispatching(true);
-    await markDispatched({
-      orderId: order.id,
-      trackingNumber: trackingNumber || undefined,
-      trackingUrl: trackingUrl || undefined,
-    });
-    setDispatching(false);
-    setShowDispatch(false);
-    window.location.reload();
-  }
+  const statusMsg = getOrderStatusInfo({
+    status: order.status,
+    total: order.total,
+    createdAt: order.createdAt,
+    dispatchedAt: null,
+    completedAt: null,
+    disputeOpenedAt: null,
+    cancelledAt: null,
+    cancelReason: null,
+    cancelledBy: null,
+    trackingNumber: order.trackingNumber,
+    sellerRespondedAt: null,
+    listingTitle: order.listingTitle,
+    otherPartyName: order.buyerName,
+    isBuyer: false,
+  });
 
   return (
-    <>
-      <article
-        className="bg-white rounded-2xl border border-[#E3E0D9] p-5
-          flex flex-col sm:flex-row items-start sm:items-center gap-4"
-      >
-        <img
-          src={order.listingThumbnail}
-          alt={order.listingTitle}
-          className="w-14 h-14 rounded-xl object-cover border border-[#E3E0D9] shrink-0"
-        />
-        <div className="flex-1 min-w-0">
-          <p className="text-[13.5px] font-semibold text-[#141414] line-clamp-1">
-            {order.listingTitle}
-          </p>
-          <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
-            <OrderStatusBadge status={order.status as OrderStatus} />
-            <span className="text-[12px] text-[#9E9A91]">
-              Buyer:{" "}
-              <strong className="text-[#141414]">{order.buyerName}</strong>
-            </span>
-            <span className="text-[12px] text-[#9E9A91]">
-              {new Date(order.createdAt).toLocaleDateString("en-NZ")}
-            </span>
-          </div>
-          {order.trackingNumber && (
-            <p className="text-[11.5px] text-[#73706A] mt-1.5">
-              Tracking:{" "}
-              <span className="font-mono">{order.trackingNumber}</span>
-            </p>
-          )}
-          {order.status === "dispatched" && (
-            <p className="text-[11.5px] text-amber-600 font-medium mt-1">
-              Awaiting buyer confirmation
-            </p>
-          )}
+    <article
+      className="bg-white rounded-2xl border border-[#E3E0D9] p-5
+        flex flex-col sm:flex-row items-start sm:items-center gap-4"
+    >
+      <img
+        src={order.listingThumbnail}
+        alt={order.listingTitle}
+        className="w-14 h-14 rounded-xl object-cover border border-[#E3E0D9] shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-[13.5px] font-semibold text-[#141414] line-clamp-1">
+          {order.listingTitle}
+        </p>
+        <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
+          <OrderStatusBadge status={order.status as OrderStatus} />
+          <span className="text-[12px] text-[#9E9A91]">
+            Buyer: <strong className="text-[#141414]">{order.buyerName}</strong>
+          </span>
+          <span className="text-[12px] text-[#9E9A91]">
+            {new Date(order.createdAt).toLocaleDateString("en-NZ")}
+          </span>
         </div>
-        <div className="flex flex-col items-end gap-2.5 shrink-0">
-          <p className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">
-            {formatPrice(order.total)}
+        {order.trackingNumber && (
+          <p className="text-[11.5px] text-[#73706A] mt-1.5">
+            Tracking: <span className="font-mono">{order.trackingNumber}</span>
           </p>
-          <div className="flex gap-2">
-            {order.status === "payment_held" && (
-              <Button
-                variant="gold"
-                size="sm"
-                onClick={() => setShowDispatch(true)}
-              >
+        )}
+        {statusMsg.nextAction && (
+          <p
+            className={`text-[11.5px] font-medium mt-1 ${order.status === "payment_held" ? "text-[#D4A843]" : "text-amber-600"}`}
+          >
+            {statusMsg.nextAction}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col items-end gap-2.5 shrink-0">
+        <p className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414]">
+          {formatPrice(order.total)}
+        </p>
+        <div className="flex gap-2">
+          {order.status === "payment_held" && (
+            <Link href={`/orders/${order.id}`}>
+              <Button variant="gold" size="sm">
                 Mark dispatched
               </Button>
-            )}
-            <Link href={`/orders/${order.id}`}>
-              <Button variant="secondary" size="sm">
-                View details
-              </Button>
             </Link>
-          </div>
+          )}
+          <Link href={`/orders/${order.id}`}>
+            <Button variant="secondary" size="sm">
+              View details
+            </Button>
+          </Link>
         </div>
-      </article>
-
-      {showDispatch && (
-        <div
-          className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowDispatch(false);
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
-              Mark as dispatched
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                  Courier / tracking number
-                </label>
-                <input
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  placeholder="e.g. NZP123456789"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
-                />
-              </div>
-              <div>
-                <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                  Tracking URL{" "}
-                  <span className="text-[#9E9A91] font-normal">(optional)</span>
-                </label>
-                <input
-                  value={trackingUrl}
-                  onChange={(e) => setTrackingUrl(e.target.value)}
-                  placeholder="e.g. https://nzpost.co.nz/track/..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px] text-[#141414] placeholder:text-[#C9C5BC] outline-none focus:ring-2 focus:ring-[#D4A843]/25 focus:border-[#D4A843] transition"
-                />
-              </div>
-              <div className="flex gap-3">
-                <Button
-                  variant="gold"
-                  size="md"
-                  onClick={handleDispatch}
-                  loading={dispatching}
-                >
-                  Confirm dispatch
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="md"
-                  onClick={() => setShowDispatch(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+      </div>
+    </article>
   );
 }
 
