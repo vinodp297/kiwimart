@@ -307,7 +307,7 @@ export default async function HomePage() {
         sellerName: row.seller.displayName,
         sellerUsername: row.seller.username,
         sellerRating: 4.5,
-        sellerVerified: row.seller.idVerified,
+        sellerVerified: false,
         viewCount: row.viewCount,
         watcherCount: row.watcherCount,
         createdAt: row.createdAt.toISOString(),
