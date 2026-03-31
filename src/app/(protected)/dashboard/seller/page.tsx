@@ -1046,12 +1046,29 @@ export default function SellerDashboardPage() {
           {activeTab === "payouts" && (
             <div role="tabpanel" aria-label="Payouts" className="space-y-4">
               {/* Payout summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
                   {
                     value: formatPrice(stats.pendingPayout),
                     label: "Pending payout",
                     colour: "text-[#D4A843]",
+                  },
+                  {
+                    value: formatPrice(
+                      payouts
+                        .filter(
+                          (p) =>
+                            p.status === "paid" &&
+                            p.paidAt &&
+                            new Date(p.paidAt).getMonth() ===
+                              new Date().getMonth() &&
+                            new Date(p.paidAt).getFullYear() ===
+                              new Date().getFullYear(),
+                        )
+                        .reduce((s, p) => s + p.amount, 0),
+                    ),
+                    label: "Earned this month",
+                    colour: "text-sky-600",
                   },
                   {
                     value: formatPrice(
@@ -1307,7 +1324,7 @@ function SellerOrderCard({ order }: { order: SellerOrderRow }) {
     createdAt: order.createdAt,
     dispatchedAt: null,
     completedAt: null,
-    disputeOpenedAt: null,
+    disputeOpenedAt: order.disputeOpenedAt,
     cancelledAt: null,
     cancelReason: null,
     cancelledBy: null,
@@ -1317,6 +1334,39 @@ function SellerOrderCard({ order }: { order: SellerOrderRow }) {
     otherPartyName: order.buyerName,
     isBuyer: false,
   });
+
+  // Compact countdown for disputed orders needing seller response
+  const disputeCountdown = (() => {
+    if (
+      order.status !== "disputed" ||
+      order.sellerResponse ||
+      !order.disputeOpenedAt
+    )
+      return null;
+    const deadline =
+      new Date(order.disputeOpenedAt).getTime() + 72 * 60 * 60 * 1000;
+    const diff = deadline - Date.now();
+    if (diff <= 0)
+      return {
+        label: "Overdue",
+        colour: "bg-red-100 text-red-700 border-red-200",
+      };
+    const hours = Math.floor(diff / (60 * 60 * 1000));
+    if (hours < 12)
+      return {
+        label: `Respond in ${hours}h`,
+        colour: "bg-red-100 text-red-700 border-red-200",
+      };
+    if (hours < 24)
+      return {
+        label: `Respond in ${hours}h`,
+        colour: "bg-amber-100 text-amber-700 border-amber-200",
+      };
+    return {
+      label: `Respond in ${hours}h`,
+      colour: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    };
+  })();
 
   return (
     <article
@@ -1334,6 +1384,13 @@ function SellerOrderCard({ order }: { order: SellerOrderRow }) {
         </p>
         <div className="flex flex-wrap items-center gap-2.5 mt-1.5">
           <OrderStatusBadge status={order.status as OrderStatus} />
+          {disputeCountdown && (
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${disputeCountdown.colour}`}
+            >
+              ⏳ {disputeCountdown.label}
+            </span>
+          )}
           <span className="text-[12px] text-[#9E9A91]">
             Buyer: <strong className="text-[#141414]">{order.buyerName}</strong>
           </span>

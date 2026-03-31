@@ -1398,6 +1398,15 @@ export default function OrderDetailPage() {
             {/* Dispute details if disputed */}
             {isDisputed && (
               <div className="mt-5 space-y-3">
+                {/* Seller response countdown timer */}
+                {!order.isBuyer &&
+                  !order.sellerResponse &&
+                  order.disputeOpenedAt && (
+                    <DisputeCountdownTimer
+                      disputeOpenedAt={order.disputeOpenedAt}
+                    />
+                  )}
+
                 {/* Buyer's dispute claim */}
                 <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-[12.5px] text-red-800">
                   <p className="font-semibold mb-1">Dispute details</p>
@@ -3302,6 +3311,65 @@ function CheckCircleIcon() {
     </svg>
   );
 }
+// ── Dispute Countdown Timer ─────────────────────────────────────────────────
+function DisputeCountdownTimer({
+  disputeOpenedAt,
+}: {
+  disputeOpenedAt: string;
+}) {
+  const [remaining, setRemaining] = useState<{
+    hours: number;
+    minutes: number;
+    expired: boolean;
+  }>({ hours: 0, minutes: 0, expired: false });
+
+  useEffect(() => {
+    function calc() {
+      const deadline =
+        new Date(disputeOpenedAt).getTime() + 72 * 60 * 60 * 1000;
+      const diff = deadline - Date.now();
+      if (diff <= 0) return { hours: 0, minutes: 0, expired: true };
+      const hours = Math.floor(diff / (60 * 60 * 1000));
+      const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+      return { hours, minutes, expired: false };
+    }
+    setRemaining(calc());
+    const interval = setInterval(() => setRemaining(calc()), 60_000);
+    return () => clearInterval(interval);
+  }, [disputeOpenedAt]);
+
+  if (remaining.expired) {
+    return (
+      <div className="p-3 rounded-xl bg-red-100 border border-red-300 text-[12.5px] text-red-800">
+        <p className="font-semibold">⏰ Response deadline has passed</p>
+        <p className="mt-0.5 text-[11.5px] opacity-80">
+          The dispute may be resolved in the buyer&apos;s favour. You can still
+          submit a response.
+        </p>
+      </div>
+    );
+  }
+
+  const colour =
+    remaining.hours >= 24
+      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+      : remaining.hours >= 12
+        ? "bg-amber-50 border-amber-200 text-amber-800"
+        : "bg-red-50 border-red-200 text-red-800";
+
+  return (
+    <div className={`p-3 rounded-xl border text-[12.5px] ${colour}`}>
+      <p className="font-semibold">
+        ⏳ You have {remaining.hours}h {remaining.minutes}m to respond
+      </p>
+      <p className="mt-0.5 text-[11.5px] opacity-80">
+        If you don&apos;t respond, the dispute may be resolved in the
+        buyer&apos;s favour.
+      </p>
+    </div>
+  );
+}
+
 function AlertTriangleIcon() {
   return (
     <svg
