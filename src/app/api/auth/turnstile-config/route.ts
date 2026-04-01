@@ -12,6 +12,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  // In non-production environments skip Turnstile entirely — the server
+  // already bypasses verification in dev/test (verifyTurnstile returns true),
+  // so there is no point loading the widget and it can hang on test keys.
+  if (process.env.NODE_ENV !== "production") {
+    return NextResponse.json({ siteKey: null, active: false });
+  }
+
   // Read from the non-NEXT_PUBLIC server env var (available at runtime)
   // Fall back to NEXT_PUBLIC_ in case only that one is set
   const siteKey =
