@@ -14,8 +14,8 @@ import {
   confirmDelivery,
   markDispatched,
   uploadOrderEvidence,
-  VALID_COURIERS,
 } from "@/server/actions/orders";
+import { VALID_COURIERS } from "@/shared/constants";
 import {
   openDispute,
   uploadDisputeEvidence,
