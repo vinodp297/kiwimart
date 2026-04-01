@@ -6,10 +6,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/primitives";
-import {
-  submitProblem,
-  type ProblemType,
-} from "@/server/actions/problemResolver";
+import { submitProblem } from "@/server/actions/problemResolver";
+import type { ProblemType } from "@/server/validators";
 import { uploadOrderEvidence } from "@/server/actions/orders";
 
 // ── Types ─────────────────────────────────────────────────────────────────
