@@ -12,7 +12,10 @@ import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
-import { approveIdSchema as ApproveIdSchema } from "@/server/validators";
+import {
+  approveIdSchema as ApproveIdSchema,
+  rejectIdVerificationSchema,
+} from "@/server/validators";
 
 // ── Accept Seller Terms ───────────────────────────────────────────────────────
 
@@ -252,4 +255,84 @@ export async function approveIdVerification(
 
   // 8. Return
   return { success: true, data: undefined };
+}
+
+// ── rejectIdVerification — Admin rejects ID submission ──────────────────────
+
+export async function rejectIdVerification(
+  raw: unknown,
+): Promise<ActionResult<void>> {
+  try {
+    const guard = await requireAdmin();
+    if ("error" in guard) return { success: false, error: guard.error };
+
+    const parsed = rejectIdVerificationSchema.safeParse(raw);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error:
+          parsed.error.issues[0]?.message ??
+          "Please check your input and try again.",
+      };
+    }
+
+    const { userId, reason, notes } = parsed.data;
+
+    const target = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, idVerified: true, idSubmittedAt: true, email: true },
+    });
+    if (!target) return { success: false, error: "User not found." };
+    if (target.idVerified)
+      return { success: false, error: "User is already ID verified." };
+
+    const reasonLabels: Record<string, string> = {
+      DOCUMENT_UNREADABLE: "Document was unreadable",
+      NAME_MISMATCH: "Name on document doesn't match account",
+      DOCUMENT_EXPIRED: "Document has expired",
+      SUSPECTED_FRAUD: "Suspected fraudulent document",
+      OTHER: notes || "Other reason",
+    };
+    const rejectionMessage = reasonLabels[reason] ?? reason;
+
+    // Update VerificationApplication
+    await db.verificationApplication.updateMany({
+      where: { sellerId: userId, status: "PENDING" },
+      data: {
+        status: "REJECTED",
+        reviewedAt: new Date(),
+        reviewedBy: guard.userId,
+        adminNotes: `${reason}: ${rejectionMessage}`,
+      },
+    });
+
+    // Clear idSubmittedAt so user can resubmit
+    await db.user.update({
+      where: { id: userId },
+      data: { idSubmittedAt: null },
+    });
+
+    audit({
+      userId: guard.userId,
+      action: "ID_VERIFICATION_REJECTED" as const,
+      entityType: "User",
+      entityId: userId,
+      metadata: { reason, notes },
+    });
+
+    createNotification({
+      userId: target.id,
+      type: "SYSTEM",
+      title: "ID verification not approved",
+      body: `Your ID verification was not approved: ${rejectionMessage}. You can resubmit with updated documents.`,
+      link: "/seller/onboarding",
+    }).catch(() => {});
+
+    return { success: true, data: undefined };
+  } catch (err) {
+    return {
+      success: false,
+      error: safeActionError(err, "Rejection failed. Please try again."),
+    };
+  }
 }

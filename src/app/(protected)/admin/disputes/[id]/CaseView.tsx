@@ -90,6 +90,8 @@ interface CaseData {
     email: string;
     displayName: string;
     idVerified: boolean;
+    nzbn: string | null;
+    gstRegistered: boolean;
     createdAt: string;
     metrics: {
       totalOrders: number;
@@ -565,6 +567,24 @@ export default function CaseView({ data }: Props) {
             />
           </div>
         </Section>
+
+        {/* Business seller notice */}
+        {seller.nzbn && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+            <span className="text-amber-600 text-sm mt-0.5">🏢</span>
+            <div>
+              <p className="text-[12px] font-semibold text-amber-800">
+                Registered business seller (NZBN: {seller.nzbn})
+              </p>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                Consumer Guarantees Act obligations apply — the buyer has
+                stronger consumer rights.
+                {order.disputeReason === "CHANGED_MIND" &&
+                  " CGA may require acceptance of returns for business sellers."}
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* I: Resolution Actions + SOP */}
         <Section title="Resolution">

@@ -25,6 +25,7 @@ import {
 import { audit } from "@/server/lib/audit";
 import { loginSchema } from "@/server/validators";
 import { blockToken, isTokenBlocked } from "@/server/lib/jwtBlocklist";
+import { isMfaVerified } from "@/server/lib/mfaSession";
 import {
   getSessionVersion,
   invalidateAllSessions,
@@ -234,6 +235,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             avatarKey: true,
             emailVerified: true,
             idVerified: true,
+            mfaEnabled: true,
           },
         });
         if (dbUser) {
@@ -247,8 +249,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.avatarUrl = dbUser.avatarKey ?? null;
           token.emailVerified = dbUser.emailVerified?.toISOString() ?? null;
           token.idVerified = dbUser.idVerified;
+          // MFA: if user has TOTP enabled, mark session as pending verification
+          token.mfaPending = dbUser.mfaEnabled;
         }
       }
+
+      // On subsequent requests: if mfaPending, check if MFA was verified
+      if (token.mfaPending && token.sub) {
+        const verified = await isMfaVerified(`user:${token.sub}`);
+        if (verified) {
+          token.mfaPending = false;
+        }
+      }
+
       return token;
     },
 
@@ -277,6 +290,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             ? new Date(token.emailVerified as string)
             : null;
           session.user.idVerified = (token.idVerified as boolean) ?? false;
+          session.user.mfaPending = (token.mfaPending as boolean) ?? false;
         } else if (user) {
           // OAuth login — DB session, user is the fresh DB row
           const dbUser = user as typeof user & {
@@ -300,6 +314,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.user.avatarUrl = dbUser.avatarUrl ?? null;
           session.user.emailVerified = dbUser.emailVerified ?? null;
           session.user.idVerified = dbUser.idVerified;
+          session.user.mfaPending = false; // OAuth users don't have MFA
         }
       }
       return session;

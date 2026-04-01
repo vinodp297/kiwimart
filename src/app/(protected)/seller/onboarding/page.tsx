@@ -30,6 +30,17 @@ export default async function SellerOnboardingPage() {
       idVerifiedAt: true,
       idSubmittedAt: true,
       stripeOnboarded: true,
+      nzbn: true,
+      gstRegistered: true,
+      gstNumber: true,
+      verificationApplication: {
+        select: {
+          status: true,
+          documentType: true,
+          adminNotes: true,
+          appliedAt: true,
+        },
+      },
     },
   });
 
@@ -70,7 +81,21 @@ export default async function SellerOnboardingPage() {
               idVerifiedAt: user.idVerifiedAt?.toISOString() ?? null,
               idSubmittedAt: user.idSubmittedAt?.toISOString() ?? null,
               stripeOnboarded: user.stripeOnboarded,
+              nzbn: user.nzbn,
+              gstRegistered: user.gstRegistered,
+              gstNumber: user.gstNumber,
             }}
+            verificationApp={
+              user.verificationApplication
+                ? {
+                    status: user.verificationApplication.status,
+                    documentType: user.verificationApplication.documentType,
+                    adminNotes: user.verificationApplication.adminNotes,
+                    appliedAt:
+                      user.verificationApplication.appliedAt.toISOString(),
+                  }
+                : null
+            }
             currentTierName={tier.name}
             tiers={Object.values(SELLER_TIERS)}
           />

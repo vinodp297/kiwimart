@@ -116,7 +116,12 @@ enum AuditAction {
   SELLER_VERIFICATION_APPLIED
   SELLER_VERIFICATION_APPROVED
   SELLER_VERIFICATION_REJECTED
+  ID_VERIFICATION_REJECTED
+  VERIFICATION_DOCUMENT_VIEWED
   FRAUD_FLAGGED
+  BUSINESS_DETAILS_UPDATED
+  MFA_ENABLED
+  MFA_DISABLED
 }
 
 enum VerificationStatus {
@@ -191,6 +196,12 @@ model User {
   idSubmittedAt DateTime?           // When user requested ID verification (pending admin review)
   nzbn          String?  @unique  // NZ Business Number (GST-registered sellers)
   gstRegistered Boolean  @default(false)
+  gstNumber     String?  // NZ GST number (8-9 digits, format: XX-XXX-XXX)
+
+  // MFA (TOTP-based two-factor authentication)
+  mfaSecret      String?   // Encrypted TOTP secret
+  mfaEnabled     Boolean   @default(false)
+  mfaBackupCodes String?   // Encrypted JSON array of one-time backup codes
 
   // Seller settings
   sellerTermsAcceptedAt DateTime?          // Accepted seller T&Cs
@@ -1056,14 +1067,19 @@ model OrderItem {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model VerificationApplication {
-  id         String             @id @default(cuid())
-  sellerId   String             @unique
-  seller     User               @relation(fields: [sellerId], references: [id])
-  status     VerificationStatus @default(PENDING)
-  appliedAt  DateTime           @default(now())
-  reviewedAt DateTime?
-  reviewedBy String?
-  adminNotes String?
+  id               String             @id @default(cuid())
+  sellerId         String             @unique
+  seller           User               @relation(fields: [sellerId], references: [id])
+  status           VerificationStatus @default(PENDING)
+  appliedAt        DateTime           @default(now())
+  reviewedAt       DateTime?
+  reviewedBy       String?
+  adminNotes       String?
+  // Document upload fields (Sprint 4A)
+  documentType     String?   // DRIVERS_LICENSE, PASSPORT, NZ_FIREARMS_LICENCE, OTHER_GOV_ID
+  documentFrontKey String?   // R2 key for front of document
+  documentBackKey  String?   // R2 key for back of document
+  selfieKey        String?   // R2 key for selfie holding ID
 
   @@index([status])
 }

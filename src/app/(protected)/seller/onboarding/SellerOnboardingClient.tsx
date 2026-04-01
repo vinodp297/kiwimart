@@ -2,13 +2,19 @@
 // src/app/(protected)/seller/onboarding/SellerOnboardingClient.tsx
 // ─── Seller Onboarding Client ──────────────────────────────────────────────────
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { acceptSellerTerms } from "@/server/actions/seller";
 import {
-  acceptSellerTerms,
+  requestPhoneVerification,
+  verifyPhoneCode,
+} from "@/server/actions/verification";
+import {
+  requestVerificationUpload,
   submitIdVerification,
-} from "@/server/actions/seller";
+} from "@/server/actions/verification.documents";
+import { updateBusinessDetails } from "@/server/actions/business";
 import type { SellerTier, SellerTierName } from "@/lib/seller-tiers";
 
 interface UserProps {
@@ -21,10 +27,21 @@ interface UserProps {
   idVerifiedAt: string | null;
   idSubmittedAt: string | null;
   stripeOnboarded: boolean;
+  nzbn: string | null;
+  gstRegistered: boolean;
+  gstNumber: string | null;
+}
+
+interface VerificationAppProps {
+  status: string;
+  documentType: string | null;
+  adminNotes: string | null;
+  appliedAt: string;
 }
 
 interface Props {
   user: UserProps;
+  verificationApp: VerificationAppProps | null;
   currentTierName: SellerTierName;
   tiers: SellerTier[];
 }
@@ -207,8 +224,594 @@ function TermsModal({
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+// ─── Phone Verification Inline ──────────────────────────────────────────────
+
+type PhoneStep = "input" | "code" | "done";
+
+function InlinePhoneVerification({ onVerified }: { onVerified: () => void }) {
+  const [step, setStep] = useState<PhoneStep>("input");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  function handleSendCode() {
+    setError("");
+    startTransition(async () => {
+      const result = await requestPhoneVerification({ phone });
+      if (!result.success) {
+        setError(result.error);
+      } else {
+        setStep("code");
+      }
+    });
+  }
+
+  function handleVerify() {
+    setError("");
+    startTransition(async () => {
+      const result = await verifyPhoneCode({ code });
+      if (!result.success) {
+        setError(result.error);
+      } else {
+        setStep("done");
+        onVerified();
+      }
+    });
+  }
+
+  if (step === "done") {
+    return (
+      <div className="flex items-center gap-2 text-[12.5px] text-green-700">
+        <span className="text-green-500">✓</span> Phone verified!
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 mt-2">
+      {error && (
+        <p className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {error}
+        </p>
+      )}
+      {step === "input" && (
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="block text-[11px] font-medium text-[#73706A] mb-1">
+              NZ mobile number
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="021 123 4567"
+              className="w-full h-9 px-3 rounded-lg border border-[#E3E0D9] bg-[#FAFAF8]
+                text-[13px] text-[#141414] placeholder:text-[#C9C5BC]
+                focus:outline-none focus:ring-2 focus:ring-[#D4A843]/40 focus:border-[#D4A843]"
+            />
+          </div>
+          <button
+            onClick={handleSendCode}
+            disabled={isPending || !phone}
+            className="h-9 px-4 rounded-lg bg-[#141414] text-white text-[12px] font-semibold
+              hover:bg-[#2a2a2a] disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {isPending ? "Sending..." : "Send code"}
+          </button>
+        </div>
+      )}
+      {step === "code" && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-[#73706A]">
+            We sent a 6-digit code to {phone}.
+          </p>
+          <div className="flex items-end gap-2">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={code}
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              placeholder="000000"
+              maxLength={6}
+              className="w-32 h-9 px-3 rounded-lg border border-[#E3E0D9] bg-[#FAFAF8]
+                text-[13px] text-[#141414] text-center tracking-[0.3em] font-mono
+                placeholder:text-[#C9C5BC]
+                focus:outline-none focus:ring-2 focus:ring-[#D4A843]/40 focus:border-[#D4A843]"
+            />
+            <button
+              onClick={handleVerify}
+              disabled={isPending || code.length !== 6}
+              className="h-9 px-4 rounded-lg bg-[#141414] text-white text-[12px] font-semibold
+                hover:bg-[#2a2a2a] disabled:opacity-50 transition-colors"
+            >
+              {isPending ? "Verifying..." : "Verify"}
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              setStep("input");
+              setCode("");
+              setError("");
+            }}
+            className="text-[11px] text-[#73706A] hover:text-[#141414] transition-colors"
+          >
+            Use a different number
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ID Document Upload ─────────────────────────────────────────────────────
+
+const DOC_TYPES = [
+  { value: "DRIVERS_LICENSE", label: "NZ Driver's Licence" },
+  { value: "PASSPORT", label: "NZ Passport" },
+  { value: "NZ_FIREARMS_LICENCE", label: "NZ Firearms Licence" },
+  { value: "OTHER_GOV_ID", label: "Other Government ID" },
+] as const;
+
+function DocumentUploadButton({
+  label,
+  r2Key,
+  onUploaded,
+  disabled,
+}: {
+  label: string;
+  r2Key: string | null;
+  onUploaded: (key: string) => void;
+  disabled?: boolean;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError("");
+    try {
+      // Phase 1: Get presigned URL
+      const result = await requestVerificationUpload({
+        fileName: file.name,
+        contentType: file.type,
+        sizeBytes: file.size,
+      });
+      if (!result.success) {
+        setError(result.error);
+        setUploading(false);
+        return;
+      }
+
+      // Phase 2: Upload directly to R2
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", result.data.uploadUrl, true);
+      xhr.setRequestHeader("Content-Type", file.type);
+      await new Promise<void>((resolve, reject) => {
+        xhr.onload = () =>
+          xhr.status >= 200 && xhr.status < 300
+            ? resolve()
+            : reject(new Error("Upload failed"));
+        xhr.onerror = () => reject(new Error("Upload failed"));
+        xhr.send(file);
+      });
+
+      onUploaded(result.data.r2Key);
+    } catch {
+      setError("Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      <label className="block text-[11px] font-medium text-[#73706A] mb-1">
+        {label}
+      </label>
+      {r2Key ? (
+        <div className="flex items-center gap-2 h-9 px-3 rounded-lg border border-green-200 bg-green-50 text-[12px] text-green-700">
+          <span>✓</span> Uploaded
+        </div>
+      ) : (
+        <label
+          className={`flex items-center justify-center h-9 px-3 rounded-lg border border-dashed
+            border-[#E3E0D9] bg-[#FAFAF8] text-[12px] text-[#73706A] cursor-pointer
+            hover:border-[#D4A843] hover:text-[#D4A843] transition-colors
+            ${disabled || uploading ? "opacity-50 pointer-events-none" : ""}`}
+        >
+          {uploading ? "Uploading..." : "Choose file"}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleFileChange}
+            disabled={disabled || uploading}
+          />
+        </label>
+      )}
+      {error && <p className="text-[11px] text-red-600 mt-1">{error}</p>}
+    </div>
+  );
+}
+
+function IdVerificationSection({
+  user,
+  verificationApp,
+  termsAccepted,
+  onSubmitted,
+}: {
+  user: UserProps;
+  verificationApp: VerificationAppProps | null;
+  termsAccepted: boolean;
+  onSubmitted: () => void;
+}) {
+  const [docType, setDocType] = useState<string>("");
+  const [frontKey, setFrontKey] = useState<string | null>(null);
+  const [backKey, setBackKey] = useState<string | null>(null);
+  const [selfieKey, setSelfieKey] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  // State 3: Approved
+  if (user.idVerified) {
+    return (
+      <p className="text-[12.5px] text-green-700">
+        ID verified on{" "}
+        {user.idVerifiedAt
+          ? new Date(user.idVerifiedAt).toLocaleDateString("en-NZ")
+          : "\u2014"}
+      </p>
+    );
+  }
+
+  // State 2: Pending
+  if (verificationApp?.status === "PENDING") {
+    return (
+      <div className="space-y-1">
+        <p className="text-[12.5px] text-amber-700">
+          Your documents are being reviewed. This usually takes 1-2 business
+          days.
+        </p>
+        <p className="text-[11px] text-[#9E9A91]">
+          Submitted{" "}
+          {new Date(verificationApp.appliedAt).toLocaleDateString("en-NZ", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })}
+        </p>
+      </div>
+    );
+  }
+
+  // State 4: Rejected
+  const isRejected = verificationApp?.status === "REJECTED";
+
+  async function handleSubmit() {
+    if (!docType || !frontKey) return;
+    setSubmitting(true);
+    setError("");
+    const result = await submitIdVerification({
+      documentType: docType,
+      documentFrontKey: frontKey,
+      documentBackKey: backKey ?? undefined,
+      selfieKey: selfieKey ?? undefined,
+    });
+    setSubmitting(false);
+    if (result.success) {
+      onSubmitted();
+    } else {
+      setError(result.error);
+    }
+  }
+
+  const needsBack =
+    docType === "DRIVERS_LICENSE" || docType === "NZ_FIREARMS_LICENCE";
+
+  return (
+    <div className="space-y-3 mt-2">
+      {isRejected && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-[12px] text-red-700">
+          Your previous submission was not approved
+          {verificationApp?.adminNotes && (
+            <>
+              :{" "}
+              {verificationApp.adminNotes.split(": ").slice(1).join(": ") ||
+                verificationApp.adminNotes}
+            </>
+          )}
+          . You can resubmit below.
+        </div>
+      )}
+
+      {!termsAccepted && (
+        <p className="text-[12.5px] text-[#73706A]">
+          Accept the seller terms first, then submit your ID.
+        </p>
+      )}
+
+      <div>
+        <label className="block text-[11px] font-medium text-[#73706A] mb-1">
+          Document type
+        </label>
+        <select
+          value={docType}
+          onChange={(e) => {
+            setDocType(e.target.value);
+            setFrontKey(null);
+            setBackKey(null);
+            setSelfieKey(null);
+          }}
+          disabled={!termsAccepted}
+          className="w-full h-9 px-3 rounded-lg border border-[#E3E0D9] bg-[#FAFAF8]
+            text-[13px] text-[#141414] focus:outline-none focus:ring-2
+            focus:ring-[#D4A843]/40 focus:border-[#D4A843] disabled:opacity-50"
+        >
+          <option value="">Select document type...</option>
+          {DOC_TYPES.map((d) => (
+            <option key={d.value} value={d.value}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {docType && (
+        <>
+          <DocumentUploadButton
+            label="Front of document (required)"
+            r2Key={frontKey}
+            onUploaded={setFrontKey}
+            disabled={!termsAccepted}
+          />
+          {needsBack && (
+            <DocumentUploadButton
+              label="Back of document (required)"
+              r2Key={backKey}
+              onUploaded={setBackKey}
+              disabled={!termsAccepted}
+            />
+          )}
+          <DocumentUploadButton
+            label="Selfie holding your ID (optional)"
+            r2Key={selfieKey}
+            onUploaded={setSelfieKey}
+            disabled={!termsAccepted}
+          />
+          <p className="text-[10.5px] text-[#9E9A91]">
+            Your documents are encrypted and stored securely. They are only
+            visible to KiwiMart&apos;s verification team.
+          </p>
+          {error && (
+            <p className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
+          <button
+            onClick={handleSubmit}
+            disabled={
+              !termsAccepted ||
+              !frontKey ||
+              (needsBack && !backKey) ||
+              submitting
+            }
+            className="inline-flex items-center gap-2 text-[12.5px] font-semibold
+              bg-[#141414] text-white px-4 py-2 rounded-lg
+              hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed
+              transition-colors"
+          >
+            {submitting ? "Submitting\u2026" : "Submit for review"}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Business Details Section ────────────────────────────────────────────────
+
+function BusinessDetailsSection({ user }: { user: UserProps }) {
+  const [isBusiness, setIsBusiness] = useState(!!user.nzbn);
+  const [nzbn, setNzbn] = useState(user.nzbn ?? "");
+  const [gstRegistered, setGstRegistered] = useState(user.gstRegistered);
+  const [gstNumber, setGstNumber] = useState(user.gstNumber ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    const result = await updateBusinessDetails({
+      isBusinessSeller: isBusiness,
+      nzbn: isBusiness ? nzbn : "",
+      gstRegistered: isBusiness ? gstRegistered : false,
+      gstNumber: isBusiness && gstRegistered ? gstNumber : "",
+    });
+    setSaving(false);
+    if (result.success) {
+      setSaved(true);
+    } else {
+      setError(result.error);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+      <h3 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-1">
+        Business Details
+      </h3>
+      <p className="text-[12.5px] text-[#73706A] mb-4">
+        Optional — provide your business details for transparency and
+        compliance.
+      </p>
+
+      {error && (
+        <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-200 text-[12px] text-red-700">
+          {error}
+        </div>
+      )}
+      {saved && (
+        <div className="mb-3 p-3 rounded-xl bg-green-50 border border-green-200 text-[12px] text-green-700">
+          Business details saved.
+        </div>
+      )}
+
+      {/* Toggle */}
+      <label className="flex items-center gap-3 mb-4 cursor-pointer">
+        <div
+          onClick={() => setIsBusiness(!isBusiness)}
+          className={`relative w-10 h-5 rounded-full transition-colors ${
+            isBusiness ? "bg-[#D4A843]" : "bg-[#E3E0D9]"
+          }`}
+        >
+          <div
+            className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+              isBusiness ? "translate-x-5" : "translate-x-0.5"
+            }`}
+          />
+        </div>
+        <span className="text-[13px] text-[#141414] font-medium">
+          I&apos;m selling as a business
+        </span>
+      </label>
+
+      {isBusiness && (
+        <div className="space-y-3 ml-1">
+          {/* NZBN */}
+          <div>
+            <label className="block text-[11px] font-medium text-[#73706A] mb-1">
+              NZBN (New Zealand Business Number)
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={nzbn}
+              onChange={(e) =>
+                setNzbn(e.target.value.replace(/\D/g, "").slice(0, 13))
+              }
+              placeholder="1234567890123"
+              maxLength={13}
+              className="w-full h-9 px-3 rounded-lg border border-[#E3E0D9] bg-[#FAFAF8]
+                text-[13px] text-[#141414] font-mono tracking-wider
+                placeholder:text-[#C9C5BC] placeholder:tracking-normal placeholder:font-sans
+                focus:outline-none focus:ring-2 focus:ring-[#D4A843]/40 focus:border-[#D4A843]"
+            />
+            <p className="text-[10.5px] text-[#9E9A91] mt-1">
+              13-digit number from the{" "}
+              <a
+                href="https://www.nzbn.govt.nz"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#D4A843] hover:underline"
+              >
+                NZ Business Number register
+              </a>
+            </p>
+          </div>
+
+          {/* GST Registered */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={gstRegistered}
+              onChange={(e) => setGstRegistered(e.target.checked)}
+              className="w-4 h-4 accent-[#D4A843]"
+            />
+            <span className="text-[13px] text-[#141414]">GST Registered</span>
+          </label>
+
+          {/* GST Number */}
+          {gstRegistered && (
+            <div>
+              <label className="block text-[11px] font-medium text-[#73706A] mb-1">
+                GST Number
+              </label>
+              <input
+                type="text"
+                value={gstNumber}
+                onChange={(e) => {
+                  // Auto-format: XX-XXX-XXX
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 9);
+                  let formatted = digits;
+                  if (digits.length > 2)
+                    formatted = digits.slice(0, 2) + "-" + digits.slice(2);
+                  if (digits.length > 5)
+                    formatted = formatted.slice(0, 6) + "-" + digits.slice(5);
+                  setGstNumber(formatted);
+                }}
+                placeholder="XX-XXX-XXX"
+                maxLength={10}
+                className="w-full h-9 px-3 rounded-lg border border-[#E3E0D9] bg-[#FAFAF8]
+                  text-[13px] text-[#141414] font-mono
+                  placeholder:text-[#C9C5BC] placeholder:font-sans
+                  focus:outline-none focus:ring-2 focus:ring-[#D4A843]/40 focus:border-[#D4A843]"
+              />
+            </div>
+          )}
+
+          {/* Info text */}
+          <div className="bg-[#F8F7F4] border border-[#E3E0D9] rounded-lg p-3">
+            <p className="text-[11px] text-[#73706A] leading-relaxed">
+              Business sellers have obligations under the Consumer Guarantees
+              Act. Providing your NZBN helps buyers identify you as a registered
+              business.{" "}
+              <a
+                href="https://www.business.govt.nz/risks-and-compliance/consumer-law/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#D4A843] hover:underline"
+              >
+                Learn more about your obligations
+              </a>
+            </p>
+          </div>
+
+          {/* Save button */}
+          <button
+            onClick={handleSave}
+            disabled={saving || (isBusiness && nzbn.length !== 13)}
+            className="inline-flex items-center gap-2 text-[12.5px] font-semibold
+              bg-[#141414] text-white px-4 py-2 rounded-lg
+              hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed
+              transition-colors"
+          >
+            {saving ? "Saving..." : "Save business details"}
+          </button>
+        </div>
+      )}
+
+      {/* Clear business details if toggle off */}
+      {!isBusiness && user.nzbn && (
+        <div>
+          <p className="text-[11px] text-[#73706A] mb-2">
+            Your business details will be removed.
+          </p>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="text-[12px] text-red-600 hover:underline disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Clear business details"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export default function SellerOnboardingClient({
   user,
+  verificationApp,
   currentTierName,
   tiers,
 }: Props) {
@@ -219,7 +822,7 @@ export default function SellerOnboardingClient({
   const [termsAcceptedAt, setTermsAcceptedAt] = useState(
     user.sellerTermsAcceptedAt,
   );
-  const [idSubmitted, setIdSubmitted] = useState(!!user.idSubmittedAt);
+  const [phoneVerified, setPhoneVerified] = useState(user.phoneVerified);
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -253,27 +856,6 @@ export default function SellerOnboardingClient({
       setMessage({
         type: "error",
         text: "We couldn't save your acceptance. Please check your connection and try again.",
-      });
-    }
-  }
-
-  async function handleSubmitId() {
-    setLoading("id");
-    setMessage(null);
-    const result = await submitIdVerification();
-    setLoading(null);
-    if (result.success) {
-      setIdSubmitted(true);
-      setMessage({
-        type: "success",
-        text: "ID verification request submitted. We'll review it within 1\u20132 business days.",
-      });
-    } else {
-      setMessage({
-        type: "error",
-        text:
-          result.error ??
-          "Your ID submission couldn't be processed. Please try again.",
       });
     }
   }
@@ -462,48 +1044,60 @@ export default function SellerOnboardingClient({
                     {isNext && (
                       <div className="mt-3 space-y-2">
                         {tier.name === "phone_verified" && (
-                          <p className="text-[12.5px] text-[#73706A]">
-                            Phone verification is not yet available. Skip to ID
-                            verification below for full access.
-                          </p>
-                        )}
-                        {tier.name === "id_verified" && (
                           <div>
-                            {user.idVerified ? (
+                            {phoneVerified ? (
                               <p className="text-[12.5px] text-green-700">
-                                ID verified on{" "}
-                                {user.idVerifiedAt
-                                  ? new Date(
-                                      user.idVerifiedAt,
-                                    ).toLocaleDateString("en-NZ")
-                                  : "\u2014"}
-                              </p>
-                            ) : idSubmitted || user.idSubmittedAt ? (
-                              <p className="text-[12.5px] text-amber-700">
-                                ID verification pending admin review.
+                                <span className="text-green-500">✓</span> Phone
+                                verified
                               </p>
                             ) : (
-                              <div className="space-y-2">
-                                {!termsAccepted && (
-                                  <p className="text-[12.5px] text-[#73706A]">
-                                    Accept the seller terms first, then submit
-                                    your ID.
-                                  </p>
-                                )}
-                                <button
-                                  onClick={handleSubmitId}
-                                  disabled={!termsAccepted || loading === "id"}
-                                  className="inline-flex items-center gap-2 text-[12.5px] font-semibold
-                                    bg-[#141414] text-white px-4 py-2 rounded-lg
-                                    hover:bg-[#2a2a2a] disabled:opacity-50 disabled:cursor-not-allowed
-                                    transition-colors"
-                                >
-                                  {loading === "id"
-                                    ? "Submitting\u2026"
-                                    : "Request ID Verification"}
-                                </button>
-                              </div>
+                              <>
+                                <InlinePhoneVerification
+                                  onVerified={() => {
+                                    setPhoneVerified(true);
+                                    setMessage({
+                                      type: "success",
+                                      text: "Phone verified! Your tier has been upgraded.",
+                                    });
+                                    router.refresh();
+                                  }}
+                                />
+                                <p className="text-[10.5px] text-[#9E9A91] mt-2">
+                                  Phone verification is required for seller tier
+                                  progression.{" "}
+                                  <Link
+                                    href="#"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      const el =
+                                        document.getElementById("tier-id");
+                                      el?.scrollIntoView({
+                                        behavior: "smooth",
+                                      });
+                                    }}
+                                    className="text-[#D4A843] hover:underline"
+                                  >
+                                    Skip for now
+                                  </Link>
+                                </p>
+                              </>
                             )}
+                          </div>
+                        )}
+                        {tier.name === "id_verified" && (
+                          <div id="tier-id">
+                            <IdVerificationSection
+                              user={user}
+                              verificationApp={verificationApp}
+                              termsAccepted={termsAccepted}
+                              onSubmitted={() => {
+                                setMessage({
+                                  type: "success",
+                                  text: "ID verification submitted. We'll review it within 1\u20132 business days.",
+                                });
+                                router.refresh();
+                              }}
+                            />
                           </div>
                         )}
                       </div>
@@ -539,6 +1133,9 @@ export default function SellerOnboardingClient({
           </div>
         </div>
       )}
+
+      {/* Business Details */}
+      <BusinessDetailsSection user={user} />
 
       {/* Terms Modal */}
       {showTermsModal && (

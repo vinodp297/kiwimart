@@ -132,6 +132,14 @@ export default async function ListingDetailPage({
     recordListingView(listing.id).catch(() => {});
   }
 
+  // Fetch seller business status for badge display
+  const sellerBusinessInfo = await db.user
+    .findUnique({
+      where: { id: listing.seller.id },
+      select: { nzbn: true, gstRegistered: true },
+    })
+    .catch(() => null);
+
   const [responseTimeLabel, trustProfile, rawSocialProof, priceHistory] =
     await Promise.all([
       getSellerResponseTime(listing.seller.id).then(
@@ -186,7 +194,10 @@ export default async function ListingDetailPage({
     activeListingCount: listing.seller._count.listings,
     soldCount: listing.seller._count.sellerOrders,
     responseTimeLabel,
-    badges: [] as SellerBadge[],
+    badges: [
+      ...(listing.seller.idVerified ? ["verified_id" as SellerBadge] : []),
+      ...(sellerBusinessInfo?.nzbn ? ["nz_business" as SellerBadge] : []),
+    ],
   };
 
   const detail: ListingDetail = {

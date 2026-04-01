@@ -101,6 +101,8 @@ export interface DisputeCaseDetail {
     email: string;
     displayName: string;
     idVerified: boolean;
+    nzbn: string | null;
+    gstRegistered: boolean;
     createdAt: Date;
     metrics: {
       totalOrders: number;
@@ -193,6 +195,8 @@ const DISPUTE_SELECT = {
       email: true,
       displayName: true,
       idVerified: true,
+      nzbn: true,
+      gstRegistered: true,
     },
   },
 } satisfies Prisma.OrderSelect;
@@ -509,6 +513,8 @@ export class AdminDisputesService {
             email: true,
             displayName: true,
             idVerified: true,
+            nzbn: true,
+            gstRegistered: true,
             createdAt: true,
           },
         },
@@ -659,6 +665,8 @@ export class AdminDisputesService {
         email: order.seller.email,
         displayName: order.seller.displayName,
         idVerified: order.seller.idVerified,
+        nzbn: order.seller.nzbn,
+        gstRegistered: order.seller.gstRegistered,
         createdAt: order.seller.createdAt,
         metrics: {
           totalOrders: sellerMetricsRaw.totalOrders,

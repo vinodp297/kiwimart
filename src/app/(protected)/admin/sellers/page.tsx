@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import db from "@/lib/db";
-import ApproveIdButton from "../ApproveIdButton";
+// ApproveIdButton replaced by link to review page
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Sellers — Admin" };
@@ -179,7 +179,14 @@ export default async function SellersPage() {
                         : "—"}
                     </p>
                   </div>
-                  <ApproveIdButton userId={u.id} />
+                  <Link
+                    href={`/admin/sellers/${u.id}/verify`}
+                    className="shrink-0 inline-flex items-center gap-1.5 h-8 px-4 rounded-lg
+                      bg-[#141414] text-white text-[12px] font-semibold
+                      hover:bg-[#2a2a2a] transition-colors"
+                  >
+                    Review
+                  </Link>
                 </div>
               ))}
             </div>
