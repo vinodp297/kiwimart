@@ -68,6 +68,7 @@ export async function createOrder(params: {
     return {
       success: false,
       error: safeActionError(err, "Authentication required."),
+      reason: "auth_required",
     };
   }
 
@@ -77,6 +78,7 @@ export async function createOrder(params: {
     return {
       success: false,
       error: "Too many orders placed. Please wait before trying again.",
+      reason: "rate_limited",
     };
   }
 
@@ -88,6 +90,7 @@ export async function createOrder(params: {
       error:
         parsed.error.issues[0]?.message ??
         "Please check your input and try again.",
+      reason: "validation_error",
     };
   }
 
@@ -145,11 +148,20 @@ export async function createOrder(params: {
     },
   });
 
-  if (!listing) return { success: false, error: "Listing not available." };
+  if (!listing)
+    return {
+      success: false,
+      error: "Listing not available.",
+      reason: "listing_unavailable",
+    };
 
   // 2. Authorise — cannot buy own listing
   if (listing.sellerId === user.id) {
-    return { success: false, error: "You cannot purchase your own listing." };
+    return {
+      success: false,
+      error: "You cannot purchase your own listing.",
+      reason: "own_listing",
+    };
   }
 
   if (!listing.seller.stripeAccountId || !listing.seller.stripeOnboarded) {
@@ -157,6 +169,7 @@ export async function createOrder(params: {
       success: false,
       error:
         "This seller has not completed payment setup. Contact them directly.",
+      reason: "seller_not_configured",
     };
   }
 
@@ -168,7 +181,11 @@ export async function createOrder(params: {
     data: { status: "RESERVED" },
   });
   if (reservation.count === 0) {
-    return { success: false, error: "This listing is no longer available." };
+    return {
+      success: false,
+      error: "This listing is no longer available.",
+      reason: "listing_unavailable",
+    };
   }
 
   // 5b. Calculate totals (server-side — never trust client prices)
@@ -252,6 +269,7 @@ export async function createOrder(params: {
       success: false,
       error:
         "Seller payment account is not properly configured. Please contact the seller.",
+      reason: "seller_not_configured",
     };
   }
 
@@ -394,6 +412,7 @@ export async function createOrder(params: {
     return {
       success: false,
       error: "Payment setup failed. Please try again.",
+      reason: "stripe_unavailable",
     };
   }
 }
