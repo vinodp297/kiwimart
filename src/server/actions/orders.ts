@@ -41,14 +41,7 @@ import {
   cancelOrderSchema as CancelOrderSchema,
 } from "@/server/validators";
 
-const VALID_COURIERS = [
-  "NZ Post",
-  "CourierPost",
-  "Aramex",
-  "Post Haste",
-  "Castle Parcels",
-  "Other",
-] as const;
+import { VALID_COURIERS } from "@/shared/constants";
 
 // ── createOrder ───────────────────────────────────────────────────────────────
 
@@ -520,8 +513,6 @@ export async function markDispatched(params: {
     };
   }
 }
-
-export { VALID_COURIERS };
 
 // ── Upload order evidence photos (dispatch/delivery) ────────────────────────
 // Reuses the dispute evidence pattern: server-side upload to R2 with magic byte
