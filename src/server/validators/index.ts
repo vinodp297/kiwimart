@@ -751,3 +751,105 @@ export const submitProblemSchema = z.object({
 });
 export type SubmitProblemInput = z.infer<typeof submitProblemSchema>;
 export type ProblemType = SubmitProblemInput["problemType"];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phone verification schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const requestPhoneSchema = z.object({
+  phone: z.string().min(1, "Phone number is required"),
+});
+export type RequestPhoneInput = z.infer<typeof requestPhoneSchema>;
+
+export const verifyPhoneCodeSchema = z.object({
+  code: z
+    .string()
+    .length(6, "Code must be 6 digits")
+    .regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+export type VerifyPhoneCodeInput = z.infer<typeof verifyPhoneCodeSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ID verification schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const requestVerificationUploadSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  sizeBytes: z
+    .number()
+    .positive()
+    .max(8 * 1024 * 1024, "File must be under 8MB"),
+});
+export type RequestVerificationUploadInput = z.infer<
+  typeof requestVerificationUploadSchema
+>;
+
+export const submitIdVerificationSchema = z.object({
+  documentType: z.enum([
+    "DRIVERS_LICENSE",
+    "PASSPORT",
+    "NZ_FIREARMS_LICENCE",
+    "OTHER_GOV_ID",
+  ]),
+  documentFrontKey: z.string().min(1, "Front of document is required"),
+  documentBackKey: z.string().optional(),
+  selfieKey: z.string().optional(),
+});
+export type SubmitIdVerificationInput = z.infer<
+  typeof submitIdVerificationSchema
+>;
+
+export const rejectIdVerificationSchema = z.object({
+  userId: z.string().min(1),
+  reason: z.enum([
+    "DOCUMENT_UNREADABLE",
+    "NAME_MISMATCH",
+    "DOCUMENT_EXPIRED",
+    "SUSPECTED_FRAUD",
+    "OTHER",
+  ]),
+  notes: z.string().max(500).optional(),
+});
+export type RejectIdVerificationInput = z.infer<
+  typeof rejectIdVerificationSchema
+>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Business details (NZBN/GST) schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const updateBusinessDetailsSchema = z.object({
+  isBusinessSeller: z.boolean(),
+  nzbn: z
+    .string()
+    .regex(/^\d{13}$/, "NZBN must be a 13-digit number")
+    .optional()
+    .or(z.literal("")),
+  gstRegistered: z.boolean().default(false),
+  gstNumber: z
+    .string()
+    .regex(/^\d{2}-\d{3}-\d{3}$/, "GST number must be in XX-XXX-XXX format")
+    .optional()
+    .or(z.literal("")),
+});
+export type UpdateBusinessDetailsInput = z.infer<
+  typeof updateBusinessDetailsSchema
+>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MFA schemas
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const verifyMfaCodeSchema = z.object({
+  code: z
+    .string()
+    .length(6, "Code must be 6 digits")
+    .regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+export type VerifyMfaCodeInput = z.infer<typeof verifyMfaCodeSchema>;
+
+export const verifyMfaBackupSchema = z.object({
+  code: z.string().min(1, "Backup code is required").max(20),
+});
+export type VerifyMfaBackupInput = z.infer<typeof verifyMfaBackupSchema>;

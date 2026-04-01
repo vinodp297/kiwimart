@@ -1,12 +1,12 @@
 // src/app/(protected)/admin/layout.tsx
 // ─── Admin Shell with Role Sidebar ────────────────────────────────────────────
 
-import { redirect } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import AdminNav from '@/components/admin/AdminNav';
-import { getRoleDisplayName, getRoleBadgeColor } from '@/lib/permissions';
-import type { AdminRole } from '@prisma/client';
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import AdminNav from "@/components/admin/AdminNav";
+import { getRoleDisplayName, getRoleBadgeColor } from "@/lib/permissions";
+import type { AdminRole } from "@prisma/client";
 
 export default async function AdminLayout({
   children,
@@ -15,7 +15,12 @@ export default async function AdminLayout({
 }) {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect('/login?from=/admin');
+    redirect("/login?from=/admin");
+  }
+
+  // Block access if MFA is pending
+  if (session.user.mfaPending) {
+    redirect("/mfa-verify");
   }
 
   const user = await db.user.findUnique({
@@ -25,14 +30,16 @@ export default async function AdminLayout({
       adminRole: true,
       displayName: true,
       email: true,
+      mfaEnabled: true,
     },
   });
 
   if (!user?.isAdmin || !user.adminRole) {
-    redirect('/dashboard/buyer');
+    redirect("/dashboard/buyer");
   }
 
   const role = user.adminRole as AdminRole;
+  const showMfaBanner = !user.mfaEnabled;
 
   return (
     <div className="min-h-screen bg-[#FAFAF8] flex">
@@ -47,7 +54,9 @@ export default async function AdminLayout({
         {/* Role badge */}
         <div className="px-4 py-3 border-b border-white/10">
           <p className="text-white/60 text-[11px] mb-1">Signed in as</p>
-          <p className="text-white text-[13px] font-medium truncate">{user.displayName}</p>
+          <p className="text-white text-[13px] font-medium truncate">
+            {user.displayName}
+          </p>
           <span
             className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold text-white"
             style={{ background: getRoleBadgeColor(role) }}
@@ -74,6 +83,22 @@ export default async function AdminLayout({
 
       {/* Main content — offset by sidebar width */}
       <main className="flex-1 overflow-auto ml-64">
+        {showMfaBanner && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-center gap-3">
+            <span className="text-amber-600 text-lg">🔐</span>
+            <p className="text-[13px] text-amber-800 flex-1">
+              <strong>Recommended:</strong> Enable two-factor authentication for
+              enhanced account security.
+            </p>
+            <a
+              href="/account/security"
+              className="shrink-0 text-[12px] font-semibold text-amber-700 bg-amber-100 border border-amber-300
+                px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-colors"
+            >
+              Set up 2FA
+            </a>
+          </div>
+        )}
         {children}
       </main>
     </div>

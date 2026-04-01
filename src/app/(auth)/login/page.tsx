@@ -171,6 +171,14 @@ export default function LoginPage() {
         return;
       }
 
+      // Check if MFA verification is required
+      const sessionRes = await fetch("/api/auth/session");
+      const sessionData = await sessionRes.json();
+      if (sessionData?.user?.mfaPending) {
+        window.location.href = "/mfa-verify";
+        return;
+      }
+
       const fromParam = searchParams.get("from");
       const isFirstLogin = !!verifiedParam || !!registeredParam;
       window.location.href =
