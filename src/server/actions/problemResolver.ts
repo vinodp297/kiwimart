@@ -24,9 +24,7 @@ import {
 import { createNotification } from "@/modules/notifications/notification.service";
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
 import type { ActionResult } from "@/types";
-import { submitProblemSchema, type ProblemType } from "@/server/validators";
-
-export type { ProblemType };
+import { submitProblemSchema } from "@/server/validators";
 
 export async function submitProblem(raw: unknown): Promise<
   ActionResult<{

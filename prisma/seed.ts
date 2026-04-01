@@ -1323,7 +1323,7 @@ async function main() {
       "Queenstown",
     ),
     [
-      img("photo-1506953823-6a3c8f0a305e"),
+      img("photo-1530549387789-4c1017266635"),
       img("photo-1535639818669-c059d2f038e6"),
     ],
   );
@@ -1612,7 +1612,7 @@ async function main() {
       "Kelburn",
     ),
     [
-      img("photo-1461896836934-bd45ba688117"),
+      img("photo-1612872087720-bb876e2e67d1"),
       img("photo-1518091043644-c1d4457512c6"),
     ],
   );
