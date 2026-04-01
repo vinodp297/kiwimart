@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
@@ -61,6 +62,7 @@ export default function CheckoutForm({ listing }: Props) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorReason, setErrorReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Stable idempotency key — generated once per checkout mount, never changes.
@@ -97,6 +99,7 @@ export default function CheckoutForm({ listing }: Props) {
 
     setLoading(true);
     setError(null);
+    setErrorReason(null);
 
     const result = await createOrder({
       listingId: listing.id,
@@ -120,8 +123,15 @@ export default function CheckoutForm({ listing }: Props) {
       setOrderId(result.data.orderId);
     } else {
       setError(result.error);
+      setErrorReason(result.reason ?? null);
     }
     setLoading(false);
+  }
+
+  async function handleRetry() {
+    setError(null);
+    setErrorReason(null);
+    await handleCreateOrder();
   }
 
   // Auto-create order on mount if pickup (no address needed)
@@ -234,9 +244,31 @@ export default function CheckoutForm({ listing }: Props) {
           </div>
         )}
 
-        {error && <Alert variant="error">{error}</Alert>}
+        {error ? (
+          <CheckoutError
+            error={error}
+            reason={errorReason}
+            listingId={listing.id}
+            onRetry={handleRetry}
+          />
+        ) : isPickup && loading ? (
+          <div className="flex items-center justify-center gap-2.5 py-4 text-[#73706A]">
+            <svg
+              className="animate-spin shrink-0"
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            <span className="text-[13px]">Setting up your order…</span>
+          </div>
+        ) : null}
 
-        {!isPickup && (
+        {!isPickup && !error && (
           <Button
             variant="gold"
             size="lg"
@@ -252,6 +284,99 @@ export default function CheckoutForm({ listing }: Props) {
       {/* Right — Order summary */}
       <div className="lg:sticky lg:top-[76px] self-start">
         <OrderSummary listing={listing} totalNzd={totalNzd} />
+      </div>
+    </div>
+  );
+}
+
+// ── Order error helpers ─────────────────────────────────────────────────────
+
+function getErrorDisplay(reason: string | null, message: string) {
+  if (reason === "listing_unavailable") {
+    return {
+      title: "This listing is no longer available",
+      body: "It may have been sold or removed. Browse similar listings.",
+      canRetry: false,
+    };
+  }
+  if (reason === "stripe_unavailable") {
+    return {
+      title: "Payment setup failed",
+      body: "We couldn't connect to our payment provider. This is usually temporary — please try again.",
+      canRetry: true,
+    };
+  }
+  if (reason === "seller_not_configured") {
+    return {
+      title: "Seller payment not set up",
+      body: message,
+      canRetry: false,
+    };
+  }
+  if (reason === "rate_limited") {
+    return {
+      title: "Too many attempts",
+      body: message,
+      canRetry: false,
+    };
+  }
+  if (reason === "own_listing") {
+    return {
+      title: "Cannot purchase your own listing",
+      body: message,
+      canRetry: false,
+    };
+  }
+  return { title: "Something went wrong", body: message, canRetry: true };
+}
+
+function CheckoutError({
+  error,
+  reason,
+  listingId,
+  onRetry,
+}: {
+  error: string;
+  reason: string | null;
+  listingId: string;
+  onRetry: () => void;
+}) {
+  const { title, body, canRetry } = getErrorDisplay(reason, error);
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+      <div className="flex items-start gap-2.5">
+        <svg
+          className="shrink-0 mt-0.5 text-red-500"
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <circle cx="12" cy="12" r="10" />
+          <line x1="15" y1="9" x2="9" y2="15" />
+          <line x1="9" y1="9" x2="15" y2="15" />
+        </svg>
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-semibold text-red-800">{title}</p>
+          <p className="text-[12.5px] text-red-700 mt-0.5 leading-relaxed">
+            {body}
+          </p>
+          <div className="flex items-center gap-3 mt-3">
+            {canRetry && (
+              <Button variant="danger" size="sm" onClick={onRetry}>
+                Try again
+              </Button>
+            )}
+            <Link
+              href={`/listings/${listingId}`}
+              className="text-[12.5px] text-red-700 underline underline-offset-2 hover:text-red-900 transition-colors"
+            >
+              Go back to listing
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );
