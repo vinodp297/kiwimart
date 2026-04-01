@@ -5,7 +5,7 @@
 // This client component handles the localStorage fallback for unauthenticated users.
 
 import { useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import { recordView } from "@/lib/recently-viewed";
 
 interface Props {
@@ -23,7 +23,7 @@ export default function RecordView({
   thumbnailUrl,
   condition,
 }: Props) {
-  const { status } = useSession();
+  const { status } = useSessionSafe();
 
   useEffect(() => {
     // Only use localStorage for unauthenticated users

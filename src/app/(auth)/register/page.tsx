@@ -4,7 +4,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn, signOut, useSession } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import Script from "next/script";
 import { registerUser } from "@/server/actions/auth";
 import {
@@ -17,7 +18,7 @@ import {
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { data: session, status } = useSessionSafe();
   const [sessionCleared, setSessionCleared] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");

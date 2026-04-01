@@ -12,7 +12,7 @@ import { useState, useCallback, memo, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import type { ListingCard as ListingCardType } from "@/types";
 import {
   formatPrice,
@@ -44,7 +44,7 @@ function priceDrop(current: number, previous: number | null): number {
 
 export default memo(function ListingCard({ listing, priority = false }: Props) {
   const [watched, setWatched] = useState(false);
-  const { status: sessionStatus } = useSession();
+  const { status: sessionStatus } = useSessionSafe();
   const router = useRouter();
 
   const handleToggleWatch = useCallback(async () => {
