@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import { getRecentlyViewed } from "@/lib/recently-viewed";
 import type { RecentlyViewedItem } from "@/lib/recently-viewed";
 import { getRecentlyViewedFromDB } from "@/server/actions/recentlyViewed";
@@ -29,7 +29,7 @@ export default function RecentlyViewed({
   maxItems?: number;
   title?: string;
 }) {
-  const { status } = useSession();
+  const { status } = useSessionSafe();
   const [items, setItems] = useState<DisplayItem[]>([]);
 
   useEffect(() => {

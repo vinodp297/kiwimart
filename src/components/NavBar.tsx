@@ -6,7 +6,8 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { signOut } from "next-auth/react";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import CATEGORIES from "@/data/categories";
 
 const HIDDEN_CATEGORY_IDS = ["property"];
@@ -15,7 +16,7 @@ const HIDDEN_CATEGORY_IDS = ["property"];
 export default function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { data: session, status } = useSessionSafe();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);

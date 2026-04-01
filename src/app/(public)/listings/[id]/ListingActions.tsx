@@ -7,7 +7,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import type { ListingDetail } from "@/types";
 import { formatPrice } from "@/lib/utils";
 import {
@@ -42,7 +42,7 @@ export default function ListingActions({
     type: "success" | "error";
     text: string;
   } | null>(null);
-  const { status: sessionStatus } = useSession();
+  const { status: sessionStatus } = useSessionSafe();
   const router = useRouter();
 
   const isSold = listing.status === "sold";
