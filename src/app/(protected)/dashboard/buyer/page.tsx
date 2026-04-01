@@ -207,6 +207,7 @@ export default function BuyerDashboardPage() {
   }
 
   if (error || !user) {
+    const isAuthError = !error || error.toLowerCase().includes("sign in");
     return (
       <>
         <NavBar />
@@ -215,11 +216,25 @@ export default function BuyerDashboardPage() {
             <p className="text-[14px] text-[#9E9A91]">
               {error || "Please sign in to view your dashboard."}
             </p>
-            <Link href="/login" className="mt-3 inline-block">
-              <Button variant="primary" size="sm">
-                Sign in
-              </Button>
-            </Link>
+            {isAuthError ? (
+              <Link
+                href="/login?from=/dashboard/buyer"
+                className="mt-3 inline-block"
+              >
+                <Button variant="primary" size="sm">
+                  Sign in
+                </Button>
+              </Link>
+            ) : (
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-3 inline-block"
+              >
+                <Button variant="primary" size="sm">
+                  Try again
+                </Button>
+              </button>
+            )}
           </div>
         </main>
         <Footer />

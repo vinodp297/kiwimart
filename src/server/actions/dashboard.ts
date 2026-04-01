@@ -131,7 +131,15 @@ export async function fetchBuyerDashboard(): Promise<
   }>
 > {
   try {
-    const authedUser = await requireUser();
+    let authedUser: Awaited<ReturnType<typeof requireUser>>;
+    try {
+      authedUser = await requireUser();
+    } catch {
+      return {
+        success: false,
+        error: "Please sign in to view your dashboard.",
+      };
+    }
     const userId = authedUser.id;
 
     const [dbUser, orders, watchlist, threads] = await Promise.all([
@@ -470,7 +478,15 @@ export async function fetchSellerDashboard(): Promise<
   }>
 > {
   try {
-    const authedUser = await requireUser();
+    let authedUser: Awaited<ReturnType<typeof requireUser>>;
+    try {
+      authedUser = await requireUser();
+    } catch {
+      return {
+        success: false,
+        error: "Please sign in to view your dashboard.",
+      };
+    }
     const userId = authedUser.id;
 
     const twelveMonthsAgo = new Date();
