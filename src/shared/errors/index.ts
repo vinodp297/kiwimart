@@ -22,7 +22,8 @@ export type ErrorCode =
   | "DATABASE_ERROR"
   | "QUEUE_ERROR"
   | "STORAGE_ERROR"
-  | "EMAIL_ERROR";
+  | "EMAIL_ERROR"
+  | "INVALID_OPERATION";
 
 export class AppError extends Error {
   constructor(
@@ -52,7 +53,7 @@ export class AppError extends Error {
   static banned(): AppError {
     return new AppError(
       "BANNED",
-      "Your account has been suspended. Contact support@kiwimart.co.nz for help.",
+      `Your account has been suspended. Contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"} for help.`,
       403,
     );
   }
@@ -72,7 +73,7 @@ export class AppError extends Error {
   static missingPaymentIntent(): AppError {
     return new AppError(
       "MISSING_PAYMENT_INTENT",
-      "Payment reference missing. Contact support@kiwimart.co.nz",
+      `Payment reference missing. Contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}`,
       400,
     );
   }

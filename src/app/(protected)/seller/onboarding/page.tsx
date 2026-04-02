@@ -6,7 +6,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
-import { getSellerTier, SELLER_TIERS } from "@/lib/seller-tiers";
+import { getSellerTier, getAllSellerTiers } from "@/lib/seller-tiers";
 import SellerOnboardingClient from "./SellerOnboardingClient";
 import type { Metadata } from "next";
 
@@ -47,7 +47,10 @@ export default async function SellerOnboardingPage() {
   if (!user) redirect("/auth/signin");
   if (!user.sellerEnabled) redirect("/dashboard/buyer");
 
-  const tier = getSellerTier(user);
+  const [tier, allTiers] = await Promise.all([
+    getSellerTier(user),
+    getAllSellerTiers(),
+  ]);
 
   return (
     <>
@@ -97,7 +100,7 @@ export default async function SellerOnboardingPage() {
                 : null
             }
             currentTierName={tier.name}
-            tiers={Object.values(SELLER_TIERS)}
+            tiers={allTiers}
           />
         </div>
       </main>

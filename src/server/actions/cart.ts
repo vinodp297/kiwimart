@@ -14,6 +14,7 @@ import { createNotification } from "@/modules/notifications/notification.service
 import { paymentService } from "@/modules/payments/payment.service";
 import { sendOrderConfirmationEmail } from "@/server/email";
 import { transitionOrder } from "@/modules/orders/order.transitions";
+import { captureListingSnapshot } from "@/server/services/listing-snapshot.service";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
@@ -21,6 +22,7 @@ import {
 } from "@/modules/orders/order-event.service";
 import { stripe } from "@/infrastructure/stripe/client";
 import db from "@/lib/db";
+import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { getImageUrl } from "@/lib/image";
 import type { ActionResult } from "@/types";
 import {
@@ -29,9 +31,7 @@ import {
   checkoutCartSchema as CheckoutCartSchema,
 } from "@/server/validators";
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const CART_EXPIRY_MS = 48 * 60 * 60 * 1000; // 48 hours
+// CART_EXPIRY — now read from PlatformConfig inside each function
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +94,8 @@ export async function addToCart(
     }
 
     const { listingId } = parsed.data;
+    const cartExpiryHours = await getConfigInt(CONFIG_KEYS.CART_EXPIRY_HOURS);
+    const CART_EXPIRY_MS = cartExpiryHours * 60 * 60 * 1000;
 
     // Load listing
     const listing = await db.listing.findUnique({
@@ -220,6 +222,9 @@ export async function removeFromCart(
           "Please check your input and try again.",
       };
     }
+
+    const cartExpiryHours = await getConfigInt(CONFIG_KEYS.CART_EXPIRY_HOURS);
+    const CART_EXPIRY_MS = cartExpiryHours * 60 * 60 * 1000;
 
     const cart = await db.cart.findUnique({
       where: { userId: user.id },
@@ -614,32 +619,41 @@ export async function checkoutCart(
       };
     }
 
-    // Create order with order items (use first listing as the primary listingId for backward compat)
-    const order = await db.order.create({
-      data: {
-        buyerId: user.id,
-        sellerId: cart.sellerId,
-        listingId: cart.items[0]?.listingId ?? "",
-        itemNzd: totalItemNzd,
-        shippingNzd: totalShippingNzd,
-        totalNzd,
-        status: "AWAITING_PAYMENT",
-        ...(idempotencyKey ? { idempotencyKey } : {}),
-        ...(parsed.data.shippingAddress
-          ? {
-              shippingName: parsed.data.shippingAddress.name,
-              shippingLine1: parsed.data.shippingAddress.line1,
-              shippingLine2: parsed.data.shippingAddress.line2,
-              shippingCity: parsed.data.shippingAddress.city,
-              shippingRegion: parsed.data.shippingAddress.region,
-              shippingPostcode: parsed.data.shippingAddress.postcode,
-            }
-          : {}),
-        items: {
-          create: orderItemsData,
+    // Create order with order items + capture listing snapshots atomically
+    const order = await db.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          buyerId: user.id,
+          sellerId: cart.sellerId,
+          listingId: cart.items[0]?.listingId ?? "",
+          itemNzd: totalItemNzd,
+          shippingNzd: totalShippingNzd,
+          totalNzd,
+          status: "AWAITING_PAYMENT",
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+          ...(parsed.data.shippingAddress
+            ? {
+                shippingName: parsed.data.shippingAddress.name,
+                shippingLine1: parsed.data.shippingAddress.line1,
+                shippingLine2: parsed.data.shippingAddress.line2,
+                shippingCity: parsed.data.shippingAddress.city,
+                shippingRegion: parsed.data.shippingAddress.region,
+                shippingPostcode: parsed.data.shippingAddress.postcode,
+              }
+            : {}),
+          items: {
+            create: orderItemsData,
+          },
         },
-      },
-      select: { id: true },
+        select: { id: true },
+      });
+
+      // Freeze listing state at purchase time — immutable evidence for disputes
+      for (const item of cart.items) {
+        await captureListingSnapshot(created.id, item.listingId, tx);
+      }
+
+      return created;
     });
 
     // Create Stripe PaymentIntent

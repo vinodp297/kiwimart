@@ -22,6 +22,10 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
+import {
+  getDisputeByOrderId,
+  addSellerResponse,
+} from "@/server/services/dispute/dispute.service";
 import type { ActionResult } from "@/types";
 import {
   openDisputeSchema,
@@ -48,10 +52,10 @@ export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
 
     // Abuse detection — log warning if user has 5+ disputes in 30 days
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const recentDisputeCount = await db.order.count({
+    const recentDisputeCount = await db.dispute.count({
       where: {
-        buyerId: user.id,
-        disputeOpenedAt: { not: null, gte: thirtyDaysAgo },
+        order: { buyerId: user.id },
+        openedAt: { gte: thirtyDaysAgo },
       },
     });
     if (recentDisputeCount >= 5) {
@@ -97,7 +101,7 @@ export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
       success: false,
       error: safeActionError(
         err,
-        "We couldn't open your dispute. Please try again or contact support@kiwimart.co.nz.",
+        `We couldn't open your dispute. Please try again or contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}.`,
       ),
     };
   }
@@ -109,7 +113,7 @@ export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
 // This prevents dispute evidence from being publicly accessible.
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_FILES = 3;
+const MAX_FILES = parseInt(process.env.DISPUTE_EVIDENCE_MAX_FILES ?? "4", 10);
 
 export async function uploadDisputeEvidence(
   formData: FormData,
@@ -220,7 +224,6 @@ export async function respondToDispute(
         sellerId: true,
         buyerId: true,
         status: true,
-        sellerResponse: true,
         listing: { select: { title: true } },
         seller: { select: { displayName: true } },
       },
@@ -241,19 +244,25 @@ export async function respondToDispute(
         error: "This order is not in a disputed state.",
       };
     }
-    if (order.sellerResponse) {
+
+    // Check for existing response via Dispute model
+    const dispute = await getDisputeByOrderId(parsed.data.orderId);
+    if (!dispute) {
+      return { success: false, error: "No dispute found for this order." };
+    }
+    if (dispute.sellerStatement) {
       return {
         success: false,
         error: "You have already responded to this dispute.",
       };
     }
 
-    await db.order.update({
-      where: { id: parsed.data.orderId },
-      data: {
-        sellerResponse: parsed.data.response,
-        sellerRespondedAt: new Date(),
-      },
+    // Use the dispute service to record the seller response
+    await addSellerResponse({
+      disputeId: dispute.id,
+      sellerId: user.id,
+      statement: parsed.data.response,
+      evidenceKeys: [],
     });
 
     // Notify buyer that the seller has responded
@@ -335,6 +344,48 @@ export async function getDisputeEvidenceUrls(
         Key: key,
       });
       return getSignedUrl(r2, command, { expiresIn: 3600 });
+    }),
+  );
+}
+
+// ── Generate signed evidence URLs from DisputeEvidence records ──────────────
+
+export interface SignedEvidenceItem {
+  id: string;
+  url: string;
+  uploadedBy: string;
+  label: string | null;
+  createdAt: string;
+}
+
+export async function getSignedEvidenceFromRecords(
+  evidence: Array<{
+    id: string;
+    r2Key: string;
+    uploadedBy: string;
+    label: string | null;
+    createdAt: Date;
+  }>,
+): Promise<SignedEvidenceItem[]> {
+  return Promise.all(
+    evidence.map(async (e) => {
+      let url: string;
+      if (e.r2Key.startsWith("http")) {
+        url = e.r2Key;
+      } else {
+        const command = new GetObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: e.r2Key,
+        });
+        url = await getSignedUrl(r2, command, { expiresIn: 3600 });
+      }
+      return {
+        id: e.id,
+        url,
+        uploadedBy: e.uploadedBy,
+        label: e.label,
+        createdAt: e.createdAt.toISOString(),
+      };
     }),
   );
 }

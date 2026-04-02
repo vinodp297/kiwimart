@@ -74,8 +74,7 @@ export async function GET(): Promise<NextResponse> {
     });
     return NextResponse.json(
       {
-        error:
-          "Stripe onboarding couldn't be completed. Please try again or contact support@kiwimart.co.nz.",
+        error: `Stripe onboarding couldn't be completed. Please try again or contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}.`,
       },
       { status: 500 },
     );

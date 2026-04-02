@@ -9,8 +9,8 @@
 //
 // All jobs are idempotent — safe to run twice without side effects.
 
-import { Queue } from 'bullmq';
-import { getQueueConnection } from '@/infrastructure/queue/client';
+import { Queue } from "bullmq";
+import { getQueueConnection } from "@/infrastructure/queue/client";
 
 export { getQueueConnection as getRedisConnection };
 
@@ -19,22 +19,31 @@ export { getQueueConnection as getRedisConnection };
 const defaultOpts = {
   // BullMQ bundles its own ioredis types which conflict with the project's ioredis.
   // The runtime connection works correctly — this cast bridges the type mismatch.
-  connection: getQueueConnection() as unknown as import('bullmq').ConnectionOptions,
+  connection:
+    getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
   defaultJobOptions: {
     removeOnComplete: 100,
     removeOnFail: 50,
   },
 };
 
-export const emailQueue = new Queue('email', defaultOpts);
-export const imageQueue = new Queue('image', defaultOpts);
-export const payoutQueue = new Queue('payout', defaultOpts);
-export const notificationQueue = new Queue('notification', defaultOpts);
+export const emailQueue = new Queue("email", defaultOpts);
+export const imageQueue = new Queue("image", defaultOpts);
+export const payoutQueue = new Queue("payout", defaultOpts);
+export const notificationQueue = new Queue("notification", defaultOpts);
+export const pickupQueue = new Queue("pickup", defaultOpts);
 
 // ── Job type definitions ─────────────────────────────────────────────────────
 
 export interface EmailJobData {
-  type: 'welcome' | 'passwordReset' | 'offerReceived' | 'offerResponse' | 'orderDispatched' | 'orderComplete' | 'disputeOpened';
+  type:
+    | "welcome"
+    | "passwordReset"
+    | "offerReceived"
+    | "offerResponse"
+    | "orderDispatched"
+    | "orderComplete"
+    | "disputeOpened";
   payload: Record<string, unknown>;
 }
 
@@ -57,4 +66,16 @@ export interface NotificationJobData {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+}
+
+export type PickupJobType =
+  | "PICKUP_SCHEDULE_DEADLINE"
+  | "PICKUP_WINDOW_EXPIRED"
+  | "OTP_EXPIRED"
+  | "RESCHEDULE_RESPONSE_EXPIRED";
+
+export interface PickupJobData {
+  type: PickupJobType;
+  orderId: string;
+  rescheduleRequestId?: string;
 }

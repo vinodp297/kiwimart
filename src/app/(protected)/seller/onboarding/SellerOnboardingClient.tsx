@@ -50,11 +50,13 @@ const TIER_ORDER: SellerTierName[] = ["basic", "phone_verified", "id_verified"];
 
 // ─── Seller Terms Content ────────────────────────────────────────────────────
 
-const SELLER_TERMS = `KIWIMART SELLER TERMS & CONDITIONS
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
+
+const SELLER_TERMS = `${APP_NAME} SELLER TERMS & CONDITIONS
 Last updated: March 2026
 
 1. ELIGIBILITY
-You must be 18 years or older and a New Zealand resident or registered NZ business to sell on KiwiMart.
+You must be 18 years or older and a New Zealand resident or registered NZ business to sell on ${APP_NAME}.
 
 2. LISTING REQUIREMENTS
 - All listings must accurately represent the item being sold
@@ -64,7 +66,7 @@ You must be 18 years or older and a New Zealand resident or registered NZ busine
 - Prohibited items must not be listed
 
 3. PROHIBITED ITEMS
-The following are not permitted on KiwiMart:
+The following are not permitted on ${APP_NAME}:
 - Weapons and ammunition
 - Illegal goods or substances
 - Counterfeit or replica branded items
@@ -74,8 +76,8 @@ The following are not permitted on KiwiMart:
 
 4. FEES & PAYMENTS
 - Listing is free
-- KiwiMart charges a transaction fee on completed sales
-- All payments are processed through KiwiMart's secure escrow system
+- ${APP_NAME} charges a transaction fee on completed sales
+- All payments are processed through ${APP_NAME}'s secure escrow system
 - Payouts are made within 3 business days of delivery confirmation
 
 5. ESCROW & DELIVERY
@@ -84,7 +86,7 @@ The following are not permitted on KiwiMart:
 - You must provide accurate tracking information
 
 6. DISPUTES
-- KiwiMart's dispute resolution decisions are final
+- ${APP_NAME}'s dispute resolution decisions are final
 - You must respond to disputes within 48 hours
 - Failure to respond may result in automatic refund to the buyer
 
@@ -94,16 +96,16 @@ The following are not permitted on KiwiMart:
 - You may not engage in price manipulation or fake listings
 
 8. ACCOUNT SUSPENSION
-KiwiMart reserves the right to suspend or terminate seller accounts for:
+${APP_NAME} reserves the right to suspend or terminate seller accounts for:
 - Policy violations
 - High dispute rates
 - Negative buyer feedback patterns
 - Fraudulent activity
 
 9. CHANGES TO TERMS
-KiwiMart may update these terms at any time. Continued use of the platform constitutes acceptance of updated terms.
+${APP_NAME} may update these terms at any time. Continued use of the platform constitutes acceptance of updated terms.
 
-By accepting, you agree to all terms above and confirm you are eligible to sell on KiwiMart.`;
+By accepting, you agree to all terms above and confirm you are eligible to sell on ${APP_NAME}.`;
 
 // ─── Terms Modal ─────────────────────────────────────────────────────────────
 
@@ -193,8 +195,9 @@ function TermsModal({
                     className="mt-0.5 w-4 h-4 accent-[#D4A843] flex-shrink-0"
                   />
                   <span className="text-[13px] text-[#141414] leading-relaxed">
-                    I have read and agree to KiwiMart&apos;s Seller Terms &
-                    Conditions
+                    I have read and agree to{" "}
+                    {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}&apos;s Seller
+                    Terms & Conditions
                   </span>
                 </label>
 
@@ -586,7 +589,8 @@ function IdVerificationSection({
           />
           <p className="text-[10.5px] text-[#9E9A91]">
             Your documents are encrypted and stored securely. They are only
-            visible to KiwiMart&apos;s verification team.
+            visible to {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}&apos;s
+            verification team.
           </p>
           {error && (
             <p className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -923,9 +927,10 @@ export default function SellerOnboardingClient({
           </div>
           <div className="p-5">
             <p className="text-[13px] text-[#73706A] leading-relaxed mb-4">
-              Before listing items on KiwiMart, you must read and accept our
-              seller terms. These cover your obligations as a seller, fee
-              structure, prohibited items, and dispute resolution.
+              Before listing items on{" "}
+              {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}, you must read and
+              accept our seller terms. These cover your obligations as a seller,
+              fee structure, prohibited items, and dispute resolution.
             </p>
             <button
               onClick={() => setShowTermsModal(true)}

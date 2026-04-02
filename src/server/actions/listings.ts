@@ -11,7 +11,11 @@ import { audit } from "@/server/lib/audit";
 import { requireUser } from "@/server/lib/requireUser";
 import { listingService } from "@/modules/listings/listing.service";
 import { createNotification } from "@/modules/notifications/notification.service";
-import { sendPriceDropEmail } from "@/server/email";
+import {
+  sendPriceDropEmail,
+  sendListingApprovedEmail,
+  sendListingRejectedEmail,
+} from "@/server/email";
 import { logger } from "@/shared/logger";
 import {
   createListingSchema,
@@ -19,6 +23,12 @@ import {
   toggleWatchSchema,
   saveDraftSchema,
 } from "@/server/validators";
+import {
+  runAutoReview,
+  type AutoReviewInput,
+  type SellerProfile,
+} from "@/server/services/listing-review/auto-review.service";
+import { getKeywordLists } from "@/lib/dynamic-lists";
 import type { ActionResult, ListingCard } from "@/types";
 
 // ── createListing ─────────────────────────────────────────────────────────────
@@ -47,12 +57,14 @@ export async function createListing(
       emailVerified: true,
       sellerEnabled: true,
       sellerTermsAcceptedAt: true,
+      displayName: true,
     },
   });
   if (!userDetails?.emailVerified) {
     return {
       success: false,
       error: "Please verify your email address before creating a listing.",
+      reason: "email_not_verified",
     };
   }
   if (!userDetails.sellerTermsAcceptedAt) {
@@ -168,7 +180,7 @@ export async function createListing(
         priceNzd: Math.round(data.price * 100), // Convert dollars → cents
         gstIncluded: data.gstIncluded,
         condition: data.condition,
-        status: "ACTIVE",
+        status: "PENDING_REVIEW",
         categoryId: data.categoryId,
         subcategoryName: data.subcategoryName ?? null,
         region: data.region,
@@ -183,9 +195,6 @@ export async function createListing(
         isUrgent: data.isUrgent,
         isNegotiable: data.isNegotiable,
         shipsNationwide: data.shipsNationwide,
-        publishedAt: new Date(),
-        // Expire after 30 days
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         images: {
           create: data.imageKeys.map((key, i) => ({
             r2Key: key,
@@ -221,15 +230,203 @@ export async function createListing(
     })
     .catch(() => {});
 
-  // 6. Audit (fire-and-forget)
-  audit({
-    userId: authedUser.id,
-    action: "LISTING_CREATED",
-    entityType: "Listing",
-    entityId: listing.id,
-    metadata: { title: data.title, price: data.price },
-    ip,
-  });
+  // 6. Auto-review the listing
+  const priceNzd = Math.round(data.price * 100);
+  try {
+    // Fetch seller profile for auto-review
+    const [sellerData, trustMetrics, activeListingCount] = await Promise.all([
+      db.user.findUnique({
+        where: { id: authedUser.id },
+        select: {
+          id: true,
+          isBanned: true,
+          phoneVerified: true,
+          idVerified: true,
+        },
+      }),
+      db.trustMetrics.findUnique({
+        where: { userId: authedUser.id },
+        select: { isFlaggedForFraud: true, disputeRate: true },
+      }),
+      db.listing.count({
+        where: { sellerId: authedUser.id, status: "ACTIVE", deletedAt: null },
+      }),
+    ]);
+
+    // Determine seller level from verification status
+    let sellerLevel = "LEVEL_1"; // basic
+    if (sellerData?.idVerified) sellerLevel = "LEVEL_3";
+    else if (sellerData?.phoneVerified) sellerLevel = "LEVEL_2";
+
+    const sellerProfile: SellerProfile = {
+      id: authedUser.id,
+      sellerLevel,
+      isBanned: sellerData?.isBanned ?? false,
+      isFlaggedForFraud: trustMetrics?.isFlaggedForFraud ?? false,
+      disputeRate: trustMetrics?.disputeRate ?? 0,
+      totalApprovedListings: activeListingCount,
+    };
+
+    const autoReviewInput: AutoReviewInput = {
+      listingId: listing.id,
+      title: data.title,
+      description: data.description,
+      priceNzd,
+      categoryId: data.categoryId,
+      images: images.map((img) => ({ safe: img.safe })),
+    };
+
+    const reviewResult = await runAutoReview(autoReviewInput, sellerProfile);
+
+    // Update listing based on verdict
+    if (reviewResult.verdict === "reject") {
+      await db.listing.update({
+        where: { id: listing.id },
+        data: {
+          status: "REMOVED",
+          autoRiskScore: reviewResult.score,
+          autoRiskFlags: reviewResult.flags,
+          moderationNote: reviewResult.rejectReason ?? null,
+          moderatedAt: new Date(),
+        },
+      });
+
+      audit({
+        userId: authedUser.id,
+        action: "LISTING_AUTO_REJECTED",
+        entityType: "Listing",
+        entityId: listing.id,
+        metadata: {
+          title: data.title,
+          score: reviewResult.score,
+          flags: reviewResult.flags,
+          reason: reviewResult.rejectReason,
+        },
+        ip,
+      });
+
+      // Notify seller of rejection
+      Promise.all([
+        createNotification({
+          userId: authedUser.id,
+          type: "LISTING_REJECTED",
+          title: "Listing not approved",
+          body:
+            reviewResult.rejectReason ??
+            "Your listing did not pass our review.",
+          listingId: listing.id,
+        }),
+        sendListingRejectedEmail({
+          to: authedUser.email,
+          sellerName: userDetails?.displayName ?? authedUser.email,
+          listingTitle: data.title,
+          rejectionReason:
+            reviewResult.rejectReason ??
+            "Your listing did not pass our review.",
+        }),
+      ]).catch(() => {});
+
+      return {
+        success: false,
+        error:
+          reviewResult.rejectReason ?? "Your listing could not be published.",
+      };
+    } else if (reviewResult.verdict === "publish") {
+      await db.listing.update({
+        where: { id: listing.id },
+        data: {
+          status: "ACTIVE",
+          autoRiskScore: reviewResult.score,
+          autoRiskFlags: reviewResult.flags,
+          publishedAt: new Date(),
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      audit({
+        userId: authedUser.id,
+        action: "LISTING_APPROVED",
+        entityType: "Listing",
+        entityId: listing.id,
+        metadata: {
+          title: data.title,
+          score: reviewResult.score,
+          flags: reviewResult.flags,
+          autoApproved: true,
+        },
+        ip,
+      });
+
+      // Notify seller that listing is now live
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      Promise.all([
+        createNotification({
+          userId: authedUser.id,
+          type: "LISTING_APPROVED",
+          title: "Your listing is live!",
+          body: `"${data.title}" has been approved and is now visible to buyers.`,
+          listingId: listing.id,
+        }),
+        sendListingApprovedEmail({
+          to: authedUser.email,
+          sellerName: userDetails?.displayName ?? authedUser.email,
+          listingTitle: data.title,
+          listingUrl: `${appUrl}/listings/${listing.id}`,
+        }),
+      ]).catch(() => {});
+    } else {
+      // verdict === "queue" — keep as PENDING_REVIEW
+      await db.listing.update({
+        where: { id: listing.id },
+        data: {
+          autoRiskScore: reviewResult.score,
+          autoRiskFlags: reviewResult.flags,
+        },
+      });
+
+      audit({
+        userId: authedUser.id,
+        action: "LISTING_CREATED",
+        entityType: "Listing",
+        entityId: listing.id,
+        metadata: {
+          title: data.title,
+          score: reviewResult.score,
+          flags: reviewResult.flags,
+          queued: true,
+        },
+        ip,
+      });
+
+      // Notify seller that listing is under review
+      createNotification({
+        userId: authedUser.id,
+        type: "LISTING_UNDER_REVIEW",
+        title: "Listing under review",
+        body: "Your listing has been submitted and is under review. We'll notify you once it's approved.",
+        listingId: listing.id,
+      }).catch(() => {});
+    }
+  } catch (err) {
+    // If auto-review fails, keep listing as PENDING_REVIEW for manual review
+    logger.error("auto-review:failed", {
+      listingId: listing.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+
+    audit({
+      userId: authedUser.id,
+      action: "LISTING_CREATED",
+      entityType: "Listing",
+      entityId: listing.id,
+      metadata: {
+        title: data.title,
+        price: data.price,
+        autoReviewFailed: true,
+      },
+      ip,
+    });
+  }
 
   // 7. Revalidate affected cache paths
   revalidatePath("/");
@@ -448,7 +645,15 @@ export async function updateListing(
   // Load current listing to check ownership + existing price
   const existing = await db.listing.findUnique({
     where: { id: listingId },
-    select: { sellerId: true, priceNzd: true, deletedAt: true, title: true },
+    select: {
+      sellerId: true,
+      priceNzd: true,
+      deletedAt: true,
+      title: true,
+      description: true,
+      categoryId: true,
+      status: true,
+    },
   });
 
   if (!existing || existing.deletedAt) {
@@ -500,8 +705,271 @@ export async function updateListing(
         ? { shipsNationwide: data.shipsNationwide }
         : {}),
       ...priceDropData,
+      // If listing was NEEDS_CHANGES, resubmit for review
+      ...(existing.status === "NEEDS_CHANGES"
+        ? {
+            status: "PENDING_REVIEW",
+            moderationNote: null,
+            resubmissionCount: { increment: 1 },
+          }
+        : {}),
     },
   });
+
+  // If resubmitting from NEEDS_CHANGES, re-run auto-review
+  if (existing.status === "NEEDS_CHANGES") {
+    try {
+      const [sellerData, trustMetrics, activeListingCount] = await Promise.all([
+        db.user.findUnique({
+          where: { id: user.id },
+          select: {
+            id: true,
+            isBanned: true,
+            phoneVerified: true,
+            idVerified: true,
+            displayName: true,
+          },
+        }),
+        db.trustMetrics.findUnique({
+          where: { userId: user.id },
+          select: { isFlaggedForFraud: true, disputeRate: true },
+        }),
+        db.listing.count({
+          where: { sellerId: user.id, status: "ACTIVE", deletedAt: null },
+        }),
+      ]);
+
+      let sellerLevel = "LEVEL_1";
+      if (sellerData?.idVerified) sellerLevel = "LEVEL_3";
+      else if (sellerData?.phoneVerified) sellerLevel = "LEVEL_2";
+
+      const listingImages = await db.listingImage.findMany({
+        where: { listingId },
+        select: { safe: true },
+      });
+
+      const reviewResult = await runAutoReview(
+        {
+          listingId,
+          title: data.title ?? existing.title,
+          description: data.description ?? existing.description,
+          priceNzd: newPriceNzd ?? existing.priceNzd,
+          categoryId: data.categoryId ?? existing.categoryId,
+          images: listingImages.map((img) => ({ safe: img.safe })),
+        },
+        {
+          id: user.id,
+          sellerLevel,
+          isBanned: sellerData?.isBanned ?? false,
+          isFlaggedForFraud: trustMetrics?.isFlaggedForFraud ?? false,
+          disputeRate: trustMetrics?.disputeRate ?? 0,
+          totalApprovedListings: activeListingCount,
+        },
+      );
+
+      await db.listing.update({
+        where: { id: listingId },
+        data: {
+          autoRiskScore: reviewResult.score,
+          autoRiskFlags: reviewResult.flags,
+          ...(reviewResult.verdict === "publish"
+            ? {
+                status: "ACTIVE",
+                publishedAt: new Date(),
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+              }
+            : reviewResult.verdict === "reject"
+              ? { status: "REMOVED", moderationNote: reviewResult.rejectReason }
+              : {}),
+        },
+      });
+
+      if (reviewResult.verdict === "reject") {
+        createNotification({
+          userId: user.id,
+          type: "LISTING_REJECTED",
+          title: "Listing not approved",
+          body:
+            reviewResult.rejectReason ??
+            "Your listing did not pass our review.",
+          listingId,
+        }).catch(() => {});
+        return {
+          success: false,
+          error:
+            reviewResult.rejectReason ?? "Your listing could not be published.",
+        };
+      }
+
+      if (reviewResult.verdict === "queue") {
+        createNotification({
+          userId: user.id,
+          type: "LISTING_UNDER_REVIEW",
+          title: "Listing resubmitted for review",
+          body: "Your updated listing is under review. We'll notify you once it's approved.",
+          listingId,
+        }).catch(() => {});
+      }
+
+      // P1-2: Notify admins of the resubmission (fire-and-forget)
+      // Only notify when listing is queued for manual review (not auto-published)
+      if (reviewResult.verdict === "queue") {
+        const listingTitleForAdmin = data.title ?? existing.title;
+        const sellerNameForAdmin = sellerData?.displayName ?? user.email;
+        db.user
+          .findMany({
+            where: {
+              isAdmin: true,
+              isBanned: false,
+              adminRole: { in: ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"] },
+            },
+            select: { id: true },
+          })
+          .then((admins) => {
+            const notifications = admins.map((admin) =>
+              createNotification({
+                userId: admin.id,
+                type: "SYSTEM",
+                title: "Listing resubmitted for review",
+                body: `${sellerNameForAdmin} has resubmitted "${listingTitleForAdmin}" after changes were requested.`,
+                link: "/admin/listings",
+              }),
+            );
+            return Promise.allSettled(notifications);
+          })
+          .catch(() => {});
+      }
+    } catch (err) {
+      logger.error("auto-review:resubmit-failed", {
+        listingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    revalidatePath(`/listings/${listingId}`);
+    revalidatePath("/dashboard/seller");
+    revalidatePath("/admin/listings");
+    return { success: true, data: { listingId } };
+  }
+
+  // Keyword scan for ACTIVE and PENDING_REVIEW listings edited outside the NEEDS_CHANGES flow.
+  // A seller could bypass content policy by editing a live or queued listing post-approval.
+  if (existing.status === "ACTIVE" || existing.status === "PENDING_REVIEW") {
+    try {
+      const { banned: bannedKeywords } = await getKeywordLists();
+      const updatedTitle = (data.title ?? existing.title).toLowerCase();
+      const updatedDesc = (
+        data.description ?? existing.description
+      ).toLowerCase();
+      const foundKeyword = bannedKeywords.find(
+        (kw) => updatedTitle.includes(kw) || updatedDesc.includes(kw),
+      );
+
+      // Notify admins if listing is edited while under active review
+      if (existing.status === "PENDING_REVIEW" && !foundKeyword) {
+        const sellerNameForAdmin =
+          (
+            await db.user.findUnique({
+              where: { id: user.id },
+              select: { displayName: true },
+            })
+          )?.displayName ?? user.email;
+        const listingTitleForAdmin = data.title ?? existing.title;
+
+        db.user
+          .findMany({
+            where: {
+              isAdmin: true,
+              isBanned: false,
+              adminRole: { in: ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"] },
+            },
+            select: { id: true },
+          })
+          .then((admins) =>
+            Promise.allSettled(
+              admins.map((admin) =>
+                createNotification({
+                  userId: admin.id,
+                  type: "SYSTEM",
+                  title: "Listing updated while under review",
+                  body: `${sellerNameForAdmin} edited their listing "${listingTitleForAdmin}" while it is pending review.`,
+                  link: "/admin/listings",
+                }),
+              ),
+            ),
+          )
+          .catch(() => {});
+
+        audit({
+          userId: user.id,
+          action: "LISTING_EDITED_WHILE_PENDING",
+          entityType: "Listing",
+          entityId: listingId,
+          metadata: {
+            listingId,
+            sellerId: user.id,
+            previousStatus: existing.status,
+          },
+        });
+      }
+
+      if (foundKeyword) {
+        const moderationNote =
+          "Listing removed: prohibited content detected after edit.";
+        await db.listing.update({
+          where: { id: listingId },
+          data: { status: "REMOVED", moderationNote },
+        });
+
+        const sellerInfo = await db.user.findUnique({
+          where: { id: user.id },
+          select: { email: true, displayName: true },
+        });
+
+        const listingTitle = data.title ?? existing.title;
+        Promise.all([
+          createNotification({
+            userId: user.id,
+            type: "LISTING_REJECTED",
+            title: "Listing removed",
+            body: moderationNote,
+            listingId,
+          }),
+          sendListingRejectedEmail({
+            to: user.email,
+            sellerName: sellerInfo?.displayName ?? user.email,
+            listingTitle,
+            rejectionReason: moderationNote,
+          }),
+        ]).catch(() => {});
+
+        audit({
+          userId: user.id,
+          action: "LISTING_REMOVED_POST_EDIT",
+          entityType: "Listing",
+          entityId: listingId,
+          metadata: {
+            listingId,
+            detectedKeyword: foundKeyword,
+            previousStatus: existing.status,
+          },
+        });
+
+        revalidatePath(`/listings/${listingId}`);
+        revalidatePath("/dashboard/seller");
+        return {
+          success: false,
+          error:
+            "Your listing has been removed because it contains prohibited content.",
+        };
+      }
+    } catch (err) {
+      logger.error("listing:edit-keyword-scan-failed", {
+        listingId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   // Price history tracking + notify watchlist users of price drop (fire-and-forget)
   if (newPriceNzd != null && newPriceNzd !== existing.priceNzd) {
@@ -654,6 +1122,7 @@ export async function getListingForEdit(listingId: string): Promise<
     gstIncluded: boolean;
     condition: string;
     status: string;
+    moderationNote: string | null;
     categoryId: string;
     subcategoryName: string | null;
     region: string;
@@ -686,6 +1155,7 @@ export async function getListingForEdit(listingId: string): Promise<
         gstIncluded: true,
         condition: true,
         status: true,
+        moderationNote: true,
         categoryId: true,
         subcategoryName: true,
         region: true,
@@ -724,6 +1194,7 @@ export async function getListingForEdit(listingId: string): Promise<
         gstIncluded: listing.gstIncluded,
         condition: listing.condition,
         status: listing.status,
+        moderationNote: listing.moderationNote,
         categoryId: listing.categoryId,
         subcategoryName: listing.subcategoryName,
         region: listing.region,

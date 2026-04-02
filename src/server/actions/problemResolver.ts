@@ -67,7 +67,7 @@ export async function submitProblem(raw: unknown): Promise<
         totalNzd: true,
         createdAt: true,
         stripePaymentIntentId: true,
-        disputeOpenedAt: true,
+        dispute: { select: { openedAt: true } },
         listing: { select: { title: true } },
         seller: { select: { displayName: true, email: true } },
       },
@@ -281,7 +281,7 @@ export async function submitProblem(raw: unknown): Promise<
 
     // ── Damage / Wrong item / Not as described / Missing parts / Not received ──
     // These create a dispute with auto-resolution
-    if (order.disputeOpenedAt) {
+    if (order.dispute?.openedAt) {
       return {
         success: false,
         error: "A dispute has already been opened for this order.",

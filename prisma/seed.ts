@@ -67,6 +67,7 @@ async function wipeDatabase() {
   await db.emailVerificationToken.deleteMany();
   await db.session.deleteMany();
   await db.account.deleteMany();
+  await db.dynamicListItem.deleteMany();
   await db.subcategory.deleteMany();
   await db.category.deleteMany();
   await db.user.deleteMany();
@@ -2885,14 +2886,6 @@ async function main() {
       trackingNumber: "NZ110220330",
       dispatchedAt: ago(10 * DAY),
       deliveredAt: ago(8 * DAY),
-      disputeReason: "ITEM_DAMAGED",
-      disputeOpenedAt: ago(1 * DAY),
-      disputeNotes:
-        "The iPad Pro screen has a visible crack across the bottom-left corner. It was not mentioned in the listing and was clearly present before shipping. I've attached photos of the damage.",
-      disputeEvidenceUrls: [
-        "disputes/sarah/evidence-crack-1.webp",
-        "disputes/sarah/evidence-crack-2.webp",
-      ],
       shippingName: "Sarah Mitchell",
       shippingLine1: "42 Ponsonby Road",
       shippingCity: "Auckland",
@@ -2958,6 +2951,33 @@ async function main() {
     },
     ago(1 * DAY),
   );
+  const disputeA = await db.dispute.create({
+    data: {
+      orderId: dispA.id,
+      reason: "ITEM_DAMAGED",
+      source: "STANDARD",
+      status: "OPEN",
+      buyerStatement:
+        "The iPad Pro screen has a visible crack across the bottom-left corner. It was not mentioned in the listing and was clearly present before shipping. I've attached photos of the damage.",
+      openedAt: ago(1 * DAY),
+    },
+  });
+  await db.disputeEvidence.createMany({
+    data: [
+      {
+        disputeId: disputeA.id,
+        uploadedBy: "BUYER",
+        uploaderId: sarah.id,
+        r2Key: "disputes/sarah/evidence-crack-1.webp",
+      },
+      {
+        disputeId: disputeA.id,
+        uploadedBy: "BUYER",
+        uploaderId: sarah.id,
+        r2Key: "disputes/sarah/evidence-crack-2.webp",
+      },
+    ],
+  });
 
   // Dispute B: "Item not received" — Emma vs Peak Outdoors (past 72h, no seller response)
   const dispB = await db.order.create({
@@ -2972,10 +2992,6 @@ async function main() {
       stripePaymentIntentId: "pi_test_dispB",
       trackingNumber: "NZ220330440",
       dispatchedAt: ago(9 * DAY),
-      disputeReason: "ITEM_NOT_RECEIVED",
-      disputeOpenedAt: ago(4 * DAY),
-      disputeNotes:
-        "The seller says it was dispatched 9 days ago but I have never received it. Tracking shows no movement since day one. I think the package is lost.",
       shippingName: "Emma Wilson",
       shippingLine1: "15 Riccarton Road",
       shippingCity: "Christchurch",
@@ -3041,6 +3057,17 @@ async function main() {
     },
     ago(1 * DAY),
   );
+  await db.dispute.create({
+    data: {
+      orderId: dispB.id,
+      reason: "ITEM_NOT_RECEIVED",
+      source: "STANDARD",
+      status: "OPEN",
+      buyerStatement:
+        "The seller says it was dispatched 9 days ago but I have never received it. Tracking shows no movement since day one. I think the package is lost.",
+      openedAt: ago(4 * DAY),
+    },
+  });
 
   // Dispute C: "Not as described" — James vs Kiwi Home & Style (seller HAS responded)
   const dispC = await db.order.create({
@@ -3056,13 +3083,6 @@ async function main() {
       trackingNumber: "NZ330440550",
       dispatchedAt: ago(14 * DAY),
       deliveredAt: ago(12 * DAY),
-      disputeReason: "ITEM_NOT_AS_DESCRIBED",
-      disputeOpenedAt: ago(5 * DAY),
-      disputeNotes:
-        "The vase is much smaller than it appeared in the photos. The listing said 'Large' but it's barely 15cm tall. Very misleading.",
-      sellerResponse:
-        "I'm sorry the vase wasn't what you expected. The listing does say 'Large' which refers to the glaze style, not the physical size. I understand the confusion though. Happy to accept a return if you'd like to send it back at my expense.",
-      sellerRespondedAt: ago(4 * DAY),
       shippingName: "James Cooper",
       shippingLine1: "8 Cuba Street",
       shippingCity: "Wellington",
@@ -3129,6 +3149,20 @@ async function main() {
     null,
     ago(4 * DAY),
   );
+  await db.dispute.create({
+    data: {
+      orderId: dispC.id,
+      reason: "ITEM_NOT_AS_DESCRIBED",
+      source: "STANDARD",
+      status: "SELLER_RESPONDED",
+      buyerStatement:
+        "The vase is much smaller than it appeared in the photos. The listing said 'Large' but it's barely 15cm tall. Very misleading.",
+      sellerStatement:
+        "I'm sorry the vase wasn't what you expected. The listing does say 'Large' which refers to the glaze style, not the physical size. I understand the confusion though. Happy to accept a return if you'd like to send it back at my expense.",
+      sellerRespondedAt: ago(4 * DAY),
+      openedAt: ago(5 * DAY),
+    },
+  });
 
   // ── Group 6: CANCELLED orders (2) ──────────────────────────────────────
 
@@ -3274,14 +3308,6 @@ async function main() {
       trackingNumber: "NZ440550660",
       dispatchedAt: ago(20 * DAY),
       deliveredAt: ago(18 * DAY),
-      disputeReason: "ITEM_NOT_AS_DESCRIBED",
-      disputeOpenedAt: ago(15 * DAY),
-      disputeNotes:
-        "The poster is a cheap inkjet print, not a quality reproduction as described. The frame is also plastic, not wood.",
-      sellerResponse:
-        "The listing clearly says 'reproduction'. I believe the quality is fair for the price.",
-      sellerRespondedAt: ago(14 * DAY),
-      disputeResolvedAt: ago(12 * DAY),
       shippingName: "Sarah Mitchell",
       shippingLine1: "42 Ponsonby Road",
       shippingCity: "Auckland",
@@ -3366,6 +3392,21 @@ async function main() {
     null,
     ago(12 * DAY),
   );
+  await db.dispute.create({
+    data: {
+      orderId: refA.id,
+      reason: "ITEM_NOT_AS_DESCRIBED",
+      source: "STANDARD",
+      status: "RESOLVED_BUYER",
+      buyerStatement:
+        "The poster is a cheap inkjet print, not a quality reproduction as described. The frame is also plastic, not wood.",
+      sellerStatement:
+        "The listing clearly says 'reproduction'. I believe the quality is fair for the price.",
+      sellerRespondedAt: ago(14 * DAY),
+      openedAt: ago(15 * DAY),
+      resolvedAt: ago(12 * DAY),
+    },
+  });
 
   // Refund B: Auto-refunded by system (seller unresponsive)
   const refB = await db.order.create({
@@ -3380,11 +3421,6 @@ async function main() {
       stripePaymentIntentId: "pi_test_refB",
       trackingNumber: "NZ550660770",
       dispatchedAt: ago(18 * DAY),
-      disputeReason: "ITEM_NOT_RECEIVED",
-      disputeOpenedAt: ago(12 * DAY),
-      disputeNotes:
-        "Never received the kayak. Tracking hasn't updated since dispatch.",
-      disputeResolvedAt: ago(8 * DAY),
       shippingName: "Emma Wilson",
       shippingLine1: "15 Riccarton Road",
       shippingCity: "Christchurch",
@@ -3447,6 +3483,18 @@ async function main() {
     null,
     ago(8 * DAY),
   );
+  await db.dispute.create({
+    data: {
+      orderId: refB.id,
+      reason: "ITEM_NOT_RECEIVED",
+      source: "STANDARD",
+      status: "RESOLVED_BUYER",
+      buyerStatement:
+        "Never received the kayak. Tracking hasn't updated since dispatch.",
+      openedAt: ago(12 * DAY),
+      resolvedAt: ago(8 * DAY),
+    },
+  });
 
   const orderCount = await db.order.count();
   console.log(`✅ ${orderCount} orders created with full event chains`);
@@ -4974,6 +5022,16 @@ Audit Logs:         ${counts[12]}
 Reports:            ${counts[13]}
 Trust Metrics:      ${counts[14]}
 `);
+
+  // Seed platform configuration defaults
+  const { seedPlatformConfig } =
+    await import("../src/lib/platform-config/config-seed");
+  await seedPlatformConfig(db as never);
+
+  // Seed dynamic lists defaults
+  const { seedDynamicLists } =
+    await import("../src/lib/dynamic-lists/dynamic-list-seed");
+  await seedDynamicLists(db as never);
 
   console.log("Credentials:");
   console.log("  Buyers:  sarah@kiwimart.test / BuyerPass123!");

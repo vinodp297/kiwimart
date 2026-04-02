@@ -1,10 +1,14 @@
 "use client";
 // src/app/(public)/listings/[id]/SellerPanel.tsx
 
+import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import type { SellerPublic, SellerBadge } from "@/types";
 import { Avatar, StarRating, Button } from "@/components/ui/primitives";
 import { relativeTime } from "@/lib/utils";
+import EmailVerificationModal from "@/components/EmailVerificationModal";
 
 const BADGE_CONFIG: Record<
   SellerBadge,
@@ -52,7 +56,22 @@ export default function SellerPanel({
   trustScore,
   tier,
 }: Props) {
+  const { data: session, status: sessionStatus } = useSessionSafe();
+  const router = useRouter();
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
   const memberSince = new Date(seller.memberSince).getFullYear();
+
+  function handleMessageSeller() {
+    if (sessionStatus !== "authenticated") {
+      router.push(`/login?from=/listings/${listingId}`);
+      return;
+    }
+    if (!session?.user?.emailVerified) {
+      setVerifyModalOpen(true);
+      return;
+    }
+    router.push(`/messages/new?listingId=${listingId}&sellerId=${seller.id}`);
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
@@ -184,29 +203,41 @@ export default function SellerPanel({
 
       {/* CTA buttons */}
       <div className="space-y-2">
-        <Link
-          href={`/messages/new?listingId=${listingId}&sellerId=${seller.id}`}
+        <Button
+          variant="secondary"
+          fullWidth
+          size="sm"
+          onClick={handleMessageSeller}
         >
-          <Button variant="secondary" fullWidth size="sm">
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            Message seller
-          </Button>
-        </Link>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          Message seller
+        </Button>
         <Link href={`/sellers/${seller.username}`}>
           <Button variant="ghost" fullWidth size="sm">
             View all listings ({seller.activeListingCount})
           </Button>
         </Link>
       </div>
+
+      <EmailVerificationModal
+        open={verifyModalOpen}
+        onClose={() => setVerifyModalOpen(false)}
+        onVerified={() => {
+          setVerifyModalOpen(false);
+          router.push(
+            `/messages/new?listingId=${listingId}&sellerId=${seller.id}`,
+          );
+        }}
+      />
     </div>
   );
 }

@@ -11,6 +11,9 @@ import { Playfair_Display, DM_Sans } from "next/font/google";
 import SessionProvider from "@/components/SessionProvider";
 import PostHogProvider from "@/components/PostHogProvider";
 import { BfcacheGuard } from "@/components/BfcacheGuard";
+import Toaster from "@/components/Toaster";
+import ToastHandler from "@/components/ToastHandler";
+import { Suspense } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { auth } from "@/lib/auth";
@@ -31,11 +34,10 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: {
-    template: "%s — KiwiMart",
-    default: "KiwiMart — New Zealand's Trusted Marketplace",
+    template: `%s — ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}`,
+    default: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} — New Zealand's Trusted Marketplace`,
   },
-  description:
-    "Buy and sell with confidence on KiwiMart. Secure escrow, $3,000 buyer protection, verified NZ sellers.",
+  description: `Buy and sell with confidence on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}. Secure escrow, ${process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} buyer protection, verified NZ sellers.`,
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz",
   ),
@@ -49,7 +51,7 @@ export const metadata: Metadata = {
     "Trade Me alternative",
   ],
   openGraph: {
-    siteName: "KiwiMart",
+    siteName: process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi",
     locale: "en_NZ",
     type: "website",
   },
@@ -90,8 +92,12 @@ export default async function RootLayout({
         <SessionProvider session={session}>
           <PostHogProvider nonce={nonce}>
             <BfcacheGuard />
+            <Suspense>
+              <ToastHandler />
+            </Suspense>
             {children}
           </PostHogProvider>
+          <Toaster />
         </SessionProvider>
         <Analytics />
         <SpeedInsights />

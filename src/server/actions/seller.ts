@@ -144,7 +144,7 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
       .send({
         from: EMAIL_FROM,
         to: adminEmail,
-        subject: "[KiwiMart] New ID Verification Request",
+        subject: `[${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}] New ID Verification Request`,
         html: `
           <p>A seller has submitted their ID for verification.</p>
           <ul>
@@ -227,11 +227,11 @@ export async function approveIdVerification(
       .send({
         from: EMAIL_FROM,
         to: target.email,
-        subject: "Your KiwiMart ID verification has been approved!",
+        subject: `Your ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} ID verification has been approved!`,
         html: `
           <p>Great news! Your identity verification has been approved.</p>
           <p>
-            You now have <strong>ID-Verified Seller</strong> status on KiwiMart,
+            You now have <strong>ID-Verified Seller</strong> status on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"},
             which unlocks unlimited listings and next-day payouts.
           </p>
           <p>

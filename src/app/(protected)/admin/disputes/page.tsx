@@ -13,13 +13,14 @@ export default async function DisputesPage() {
   await requirePermission("VIEW_DISPUTES");
 
   // Fetch all tabs and stats in parallel
-  const [stats, needsDecision, cooling, fraud, autoResolved, all] =
+  const [stats, needsDecision, cooling, fraud, autoResolved, pickup, all] =
     await Promise.all([
       adminDisputesService.getQueueStats(),
       adminDisputesService.getDisputeQueue("needs_decision"),
       adminDisputesService.getDisputeQueue("cooling"),
       adminDisputesService.getDisputeQueue("fraud"),
       adminDisputesService.getDisputeQueue("auto_resolved"),
+      adminDisputesService.getDisputeQueue("pickup"),
       adminDisputesService.getDisputeQueue("all"),
     ]);
 
@@ -29,8 +30,15 @@ export default async function DisputesPage() {
   ) =>
     items.map((d) => ({
       ...d,
-      disputeOpenedAt: d.disputeOpenedAt?.toISOString() ?? null,
-      sellerRespondedAt: d.sellerRespondedAt?.toISOString() ?? null,
+      dispute: d.dispute
+        ? {
+            ...d.dispute,
+            openedAt: d.dispute.openedAt.toISOString(),
+            sellerRespondedAt:
+              d.dispute.sellerRespondedAt?.toISOString() ?? null,
+            resolvedAt: d.dispute.resolvedAt?.toISOString() ?? null,
+          }
+        : null,
       updatedAt: undefined,
     }));
 
@@ -39,6 +47,7 @@ export default async function DisputesPage() {
     cooling: serialize(cooling),
     fraud: serialize(fraud),
     auto_resolved: serialize(autoResolved),
+    pickup: serialize(pickup),
     all: serialize(all),
   };
 
@@ -87,6 +96,7 @@ export default async function DisputesPage() {
               | "cooling"
               | "fraud"
               | "auto_resolved"
+              | "pickup"
               | "all"
           }
           initialItems={allTabs[initialTab as keyof typeof allTabs]}

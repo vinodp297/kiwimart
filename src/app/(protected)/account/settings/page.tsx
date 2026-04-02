@@ -1,17 +1,18 @@
 // src/app/(protected)/account/settings/page.tsx
-import { redirect } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import SettingsForm from './SettingsForm';
-import ProfileCompletion from '@/components/onboarding/ProfileCompletion';
-import { UnblockButton } from '@/components/seller/UnblockButton';
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { getListValues } from "@/lib/dynamic-lists";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import SettingsForm from "./SettingsForm";
+import ProfileCompletion from "@/components/onboarding/ProfileCompletion";
+import { UnblockButton } from "@/components/seller/UnblockButton";
 
 export default async function AccountSettingsPage() {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect('/login?from=/account/settings');
+    redirect("/login?from=/account/settings");
   }
 
   const [user, blockedUsers] = await Promise.all([
@@ -32,11 +33,13 @@ export default async function AccountSettingsPage() {
       include: {
         blocked: { select: { id: true, displayName: true, username: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     }),
   ]);
 
-  if (!user) redirect('/login');
+  if (!user) redirect("/login");
+
+  const regions = await getListValues("NZ_REGIONS");
 
   return (
     <>
@@ -58,10 +61,10 @@ export default async function AccountSettingsPage() {
             <nav className="hidden lg:block" aria-label="Settings sections">
               <ul className="space-y-1 sticky top-24">
                 {[
-                  { label: 'Profile', href: '#profile' },
-                  { label: 'Security', href: '#security' },
-                  { label: 'Notifications', href: '#notifications' },
-                  { label: 'Privacy', href: '#privacy' },
+                  { label: "Profile", href: "#profile" },
+                  { label: "Security", href: "#security" },
+                  { label: "Notifications", href: "#notifications" },
+                  { label: "Privacy", href: "#privacy" },
                 ].map(({ label, href }) => (
                   <li key={href}>
                     <a
@@ -88,11 +91,14 @@ export default async function AccountSettingsPage() {
                 />
               </div>
               <div id="profile">
-                <SettingsForm user={user} />
+                <SettingsForm user={user} regions={regions} />
               </div>
 
               {blockedUsers.length > 0 && (
-                <div id="privacy" className="border-t border-[#E3E0D9] pt-6 mt-6">
+                <div
+                  id="privacy"
+                  className="border-t border-[#E3E0D9] pt-6 mt-6"
+                >
                   <h3 className="font-semibold text-[14px] text-[#141414] mb-3">
                     Blocked Users ({blockedUsers.length})
                   </h3>
@@ -102,7 +108,9 @@ export default async function AccountSettingsPage() {
                         key={b.id}
                         className="flex items-center justify-between py-2 px-3 bg-[#FAFAF8] rounded-xl"
                       >
-                        <span className="text-[13px] text-[#141414]">{b.blocked.displayName}</span>
+                        <span className="text-[13px] text-[#141414]">
+                          {b.blocked.displayName}
+                        </span>
                         <UnblockButton targetUserId={b.blocked.id} />
                       </div>
                     ))}

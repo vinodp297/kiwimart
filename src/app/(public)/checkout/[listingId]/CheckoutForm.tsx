@@ -6,7 +6,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import { loadStripe } from "@stripe/stripe-js";
+import EmailVerificationInline from "@/components/EmailVerificationInline";
 import {
   Elements,
   PaymentElement,
@@ -21,7 +23,7 @@ const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
 );
 
-const NZ_REGIONS = [
+const NZ_REGIONS_DEFAULT = [
   "Auckland",
   "Wellington",
   "Canterbury",
@@ -56,9 +58,15 @@ interface CheckoutListing {
 
 interface Props {
   listing: CheckoutListing;
+  regions?: string[];
 }
 
-export default function CheckoutForm({ listing }: Props) {
+export default function CheckoutForm({ listing, regions }: Props) {
+  const NZ_REGIONS = regions ?? NZ_REGIONS_DEFAULT;
+  const { data: session } = useSessionSafe();
+  const [emailVerified, setEmailVerified] = useState(
+    !!session?.user?.emailVerified,
+  );
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,13 +142,18 @@ export default function CheckoutForm({ listing }: Props) {
     await handleCreateOrder();
   }
 
+  // Keep emailVerified in sync with session changes
+  useEffect(() => {
+    setEmailVerified(!!session?.user?.emailVerified);
+  }, [session?.user?.emailVerified]);
+
   // Auto-create order on mount if pickup (no address needed)
   useEffect(() => {
-    // Only auto-create if we don't already have a secret
-    if (isPickup && !clientSecret && !loading) {
+    // Only auto-create if we don't already have a secret and email is verified
+    if (isPickup && !clientSecret && !loading && emailVerified) {
       handleCreateOrder();
     }
-  }, []);
+  }, [emailVerified]);
 
   if (clientSecret) {
     return (
@@ -166,6 +179,19 @@ export default function CheckoutForm({ listing }: Props) {
           clientSecret={clientSecret}
         />
       </Elements>
+    );
+  }
+
+  if (!emailVerified) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
+        <div className="space-y-6">
+          <EmailVerificationInline onVerified={() => setEmailVerified(true)} />
+        </div>
+        <div className="lg:sticky lg:top-[76px] self-start">
+          <OrderSummary listing={listing} totalNzd={totalNzd} />
+        </div>
+      </div>
     );
   }
 
@@ -292,6 +318,13 @@ export default function CheckoutForm({ listing }: Props) {
 // ── Order error helpers ─────────────────────────────────────────────────────
 
 function getErrorDisplay(reason: string | null, message: string) {
+  if (reason === "email_not_verified") {
+    return {
+      title: "Email verification required",
+      body: "Please verify your email address before placing an order.",
+      canRetry: false,
+    };
+  }
   if (reason === "listing_unavailable") {
     return {
       title: "This listing is no longer available",
@@ -483,7 +516,9 @@ function PaymentStep({
               </svg>
               <p className="text-[11.5px] text-[#73706A] leading-relaxed">
                 Your payment is held securely in escrow until you confirm
-                delivery. Protected by KiwiMart&apos;s Buyer Protection.
+                delivery. Protected by{" "}
+                {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}&apos;s Buyer
+                Protection.
               </p>
             </div>
           </div>
@@ -576,7 +611,9 @@ function OrderSummary({
           </svg>
           <p className="text-[11px] text-[#73706A] leading-relaxed">
             Payment held in escrow until you confirm delivery. You&apos;re
-            covered by our $3,000 Buyer Protection.
+            covered by our{" "}
+            {process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} Buyer
+            Protection.
           </p>
         </div>
       </div>

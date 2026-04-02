@@ -15,6 +15,10 @@ import {
 } from "@/modules/orders/order-event.service";
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
 import { createNotification } from "@/modules/notifications/notification.service";
+import {
+  getDisputeByOrderId,
+  addEvidence,
+} from "@/server/services/dispute/dispute.service";
 import type { ActionResult } from "@/types";
 import { submitCounterEvidenceSchema } from "@/server/validators";
 
@@ -81,6 +85,19 @@ export async function submitCounterEvidence(
     const role = isBuyer ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER;
     const roleLabel = isBuyer ? "Buyer" : "Seller";
 
+    // Store evidence in Dispute model
+    const dispute = await getDisputeByOrderId(orderId);
+    if (dispute && evidenceKeys && evidenceKeys.length > 0) {
+      await addEvidence({
+        disputeId: dispute.id,
+        r2Keys: evidenceKeys,
+        uploadedBy: isBuyer ? "BUYER" : "SELLER",
+        uploaderId: user.id,
+        label: "Counter-evidence",
+      });
+    }
+
+    // Also record in OrderEvent for timeline display
     orderEventService.recordEvent({
       orderId,
       type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
@@ -93,11 +110,6 @@ export async function submitCounterEvidence(
         counterEvidenceFor: queuedEvent.id,
       },
     });
-
-    // If seller, also store as seller response (so evaluateDispute picks it up)
-    if (isSeller && !order.status) {
-      // Seller response is already handled by the dispute flow
-    }
 
     // Re-evaluate
     const reEval = await autoResolutionService.evaluateDispute(orderId);

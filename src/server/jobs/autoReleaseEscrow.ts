@@ -6,6 +6,7 @@
 // (schedule: "0 2 * * *" in vercel.json).
 
 import db from "@/lib/db";
+import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { audit } from "@/server/lib/audit";
 import { paymentService } from "@/modules/payments/payment.service";
 import { transitionOrder } from "@/modules/orders/order.transitions";
@@ -38,6 +39,9 @@ export async function processAutoReleases(): Promise<{
 }> {
   let processed = 0;
   let errors = 0;
+  const escrowDays = await getConfigInt(
+    CONFIG_KEYS.ESCROW_RELEASE_BUSINESS_DAYS,
+  );
 
   // DB-side pre-filter: only orders dispatched within the last 30 days.
   // This caps the result set so the query never loads unbounded rows into memory.
@@ -73,7 +77,7 @@ export async function processAutoReleases(): Promise<{
   const now = new Date();
   const eligibleOrders = dispatchedOrders.filter((order) => {
     if (!order.dispatchedAt) return false;
-    const releaseDate = addBusinessDays(order.dispatchedAt, 4);
+    const releaseDate = addBusinessDays(order.dispatchedAt, escrowDays);
     return releaseDate <= now;
   });
 
@@ -258,11 +262,14 @@ export async function processAutoReleases(): Promise<{
   return { processed, errors };
 }
 
-export function getAutoReleaseCountdown(dispatchedAt: Date): {
+export async function getAutoReleaseCountdown(dispatchedAt: Date): Promise<{
   daysRemaining: number;
   releaseDate: Date;
-} {
-  const releaseDate = addBusinessDays(dispatchedAt, 4);
+}> {
+  const escrowDays = await getConfigInt(
+    CONFIG_KEYS.ESCROW_RELEASE_BUSINESS_DAYS,
+  );
+  const releaseDate = addBusinessDays(dispatchedAt, escrowDays);
   const now = new Date();
   const msRemaining = releaseDate.getTime() - now.getTime();
   const daysRemaining = Math.max(

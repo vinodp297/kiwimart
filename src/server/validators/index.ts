@@ -381,6 +381,9 @@ const shippingAddressSchema = z
 export const createOrderSchema = z.object({
   listingId: z.string().min(1, "Listing ID is required"),
   idempotencyKey: z.string().max(128).optional(),
+  fulfillmentType: z
+    .enum(["SHIPPED", "CASH_ON_PICKUP", "ONLINE_PAYMENT_PICKUP"])
+    .optional(),
   shippingAddress: shippingAddressSchema,
 });
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

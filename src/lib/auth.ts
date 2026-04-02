@@ -32,6 +32,7 @@ import {
 } from "@/server/lib/sessionStore";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { logger } from "@/shared/logger";
+import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -66,7 +67,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         turnstileToken: { type: "text" }, // Cloudflare Turnstile
       },
 
-      async authorize(credentials) {
+      async authorize(credentials, request) {
+        // 0. Rate limit — prevent brute force attacks
+        const ip = getClientIp(request.headers);
+        const limitResult = await rateLimit("auth", ip || "unknown");
+        if (!limitResult.success) {
+          throw new Error(
+            `Too many login attempts. Please try again in ${limitResult.retryAfter} seconds.`,
+          );
+        }
+
         // 1. Validate input shape with Zod
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) {

@@ -116,11 +116,11 @@ export default function RegisterPage() {
         redirect: false,
       });
 
-      const encodedEmail = encodeURIComponent(email.trim().toLowerCase());
       if (signInResult?.ok) {
-        router.push(`/verify-email?email=${encodedEmail}`);
+        router.push("/?welcome=true");
       } else {
         // Registration succeeded but auto-login failed (e.g. Turnstile in prod)
+        const encodedEmail = encodeURIComponent(email.trim().toLowerCase());
         router.push(`/login?registered=true&email=${encodedEmail}`);
       }
     } catch {
@@ -303,7 +303,8 @@ export default function RegisterPage() {
                     required
                   />
                   <span className="text-[12.5px] text-[#73706A] leading-relaxed">
-                    I agree to KiwiMart&apos;s{" "}
+                    I agree to {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}
+                    &apos;s{" "}
                     <Link
                       href="/terms"
                       className="text-[#141414] font-semibold underline-offset-2 hover:underline"
@@ -333,7 +334,9 @@ export default function RegisterPage() {
                   className="w-4 h-4 mt-0.5 rounded border-[#C9C5BC] accent-[#D4A843] cursor-pointer"
                 />
                 <span className="text-[12.5px] text-[#73706A] leading-relaxed">
-                  Send me occasional KiwiMart tips and offers (optional)
+                  Send me occasional{" "}
+                  {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} tips and offers
+                  (optional)
                 </span>
               </label>
             </div>
@@ -394,8 +397,9 @@ export default function RegisterPage() {
         </div>
 
         <p className="mt-5 text-center text-[11px] text-[#C9C5BC] max-w-xs mx-auto">
-          Your data is stored in NZ. KiwiMart will never sell your personal
-          information.
+          Your data is stored in NZ.{" "}
+          {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} will never sell your
+          personal information.
         </p>
       </div>
 

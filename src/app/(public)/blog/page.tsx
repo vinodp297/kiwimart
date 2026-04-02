@@ -1,11 +1,11 @@
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
+import type { Metadata } from "next";
+import Link from "next/link";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: 'Blog',
-  description: 'Tips, updates and stories from the KiwiMart team.',
+  title: "Blog",
+  description: `Tips, updates and stories from the ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} team.`,
 };
 
 export default function BlogPage() {
@@ -20,10 +20,11 @@ export default function BlogPage() {
               className="font-[family-name:var(--font-playfair)] text-[2.5rem]
                 font-semibold text-[#141414] leading-tight mb-4"
             >
-              KiwiMart Blog
+              {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Blog
             </h1>
             <p className="text-[16px] text-[#73706A] leading-relaxed">
-              Tips, updates and stories from the KiwiMart team
+              Tips, updates and stories from the{" "}
+              {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} team
             </p>
           </div>
 
@@ -32,7 +33,9 @@ export default function BlogPage() {
             className="bg-white rounded-2xl border border-[#E3E0D9] p-16
               flex flex-col items-center text-center"
           >
-            <span className="text-5xl mb-5" role="img" aria-label="kiwi fruit">🥝</span>
+            <span className="text-5xl mb-5" role="img" aria-label="kiwi fruit">
+              🥝
+            </span>
             <h2
               className="font-[family-name:var(--font-playfair)] text-[1.5rem]
                 font-semibold text-[#141414] mb-3"
@@ -47,8 +50,15 @@ export default function BlogPage() {
               className="inline-flex items-center gap-2 text-[13.5px] font-semibold
                 text-[#D4A843] hover:text-[#B8912E] transition-colors"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <path d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
               Back to homepage
             </Link>

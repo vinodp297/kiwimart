@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/stripe-reconciliation",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/seller-downgrade",
+      "schedule": "0 6 * * *"
     }
   ],
   "headers": [

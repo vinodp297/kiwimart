@@ -61,7 +61,7 @@ export default function StripeAccountPage() {
       }
     } catch {
       setError(
-        "We couldn't connect to Stripe. Please try again or contact support@kiwimart.co.nz.",
+        `We couldn't connect to Stripe. Please try again or contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}.`,
       );
       setActionLoading(false);
     }
@@ -115,8 +115,8 @@ export default function StripeAccountPage() {
             Payout settings
           </h1>
           <p className="text-[14px] text-[#73706A] mb-8">
-            Connect your Stripe account to receive payouts from sales on
-            KiwiMart.
+            Connect your Stripe account to receive payouts from sales on{" "}
+            {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}.
           </p>
 
           {justReturned && (

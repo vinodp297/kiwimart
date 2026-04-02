@@ -5,6 +5,7 @@
 // Used by the auto-resolution engine and admin dispute panels.
 
 import db from "@/lib/db";
+import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { logger } from "@/shared/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ export interface SellerMetrics {
   isFlaggedForFraud: boolean;
 }
 
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+// CACHE_TTL — now read from PlatformConfig inside getMetrics
 
 // ── Service ───────────────────────────────────────────────────────────────
 
@@ -51,6 +52,11 @@ export class TrustMetricsService {
     accountAgeDays: number;
     isFlaggedForFraud: boolean;
   }> {
+    const cacheHours = await getConfigInt(
+      CONFIG_KEYS.TRUST_METRICS_CACHE_HOURS,
+    );
+    const CACHE_TTL_MS = cacheHours * 60 * 60 * 1000;
+
     const cached = await db.trustMetrics.findUnique({
       where: { userId },
     });
@@ -77,7 +83,12 @@ export class TrustMetricsService {
    * Compute all metrics for a user and upsert into the TrustMetrics table.
    */
   async computeMetrics(userId: string) {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rollingDays = await getConfigInt(
+      CONFIG_KEYS.TRUST_SCORE_ROLLING_DAYS,
+    );
+    const rollingWindowAgo = new Date(
+      Date.now() - rollingDays * 24 * 60 * 60 * 1000,
+    );
 
     const [
       user,
@@ -102,21 +113,21 @@ export class TrustMetricsService {
       db.order.count({ where: { buyerId: userId, status: "COMPLETED" } }),
       db.order.count({ where: { sellerId: userId, status: "COMPLETED" } }),
       db.order.count({
-        where: { buyerId: userId, disputeOpenedAt: { not: null } },
+        where: { buyerId: userId, dispute: { isNot: null } },
       }),
       db.order.count({
-        where: { sellerId: userId, disputeOpenedAt: { not: null } },
+        where: { sellerId: userId, dispute: { isNot: null } },
       }),
       db.order.count({
         where: {
           buyerId: userId,
-          disputeOpenedAt: { not: null, gte: thirtyDaysAgo },
+          dispute: { openedAt: { gte: rollingWindowAgo } },
         },
       }),
       db.order.count({
         where: {
           sellerId: userId,
-          disputeOpenedAt: { not: null, gte: thirtyDaysAgo },
+          dispute: { openedAt: { gte: rollingWindowAgo } },
         },
       }),
       db.review.findMany({
@@ -161,14 +172,13 @@ export class TrustMetricsService {
           ) / 10
         : null;
 
-    // Average response time to disputes
-    const respondedDisputes = await db.order.findMany({
+    // Average response time to disputes (from Dispute model)
+    const respondedDisputes = await db.dispute.findMany({
       where: {
-        sellerId: userId,
-        disputeOpenedAt: { not: null },
+        order: { sellerId: userId },
         sellerRespondedAt: { not: null },
       },
-      select: { disputeOpenedAt: true, sellerRespondedAt: true },
+      select: { openedAt: true, sellerRespondedAt: true },
     });
 
     let averageResponseHours: number | null = null;
@@ -176,7 +186,7 @@ export class TrustMetricsService {
       const totalHours = respondedDisputes.reduce((sum, d) => {
         return (
           sum +
-          (d.sellerRespondedAt!.getTime() - d.disputeOpenedAt!.getTime()) /
+          (d.sellerRespondedAt!.getTime() - d.openedAt.getTime()) /
             (1000 * 60 * 60)
         );
       }, 0);

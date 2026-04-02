@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
+import { PickupMessageCard } from "@/components/pickup/PickupMessageCard";
 import {
   Avatar,
   OrderStatusBadge,
@@ -257,7 +258,8 @@ export default function BuyerDashboardPage() {
               <div className="bg-[#FFF9EC] border border-[#D4A843]/30 rounded-2xl p-5 mb-6 flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <h2 className="font-semibold text-[#141414] text-[16px] mb-1">
-                    Welcome to KiwiMart, {user.displayName}! 🥝
+                    Welcome to {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"},{" "}
+                    {user.displayName}! 🥝
                   </h2>
                   <p className="text-[#73706A] text-[13px] mb-4">
                     You&apos;re all set up. Here&apos;s how to get started:
@@ -572,9 +574,19 @@ export default function BuyerDashboardPage() {
                                   isMe
                                     ? "bg-[#141414] text-white rounded-tr-sm"
                                     : "bg-[#F8F7F4] text-[#141414] rounded-tl-sm border border-[#E3E0D9]"
-                                }`}
+                                }
+                                ${msg.body?.startsWith('{"type":"PICKUP_') ? "!p-0 !bg-transparent !border-0" : ""}`}
                             >
-                              {msg.body}
+                              {msg.body?.startsWith('{"type":"PICKUP_') ? (
+                                <PickupMessageCard
+                                  messageBody={msg.body}
+                                  currentUserId="me"
+                                  messageSenderId={msg.senderId}
+                                  orderId=""
+                                />
+                              ) : (
+                                msg.body
+                              )}
                             </div>
                             <span className="text-[10.5px] text-[#C9C5BC]">
                               {relativeTime(msg.createdAt)}
@@ -1187,7 +1199,8 @@ function EmailVerifyBanner() {
             Please verify your email address
           </p>
           <p className="text-[12px] text-[#73706A] mt-0.5">
-            Check your inbox for a verification link from KiwiMart.
+            Check your inbox for a verification link from{" "}
+            {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}.
           </p>
         </div>
       </div>

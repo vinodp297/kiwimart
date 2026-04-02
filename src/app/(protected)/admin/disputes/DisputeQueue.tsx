@@ -13,11 +13,6 @@ import { formatPrice } from "@/lib/utils";
 interface DisputeItem {
   id: string;
   totalNzd: number;
-  disputeReason: string | null;
-  disputeNotes: string | null;
-  disputeOpenedAt: string | null;
-  sellerResponse: string | null;
-  sellerRespondedAt: string | null;
   listing: {
     id: string;
     title: string;
@@ -31,6 +26,18 @@ interface DisputeItem {
     displayName: string;
     idVerified: boolean;
   };
+  // Dispute data from standalone model
+  dispute: {
+    id: string;
+    reason: string;
+    status: string;
+    source: string;
+    buyerStatement: string | null;
+    sellerStatement: string | null;
+    openedAt: string;
+    sellerRespondedAt: string | null;
+    resolvedAt: string | null;
+  } | null;
   autoResolution: {
     decision: string;
     score: number;
@@ -40,6 +47,7 @@ interface DisputeItem {
     factors: Array<{ factor: string; points: number; description: string }>;
   } | null;
   daysOpen: number;
+  fulfillmentType?: string;
 }
 
 interface QueueStats {
@@ -48,12 +56,19 @@ interface QueueStats {
   fraudAlerts: number;
   autoResolved: number;
   totalOpen: number;
+  pickupOrders: number;
   avgResolutionHours: number;
   autoResolvedThisMonth: number;
   autoResolvedPercentThisMonth: number;
 }
 
-type TabKey = "needs_decision" | "cooling" | "fraud" | "auto_resolved" | "all";
+type TabKey =
+  | "needs_decision"
+  | "cooling"
+  | "fraud"
+  | "auto_resolved"
+  | "pickup"
+  | "all";
 
 interface Props {
   initialTab: TabKey;
@@ -131,6 +146,12 @@ const TAB_CONFIG: {
     label: "Auto-Resolved",
     icon: "✓",
     countKey: "autoResolved",
+  },
+  {
+    key: "pickup",
+    label: "Pickup Orders",
+    icon: "📍",
+    countKey: "pickupOrders",
   },
   { key: "all", label: "All Disputes", icon: "📋", countKey: "totalOpen" },
 ];
@@ -272,11 +293,12 @@ function DisputeCard({
   tab: TabKey;
 }) {
   const thumbUrl = getThumbUrl(d.listing.images[0]);
-  const reasonLabel = d.disputeReason
-    ? (REASON_LABELS[d.disputeReason] ?? d.disputeReason)
+  const disputeReason = d.dispute?.reason ?? null;
+  const reasonLabel = disputeReason
+    ? (REASON_LABELS[disputeReason] ?? disputeReason)
     : null;
-  const reasonColor = d.disputeReason
-    ? (REASON_COLORS[d.disputeReason] ?? REASON_COLORS.OTHER!)
+  const reasonColor = disputeReason
+    ? (REASON_COLORS[disputeReason] ?? REASON_COLORS.OTHER!)
     : REASON_COLORS.OTHER!;
 
   const urgencyColor =
@@ -338,6 +360,11 @@ function DisputeCard({
             >
               {d.daysOpen}d open
             </span>
+            {d.fulfillmentType && d.fulfillmentType !== "SHIPPED" && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-purple-200 bg-purple-50 text-purple-700">
+                {d.fulfillmentType === "CASH_ON_PICKUP" ? "COP" : "Pickup"}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-3 mt-1 text-[11.5px] text-[#73706A]">

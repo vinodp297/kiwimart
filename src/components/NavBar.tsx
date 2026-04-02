@@ -184,7 +184,8 @@ export default function NavBar() {
           href="/trust"
           className="underline hover:text-white transition-colors"
         >
-          $3,000 buyer protection
+          {process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} buyer
+          protection
         </Link>
       </div>
 
@@ -199,7 +200,7 @@ export default function NavBar() {
             <Link
               href="/"
               className="flex items-center gap-2 shrink-0 group"
-              aria-label="KiwiMart home"
+              aria-label={`${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} home`}
             >
               <div
                 className="w-7 h-7 rounded-full bg-[#141414] flex items-center
@@ -707,7 +708,7 @@ export default function NavBar() {
           items-center justify-between gap-4"
         >
           <p className="text-[12.5px] text-[#8B6914]">
-            🛍 Want to sell on KiwiMart?{" "}
+            🛍 Want to sell on {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}?{" "}
             <a
               href="/account/stripe"
               className="font-semibold underline ml-1 hover:text-[#141414] transition-colors"

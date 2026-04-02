@@ -8,6 +8,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
 import { getImageUrl } from "@/lib/image";
+import { getListValues } from "@/lib/dynamic-lists";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import CheckoutForm from "./CheckoutForm";
@@ -115,6 +116,8 @@ export default async function CheckoutPage(props: {
     PARTS: "Parts Only",
   };
 
+  const regions = await getListValues("NZ_REGIONS");
+
   const sellerHasStripe =
     listing.seller.stripeAccountId && listing.seller.stripeOnboarded;
 
@@ -176,8 +179,9 @@ export default async function CheckoutPage(props: {
                 <p>
                   Under the NZ Consumer Guarantees Act, sellers must ensure
                   items match their description and are fit for purpose.
-                  KiwiMart&apos;s $3,000 buyer protection covers you if
-                  something goes wrong.{" "}
+                  {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}&apos;s{" "}
+                  {process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"}{" "}
+                  buyer protection covers you if something goes wrong.{" "}
                   <Link
                     href="/consumer-law"
                     className="underline font-semibold hover:text-sky-900"
@@ -187,6 +191,7 @@ export default async function CheckoutPage(props: {
                 </p>
               </div>
               <CheckoutForm
+                regions={regions}
                 listing={{
                   id: listing.id,
                   title: listing.title,

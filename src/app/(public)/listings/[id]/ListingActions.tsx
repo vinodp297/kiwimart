@@ -4,7 +4,7 @@
 // Sprint 3: calls will be replaced with server actions (createOrder, createOffer,
 // toggleWatch) — component API stays identical.
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
@@ -19,15 +19,18 @@ import {
 import { addToCart } from "@/server/actions/cart";
 import { toggleWatch } from "@/server/actions/listings";
 import { createOffer } from "@/server/actions/offers";
+import EmailVerificationModal from "@/components/EmailVerificationModal";
 
 interface Props {
   listing: ListingDetail;
   initialWatched?: boolean;
+  offerMinPercentage?: number;
 }
 
 export default function ListingActions({
   listing,
   initialWatched = false,
+  offerMinPercentage = 50,
 }: Props) {
   const [watched, setWatched] = useState(initialWatched);
   const [offerOpen, setOfferOpen] = useState(false);
@@ -42,7 +45,9 @@ export default function ListingActions({
     type: "success" | "error";
     text: string;
   } | null>(null);
-  const { status: sessionStatus } = useSessionSafe();
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const pendingAction = useRef<"watch" | "cart" | null>(null);
+  const { data: session, status: sessionStatus } = useSessionSafe();
   const router = useRouter();
 
   const isSold = listing.status === "sold";
@@ -52,6 +57,11 @@ export default function ListingActions({
     e.preventDefault();
     if (sessionStatus !== "authenticated") {
       router.push(`/login?from=/listings/${listing.id}`);
+      return;
+    }
+    if (!session?.user?.emailVerified) {
+      pendingAction.current = null;
+      setVerifyModalOpen(true);
       return;
     }
     const amount = Number(offerAmount);
@@ -65,8 +75,10 @@ export default function ListingActions({
       );
       return;
     }
-    if (amount < listing.price * 0.5) {
-      setOfferError("Offers below 50% of the asking price are not accepted.");
+    if (amount < listing.price * (offerMinPercentage / 100)) {
+      setOfferError(
+        `Offers below ${offerMinPercentage}% of the asking price are not accepted.`,
+      );
       return;
     }
     setOfferError("");
@@ -104,14 +116,40 @@ export default function ListingActions({
     }
   }
 
-  async function handleAddToCart() {
+  function requireVerifiedEmail(action: "watch" | "cart"): boolean {
+    if (sessionStatus !== "authenticated") {
+      router.push(`/login?from=/listings/${listing.id}`);
+      return false;
+    }
+    if (!session?.user?.emailVerified) {
+      pendingAction.current = action;
+      setVerifyModalOpen(true);
+      return false;
+    }
+    return true;
+  }
+
+  function handleVerified() {
+    setVerifyModalOpen(false);
+    const action = pendingAction.current;
+    pendingAction.current = null;
+    if (action === "watch") doToggleWatch();
+    else if (action === "cart") doAddToCart();
+  }
+
+  async function doToggleWatch() {
+    setWatched((w) => !w);
+    const result = await toggleWatch({ listingId: listing.id });
+    if (!result.success) setWatched((w) => !w);
+  }
+
+  async function doAddToCart() {
     setCartLoading(true);
     setCartMessage(null);
     try {
       const result = await addToCart({ listingId: listing.id });
       if (result.success) {
         setCartMessage({ type: "success", text: "Added to cart!" });
-        // Refresh NavBar cart count
         router.refresh();
       } else if (result.error === "SELLER_MISMATCH") {
         setCartMessage({
@@ -129,6 +167,11 @@ export default function ListingActions({
     } finally {
       setCartLoading(false);
     }
+  }
+
+  function handleAddToCart() {
+    if (!requireVerifiedEmail("cart")) return;
+    doAddToCart();
   }
 
   return (
@@ -233,7 +276,8 @@ export default function ListingActions({
               </svg>
               <div>
                 <p className="text-[12.5px] font-bold text-emerald-800 leading-tight">
-                  $3,000 Buyer Protection
+                  {process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"}{" "}
+                  Buyer Protection
                 </p>
                 <p className="text-[11px] text-emerald-700 leading-tight">
                   Payment held securely until you confirm delivery
@@ -313,16 +357,9 @@ export default function ListingActions({
             <div className="border-t border-[#E3E0D9] pt-4 mt-1">
               <div className="flex items-center justify-around">
                 <button
-                  onClick={async () => {
-                    if (sessionStatus !== "authenticated") {
-                      router.push(`/login?from=/listings/${listing.id}`);
-                      return;
-                    }
-                    setWatched((w) => !w);
-                    const result = await toggleWatch({ listingId: listing.id });
-                    if (!result.success) {
-                      setWatched((w) => !w);
-                    }
+                  onClick={() => {
+                    if (!requireVerifiedEmail("watch")) return;
+                    doToggleWatch();
                   }}
                   aria-pressed={watched}
                   className="flex items-center gap-2 px-6 py-3 text-[#73706A]
@@ -379,6 +416,16 @@ export default function ListingActions({
           </div>
         )}
       </div>
+
+      {/* ── Email Verification Modal ──────────────────────────────────────── */}
+      <EmailVerificationModal
+        open={verifyModalOpen}
+        onClose={() => {
+          setVerifyModalOpen(false);
+          pendingAction.current = null;
+        }}
+        onVerified={handleVerified}
+      />
 
       {/* ── Make Offer Modal ───────────────────────────────────────────────── */}
       {offerOpen && (
@@ -527,8 +574,9 @@ export default function ListingActions({
 
                     <Alert variant="info">
                       Your offer is binding if accepted. You&apos;ll have 24
-                      hours to complete payment via KiwiMart&apos;s secure
-                      escrow.
+                      hours to complete payment via{" "}
+                      {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}&apos;s
+                      secure escrow.
                     </Alert>
 
                     <Button

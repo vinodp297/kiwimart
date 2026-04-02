@@ -100,10 +100,13 @@ export class UserService {
     phone: string,
     ip: string,
   ): Promise<{ expiresAt: string }> {
-    const phoneClean = phone.replace(/[\s-()]/g, "");
-    const nzPhoneRegex = /^(\+?64|0)\d{7,10}$/;
-    if (!nzPhoneRegex.test(phoneClean)) {
-      throw AppError.validation("Please enter a valid NZ phone number.");
+    const phoneClean = phone.replace(/[\s\-()]/g, "");
+    const { isValidNzPhone } =
+      await import("@/server/services/sms/sms.service");
+    if (!isValidNzPhone(phoneClean)) {
+      throw AppError.validation(
+        "Please enter a valid New Zealand phone number.",
+      );
     }
 
     const code = crypto.randomInt(100000, 999999).toString();
@@ -116,12 +119,15 @@ export class UserService {
       data: { userId, codeHash, phone: phoneClean, expiresAt },
     });
 
-    // SMS placeholder
-    if (process.env.NODE_ENV === "development") {
-      logger.info("verification.sms.dev", { phone: phoneClean, code });
-    } else {
-      logger.info("verification.sms.would_send", { phone: phoneClean });
-    }
+    const { sendSms, formatNzPhoneE164 } =
+      await import("@/server/services/sms/sms.service");
+    const appName = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
+    await sendSms({
+      to: formatNzPhoneE164(phoneClean),
+      body:
+        `Your ${appName} verification code is: ${code}. ` +
+        `Valid for 10 minutes. Do not share this code.`,
+    });
 
     await db.user.update({
       where: { id: userId },

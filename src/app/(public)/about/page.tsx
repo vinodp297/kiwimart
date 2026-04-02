@@ -1,10 +1,10 @@
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import type { Metadata } from 'next';
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: 'About — Built by Kiwis, for Kiwis',
-  description: 'KiwiMart is a New Zealand marketplace built in Auckland in 2026. Our mission: safe, simple, fair trading for everyone in Aotearoa.',
+  title: "About — Built by Kiwis, for Kiwis",
+  description: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} is a New Zealand marketplace built in Auckland in 2026. Our mission: safe, simple, fair trading for everyone in Aotearoa.`,
 };
 
 export const revalidate = 86400;
@@ -22,8 +22,8 @@ export default function AboutPage() {
               Built by Kiwis, for Kiwis
             </h1>
             <p className="text-[16px] text-white/60 max-w-xl mx-auto leading-relaxed">
-              We are on a mission to make buying and selling safe, simple and fair
-              for everyone in Aotearoa.
+              We are on a mission to make buying and selling safe, simple and
+              fair for everyone in Aotearoa.
             </p>
           </div>
         </div>
@@ -35,13 +35,16 @@ export default function AboutPage() {
               Our story
             </h2>
             <p className="text-[15px] text-[#73706A] leading-relaxed">
-              KiwiMart was built in Auckland in 2026 with one goal: to give New Zealanders a
-              marketplace they can actually trust. Every transaction is protected by secure escrow,
-              verified sellers, and a team that actually picks up the phone.
+              {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} was built in
+              Auckland in 2026 with one goal: to give New Zealanders a
+              marketplace they can actually trust. Every transaction is
+              protected by secure escrow, verified sellers, and a team that
+              actually picks up the phone.
             </p>
             <p className="text-[15px] text-[#73706A] leading-relaxed mt-3">
-              We believe New Zealanders deserve a modern, safe trading platform with fair pricing,
-              strong buyer protection, and genuine local support. That is KiwiMart.
+              We believe New Zealanders deserve a modern, safe trading platform
+              with fair pricing, strong buyer protection, and genuine local
+              support. That is {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}.
             </p>
           </div>
 
@@ -49,27 +52,32 @@ export default function AboutPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             {[
               {
-                icon: '🔒',
-                title: 'Trust',
-                desc: 'Every payment held safely in escrow until you confirm delivery. Your money is protected.',
+                icon: "🔒",
+                title: "Trust",
+                desc: "Every payment held safely in escrow until you confirm delivery. Your money is protected.",
               },
               {
-                icon: '🛡',
-                title: 'Safety',
-                desc: 'Verified sellers, content moderation, and $3,000 buyer protection on every eligible purchase.',
+                icon: "🛡",
+                title: "Safety",
+                desc: `Verified sellers, content moderation, and ${process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} buyer protection on every eligible purchase.`,
               },
               {
-                icon: '🥝',
-                title: 'Community',
-                desc: 'Built for Kiwis — NZ regions, NZ prices, NZ-based support team available Mon–Fri.',
+                icon: "🥝",
+                title: "Community",
+                desc: "Built for Kiwis — NZ regions, NZ prices, NZ-based support team available Mon–Fri.",
               },
             ].map(({ icon, title, desc }) => (
-              <div key={title} className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+              <div
+                key={title}
+                className="bg-white rounded-2xl border border-[#E3E0D9] p-6"
+              >
                 <div className="text-3xl mb-3">{icon}</div>
                 <h3 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-2">
                   {title}
                 </h3>
-                <p className="text-[13.5px] text-[#73706A] leading-relaxed">{desc}</p>
+                <p className="text-[13.5px] text-[#73706A] leading-relaxed">
+                  {desc}
+                </p>
               </div>
             ))}
           </div>
@@ -81,13 +89,23 @@ export default function AboutPage() {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               {[
-                { label: 'General enquiries', email: 'hello@kiwimart.co.nz' },
-                { label: 'Customer support', email: 'support@kiwimart.co.nz' },
-                { label: 'Press & media', email: 'press@kiwimart.co.nz' },
+                { label: "General enquiries", email: "hello@kiwimart.co.nz" },
+                {
+                  label: "Customer support",
+                  email:
+                    process.env.NEXT_PUBLIC_SUPPORT_EMAIL ??
+                    "support@buyzi.co.nz",
+                },
+                { label: "Press & media", email: "press@kiwimart.co.nz" },
               ].map(({ label, email }) => (
                 <div key={label}>
-                  <p className="text-[11px] font-semibold text-white/40 uppercase tracking-wide mb-1">{label}</p>
-                  <a href={`mailto:${email}`} className="text-[#D4A843] hover:text-[#F5C84A] text-[13.5px] transition-colors">
+                  <p className="text-[11px] font-semibold text-white/40 uppercase tracking-wide mb-1">
+                    {label}
+                  </p>
+                  <a
+                    href={`mailto:${email}`}
+                    className="text-[#D4A843] hover:text-[#F5C84A] text-[13.5px] transition-colors"
+                  >
                     {email}
                   </a>
                 </div>

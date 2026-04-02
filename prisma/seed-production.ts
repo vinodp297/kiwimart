@@ -3231,13 +3231,6 @@ async function main() {
               : null,
         completedAt:
           od.completedDaysAgo != null ? daysAgo(od.completedDaysAgo) : null,
-        disputeReason:
-          od.status === "DISPUTED" ? "ITEM_NOT_AS_DESCRIBED" : null,
-        disputeOpenedAt: od.status === "DISPUTED" ? daysAgo(3) : null,
-        disputeNotes:
-          od.status === "DISPUTED"
-            ? "Item does not match listing description. Significant scratches not shown in photos."
-            : null,
         shippingName:
           buyerData.find((b) => b.username === od.buyerKey)?.displayName ??
           "Test Buyer",
@@ -3250,6 +3243,19 @@ async function main() {
         createdAt: daysAgo(createdAgo),
       },
     });
+    if (od.status === "DISPUTED") {
+      await prisma.dispute.create({
+        data: {
+          orderId: order.id,
+          reason: "ITEM_NOT_AS_DESCRIBED",
+          source: "STANDARD",
+          status: "OPEN",
+          buyerStatement:
+            "Item does not match listing description. Significant scratches not shown in photos.",
+          openedAt: daysAgo(3),
+        },
+      });
+    }
     orderRecords.push({
       id: order.id,
       buyerId,

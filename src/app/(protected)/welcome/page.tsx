@@ -4,17 +4,18 @@
 // If yes, redirect straight to buyer dashboard.
 // If no, render the client-side WelcomeWizard.
 
-import { redirect } from 'next/navigation';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import WelcomeWizard from '@/components/onboarding/WelcomeWizard';
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
+import { getListValues } from "@/lib/dynamic-lists";
+import WelcomeWizard from "@/components/onboarding/WelcomeWizard";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export default async function WelcomePage() {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect('/login?from=/welcome');
+    redirect("/login?from=/welcome");
   }
 
   const user = await db.user.findUnique({
@@ -26,13 +27,15 @@ export default async function WelcomePage() {
   });
 
   if (!user) {
-    redirect('/login');
+    redirect("/login");
   }
 
   // Already completed onboarding — skip straight to dashboard
   if (user.onboardingCompleted) {
-    redirect('/dashboard/buyer');
+    redirect("/dashboard/buyer");
   }
 
-  return <WelcomeWizard displayName={user.displayName} />;
+  const regions = await getListValues("NZ_REGIONS");
+
+  return <WelcomeWizard displayName={user.displayName} regions={regions} />;
 }

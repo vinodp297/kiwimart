@@ -1,16 +1,16 @@
 // src/app/(public)/admin/accept-invite/page.tsx
 // ─── Accept Admin Invitation ──────────────────────────────────────────────────
 
-import { redirect } from 'next/navigation';
-import Link from 'next/link';
-import crypto from 'crypto';
-import db from '@/lib/db';
-import { auth } from '@/lib/auth';
-import { getRoleDisplayName } from '@/lib/permissions';
-import type { Metadata } from 'next';
-import type { AdminRole } from '@prisma/client';
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import crypto from "crypto";
+import db from "@/lib/db";
+import { auth } from "@/lib/auth";
+import { getRoleDisplayName } from "@/lib/permissions";
+import type { Metadata } from "next";
+import type { AdminRole } from "@prisma/client";
 
-export const metadata: Metadata = { title: 'Accept Invitation — Admin' };
+export const metadata: Metadata = { title: "Accept Invitation — Admin" };
 
 interface Props {
   searchParams: Promise<{ token?: string }>;
@@ -25,7 +25,7 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
 
   // Hash the raw token from the URL to look up the stored hash.
   // The raw token is never stored in the DB — only the SHA-256 hash.
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
   const invitation = await db.adminInvitation.findUnique({
     where: { tokenHash },
@@ -40,7 +40,9 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
   });
 
   if (!invitation) {
-    return <ErrorPage message="Invitation not found. It may have been cancelled or replaced." />;
+    return (
+      <ErrorPage message="Invitation not found. It may have been cancelled or replaced." />
+    );
   }
 
   if (invitation.acceptedAt) {
@@ -48,7 +50,9 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
   }
 
   if (invitation.expiresAt < new Date()) {
-    return <ErrorPage message="This invitation has expired. Please request a new one." />;
+    return (
+      <ErrorPage message="This invitation has expired. Please request a new one." />
+    );
   }
 
   // Check if the current user is logged in
@@ -74,7 +78,7 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
         }),
       ]);
 
-      redirect('/admin');
+      redirect("/admin");
     }
   }
 
@@ -89,7 +93,8 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
           Admin Invitation
         </h1>
         <p className="text-[13.5px] text-[#73706A] mb-1">
-          <strong>{invitation.inviter.displayName}</strong> has invited you to join the KiwiMart
+          <strong>{invitation.inviter.displayName}</strong> has invited you to
+          join the {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}
           admin team.
         </p>
         <div className="my-4 p-4 bg-[#FFF9EC] rounded-xl border border-[#F5ECD4] text-left">
@@ -97,19 +102,20 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
             <strong>Email:</strong> {invitation.email}
           </p>
           <p className="text-[12px] text-[#141414] mt-1">
-            <strong>Role:</strong> {getRoleDisplayName(invitation.adminRole as AdminRole)}
+            <strong>Role:</strong>{" "}
+            {getRoleDisplayName(invitation.adminRole as AdminRole)}
           </p>
           <p className="text-[12px] text-[#141414] mt-1">
-            <strong>Expires:</strong>{' '}
-            {invitation.expiresAt.toLocaleDateString('en-NZ', {
-              day: 'numeric',
-              month: 'long',
-              year: 'numeric',
+            <strong>Expires:</strong>{" "}
+            {invitation.expiresAt.toLocaleDateString("en-NZ", {
+              day: "numeric",
+              month: "long",
+              year: "numeric",
             })}
           </p>
         </div>
         <p className="text-[12.5px] text-[#9E9A91] mb-5">
-          To accept this invitation, please sign in with the email address{' '}
+          To accept this invitation, please sign in with the email address{" "}
           <strong>{invitation.email}</strong>, then visit this link again.
         </p>
         <Link
@@ -136,7 +142,7 @@ function ErrorPage({ message }: { message: string }) {
           href="/"
           className="inline-block px-5 py-2.5 rounded-xl border border-[#E3E0D9] text-[13px] font-semibold text-[#141414] hover:border-[#141414] transition-colors"
         >
-          ← Back to KiwiMart
+          ← Back to {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}
         </Link>
       </div>
     </div>

@@ -212,7 +212,8 @@ export default function LoginPage() {
             Welcome back
           </h1>
           <p className="text-[13.5px] text-[#73706A] mb-6">
-            Sign in to your KiwiMart account
+            Sign in to your {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}{" "}
+            account
           </p>
 
           {registeredParam && !verifiedParam && (
@@ -380,8 +381,8 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-5 text-center text-[11.5px] text-[#C9C5BC]">
-          Protected by KiwiMart&apos;s secure sign-in. By signing in you agree
-          to our{" "}
+          Protected by {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}&apos;s
+          secure sign-in. By signing in you agree to our{" "}
           <Link
             href="/terms"
             className="underline hover:text-[#73706A] transition-colors"
