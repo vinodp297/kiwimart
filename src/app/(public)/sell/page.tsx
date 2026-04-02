@@ -11,8 +11,10 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { useSessionSafe } from "@/hooks/useSessionSafe";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
+import EmailVerificationInline from "@/components/EmailVerificationInline";
 import {
   Button,
   Input,
@@ -47,7 +49,7 @@ const CONDITIONS: { value: Condition; label: string; hint: string }[] = [
   },
 ];
 
-const NZ_REGIONS: NZRegion[] = [
+const NZ_REGIONS_DEFAULT: NZRegion[] = [
   "Auckland",
   "Wellington",
   "Canterbury",
@@ -65,6 +67,7 @@ const NZ_REGIONS: NZRegion[] = [
   "Gisborne",
   "West Coast",
 ];
+const NZ_REGIONS = NZ_REGIONS_DEFAULT;
 
 const STEPS = [
   { number: 1, label: "Photos" },
@@ -96,6 +99,14 @@ interface ImagePreview {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SellPage() {
+  const { data: session } = useSessionSafe();
+  const [emailVerified, setEmailVerified] = useState(false);
+
+  // Keep emailVerified in sync with session
+  useEffect(() => {
+    setEmailVerified(!!session?.user?.emailVerified);
+  }, [session?.user?.emailVerified]);
+
   // ── Seller status check ──────────────────────────────────────────────────
   const [sellerStatus, setSellerStatus] = useState<{
     loading: boolean;
@@ -890,6 +901,31 @@ export default function SellPage() {
                 Secured by Stripe · No monthly fees · Cancel anytime
               </p>
             </div>
+          </div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  // ── Email not verified gate ────────────────────────────────────────────────
+  if (!emailVerified) {
+    return (
+      <>
+        <NavBar />
+        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center px-4 py-12">
+          <div className="max-w-md w-full space-y-6">
+            <div className="text-center mb-2">
+              <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] mb-2">
+                List an item
+              </h1>
+              <p className="text-[13.5px] text-[#73706A]">
+                Verify your email to start selling on KiwiMart.
+              </p>
+            </div>
+            <EmailVerificationInline
+              onVerified={() => setEmailVerified(true)}
+            />
           </div>
         </main>
         <Footer />

@@ -36,7 +36,7 @@ const CONDITIONS: { value: Condition; label: string; dbValue: string }[] = [
   { value: "parts", label: "Parts Only", dbValue: "PARTS" },
 ];
 
-const NZ_REGIONS: NZRegion[] = [
+const NZ_REGIONS_DEFAULT: NZRegion[] = [
   "Auckland",
   "Wellington",
   "Canterbury",
@@ -54,6 +54,7 @@ const NZ_REGIONS: NZRegion[] = [
   "Gisborne",
   "West Coast",
 ];
+const NZ_REGIONS = NZ_REGIONS_DEFAULT;
 
 const SHIPPING_OPTIONS: {
   value: ShippingOption;
@@ -121,6 +122,7 @@ export default function EditListingPage() {
   const [imageError, setImageError] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [listingStatus, setListingStatus] = useState("");
+  const [moderationNote, setModerationNote] = useState<string | null>(null);
 
   const activeCat = CATEGORIES.find((c) => c.id === categoryId);
 
@@ -156,6 +158,7 @@ export default function EditListingPage() {
       setRegion(d.region as NZRegion);
       setSuburb(d.suburb);
       setListingStatus(d.status);
+      setModerationNote(d.moderationNote ?? null);
       setExistingImages(
         d.images.map((img) => ({
           ...img,
@@ -308,7 +311,72 @@ export default function EditListingPage() {
                 Draft
               </span>
             )}
+            {listingStatus === "PENDING_REVIEW" && (
+              <span className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full uppercase tracking-wide">
+                Under Review
+              </span>
+            )}
+            {listingStatus === "NEEDS_CHANGES" && (
+              <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full uppercase tracking-wide">
+                Needs Changes
+              </span>
+            )}
           </div>
+
+          {/* Moderation note banner */}
+          {listingStatus === "NEEDS_CHANGES" && moderationNote && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#d97706"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800 mb-1">
+                    Changes requested by our team
+                  </p>
+                  <p className="text-sm text-amber-700">{moderationNote}</p>
+                  <p className="text-xs text-amber-600 mt-2">
+                    Make the requested changes below and click &quot;Resubmit
+                    for Review&quot; to resubmit.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {listingStatus === "PENDING_REVIEW" && (
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#2563eb"
+                    strokeWidth="2"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 6v6l4 2" />
+                  </svg>
+                </div>
+                <p className="text-sm text-blue-700">
+                  Your listing is under review. You&apos;ll be notified once
+                  it&apos;s approved.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Image management */}
           <div className="bg-white rounded-2xl border border-[#E3E0D9] p-4 mb-6">
@@ -772,7 +840,9 @@ export default function EditListingPage() {
                   loading={submitting}
                   onClick={handleSubmit}
                 >
-                  Save changes
+                  {listingStatus === "NEEDS_CHANGES"
+                    ? "Resubmit for Review"
+                    : "Save changes"}
                 </Button>
               </div>
             </div>

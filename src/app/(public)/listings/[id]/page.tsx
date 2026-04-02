@@ -10,6 +10,7 @@ import { Breadcrumb } from "@/components/ui/primitives";
 import { formatPrice, CONDITION_LABELS, relativeTime } from "@/lib/utils";
 import ListingGallery from "./ListingGallery";
 import ListingActions from "./ListingActions";
+import { getConfigInt, CONFIG_KEYS } from "@/lib/platform-config";
 import SellerPanel from "./SellerPanel";
 import ShippingEstimate from "./ShippingEstimate";
 import { getListingById } from "@/server/actions/listings";
@@ -513,7 +514,13 @@ export default async function ListingDetailPage({
             {/* ── Right column (sticky) ──────────────────────────────────── */}
             <div className="flex flex-col gap-4">
               {/* Price / action panel (client — handles offer modal, watchlist) */}
-              <ListingActions listing={detail} initialWatched={!!isWatching} />
+              <ListingActions
+                listing={detail}
+                initialWatched={!!isWatching}
+                offerMinPercentage={await getConfigInt(
+                  CONFIG_KEYS.OFFER_MIN_PERCENTAGE,
+                )}
+              />
 
               {/* Shipping estimate */}
               <ShippingEstimate sellerRegion={detail.region} />

@@ -8,8 +8,8 @@
 // with DB sessions) rather than trusting blindly. If a ban happens between
 // session reads (within updateAge window), requireUser() catches it.
 
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
+import { auth } from "@/lib/auth";
+import db from "@/lib/db";
 
 export type AuthenticatedUser = {
   id: string;
@@ -23,7 +23,7 @@ export async function requireUser(): Promise<AuthenticatedUser> {
   const session = await auth();
 
   if (!session?.user?.id) {
-    throw new Error('Unauthorised — please sign in');
+    throw new Error("Unauthorised — please sign in");
   }
 
   // With DB sessions, session.user.isBanned is fresh from the DB.
@@ -50,14 +50,14 @@ export async function requireUser(): Promise<AuthenticatedUser> {
 
   if (!user) {
     // User not found OR deletedAt is set — treat both as unauthenticated
-    throw new Error('Unauthorised — user not found');
+    throw new Error("Unauthorised — user not found");
   }
 
   if (user.isBanned) {
     // Delete their sessions to force logout on next request
     await db.session.deleteMany({ where: { userId: user.id } }).catch(() => {});
     throw new Error(
-      'Your account has been suspended. Contact support@kiwimart.co.nz for help.'
+      `Your account has been suspended. Contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"} for help.`,
     );
   }
 

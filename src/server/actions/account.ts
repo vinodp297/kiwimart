@@ -239,7 +239,7 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
     });
     return {
       success: false,
-      error: "Failed to delete account. Please contact support@kiwimart.co.nz",
+      error: `Failed to delete account. Please contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}`,
     };
   }
 }

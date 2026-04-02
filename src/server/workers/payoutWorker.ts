@@ -12,21 +12,24 @@
 //
 // All jobs are idempotent — checks payout status before processing.
 
-import { Worker } from 'bullmq';
-import { getRedisConnection } from '@/lib/queue';
-import type { PayoutJobData } from '@/lib/queue';
-import db from '@/lib/db';
-import { audit } from '@/server/lib/audit';
-import { stripe } from '@/infrastructure/stripe/client';
-import { logger } from '@/shared/logger';
+import { Worker } from "bullmq";
+import { getRedisConnection } from "@/lib/queue";
+import type { PayoutJobData } from "@/lib/queue";
+import db from "@/lib/db";
+import { audit } from "@/server/lib/audit";
+import { stripe } from "@/infrastructure/stripe/client";
+import { logger } from "@/shared/logger";
+import { sendPayoutInitiatedEmail } from "@/server/email";
 
 export function startPayoutWorker() {
   if (process.env.VERCEL) {
-    console.error('worker.payout: BullMQ workers cannot run on Vercel serverless.');
+    console.error(
+      "worker.payout: BullMQ workers cannot run on Vercel serverless.",
+    );
     return;
   }
   const worker = new Worker<PayoutJobData>(
-    'payout',
+    "payout",
     async (job) => {
       const { orderId, sellerId, amountNzd, stripeAccountId } = job.data;
 
@@ -40,15 +43,18 @@ export function startPayoutWorker() {
         throw new Error(`Payout not found for order ${orderId}`);
       }
 
-      if (payout.status !== 'PENDING') {
-        logger.info('payout.worker.skipped', { payoutId: payout.id, status: payout.status });
+      if (payout.status !== "PENDING") {
+        logger.info("payout.worker.skipped", {
+          payoutId: payout.id,
+          status: payout.status,
+        });
         return { skipped: true, reason: `Already ${payout.status}` };
       }
 
       // 1. Initiate Stripe transfer to seller's Connect account
       const transfer = await stripe.transfers.create({
         amount: amountNzd,
-        currency: 'nzd',
+        currency: "nzd",
         destination: stripeAccountId,
         metadata: {
           orderId,
@@ -62,7 +68,7 @@ export function startPayoutWorker() {
       await db.payout.update({
         where: { orderId },
         data: {
-          status: 'PROCESSING',
+          status: "PROCESSING",
           stripeTransferId: transfer.id,
           initiatedAt: new Date(),
         },
@@ -75,21 +81,25 @@ export function startPayoutWorker() {
       });
 
       if (seller) {
-        // Payout-notification email template not yet built — log the intent so
-        // ops can see it in Vercel / worker logs until the template is ready.
-        logger.info('payout.worker.email.stub', {
+        const orderForEmail = await db.order.findUnique({
+          where: { id: orderId },
+          select: { listing: { select: { title: true } } },
+        });
+        await sendPayoutInitiatedEmail({
           to: seller.email,
-          sellerName: seller.displayName,
+          sellerName: seller.displayName ?? "there",
+          amountNzd,
+          listingTitle: orderForEmail?.listing?.title ?? "your item",
           orderId,
-          amount: amountNzd / 100,
+          estimatedArrival: "2–3 business days",
         });
       }
 
       // 4. Audit
       audit({
         userId: sellerId,
-        action: 'PAYOUT_INITIATED',
-        entityType: 'Payout',
+        action: "PAYOUT_INITIATED",
+        entityType: "Payout",
         entityId: payout.id,
         metadata: {
           orderId,
@@ -101,31 +111,35 @@ export function startPayoutWorker() {
       return { transferId: transfer.id };
     },
     {
-      connection: getRedisConnection() as unknown as import('bullmq').ConnectionOptions,
+      connection:
+        getRedisConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 2,
-    }
+    },
   );
 
-  worker.on('failed', (job, err) => {
-    logger.error('payout.worker.job_failed', {
+  worker.on("failed", (job, err) => {
+    logger.error("payout.worker.job_failed", {
       jobId: job?.id,
       orderId: job?.data?.orderId,
       error: err.message,
     });
     audit({
-      action: 'ADMIN_ACTION',
+      action: "ADMIN_ACTION",
       metadata: {
-        worker: 'payout',
+        worker: "payout",
         jobId: job?.id,
         orderId: job?.data?.orderId,
         error: err.message,
-        status: 'failed',
+        status: "failed",
       },
     });
   });
 
-  worker.on('completed', (job) => {
-    logger.info('payout.worker.job_completed', { jobId: job.id, orderId: job.data.orderId });
+  worker.on("completed", (job) => {
+    logger.info("payout.worker.job_completed", {
+      jobId: job.id,
+      orderId: job.data.orderId,
+    });
   });
 
   return worker;

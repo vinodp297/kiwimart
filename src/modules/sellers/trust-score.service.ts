@@ -62,6 +62,7 @@ async function fetchSellerTrustProfile(
           isVerifiedSeller: true,
           idVerified: true,
           responseRate: true,
+          sellerTierOverride: true,
         },
       }),
       db.order.groupBy({
@@ -137,11 +138,15 @@ async function fetchSellerTrustProfile(
   data.score = calculateTrustScore(data);
 
   // Tier uses recent sales (last 12 months) — sellers must stay active to keep tier
-  const tier = calculateSellerTier({
-    completedSales: recentCompletedSales,
-    avgRating,
-    completionRate,
-  });
+  // Pass sellerTierOverride so admin-set overrides take precedence
+  const tier = await calculateSellerTier(
+    {
+      completedSales: recentCompletedSales,
+      avgRating,
+      completionRate,
+    },
+    user.sellerTierOverride,
+  );
 
   return {
     trustScore: data.score,

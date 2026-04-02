@@ -1,14 +1,27 @@
-'use client';
+"use client";
 
-import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { updateProfile, deleteAccount } from '@/server/actions/account';
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { updateProfile, deleteAccount } from "@/server/actions/account";
 
-const NZ_REGIONS = [
-  'Auckland', 'Wellington', 'Canterbury', 'Waikato', 'Bay of Plenty',
-  'Otago', "Hawke's Bay", 'Manawatu-Whanganui', 'Northland', 'Tasman',
-  'Nelson', 'Marlborough', 'Southland', 'Taranaki', 'Gisborne', 'West Coast',
+const NZ_REGIONS_DEFAULT = [
+  "Auckland",
+  "Wellington",
+  "Canterbury",
+  "Waikato",
+  "Bay of Plenty",
+  "Otago",
+  "Hawke's Bay",
+  "Manawatū-Whanganui",
+  "Northland",
+  "Tasman",
+  "Nelson",
+  "Marlborough",
+  "Southland",
+  "Taranaki",
+  "Gisborne",
+  "West Coast",
 ];
 
 interface UserProfile {
@@ -21,33 +34,40 @@ interface UserProfile {
   agreeMarketing: boolean;
 }
 
-export default function SettingsForm({ user }: { user: UserProfile }) {
+export default function SettingsForm({
+  user,
+  regions,
+}: {
+  user: UserProfile;
+  regions?: string[];
+}) {
+  const NZ_REGIONS = regions ?? NZ_REGIONS_DEFAULT;
   const [displayName, setDisplayName] = useState(user.displayName);
-  const [region, setRegion] = useState(user.region ?? '');
-  const [bio, setBio] = useState(user.bio ?? '');
+  const [region, setRegion] = useState(user.region ?? "");
+  const [bio, setBio] = useState(user.bio ?? "");
   const [marketingEmails, setMarketingEmails] = useState(user.agreeMarketing);
   const [orderEmails, setOrderEmails] = useState(true);
   const [offerEmails, setOfferEmails] = useState(true);
   const [watchlistEmails, setWatchlistEmails] = useState(true);
 
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError] = useState('');
+  const [saveError, setSaveError] = useState("");
   const [isPending, startTransition] = useTransition();
 
   const router = useRouter();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deleteError, setDeleteError] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [isDeleting, startDeleteTransition] = useTransition();
 
   const inputClass =
-    'w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] text-[14px] ' +
-    'text-[#141414] placeholder:text-[#C9C5BC] focus:outline-none ' +
-    'focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition';
+    "w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] text-[14px] " +
+    "text-[#141414] placeholder:text-[#C9C5BC] focus:outline-none " +
+    "focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition";
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    setSaveError('');
+    setSaveError("");
     setSaveSuccess(false);
     startTransition(async () => {
       const result = await updateProfile({ displayName, region, bio });
@@ -67,7 +87,9 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
     !!region,
     !!bio,
   ];
-  const completePct = Math.round((fields.filter(Boolean).length / fields.length) * 100);
+  const completePct = Math.round(
+    (fields.filter(Boolean).length / fields.length) * 100,
+  );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
@@ -80,14 +102,18 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
           </h2>
 
           {saveError && (
-            <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200
-              text-[13px] text-red-700">
+            <div
+              className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200
+              text-[13px] text-red-700"
+            >
               {saveError}
             </div>
           )}
           {saveSuccess && (
-            <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200
-              text-[13px] text-emerald-700">
+            <div
+              className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200
+              text-[13px] text-emerald-700"
+            >
               Profile updated successfully.
             </div>
           )}
@@ -165,7 +191,9 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
               >
                 <option value="">Select your region</option>
                 {NZ_REGIONS.map((r) => (
-                  <option key={r} value={r}>{r}</option>
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
                 ))}
               </select>
             </div>
@@ -173,7 +201,7 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
             {/* Bio */}
             <div id="bio">
               <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
-                Bio{' '}
+                Bio{" "}
                 <span className="text-[#9E9A91] font-normal">(optional)</span>
               </label>
               <textarea
@@ -199,7 +227,7 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
                 font-semibold text-[14px] hover:bg-[#B8912E] hover:text-white
                 transition-colors disabled:opacity-60"
             >
-              {isPending ? 'Saving...' : 'Save changes'}
+              {isPending ? "Saving..." : "Save changes"}
             </button>
           </form>
         </div>
@@ -219,26 +247,42 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
             />
           </div>
           <p className="text-[13px] text-[#73706A] mb-4">
-            <span className="font-semibold text-[#141414]">{completePct}%</span> complete
+            <span className="font-semibold text-[#141414]">{completePct}%</span>{" "}
+            complete
           </p>
           <ul className="space-y-2">
             {[
-              { done: !!user.displayName, label: 'Display name' },
-              { done: !!user.emailVerified, label: 'Email verified' },
-              { done: !!region, label: 'Region selected' },
-              { done: !!bio, label: 'Bio written' },
+              { done: !!user.displayName, label: "Display name" },
+              { done: !!user.emailVerified, label: "Email verified" },
+              { done: !!region, label: "Region selected" },
+              { done: !!bio, label: "Bio written" },
             ].map(({ done, label }) => (
               <li key={label} className="flex items-center gap-2 text-[12.5px]">
                 {done ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#16a34a"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
                   </svg>
                 ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9C5BC" strokeWidth="2">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#C9C5BC"
+                    strokeWidth="2"
+                  >
                     <circle cx="12" cy="12" r="10" />
                   </svg>
                 )}
-                <span className={done ? 'text-[#141414]' : 'text-[#9E9A91]'}>
+                <span className={done ? "text-[#141414]" : "text-[#9E9A91]"}>
                   {label}
                 </span>
               </li>
@@ -247,43 +291,51 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
         </div>
 
         {/* ── Section 2: Notification preferences ──────────────────── */}
-        <div id="notifications" className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+        <div
+          id="notifications"
+          className="bg-white rounded-2xl border border-[#E3E0D9] p-6"
+        >
           <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
             Notifications
           </h2>
           <div className="space-y-4">
             {[
               {
-                id: 'order-emails',
-                label: 'Message notifications',
+                id: "order-emails",
+                label: "Message notifications",
                 value: orderEmails,
                 set: setOrderEmails,
               },
               {
-                id: 'offer-emails',
-                label: 'Offer notifications',
+                id: "offer-emails",
+                label: "Offer notifications",
                 value: offerEmails,
                 set: setOfferEmails,
               },
               {
-                id: 'watchlist-emails',
-                label: 'Watchlist price drops',
+                id: "watchlist-emails",
+                label: "Watchlist price drops",
                 value: watchlistEmails,
                 set: setWatchlistEmails,
               },
               {
-                id: 'marketing-emails',
-                label: 'Marketing emails',
+                id: "marketing-emails",
+                label: "Marketing emails",
                 value: marketingEmails,
                 set: setMarketingEmails,
                 optional: true,
               },
             ].map(({ id, label, value, set, optional }) => (
               <div key={id} className="flex items-center justify-between gap-4">
-                <label htmlFor={id} className="text-[13px] text-[#141414] cursor-pointer">
-                  {label}{' '}
+                <label
+                  htmlFor={id}
+                  className="text-[13px] text-[#141414] cursor-pointer"
+                >
+                  {label}{" "}
                   {optional && (
-                    <span className="text-[#9E9A91] text-[11px]">(optional)</span>
+                    <span className="text-[#9E9A91] text-[11px]">
+                      (optional)
+                    </span>
                   )}
                 </label>
                 <button
@@ -293,11 +345,11 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
                   onClick={() => set((v: boolean) => !v)}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full
                     transition-colors shrink-0
-                    ${value ? 'bg-[#D4A843]' : 'bg-[#E3E0D9]'}`}
+                    ${value ? "bg-[#D4A843]" : "bg-[#E3E0D9]"}`}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
-                      transition-transform ${value ? 'translate-x-6' : 'translate-x-1'}`}
+                      transition-transform ${value ? "translate-x-6" : "translate-x-1"}`}
                   />
                 </button>
               </div>
@@ -306,7 +358,10 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
         </div>
 
         {/* ── Section 3: Account actions ────────────────────────────── */}
-        <div id="security" className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+        <div
+          id="security"
+          className="bg-white rounded-2xl border border-[#E3E0D9] p-6"
+        >
           <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
             Account actions
           </h2>
@@ -322,10 +377,14 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
               </span>
               <svg
                 className="text-[#9E9A91] group-hover:text-[#D4A843] transition-colors"
-                width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.5"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
               >
-                <path d="M5 12h14M12 5l7 7-7 7"/>
+                <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </Link>
 
@@ -340,10 +399,14 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
               </span>
               <svg
                 className="text-[#9E9A91] group-hover:text-[#D4A843] transition-colors"
-                width="14" height="14" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.5"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
               >
-                <path d="M5 12h14M12 5l7 7-7 7"/>
+                <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </Link>
 
@@ -353,10 +416,19 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
                 rounded-xl border border-red-200 text-red-500
                 hover:border-red-400 hover:bg-red-50 transition-colors"
             >
-              <span className="text-[13.5px] font-medium">Delete my account</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              <span className="text-[13.5px] font-medium">
+                Delete my account
+              </span>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
               </svg>
             </button>
           </div>
@@ -368,30 +440,47 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
         <div
           className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm
             flex items-center justify-center p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteError(''); } }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowDeleteModal(false);
+              setDeleteConfirmText("");
+              setDeleteError("");
+            }
+          }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
             <div
               className="w-12 h-12 rounded-full bg-red-50 flex items-center
                 justify-center mb-4"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                <line x1="12" y1="9" x2="12" y2="13"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth="2"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <h2 className="font-[family-name:var(--font-playfair)] text-[1.25rem]
-              font-semibold text-[#141414] mb-2">
+            <h2
+              className="font-[family-name:var(--font-playfair)] text-[1.25rem]
+              font-semibold text-[#141414] mb-2"
+            >
               Delete your account?
             </h2>
             <p className="text-[13.5px] text-[#73706A] leading-relaxed mb-4">
-              This action <strong>cannot be undone</strong>. Your personal data will
-              be anonymised and your listings will be removed. Order history is
-              retained for tax compliance.
+              This action <strong>cannot be undone</strong>. Your personal data
+              will be anonymised and your listings will be removed. Order
+              history is retained for tax compliance.
             </p>
             <p className="text-[13px] text-[#141414] font-medium mb-2">
-              Type <span className="font-mono font-bold text-red-600">DELETE</span> to confirm:
+              Type{" "}
+              <span className="font-mono font-bold text-red-600">DELETE</span>{" "}
+              to confirm:
             </p>
             <input
               type="text"
@@ -406,7 +495,11 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
             )}
             <div className="flex gap-3">
               <button
-                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteError(''); }}
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText("");
+                  setDeleteError("");
+                }}
                 className="flex-1 h-11 rounded-xl border border-[#E3E0D9]
                   text-[13.5px] font-semibold text-[#141414]
                   hover:bg-[#F8F7F4] transition-colors"
@@ -414,15 +507,15 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
                 Cancel
               </button>
               <button
-                disabled={deleteConfirmText !== 'DELETE' || isDeleting}
+                disabled={deleteConfirmText !== "DELETE" || isDeleting}
                 onClick={() => {
-                  setDeleteError('');
+                  setDeleteError("");
                   startDeleteTransition(async () => {
                     const result = await deleteAccount();
                     if (result.success) {
-                      router.push('/login?deleted=true');
+                      router.push("/login?deleted=true");
                     } else {
-                      setDeleteError(result.error ?? 'Deletion failed.');
+                      setDeleteError(result.error ?? "Deletion failed.");
                     }
                   });
                 }}
@@ -431,7 +524,7 @@ export default function SettingsForm({ user }: { user: UserProfile }) {
                   hover:bg-red-600 transition-colors
                   disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isDeleting ? 'Deleting...' : 'Delete my account'}
+                {isDeleting ? "Deleting..." : "Delete my account"}
               </button>
             </div>
           </div>

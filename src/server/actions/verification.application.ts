@@ -172,7 +172,7 @@ export async function reviewVerificationApplication(
         userId: sellerId,
         type: "SYSTEM",
         title: "Seller verification approved!",
-        body: "Congratulations! You are now a Verified Seller on KiwiMart.",
+        body: `Congratulations! You are now a Verified Seller on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}.`,
         link: "/dashboard/seller",
       }).catch(() => {});
     } else {

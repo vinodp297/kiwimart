@@ -4,6 +4,7 @@
 // Rule: Stripe FIRST, then DB.
 
 import db from "@/lib/db";
+import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { audit } from "@/server/lib/audit";
 import { paymentService } from "@/modules/payments/payment.service";
 import { transitionOrder } from "./order.transitions";
@@ -13,6 +14,7 @@ import { createNotification } from "@/modules/notifications/notification.service
 import {
   sendDisputeOpenedEmail,
   sendOrderDispatchedEmail,
+  sendCancellationEmail,
 } from "@/server/email";
 import {
   orderEventService,
@@ -24,6 +26,10 @@ import {
   INTERACTION_TYPES,
   AUTO_ACTIONS,
 } from "./order-interaction.service";
+import {
+  createDispute,
+  getDisputeByOrderId,
+} from "@/server/services/dispute/dispute.service";
 import type { DispatchOrderInput, OpenDisputeInput } from "./order.types";
 
 export interface DeliveryFeedback {
@@ -347,7 +353,7 @@ export class OrderService {
         sellerId: true,
         status: true,
         dispatchedAt: true,
-        disputeOpenedAt: true,
+        fulfillmentType: true,
         listing: { select: { title: true } },
         seller: { select: { email: true, displayName: true } },
         buyer: { select: { displayName: true } },
@@ -355,6 +361,15 @@ export class OrderService {
     });
 
     if (!order) throw AppError.notFound("Order");
+
+    // Cash-on-pickup orders have no platform payment — disputes cannot be opened
+    if (order.fulfillmentType === "CASH_ON_PICKUP") {
+      throw new AppError(
+        "INVALID_OPERATION",
+        "Disputes cannot be opened for cash-on-pickup orders. No platform payment was involved in this transaction.",
+        400,
+      );
+    }
 
     if (order.buyerId !== buyerId) {
       throw AppError.unauthorised("Only the buyer can open a dispute.");
@@ -368,7 +383,9 @@ export class OrderService {
       );
     }
 
-    if (order.disputeOpenedAt) {
+    // Check for existing dispute via Dispute model
+    const existingDispute = await getDisputeByOrderId(input.orderId);
+    if (existingDispute) {
       throw new AppError(
         "ORDER_WRONG_STATE",
         "A dispute has already been opened for this order.",
@@ -377,29 +394,41 @@ export class OrderService {
     }
 
     if (order.dispatchedAt) {
-      const daysSinceDispatch =
-        (Date.now() - order.dispatchedAt.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSinceDispatch > 14) {
+      const disputeOpenWindowDays = await getConfigInt(
+        CONFIG_KEYS.DISPUTE_OPEN_WINDOW_DAYS,
+      );
+      const disputeDeadline = new Date(
+        order.dispatchedAt.getTime() +
+          disputeOpenWindowDays * 24 * 60 * 60 * 1000,
+      );
+      if (new Date() > disputeDeadline) {
         throw new AppError(
           "ORDER_WRONG_STATE",
-          "Disputes must be opened within 14 days of dispatch.",
+          `Disputes must be opened within ${disputeOpenWindowDays} days of dispatch.`,
           400,
         );
       }
     }
 
-    await transitionOrder(
-      input.orderId,
-      "DISPUTED",
-      {
-        disputeReason: input.reason,
-        disputeOpenedAt: new Date(),
-        disputeNotes: input.description,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        disputeEvidenceUrls: input.evidenceUrls ?? ([] as any),
-      },
-      { fromStatus: order.status },
-    );
+    // Transition Order status + create Dispute record in same transaction
+    await db.$transaction(async (tx) => {
+      await transitionOrder(
+        input.orderId,
+        "DISPUTED",
+        {},
+        { tx, fromStatus: order.status },
+      );
+
+      await createDispute({
+        orderId: input.orderId,
+        reason: input.reason,
+        source: "STANDARD",
+        buyerStatement: input.description,
+        evidenceKeys: input.evidenceUrls ?? [],
+        buyerId,
+        tx,
+      });
+    });
 
     // Notify seller directly — BullMQ worker does not run on Vercel serverless
     try {
@@ -478,7 +507,7 @@ export class OrderService {
 
     if (!order) throw AppError.notFound("Order");
 
-    const status = getCancellationStatus(order);
+    const status = await getCancellationStatus(order);
     if (!status.canCancel) {
       throw new AppError("ORDER_WRONG_STATE", status.message, 400);
     }
@@ -531,15 +560,49 @@ export class OrderService {
     });
 
     logger.info("order.cancelled", { orderId, cancelledBy: userId, reason });
+
+    // Fire-and-forget cancellation emails to both parties
+    db.order
+      .findUnique({
+        where: { id: orderId },
+        select: {
+          totalNzd: true,
+          buyer: { select: { email: true, displayName: true } },
+          seller: { select: { email: true, displayName: true } },
+          listing: { select: { title: true } },
+        },
+      })
+      .then((o) => {
+        if (!o) return;
+        const refundAmount =
+          order.status === "PAYMENT_HELD" ? o.totalNzd : null;
+        const cancelReason = reason ?? "";
+        sendCancellationEmail({
+          to: o.buyer.email,
+          recipientName: o.buyer.displayName ?? "there",
+          recipientRole: "buyer",
+          orderId,
+          listingTitle: o.listing.title,
+          cancellationReason: cancelReason,
+          refundAmount,
+        }).catch(() => {});
+        sendCancellationEmail({
+          to: o.seller.email,
+          recipientName: o.seller.displayName ?? "there",
+          recipientRole: "seller",
+          orderId,
+          listingTitle: o.listing.title,
+          cancellationReason: cancelReason,
+          refundAmount: null,
+        }).catch(() => {});
+      })
+      .catch(() => {});
   }
 }
 
 export const orderService = new OrderService();
 
 // ── Cancellation window logic ────────────────────────────────────────────────
-
-const CANCEL_FREE_WINDOW_MINUTES = 60; // 1 hour free cancellation
-const CANCEL_REQUEST_WINDOW_HOURS = 24; // 24 hours with reason required
 
 export interface CancellationStatus {
   canCancel: boolean;
@@ -548,10 +611,10 @@ export interface CancellationStatus {
   windowType: "free" | "request" | "closed" | "na";
 }
 
-export function getCancellationStatus(order: {
+export async function getCancellationStatus(order: {
   status: string;
   createdAt: Date;
-}): CancellationStatus {
+}): Promise<CancellationStatus> {
   if (order.status !== "PAYMENT_HELD") {
     return {
       canCancel: false,
@@ -564,12 +627,17 @@ export function getCancellationStatus(order: {
     };
   }
 
+  const [freeWindowMinutes, requestWindowHours] = await Promise.all([
+    getConfigInt(CONFIG_KEYS.FREE_CANCEL_WINDOW_MINUTES),
+    getConfigInt(CONFIG_KEYS.CANCEL_REQUEST_WINDOW_HOURS),
+  ]);
+
   const minutesElapsed = Math.floor(
     (Date.now() - new Date(order.createdAt).getTime()) / (1000 * 60),
   );
 
-  if (minutesElapsed <= CANCEL_FREE_WINDOW_MINUTES) {
-    const minutesLeft = CANCEL_FREE_WINDOW_MINUTES - minutesElapsed;
+  if (minutesElapsed <= freeWindowMinutes) {
+    const minutesLeft = freeWindowMinutes - minutesElapsed;
     return {
       canCancel: true,
       requiresReason: false,
@@ -578,7 +646,7 @@ export function getCancellationStatus(order: {
     };
   }
 
-  if (minutesElapsed <= CANCEL_REQUEST_WINDOW_HOURS * 60) {
+  if (minutesElapsed <= requestWindowHours * 60) {
     return {
       canCancel: true,
       requiresReason: true,

@@ -12,11 +12,6 @@ import { analyzeInconsistencies } from "@/modules/disputes/inconsistency-analysi
 export interface DisputeQueueItem {
   id: string;
   totalNzd: number;
-  disputeReason: string | null;
-  disputeNotes: string | null;
-  disputeOpenedAt: Date | null;
-  sellerResponse: string | null;
-  sellerRespondedAt: Date | null;
   updatedAt: Date;
   listing: {
     id: string;
@@ -31,6 +26,18 @@ export interface DisputeQueueItem {
     displayName: string;
     idVerified: boolean;
   };
+  // Dispute data from standalone Dispute model
+  dispute: {
+    id: string;
+    reason: string;
+    status: string;
+    source: string;
+    buyerStatement: string | null;
+    sellerStatement: string | null;
+    openedAt: Date;
+    sellerRespondedAt: Date | null;
+    resolvedAt: Date | null;
+  } | null;
   // Auto-resolution data (from OrderEvent metadata)
   autoResolution: {
     decision: string;
@@ -42,6 +49,8 @@ export interface DisputeQueueItem {
   } | null;
   // Days open
   daysOpen: number;
+  // Pickup
+  fulfillmentType: string;
 }
 
 export interface DisputeQueueStats {
@@ -50,6 +59,7 @@ export interface DisputeQueueStats {
   fraudAlerts: number;
   autoResolved: number;
   totalOpen: number;
+  pickupOrders: number;
   avgResolutionHours: number;
   autoResolvedThisMonth: number;
   autoResolvedPercentThisMonth: number;
@@ -65,14 +75,51 @@ export interface DisputeCaseDetail {
     completedAt: Date | null;
     trackingNumber: string | null;
     stripePaymentIntentId: string | null;
-    disputeReason: string | null;
-    disputeNotes: string | null;
-    disputeOpenedAt: Date | null;
-    disputeEvidenceUrls: string[];
-    sellerResponse: string | null;
-    sellerRespondedAt: Date | null;
-    disputeResolvedAt: Date | null;
+    // Pickup fields
+    fulfillmentType: string;
+    pickupStatus: string | null;
+    pickupScheduledAt: Date | null;
+    otpInitiatedAt: Date | null;
+    pickupConfirmedAt: Date | null;
+    pickupRejectedAt: Date | null;
+    rescheduleCount: number;
+    pickupRescheduleRequests: Array<{
+      id: string;
+      requestedByRole: string;
+      sellerReason: string | null;
+      buyerReason: string | null;
+      reasonNote: string | null;
+      proposedTime: Date;
+      status: string;
+      responseNote: string | null;
+      respondedAt: Date | null;
+      createdAt: Date;
+      requestedBy: { displayName: string | null };
+    }>;
   };
+  dispute: {
+    id: string;
+    reason: string;
+    status: string;
+    source: string;
+    buyerStatement: string | null;
+    sellerStatement: string | null;
+    adminNotes: string | null;
+    resolution: string | null;
+    refundAmount: number | null;
+    autoResolutionScore: number | null;
+    autoResolutionReason: string | null;
+    openedAt: Date;
+    sellerRespondedAt: Date | null;
+    resolvedAt: Date | null;
+    evidence: Array<{
+      id: string;
+      r2Key: string;
+      uploadedBy: string;
+      label: string | null;
+      createdAt: Date;
+    }>;
+  } | null;
   listing: {
     id: string;
     title: string;
@@ -163,6 +210,20 @@ export interface DisputeCaseDetail {
     createdAt: Date;
     actor: { displayName: string | null } | null;
   }>;
+  snapshot: {
+    title: string;
+    description: string;
+    condition: string;
+    priceNzd: number;
+    shippingNzd: number;
+    categoryName: string;
+    subcategoryName: string | null;
+    shippingOption: string;
+    isNegotiable: boolean;
+    images: unknown; // JSON — cast to SnapshotImage[] at the UI layer
+    attributes: unknown; // JSON — cast to SnapshotAttribute[] at the UI layer
+    capturedAt: Date;
+  } | null;
 }
 
 // ── Shared select for dispute queue ──────────────────────────────────────
@@ -170,12 +231,21 @@ export interface DisputeCaseDetail {
 const DISPUTE_SELECT = {
   id: true,
   totalNzd: true,
-  disputeReason: true,
-  disputeNotes: true,
-  disputeOpenedAt: true,
-  sellerResponse: true,
-  sellerRespondedAt: true,
   updatedAt: true,
+  fulfillmentType: true,
+  dispute: {
+    select: {
+      id: true,
+      reason: true,
+      status: true,
+      source: true,
+      buyerStatement: true,
+      sellerStatement: true,
+      openedAt: true,
+      sellerRespondedAt: true,
+      resolvedAt: true,
+    },
+  },
   listing: {
     select: {
       id: true,
@@ -281,6 +351,7 @@ export class AdminDisputesService {
       allDisputeEvents,
       resolvedThisMonth,
       autoResolvedThisMonth,
+      pickupOrders,
     ] = await Promise.all([
       db.order.count({ where: { status: "DISPUTED" } }),
       db.orderEvent.findMany({
@@ -295,9 +366,9 @@ export class AdminDisputesService {
         orderBy: { createdAt: "desc" },
         select: { orderId: true, metadata: true },
       }),
-      db.order.count({
+      db.dispute.count({
         where: {
-          disputeResolvedAt: { not: null, gte: monthStart },
+          resolvedAt: { not: null, gte: monthStart },
         },
       }),
       db.orderEvent.count({
@@ -305,6 +376,12 @@ export class AdminDisputesService {
           type: "AUTO_RESOLVED",
           metadata: { path: ["status"], equals: "EXECUTED" },
           createdAt: { gte: monthStart },
+        },
+      }),
+      db.order.count({
+        where: {
+          status: "DISPUTED",
+          fulfillmentType: { not: "SHIPPED" },
         },
       }),
     ]);
@@ -349,15 +426,14 @@ export class AdminDisputesService {
       }
     }
 
-    // Average resolution time
-    const recentResolved = await db.order.findMany({
+    // Average resolution time (from Dispute model)
+    const recentResolved = await db.dispute.findMany({
       where: {
-        disputeResolvedAt: { not: null },
-        disputeOpenedAt: { not: null },
+        resolvedAt: { not: null },
       },
-      select: { disputeOpenedAt: true, disputeResolvedAt: true },
+      select: { openedAt: true, resolvedAt: true },
       take: 50,
-      orderBy: { disputeResolvedAt: "desc" },
+      orderBy: { resolvedAt: "desc" },
     });
 
     let avgResolutionHours = 0;
@@ -365,8 +441,7 @@ export class AdminDisputesService {
       const totalHours = recentResolved.reduce((sum, r) => {
         return (
           sum +
-          (r.disputeResolvedAt!.getTime() - r.disputeOpenedAt!.getTime()) /
-            (1000 * 60 * 60)
+          (r.resolvedAt!.getTime() - r.openedAt.getTime()) / (1000 * 60 * 60)
         );
       }, 0);
       avgResolutionHours = Math.round(totalHours / recentResolved.length);
@@ -383,6 +458,7 @@ export class AdminDisputesService {
       fraudAlerts,
       autoResolved: autoResolvedThisMonth,
       totalOpen,
+      pickupOrders,
       avgResolutionHours,
       autoResolvedThisMonth,
       autoResolvedPercentThisMonth,
@@ -393,7 +469,13 @@ export class AdminDisputesService {
    * Fetch disputes for a specific queue tab.
    */
   async getDisputeQueue(
-    tab: "needs_decision" | "cooling" | "fraud" | "auto_resolved" | "all",
+    tab:
+      | "needs_decision"
+      | "cooling"
+      | "fraud"
+      | "auto_resolved"
+      | "pickup"
+      | "all",
   ): Promise<DisputeQueueItem[]> {
     let disputes;
 
@@ -401,7 +483,7 @@ export class AdminDisputesService {
       // Show resolved disputes with auto-resolution
       disputes = await db.order.findMany({
         where: {
-          disputeResolvedAt: { not: null },
+          dispute: { resolvedAt: { not: null } },
           status: { in: ["COMPLETED", "REFUNDED"] },
         },
         select: DISPUTE_SELECT,
@@ -411,7 +493,7 @@ export class AdminDisputesService {
     } else if (tab === "all") {
       // All disputes (open + resolved)
       disputes = await db.order.findMany({
-        where: { disputeOpenedAt: { not: null } },
+        where: { dispute: { isNot: null } },
         select: DISPUTE_SELECT,
         orderBy: { updatedAt: "desc" },
         take: 100,
@@ -421,7 +503,7 @@ export class AdminDisputesService {
       disputes = await db.order.findMany({
         where: { status: "DISPUTED" },
         select: DISPUTE_SELECT,
-        orderBy: { disputeOpenedAt: "asc" },
+        orderBy: [{ dispute: { openedAt: "asc" } }, { updatedAt: "asc" }],
       });
     }
 
@@ -434,9 +516,16 @@ export class AdminDisputesService {
     for (const d of disputes) {
       const autoRes = autoResMap.get(d.id) ?? null;
       const item: DisputeQueueItem = {
-        ...d,
+        id: d.id,
+        totalNzd: d.totalNzd,
+        updatedAt: d.updatedAt,
+        listing: d.listing,
+        buyer: d.buyer,
+        seller: d.seller,
+        dispute: d.dispute ?? null,
         autoResolution: autoRes,
-        daysOpen: daysAgo(d.disputeOpenedAt ?? d.updatedAt),
+        daysOpen: daysAgo(d.dispute?.openedAt ?? d.updatedAt),
+        fulfillmentType: d.fulfillmentType,
       };
 
       // Filter by tab
@@ -456,6 +545,8 @@ export class AdminDisputesService {
           continue;
       } else if (tab === "auto_resolved") {
         if (!autoRes || autoRes.status !== "EXECUTED") continue;
+      } else if (tab === "pickup") {
+        if (item.fulfillmentType === "SHIPPED") continue;
       }
 
       items.push(item);
@@ -479,13 +570,57 @@ export class AdminDisputesService {
         completedAt: true,
         trackingNumber: true,
         stripePaymentIntentId: true,
-        disputeReason: true,
-        disputeNotes: true,
-        disputeOpenedAt: true,
-        disputeEvidenceUrls: true,
-        sellerResponse: true,
-        sellerRespondedAt: true,
-        disputeResolvedAt: true,
+        fulfillmentType: true,
+        dispute: {
+          select: {
+            id: true,
+            reason: true,
+            status: true,
+            source: true,
+            buyerStatement: true,
+            sellerStatement: true,
+            adminNotes: true,
+            resolution: true,
+            refundAmount: true,
+            autoResolutionScore: true,
+            autoResolutionReason: true,
+            openedAt: true,
+            sellerRespondedAt: true,
+            resolvedAt: true,
+            evidence: {
+              select: {
+                id: true,
+                r2Key: true,
+                uploadedBy: true,
+                label: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: "asc" as const },
+            },
+          },
+        },
+        pickupStatus: true,
+        pickupScheduledAt: true,
+        otpInitiatedAt: true,
+        pickupConfirmedAt: true,
+        pickupRejectedAt: true,
+        rescheduleCount: true,
+        pickupRescheduleRequests: {
+          orderBy: { createdAt: "asc" as const },
+          select: {
+            id: true,
+            requestedByRole: true,
+            sellerReason: true,
+            buyerReason: true,
+            reasonNote: true,
+            proposedTime: true,
+            status: true,
+            responseNote: true,
+            respondedAt: true,
+            createdAt: true,
+            requestedBy: { select: { displayName: true } },
+          },
+        },
         listing: {
           select: {
             id: true,
@@ -497,6 +632,22 @@ export class AdminDisputesService {
               select: { r2Key: true, thumbnailKey: true },
               orderBy: { order: "asc" },
             },
+          },
+        },
+        snapshot: {
+          select: {
+            title: true,
+            description: true,
+            condition: true,
+            priceNzd: true,
+            shippingNzd: true,
+            categoryName: true,
+            subcategoryName: true,
+            shippingOption: true,
+            isNegotiable: true,
+            images: true,
+            attributes: true,
+            capturedAt: true,
           },
         },
         buyer: {
@@ -636,14 +787,34 @@ export class AdminDisputesService {
         completedAt: order.completedAt,
         trackingNumber: order.trackingNumber,
         stripePaymentIntentId: order.stripePaymentIntentId,
-        disputeReason: order.disputeReason,
-        disputeNotes: order.disputeNotes,
-        disputeOpenedAt: order.disputeOpenedAt,
-        disputeEvidenceUrls: order.disputeEvidenceUrls,
-        sellerResponse: order.sellerResponse,
-        sellerRespondedAt: order.sellerRespondedAt,
-        disputeResolvedAt: order.disputeResolvedAt,
+        fulfillmentType: order.fulfillmentType,
+        pickupStatus: order.pickupStatus,
+        pickupScheduledAt: order.pickupScheduledAt,
+        otpInitiatedAt: order.otpInitiatedAt,
+        pickupConfirmedAt: order.pickupConfirmedAt,
+        pickupRejectedAt: order.pickupRejectedAt,
+        rescheduleCount: order.rescheduleCount,
+        pickupRescheduleRequests: order.pickupRescheduleRequests,
       },
+      dispute: order.dispute
+        ? {
+            id: order.dispute.id,
+            reason: order.dispute.reason,
+            status: order.dispute.status,
+            source: order.dispute.source,
+            buyerStatement: order.dispute.buyerStatement,
+            sellerStatement: order.dispute.sellerStatement,
+            adminNotes: order.dispute.adminNotes,
+            resolution: order.dispute.resolution,
+            refundAmount: order.dispute.refundAmount,
+            autoResolutionScore: order.dispute.autoResolutionScore,
+            autoResolutionReason: order.dispute.autoResolutionReason,
+            openedAt: order.dispute.openedAt,
+            sellerRespondedAt: order.dispute.sellerRespondedAt,
+            resolvedAt: order.dispute.resolvedAt,
+            evidence: order.dispute.evidence,
+          }
+        : null,
       listing: order.listing,
       buyer: {
         id: order.buyer.id,
@@ -696,6 +867,22 @@ export class AdminDisputesService {
         ...e,
         metadata: e.metadata as Record<string, unknown> | null,
       })),
+      snapshot: order.snapshot
+        ? {
+            title: order.snapshot.title,
+            description: order.snapshot.description,
+            condition: order.snapshot.condition,
+            priceNzd: order.snapshot.priceNzd,
+            shippingNzd: order.snapshot.shippingNzd,
+            categoryName: order.snapshot.categoryName,
+            subcategoryName: order.snapshot.subcategoryName,
+            shippingOption: order.snapshot.shippingOption,
+            isNegotiable: order.snapshot.isNegotiable,
+            images: order.snapshot.images,
+            attributes: order.snapshot.attributes,
+            capturedAt: order.snapshot.capturedAt,
+          }
+        : null,
     };
   }
 }

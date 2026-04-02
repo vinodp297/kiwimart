@@ -1,18 +1,19 @@
-import { Suspense } from 'react';
-import type { Metadata } from 'next';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import LoadingSkeleton from '@/components/LoadingSkeleton';
-import SearchPageClient from './SearchPageClient';
-import { searchListings } from '@/server/actions/search';
-import { NZ_REGION_CENTERS } from '@/lib/geocoding';
-import type { SortOption } from '@/types';
+import { Suspense } from "react";
+import type { Metadata } from "next";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import LoadingSkeleton from "@/components/LoadingSkeleton";
+import SearchPageClient from "./SearchPageClient";
+import { searchListings } from "@/server/actions/search";
+import { getRegionsWithCoords } from "@/lib/dynamic-lists";
+import type { SortOption } from "@/types";
 
 export const revalidate = 300;
 
 export const metadata: Metadata = {
-  title: 'Search Listings',
-  description: 'Search and filter thousands of listings from verified New Zealand sellers.',
+  title: "Search Listings",
+  description:
+    "Search and filter thousands of listings from verified New Zealand sellers.",
 };
 
 export default async function SearchPage({
@@ -21,32 +22,54 @@ export default async function SearchPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const q = typeof sp.q === 'string' ? sp.q : undefined;
-  const category = typeof sp.category === 'string' ? sp.category : undefined;
-  const subcategory = typeof sp.subcategory === 'string' ? sp.subcategory : undefined;
-  const condition = typeof sp.condition === 'string' ? sp.condition : undefined;
-  const region = typeof sp.region === 'string' ? sp.region : undefined;
-  const priceMin = typeof sp.priceMin === 'string' && sp.priceMin ? Number(sp.priceMin) : undefined;
-  const priceMax = typeof sp.priceMax === 'string' && sp.priceMax ? Number(sp.priceMax) : undefined;
-  const sort = (typeof sp.sort === 'string' ? sp.sort : 'newest') as SortOption;
-  const page = typeof sp.page === 'string' ? Math.max(1, parseInt(sp.page, 10) || 1) : 1;
+  const q = typeof sp.q === "string" ? sp.q : undefined;
+  const category = typeof sp.category === "string" ? sp.category : undefined;
+  const subcategory =
+    typeof sp.subcategory === "string" ? sp.subcategory : undefined;
+  const condition = typeof sp.condition === "string" ? sp.condition : undefined;
+  const region = typeof sp.region === "string" ? sp.region : undefined;
+  const priceMin =
+    typeof sp.priceMin === "string" && sp.priceMin
+      ? Number(sp.priceMin)
+      : undefined;
+  const priceMax =
+    typeof sp.priceMax === "string" && sp.priceMax
+      ? Number(sp.priceMax)
+      : undefined;
+  const sort = (typeof sp.sort === "string" ? sp.sort : "newest") as SortOption;
+  const page =
+    typeof sp.page === "string" ? Math.max(1, parseInt(sp.page, 10) || 1) : 1;
   // Quick-filter chips
-  const isUrgent        = sp.isUrgent === 'true';
-  const isNegotiable    = sp.isNegotiable === 'true';
-  const shipsNationwide = sp.shipsNationwide === 'true';
-  const verifiedOnly    = sp.verifiedOnly === 'true';
-  const radiusKm = typeof sp.radiusKm === 'string' && sp.radiusKm ? Number(sp.radiusKm) : undefined;
+  const isUrgent = sp.isUrgent === "true";
+  const isNegotiable = sp.isNegotiable === "true";
+  const shipsNationwide = sp.shipsNationwide === "true";
+  const verifiedOnly = sp.verifiedOnly === "true";
+  const radiusKm =
+    typeof sp.radiusKm === "string" && sp.radiusKm
+      ? Number(sp.radiusKm)
+      : undefined;
 
   // Resolve region to lat/lng for radius search
-  const regionCenter = region ? NZ_REGION_CENTERS[region] : undefined;
+  const regions = await getRegionsWithCoords();
+  const regionCenter = region
+    ? regions.find((r) => r.value === region)
+    : undefined;
   const searchLat = regionCenter?.lat;
   const searchLng = regionCenter?.lng;
 
   let initialResults;
   try {
     initialResults = await searchListings({
-      query: q, category, subcategory, condition, region,
-      priceMin, priceMax, sort, page, pageSize: 24,
+      query: q,
+      category,
+      subcategory,
+      condition,
+      region,
+      priceMin,
+      priceMax,
+      sort,
+      page,
+      pageSize: 24,
       isUrgent: isUrgent || undefined,
       isNegotiable: isNegotiable || undefined,
       shipsNationwide: shipsNationwide || undefined,
@@ -56,7 +79,14 @@ export default async function SearchPage({
       radiusKm: radiusKm || undefined,
     });
   } catch {
-    initialResults = { listings: [], totalCount: 0, page: 1, pageSize: 24, totalPages: 0, hasNextPage: false };
+    initialResults = {
+      listings: [],
+      totalCount: 0,
+      page: 1,
+      pageSize: 24,
+      totalPages: 0,
+      hasNextPage: false,
+    };
   }
 
   return (
@@ -70,11 +100,13 @@ export default async function SearchPage({
             </div>
           }
         >
-          <SearchPageClient initialResults={initialResults} />
+          <SearchPageClient
+            initialResults={initialResults}
+            regionNames={regions.map((r) => r.value)}
+          />
         </Suspense>
       </main>
       <Footer />
     </>
   );
 }
-

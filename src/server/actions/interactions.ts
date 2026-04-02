@@ -20,7 +20,9 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { sendReturnRequestEmail } from "@/server/email";
 import type { ActionResult } from "@/types";
+import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import {
   requestCancellationSchema,
   respondToCancellationSchema,
@@ -32,8 +34,7 @@ import {
   respondToShippingDelaySchema,
 } from "@/server/validators";
 
-// ── Free cancellation window ────────────────────────────────────────────────
-const FREE_CANCEL_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+// FREE_CANCEL_WINDOW_MINUTES — now read from PlatformConfig inside each function
 
 // ── requestCancellation ─────────────────────────────────────────────────────
 
@@ -42,6 +43,11 @@ export async function requestCancellation(
 ): Promise<ActionResult<{ autoApproved: boolean; interactionId?: string }>> {
   try {
     const user = await requireUser();
+    const [FREE_CANCEL_WINDOW_MINUTES, CANCEL_REQUEST_WINDOW_HOURS] =
+      await Promise.all([
+        getConfigInt(CONFIG_KEYS.FREE_CANCEL_WINDOW_MINUTES),
+        getConfigInt(CONFIG_KEYS.CANCEL_REQUEST_WINDOW_HOURS),
+      ]);
 
     const parsed = requestCancellationSchema.safeParse(raw);
     if (!parsed.success) {
@@ -98,7 +104,8 @@ export async function requestCancellation(
     const hoursSinceCreation =
       (Date.now() - new Date(order.createdAt).getTime()) / (1000 * 60 * 60);
     const isInFreeWindow =
-      hoursSinceCreation < 2 && order.status === "PAYMENT_HELD";
+      hoursSinceCreation * 60 < FREE_CANCEL_WINDOW_MINUTES &&
+      order.status === "PAYMENT_HELD";
 
     // ── Free cancellation window: auto-approve immediately ────────────────
     if (isInFreeWindow) {
@@ -138,8 +145,7 @@ export async function requestCancellation(
         type: ORDER_EVENT_TYPES.CANCEL_AUTO_APPROVED,
         actorId: null,
         actorRole: ACTOR_ROLES.SYSTEM,
-        summary:
-          "Cancellation auto-approved (within 2-hour free cancellation window)",
+        summary: `Cancellation auto-approved (within ${FREE_CANCEL_WINDOW_MINUTES}-minute free cancellation window)`,
       });
 
       createNotification({
@@ -152,6 +158,14 @@ export async function requestCancellation(
       }).catch(() => {});
 
       return { success: true, data: { autoApproved: true } };
+    }
+
+    // ── Outside free window: check the cancellation request window ────────
+    if (hoursSinceCreation > CANCEL_REQUEST_WINDOW_HOURS) {
+      return {
+        success: false,
+        error: `Cancellation requests must be made within ${CANCEL_REQUEST_WINDOW_HOURS} hours of placing the order.`,
+      };
     }
 
     // ── Outside free window: create interaction for seller to respond ──────
@@ -381,7 +395,12 @@ export async function requestReturn(
       };
     }
 
-    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+    const returnResponseHours = await getConfigInt(
+      CONFIG_KEYS.RETURN_RESPONSE_WINDOW_HOURS,
+    );
+    const expiresAt = new Date(
+      Date.now() + returnResponseHours * 60 * 60 * 1000,
+    );
 
     const interaction = await orderInteractionService.createInteraction({
       orderId,
@@ -411,6 +430,27 @@ export async function requestReturn(
       orderId,
       link: `/orders/${orderId}`,
     }).catch(() => {});
+
+    // Fire-and-forget return request email to seller
+    db.user
+      .findUnique({
+        where: { id: order.sellerId },
+        select: { email: true, displayName: true },
+      })
+      .then((seller) => {
+        if (!seller) return;
+        sendReturnRequestEmail({
+          to: seller.email,
+          recipientName: seller.displayName ?? "there",
+          recipientRole: "seller",
+          orderId,
+          listingTitle: order.listing.title,
+          action: "REQUESTED",
+          reason: reason ?? null,
+          sellerNote: null,
+        }).catch(() => {});
+      })
+      .catch(() => {});
 
     return { success: true, data: { interactionId: interaction.id } };
   } catch (err) {
@@ -486,6 +526,27 @@ export async function respondToReturn(
         orderId: interaction.orderId,
         link: `/orders/${interaction.orderId}`,
       }).catch(() => {});
+
+      // Fire-and-forget return approved email to buyer
+      db.user
+        .findUnique({
+          where: { id: interaction.initiatedById },
+          select: { email: true, displayName: true },
+        })
+        .then((buyer) => {
+          if (!buyer) return;
+          sendReturnRequestEmail({
+            to: buyer.email,
+            recipientName: buyer.displayName ?? "there",
+            recipientRole: "buyer",
+            orderId: interaction.orderId,
+            listingTitle: order?.listing.title ?? "your item",
+            action: "APPROVED",
+            reason: null,
+            sellerNote: responseNote ?? null,
+          }).catch(() => {});
+        })
+        .catch(() => {});
     } else {
       orderEventService.recordEvent({
         orderId: interaction.orderId,
@@ -504,6 +565,27 @@ export async function respondToReturn(
         orderId: interaction.orderId,
         link: `/orders/${interaction.orderId}`,
       }).catch(() => {});
+
+      // Fire-and-forget return rejected email to buyer
+      db.user
+        .findUnique({
+          where: { id: interaction.initiatedById },
+          select: { email: true, displayName: true },
+        })
+        .then((buyer) => {
+          if (!buyer) return;
+          sendReturnRequestEmail({
+            to: buyer.email,
+            recipientName: buyer.displayName ?? "there",
+            recipientRole: "buyer",
+            orderId: interaction.orderId,
+            listingTitle: order?.listing.title ?? "your item",
+            action: "REJECTED",
+            reason: null,
+            sellerNote: responseNote ?? null,
+          }).catch(() => {});
+        })
+        .catch(() => {});
     }
 
     return { success: true, data: undefined };
@@ -573,7 +655,12 @@ export async function requestPartialRefund(
 
     const initiatorRole = isBuyer ? "BUYER" : "SELLER";
     const otherPartyId = isBuyer ? order.sellerId : order.buyerId;
-    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+    const partialRefundResponseHours = await getConfigInt(
+      CONFIG_KEYS.PARTIAL_REFUND_RESPONSE_HOURS,
+    );
+    const expiresAt = new Date(
+      Date.now() + partialRefundResponseHours * 60 * 60 * 1000,
+    );
 
     const interaction = await orderInteractionService.createInteraction({
       orderId,
@@ -815,7 +902,12 @@ export async function notifyShippingDelay(
       };
     }
 
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const shippingDelayDays = await getConfigInt(
+      CONFIG_KEYS.SHIPPING_DELAY_NOTIFICATION_DAYS,
+    );
+    const expiresAt = new Date(
+      Date.now() + shippingDelayDays * 24 * 60 * 60 * 1000,
+    );
 
     const interaction = await orderInteractionService.createInteraction({
       orderId,

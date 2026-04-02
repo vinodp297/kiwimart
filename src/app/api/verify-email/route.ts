@@ -3,20 +3,22 @@
 // GET /api/verify-email?token=<hex>
 // Validates token, marks email as verified, sends welcome email, redirects.
 
-import { NextRequest, NextResponse } from 'next/server';
-import db from '@/lib/db';
-import { getEmailClient, EMAIL_FROM } from '@/infrastructure/email/client';
-import { logger } from '@/shared/logger';
+import { NextRequest, NextResponse } from "next/server";
+import db from "@/lib/db";
+import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
+import { logger } from "@/shared/logger";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.nextUrl.searchParams.get('token');
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kiwimart.vercel.app';
+    const token = request.nextUrl.searchParams.get("token");
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
     if (!token) {
-      return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
+      return NextResponse.redirect(
+        new URL("/verify-email?error=invalid", request.url),
+      );
     }
 
     // Look up user by token (also check not expired)
@@ -34,12 +36,14 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
+      return NextResponse.redirect(
+        new URL("/verify-email?error=invalid", request.url),
+      );
     }
 
     if (user.emailVerified) {
-      // Already verified — just send them to login
-      return NextResponse.redirect(new URL('/login?verified=true', request.url));
+      // Already verified — send them to homepage with a success toast
+      return NextResponse.redirect(new URL("/?verified=true", request.url));
     }
 
     // Mark email as verified and clear the token
@@ -58,17 +62,25 @@ export async function GET(request: NextRequest) {
       resend.emails
         .send({
           from: EMAIL_FROM,
-          to: user.email ?? '',
+          to: user.email ?? "",
           subject: `Welcome to KiwiMart, ${user.displayName}! 🥝`,
-          html: buildWelcomeEmail({ name: user.displayName ?? 'there', appUrl }),
+          html: buildWelcomeEmail({
+            name: user.displayName ?? "there",
+            appUrl,
+          }),
         })
-        .catch((err) => logger.error('email.welcome.failed', { error: err }));
+        .catch((err) => logger.error("email.welcome.failed", { error: err }));
     }
 
-    return NextResponse.redirect(new URL('/login?verified=true', request.url));
+    return NextResponse.redirect(new URL("/?verified=true", request.url));
   } catch (e) {
-    logger.error('api.error', { path: '/api/verify-email', error: e instanceof Error ? e.message : e });
-    return NextResponse.redirect(new URL('/verify-email?error=invalid', request.url));
+    logger.error("api.error", {
+      path: "/api/verify-email",
+      error: e instanceof Error ? e.message : e,
+    });
+    return NextResponse.redirect(
+      new URL("/verify-email?error=invalid", request.url),
+    );
   }
 }
 
@@ -98,7 +110,7 @@ function buildWelcomeEmail({ name, appUrl }: { name: string; appUrl: string }) {
     </div>
   </div>
   <div style="background:#FAFAF8;padding:16px 32px;border-top:1px solid #E3E0D9;text-align:center">
-    <p style="margin:0;color:#C9C5BC;font-size:11px">Questions? Email us at support@kiwimart.co.nz</p>
+    <p style="margin:0;color:#C9C5BC;font-size:11px">Questions? Email us at ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}</p>
   </div>
 </div>
 </body>

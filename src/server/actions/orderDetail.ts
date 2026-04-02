@@ -15,6 +15,7 @@ function r2Url(key: string | null): string {
 const STATUS_MAP: Record<string, string> = {
   AWAITING_PAYMENT: "awaiting_payment",
   PAYMENT_HELD: "payment_held",
+  AWAITING_PICKUP: "awaiting_pickup",
   DISPATCHED: "dispatched",
   DELIVERED: "delivered",
   COMPLETED: "completed",
@@ -36,13 +37,18 @@ export interface OrderDetailData {
   dispatchedAt: string | null;
   deliveredAt: string | null;
   completedAt: string | null;
-  disputeOpenedAt: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
-  disputeReason: string | null;
-  disputeNotes: string | null;
-  sellerResponse: string | null;
-  sellerRespondedAt: string | null;
+  // Dispute data from standalone Dispute model
+  dispute: {
+    reason: string;
+    status: string;
+    buyerStatement: string | null;
+    sellerStatement: string | null;
+    openedAt: string;
+    sellerRespondedAt: string | null;
+    resolvedAt: string | null;
+  } | null;
   isBuyer: boolean;
   buyerId: string;
   sellerId: string;
@@ -52,6 +58,13 @@ export interface OrderDetailData {
   cancelledBy: string | null;
   cancelReason: string | null;
   cancelledAt: string | null;
+  // Pickup fields
+  fulfillmentType: string;
+  pickupStatus: string | null;
+  pickupScheduledAt: string | null;
+  pickupWindowExpiresAt: string | null;
+  otpExpiresAt: string | null;
+  rescheduleCount: number;
 }
 
 export async function fetchOrderDetail(
@@ -75,16 +88,28 @@ export async function fetchOrderDetail(
         dispatchedAt: true,
         deliveredAt: true,
         completedAt: true,
-        disputeOpenedAt: true,
         trackingNumber: true,
         trackingUrl: true,
-        disputeReason: true,
-        disputeNotes: true,
-        sellerResponse: true,
-        sellerRespondedAt: true,
+        dispute: {
+          select: {
+            reason: true,
+            status: true,
+            buyerStatement: true,
+            sellerStatement: true,
+            openedAt: true,
+            sellerRespondedAt: true,
+            resolvedAt: true,
+          },
+        },
         cancelledBy: true,
         cancelReason: true,
         cancelledAt: true,
+        fulfillmentType: true,
+        pickupStatus: true,
+        pickupScheduledAt: true,
+        pickupWindowExpiresAt: true,
+        otpExpiresAt: true,
+        rescheduleCount: true,
         listing: {
           select: {
             title: true,
@@ -123,16 +148,30 @@ export async function fetchOrderDetail(
         dispatchedAt: order.dispatchedAt?.toISOString() ?? null,
         deliveredAt: order.deliveredAt?.toISOString() ?? null,
         completedAt: order.completedAt?.toISOString() ?? null,
-        disputeOpenedAt: order.disputeOpenedAt?.toISOString() ?? null,
         trackingNumber: order.trackingNumber,
         trackingUrl: order.trackingUrl,
-        disputeReason: order.disputeReason,
-        disputeNotes: order.disputeNotes,
-        sellerResponse: order.sellerResponse,
-        sellerRespondedAt: order.sellerRespondedAt?.toISOString() ?? null,
+        dispute: order.dispute
+          ? {
+              reason: order.dispute.reason,
+              status: order.dispute.status,
+              buyerStatement: order.dispute.buyerStatement,
+              sellerStatement: order.dispute.sellerStatement,
+              openedAt: order.dispute.openedAt.toISOString(),
+              sellerRespondedAt:
+                order.dispute.sellerRespondedAt?.toISOString() ?? null,
+              resolvedAt: order.dispute.resolvedAt?.toISOString() ?? null,
+            }
+          : null,
         cancelledBy: order.cancelledBy ?? null,
         cancelReason: order.cancelReason ?? null,
         cancelledAt: order.cancelledAt?.toISOString() ?? null,
+        fulfillmentType: order.fulfillmentType,
+        pickupStatus: order.pickupStatus,
+        pickupScheduledAt: order.pickupScheduledAt?.toISOString() ?? null,
+        pickupWindowExpiresAt:
+          order.pickupWindowExpiresAt?.toISOString() ?? null,
+        otpExpiresAt: order.otpExpiresAt?.toISOString() ?? null,
+        rescheduleCount: order.rescheduleCount,
         isBuyer,
         buyerId: order.buyerId,
         sellerId: order.sellerId,

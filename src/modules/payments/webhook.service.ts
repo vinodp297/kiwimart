@@ -118,7 +118,7 @@ export class WebhookService {
     // reverting orders already past the escrow stage.
     const currentOrder = await db.order.findUnique({
       where: { id: orderId },
-      select: { status: true },
+      select: { status: true, fulfillmentType: true },
     });
 
     if (currentOrder?.status !== "AWAITING_PAYMENT") {
@@ -134,27 +134,38 @@ export class WebhookService {
       return; // Idempotent — already transitioned (possibly by a retry)
     }
 
+    // For pickup orders, transition to AWAITING_PICKUP instead of PAYMENT_HELD.
+    // Payment is authorized but NOT captured — capture happens on OTP confirmation
+    // or buyer no-show (handled by pickup worker).
+    const isPickupOrder =
+      currentOrder.fulfillmentType === "ONLINE_PAYMENT_PICKUP";
+    const targetStatus = isPickupOrder ? "AWAITING_PICKUP" : "PAYMENT_HELD";
+
     await db.$transaction(async (tx) => {
       await transitionOrder(
         orderId,
-        "PAYMENT_HELD",
+        targetStatus,
         { updatedAt: new Date() },
         { tx, fromStatus: currentOrder.status },
       );
-      await tx.payout.upsert({
-        where: { orderId },
-        create: {
-          orderId,
-          userId: sellerId,
-          amountNzd: Math.round(
-            (pi.amount - (pi.application_fee_amount ?? 0)) * 1,
-          ),
-          platformFeeNzd: pi.application_fee_amount ?? 0,
-          stripeFeeNzd: 0,
-          status: "PENDING",
-        },
-        update: {},
-      });
+      if (!isPickupOrder) {
+        // Payout created immediately for shipped orders;
+        // for pickup orders, payout is created on OTP confirmation.
+        await tx.payout.upsert({
+          where: { orderId },
+          create: {
+            orderId,
+            userId: sellerId,
+            amountNzd: Math.round(
+              (pi.amount - (pi.application_fee_amount ?? 0)) * 1,
+            ),
+            platformFeeNzd: pi.application_fee_amount ?? 0,
+            stripeFeeNzd: 0,
+            status: "PENDING",
+          },
+          update: {},
+        });
+      }
     });
 
     audit({
@@ -165,6 +176,7 @@ export class WebhookService {
         stripePaymentIntentId: pi.id,
         amountNzd: pi.amount,
         trigger: "amount_capturable_updated",
+        targetStatus,
       },
     });
 
@@ -173,15 +185,18 @@ export class WebhookService {
       type: ORDER_EVENT_TYPES.PAYMENT_HELD,
       actorId: null,
       actorRole: ACTOR_ROLES.SYSTEM,
-      summary: "Payment authorized and held in escrow",
+      summary: isPickupOrder
+        ? "Payment authorized — awaiting pickup arrangement"
+        : "Payment authorized and held in escrow",
       metadata: {
         stripePaymentIntentId: pi.id,
         trigger: "amount_capturable_updated",
+        targetStatus,
       },
     });
 
     logger.info(
-      "webhook.amount_capturable_updated: order moved to PAYMENT_HELD",
+      `webhook.amount_capturable_updated: order moved to ${targetStatus}`,
       {
         orderId,
         stripePaymentIntentId: pi.id,

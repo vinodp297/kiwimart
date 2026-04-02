@@ -1,30 +1,48 @@
-'use client';
+"use client";
 
-import { useRef, useState, useTransition, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRef, useState, useTransition, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import CATEGORIES from '@/data/categories';
-import ListingCard from '@/components/ListingCard';
-import EmptyState from '@/components/EmptyState';
-import QuickFilterChips from '@/components/QuickFilterChips';
-import type { Condition, NZRegion, SortOption, ListingCard as ListingCardType } from '@/types';
-import { CONDITION_LABELS } from '@/lib/utils';
-import Link from 'next/link';
-import type { SearchResult } from '@/server/actions/search';
+import CATEGORIES from "@/data/categories";
+import ListingCard from "@/components/ListingCard";
+import EmptyState from "@/components/EmptyState";
+import QuickFilterChips from "@/components/QuickFilterChips";
+import type {
+  Condition,
+  NZRegion,
+  SortOption,
+  ListingCard as ListingCardType,
+} from "@/types";
+import { CONDITION_LABELS } from "@/lib/utils";
+import Link from "next/link";
+import type { SearchResult } from "@/server/actions/search";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const NZ_REGIONS: NZRegion[] = [
-  'Auckland', 'Wellington', 'Canterbury', 'Waikato', 'Bay of Plenty',
-  'Otago', 'Hawke\'s Bay', 'Manawatū-Whanganui', 'Northland', 'Tasman',
-  'Nelson', 'Marlborough', 'Southland', 'Taranaki', 'Gisborne', 'West Coast',
+// ── Fallback constant (used when regionNames prop is not passed) ────────────
+const NZ_REGIONS_DEFAULT: NZRegion[] = [
+  "Auckland",
+  "Wellington",
+  "Canterbury",
+  "Waikato",
+  "Bay of Plenty",
+  "Otago",
+  "Hawke's Bay",
+  "Manawat\u016b-Whanganui",
+  "Northland",
+  "Tasman",
+  "Nelson",
+  "Marlborough",
+  "Southland",
+  "Taranaki",
+  "Gisborne",
+  "West Coast",
 ];
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'newest', label: 'Newest first' },
-  { value: 'oldest', label: 'Oldest first' },
-  { value: 'price-asc', label: 'Price: low → high' },
-  { value: 'price-desc', label: 'Price: high → low' },
-  { value: 'most-watched', label: 'Most watched' },
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "price-asc", label: "Price: low → high" },
+  { value: "price-desc", label: "Price: high → low" },
+  { value: "most-watched", label: "Most watched" },
 ];
 
 // ── Filter state type ─────────────────────────────────────────────────────────
@@ -45,33 +63,33 @@ type FilterState = {
 };
 
 const RADIUS_OPTIONS = [
-  { value: '', label: 'Any distance' },
-  { value: '10', label: '10 km' },
-  { value: '25', label: '25 km' },
-  { value: '50', label: '50 km' },
-  { value: '100', label: '100 km' },
-  { value: '200', label: '200 km' },
+  { value: "", label: "Any distance" },
+  { value: "10", label: "10 km" },
+  { value: "25", label: "25 km" },
+  { value: "50", label: "50 km" },
+  { value: "100", label: "100 km" },
+  { value: "200", label: "200 km" },
 ];
 
 // ── Build URL from filter state ───────────────────────────────────────────────
 function buildSearchUrl(f: FilterState, page?: number): string {
   const params = new URLSearchParams();
-  if (f.query)           params.set('q',               f.query);
-  if (f.category)        params.set('category',         f.category);
-  if (f.subcategory)     params.set('subcategory',      f.subcategory);
-  if (f.condition)       params.set('condition',        f.condition);
-  if (f.region)          params.set('region',           f.region);
-  if (f.priceMin)        params.set('priceMin',         f.priceMin);
-  if (f.priceMax)        params.set('priceMax',         f.priceMax);
-  if (f.sort && f.sort !== 'newest') params.set('sort', f.sort);
-  if (f.isUrgent)        params.set('isUrgent',         'true');
-  if (f.isNegotiable)    params.set('isNegotiable',     'true');
-  if (f.shipsNationwide) params.set('shipsNationwide',  'true');
-  if (f.verifiedOnly)    params.set('verifiedOnly',     'true');
-  if (f.radiusKm)        params.set('radiusKm',         f.radiusKm);
-  if (page && page > 1)  params.set('page',             String(page));
+  if (f.query) params.set("q", f.query);
+  if (f.category) params.set("category", f.category);
+  if (f.subcategory) params.set("subcategory", f.subcategory);
+  if (f.condition) params.set("condition", f.condition);
+  if (f.region) params.set("region", f.region);
+  if (f.priceMin) params.set("priceMin", f.priceMin);
+  if (f.priceMax) params.set("priceMax", f.priceMax);
+  if (f.sort && f.sort !== "newest") params.set("sort", f.sort);
+  if (f.isUrgent) params.set("isUrgent", "true");
+  if (f.isNegotiable) params.set("isNegotiable", "true");
+  if (f.shipsNationwide) params.set("shipsNationwide", "true");
+  if (f.verifiedOnly) params.set("verifiedOnly", "true");
+  if (f.radiusKm) params.set("radiusKm", f.radiusKm);
+  if (page && page > 1) params.set("page", String(page));
   const qs = params.toString();
-  return qs ? `/search?${qs}` : '/search';
+  return qs ? `/search?${qs}` : "/search";
 }
 
 // ── Select helper ─────────────────────────────────────────────────────────────
@@ -80,7 +98,7 @@ function FilterSelect({
   value,
   onChange,
   children,
-  className = '',
+  className = "",
 }: {
   label: string;
   value: string;
@@ -148,7 +166,13 @@ function PriceInput({
 }
 
 // ── Active filter pill ────────────────────────────────────────────────────────
-function FilterPill({ label, onRemove }: { label: string; onRemove: () => void }) {
+function FilterPill({
+  label,
+  onRemove,
+}: {
+  label: string;
+  onRemove: () => void;
+}) {
   return (
     <span
       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full
@@ -160,8 +184,15 @@ function FilterPill({ label, onRemove }: { label: string; onRemove: () => void }
         aria-label={`Remove ${label} filter`}
         className="hover:text-[#D4A843] transition-colors"
       >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-          <path d="M18 6 6 18M6 6l12 12"/>
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+        >
+          <path d="M18 6 6 18M6 6l12 12" />
         </svg>
       </button>
     </span>
@@ -171,9 +202,12 @@ function FilterPill({ label, onRemove }: { label: string; onRemove: () => void }
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function SearchPageClient({
   initialResults,
+  regionNames,
 }: {
   initialResults: SearchResult;
+  regionNames?: string[];
 }) {
+  const NZ_REGIONS = (regionNames ?? NZ_REGIONS_DEFAULT) as NZRegion[];
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -195,19 +229,19 @@ export default function SearchPageClient({
 
   // ── Local filter state — initialised from URL params once on mount ──────
   const [filters, setFilters] = useState<FilterState>({
-    query:           searchParams.get('q')               ?? '',
-    category:        searchParams.get('category')        ?? '',
-    subcategory:     searchParams.get('subcategory')     ?? '',
-    condition:       searchParams.get('condition')       ?? '',
-    region:          searchParams.get('region')          ?? '',
-    priceMin:        searchParams.get('priceMin')        ?? '',
-    priceMax:        searchParams.get('priceMax')        ?? '',
-    sort:            searchParams.get('sort')            ?? 'newest',
-    isUrgent:        searchParams.get('isUrgent')        === 'true',
-    isNegotiable:    searchParams.get('isNegotiable')    === 'true',
-    shipsNationwide: searchParams.get('shipsNationwide') === 'true',
-    verifiedOnly:    searchParams.get('verifiedOnly')    === 'true',
-    radiusKm:        searchParams.get('radiusKm')        ?? '',
+    query: searchParams.get("q") ?? "",
+    category: searchParams.get("category") ?? "",
+    subcategory: searchParams.get("subcategory") ?? "",
+    condition: searchParams.get("condition") ?? "",
+    region: searchParams.get("region") ?? "",
+    priceMin: searchParams.get("priceMin") ?? "",
+    priceMax: searchParams.get("priceMax") ?? "",
+    sort: searchParams.get("sort") ?? "newest",
+    isUrgent: searchParams.get("isUrgent") === "true",
+    isNegotiable: searchParams.get("isNegotiable") === "true",
+    shipsNationwide: searchParams.get("shipsNationwide") === "true",
+    verifiedOnly: searchParams.get("verifiedOnly") === "true",
+    radiusKm: searchParams.get("radiusKm") ?? "",
   });
 
   // Debounce timer for URL sync
@@ -220,7 +254,7 @@ export default function SearchPageClient({
   const updateFilter = (updates: Partial<FilterState>, delay = 0) => {
     const next: FilterState = { ...filters, ...updates };
     // Selecting a new category always resets subcategory
-    if ('category' in updates) next.subcategory = '';
+    if ("category" in updates) next.subcategory = "";
     // Always reset page when any filter changes (no page key in FilterState;
     // goToPage passes it explicitly to buildSearchUrl)
 
@@ -237,14 +271,24 @@ export default function SearchPageClient({
   // ── Clear all filters at once ────────────────────────────────────────────
   const clearAll = () => {
     const empty: FilterState = {
-      query: '', category: '', subcategory: '', condition: '', region: '',
-      priceMin: '', priceMax: '', sort: 'newest',
-      isUrgent: false, isNegotiable: false, shipsNationwide: false, verifiedOnly: false, radiusKm: '',
+      query: "",
+      category: "",
+      subcategory: "",
+      condition: "",
+      region: "",
+      priceMin: "",
+      priceMax: "",
+      sort: "newest",
+      isUrgent: false,
+      isNegotiable: false,
+      shipsNationwide: false,
+      verifiedOnly: false,
+      radiusKm: "",
     };
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setFilters(empty);
     startTransition(() => {
-      router.replace('/search', { scroll: false });
+      router.replace("/search", { scroll: false });
     });
   };
 
@@ -283,20 +327,31 @@ export default function SearchPageClient({
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       {/* ── Page header ──────────────────────────────────────────── */}
       <div className="mb-5">
-        <h1 className="font-[family-name:var(--font-playfair)] text-[1.5rem] sm:text-[1.75rem]
-          font-semibold text-[#141414]">
-          {filters.query
-            ? <>Results for <em className="not-italic text-[#D4A843]">"{filters.query}"</em></>
-            : activeCat
-            ? <><span aria-hidden>{activeCat.icon}</span> {activeCat.name}</>
-            : 'Browse all listings'}
+        <h1
+          className="font-[family-name:var(--font-playfair)] text-[1.5rem] sm:text-[1.75rem]
+          font-semibold text-[#141414]"
+        >
+          {filters.query ? (
+            <>
+              Results for{" "}
+              <em className="not-italic text-[#D4A843]">"{filters.query}"</em>
+            </>
+          ) : activeCat ? (
+            <>
+              <span aria-hidden>{activeCat.icon}</span> {activeCat.name}
+            </>
+          ) : (
+            "Browse all listings"
+          )}
         </h1>
         <p className="text-[13px] text-[#73706A] mt-1">
           {isPending ? (
             <span className="animate-pulse">Searching…</span>
-          ) : initialResults.totalCount === 0
-            ? 'No listings match your filters'
-            : `${initialResults.totalCount.toLocaleString('en-NZ')} listing${initialResults.totalCount === 1 ? '' : 's'} found`}
+          ) : initialResults.totalCount === 0 ? (
+            "No listings match your filters"
+          ) : (
+            `${initialResults.totalCount.toLocaleString("en-NZ")} listing${initialResults.totalCount === 1 ? "" : "s"} found`
+          )}
         </p>
       </div>
 
@@ -323,10 +378,15 @@ export default function SearchPageClient({
           <svg
             aria-hidden
             className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9A91]"
-            width="13" height="13" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2"
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
           >
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
           </svg>
         </div>
 
@@ -339,7 +399,9 @@ export default function SearchPageClient({
         >
           <option value="">All categories</option>
           {CATEGORIES.map((c) => (
-            <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+            <option key={c.id} value={c.id}>
+              {c.icon} {c.name}
+            </option>
           ))}
         </FilterSelect>
 
@@ -353,7 +415,9 @@ export default function SearchPageClient({
           >
             <option value="">All subcategories</option>
             {activeCat.subcategories.map((sub) => (
-              <option key={sub} value={sub}>{sub}</option>
+              <option key={sub} value={sub}>
+                {sub}
+              </option>
             ))}
           </FilterSelect>
         )}
@@ -386,7 +450,9 @@ export default function SearchPageClient({
         >
           <option value="">All NZ regions</option>
           {NZ_REGIONS.map((r) => (
-            <option key={r} value={r}>{r}</option>
+            <option key={r} value={r}>
+              {r}
+            </option>
           ))}
         </FilterSelect>
 
@@ -399,7 +465,9 @@ export default function SearchPageClient({
             className="min-w-[120px]"
           >
             {RADIUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </FilterSelect>
         )}
@@ -431,7 +499,9 @@ export default function SearchPageClient({
           className="min-w-[160px] ml-auto"
         >
           {SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
           ))}
         </FilterSelect>
       </div>
@@ -440,10 +510,10 @@ export default function SearchPageClient({
       <div className="mb-3">
         <QuickFilterChips
           active={{
-            isUrgent:        filters.isUrgent,
-            isNegotiable:    filters.isNegotiable,
+            isUrgent: filters.isUrgent,
+            isNegotiable: filters.isNegotiable,
             shipsNationwide: filters.shipsNationwide,
-            verifiedOnly:    filters.verifiedOnly,
+            verifiedOnly: filters.verifiedOnly,
           }}
           onToggle={(key, value) =>
             updateFilter({ [key]: value } as Partial<FilterState>)
@@ -460,12 +530,13 @@ export default function SearchPageClient({
         >
           <button
             role="listitem"
-            onClick={() => updateFilter({ subcategory: '' })}
+            onClick={() => updateFilter({ subcategory: "" })}
             className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium
               border transition-all duration-150 whitespace-nowrap
-              ${!filters.subcategory
-                ? 'bg-[#141414] text-white border-[#141414]'
-                : 'bg-white text-[#73706A] border-[#C9C5BC] hover:border-[#141414] hover:text-[#141414]'
+              ${
+                !filters.subcategory
+                  ? "bg-[#141414] text-white border-[#141414]"
+                  : "bg-white text-[#73706A] border-[#C9C5BC] hover:border-[#141414] hover:text-[#141414]"
               }`}
           >
             All {activeCat.name}
@@ -475,13 +546,16 @@ export default function SearchPageClient({
               key={sub}
               role="listitem"
               onClick={() =>
-                updateFilter({ subcategory: filters.subcategory === sub ? '' : sub })
+                updateFilter({
+                  subcategory: filters.subcategory === sub ? "" : sub,
+                })
               }
               className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium
                 border transition-all duration-150 whitespace-nowrap
-                ${filters.subcategory === sub
-                  ? 'bg-[#141414] text-white border-[#141414]'
-                  : 'bg-white text-[#73706A] border-[#C9C5BC] hover:border-[#141414] hover:text-[#141414]'
+                ${
+                  filters.subcategory === sub
+                    ? "bg-[#141414] text-white border-[#141414]"
+                    : "bg-white text-[#73706A] border-[#C9C5BC] hover:border-[#141414] hover:text-[#141414]"
                 }`}
             >
               {sub}
@@ -492,38 +566,35 @@ export default function SearchPageClient({
 
       {/* ── Active filter pills row ───────────────────────────────── */}
       {activeFilterCount > 0 && (
-        <div
-          className="flex flex-wrap gap-2 mb-4"
-          aria-label="Active filters"
-        >
+        <div className="flex flex-wrap gap-2 mb-4" aria-label="Active filters">
           {filters.category && (
             <FilterPill
-              label={`${activeCat?.icon ?? ''} ${activeCat?.name}`}
-              onRemove={() => updateFilter({ category: '' })}
+              label={`${activeCat?.icon ?? ""} ${activeCat?.name}`}
+              onRemove={() => updateFilter({ category: "" })}
             />
           )}
           {filters.subcategory && (
             <FilterPill
               label={filters.subcategory}
-              onRemove={() => updateFilter({ subcategory: '' })}
+              onRemove={() => updateFilter({ subcategory: "" })}
             />
           )}
           {filters.condition && (
             <FilterPill
               label={CONDITION_LABELS[filters.condition as Condition]}
-              onRemove={() => updateFilter({ condition: '' })}
+              onRemove={() => updateFilter({ condition: "" })}
             />
           )}
           {filters.region && (
             <FilterPill
               label={filters.region}
-              onRemove={() => updateFilter({ region: '' })}
+              onRemove={() => updateFilter({ region: "" })}
             />
           )}
           {(filters.priceMin || filters.priceMax) && (
             <FilterPill
-              label={`$${filters.priceMin || '0'} – $${filters.priceMax || '∞'}`}
-              onRemove={() => updateFilter({ priceMin: '', priceMax: '' })}
+              label={`$${filters.priceMin || "0"} – $${filters.priceMax || "∞"}`}
+              onRemove={() => updateFilter({ priceMin: "", priceMax: "" })}
             />
           )}
           {filters.isUrgent && (
@@ -553,7 +624,7 @@ export default function SearchPageClient({
           {filters.radiusKm && (
             <FilterPill
               label={`Within ${filters.radiusKm} km`}
-              onRemove={() => updateFilter({ radiusKm: '' })}
+              onRemove={() => updateFilter({ radiusKm: "" })}
             />
           )}
 
@@ -570,7 +641,7 @@ export default function SearchPageClient({
       {/* ── Results grid — dim slightly after 300 ms if still loading ─ */}
       <div
         className={`transition-opacity duration-300 ${
-          showPending ? 'opacity-[0.85]' : 'opacity-100'
+          showPending ? "opacity-[0.85]" : "opacity-100"
         }`}
       >
         {results.length > 0 ? (
@@ -585,7 +656,7 @@ export default function SearchPageClient({
             description={
               filters.query
                 ? `We couldn't find anything for "${filters.query}". Try different keywords or remove some filters.`
-                : 'No listings match your current filters. Try adjusting or clearing them.'
+                : "No listings match your current filters. Try adjusting or clearing them."
             }
             action={
               <div className="flex gap-3 flex-wrap justify-center">
@@ -622,23 +693,26 @@ export default function SearchPageClient({
           >
             ← Previous
           </button>
-          {Array.from({ length: Math.min(initialResults.totalPages, 7) }, (_, i) => {
-            const page = i + 1;
-            return (
-              <button
-                key={page}
-                onClick={() => goToPage(page)}
-                disabled={isPending}
-                className={`h-9 w-9 rounded-lg text-[12.5px] font-semibold flex items-center justify-center transition-colors ${
-                  page === currentPage
-                    ? 'bg-[#141414] text-white'
-                    : 'border border-[#E3E0D9] bg-white text-[#73706A] hover:border-[#141414] hover:text-[#141414]'
-                }`}
-              >
-                {page}
-              </button>
-            );
-          })}
+          {Array.from(
+            { length: Math.min(initialResults.totalPages, 7) },
+            (_, i) => {
+              const page = i + 1;
+              return (
+                <button
+                  key={page}
+                  onClick={() => goToPage(page)}
+                  disabled={isPending}
+                  className={`h-9 w-9 rounded-lg text-[12.5px] font-semibold flex items-center justify-center transition-colors ${
+                    page === currentPage
+                      ? "bg-[#141414] text-white"
+                      : "border border-[#E3E0D9] bg-white text-[#73706A] hover:border-[#141414] hover:text-[#141414]"
+                  }`}
+                >
+                  {page}
+                </button>
+              );
+            },
+          )}
           <button
             disabled={!initialResults.hasNextPage || isPending}
             onClick={() => goToPage(currentPage + 1)}

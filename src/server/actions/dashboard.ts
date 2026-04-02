@@ -23,6 +23,7 @@ export interface DashboardUser {
   createdAt: string;
   sellerEnabled: boolean;
   idVerified: boolean;
+  phoneVerified: boolean;
   emailVerified: string | null;
   region: string | null;
   bio: string | null;
@@ -155,6 +156,7 @@ export async function fetchBuyerDashboard(): Promise<
           createdAt: true,
           sellerEnabled: true,
           idVerified: true,
+          phoneVerified: true,
           emailVerified: true,
           region: true,
           bio: true,
@@ -380,6 +382,7 @@ export async function fetchBuyerDashboard(): Promise<
           createdAt: dbUser.createdAt.toISOString(),
           sellerEnabled: dbUser.sellerEnabled,
           idVerified: dbUser.idVerified,
+          phoneVerified: dbUser.phoneVerified,
           emailVerified: dbUser.emailVerified?.toISOString() ?? null,
           region: dbUser.region ?? null,
           bio: dbUser.bio ?? null,
@@ -515,6 +518,7 @@ export async function fetchSellerDashboard(): Promise<
           createdAt: true,
           sellerEnabled: true,
           idVerified: true,
+          phoneVerified: true,
           emailVerified: true,
           region: true,
           bio: true,
@@ -555,11 +559,13 @@ export async function fetchSellerDashboard(): Promise<
         where: { userId, status: "PENDING" },
         _sum: { amountNzd: true },
       }),
-      // Active + Draft listings
+      // Active + Draft + Pending + Needs Changes listings
       db.listing.findMany({
         where: {
           sellerId: userId,
-          status: { in: ["ACTIVE", "DRAFT"] },
+          status: {
+            in: ["ACTIVE", "DRAFT", "PENDING_REVIEW", "NEEDS_CHANGES"],
+          },
           deletedAt: null,
         },
         orderBy: { createdAt: "desc" },
@@ -601,8 +607,9 @@ export async function fetchSellerDashboard(): Promise<
           status: true,
           createdAt: true,
           trackingNumber: true,
-          disputeOpenedAt: true,
-          sellerResponse: true,
+          dispute: {
+            select: { openedAt: true, sellerStatement: true },
+          },
           listing: {
             select: {
               title: true,
@@ -686,8 +693,8 @@ export async function fetchSellerDashboard(): Promise<
       status: STATUS_MAP[o.status] ?? o.status.toLowerCase(),
       createdAt: o.createdAt.toISOString(),
       trackingNumber: o.trackingNumber,
-      disputeOpenedAt: o.disputeOpenedAt?.toISOString() ?? null,
-      sellerResponse: o.sellerResponse,
+      disputeOpenedAt: o.dispute?.openedAt?.toISOString() ?? null,
+      sellerResponse: o.dispute?.sellerStatement ?? null,
     }));
 
     const mappedPayouts: SellerPayoutRow[] = payouts.map((p) => ({
@@ -716,6 +723,7 @@ export async function fetchSellerDashboard(): Promise<
           createdAt: dbUser.createdAt.toISOString(),
           sellerEnabled: dbUser.sellerEnabled,
           idVerified: dbUser.idVerified,
+          phoneVerified: dbUser.phoneVerified,
           emailVerified: dbUser.emailVerified?.toISOString() ?? null,
           region: dbUser.region ?? null,
           bio: dbUser.bio ?? null,

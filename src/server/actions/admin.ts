@@ -5,6 +5,9 @@ import { safeActionError } from "@/shared/errors";
 
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminService } from "@/modules/admin/admin.service";
+import db from "@/lib/db";
+import { audit } from "@/server/lib/audit";
+import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
 import {
   banUserSchema as BanUserSchema,
@@ -30,6 +33,9 @@ export async function banUser(
     };
   try {
     const admin = await requirePermission("BAN_USERS");
+    if (parsed.data.userId === admin.id) {
+      return { success: false, error: "You cannot ban your own account." };
+    }
     await adminService.banUser(
       parsed.data.userId,
       parsed.data.reason,
@@ -240,6 +246,110 @@ export async function flagUserForFraud(
     return {
       success: false,
       error: safeActionError(err, "Flag failed. Please try again."),
+    };
+  }
+}
+
+// ── Seller Tier Override ─────────────────────────────────────────────────────
+
+export async function setSellerTierOverride(params: {
+  userId: string;
+  tier: string | null;
+  reason: string;
+}): Promise<ActionResult<void>> {
+  try {
+    const admin = await requirePermission("BAN_USERS");
+    const { userId, tier, reason } = params;
+
+    if (tier !== null && !["BRONZE", "SILVER", "GOLD"].includes(tier)) {
+      return {
+        success: false,
+        error: "Invalid tier. Must be BRONZE, SILVER, or GOLD.",
+      };
+    }
+
+    if (tier !== null && reason.trim().length < 20) {
+      return {
+        success: false,
+        error: "Reason must be at least 20 characters.",
+      };
+    }
+
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, sellerTierOverride: true, displayName: true },
+    });
+
+    if (!user) return { success: false, error: "User not found." };
+
+    const previousOverride = user.sellerTierOverride;
+
+    if (tier === null) {
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          sellerTierOverride: null,
+          sellerTierOverrideReason: null,
+          sellerTierOverrideAt: null,
+          sellerTierOverrideBy: null,
+        },
+      });
+
+      audit({
+        userId: admin.id,
+        action: "SELLER_TIER_OVERRIDE_REMOVED",
+        entityType: "User",
+        entityId: userId,
+        metadata: { previousOverride, removedBy: admin.id },
+      });
+
+      createNotification({
+        userId,
+        type: "SYSTEM",
+        title: "Your seller tier has been restored",
+        body: "Your seller tier has been restored. Contact support with any questions.",
+        link: "/dashboard/seller",
+      }).catch(() => {});
+    } else {
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          sellerTierOverride: tier,
+          sellerTierOverrideReason: reason.trim(),
+          sellerTierOverrideAt: new Date(),
+          sellerTierOverrideBy: admin.id,
+        },
+      });
+
+      audit({
+        userId: admin.id,
+        action: "SELLER_TIER_OVERRIDE_SET",
+        entityType: "User",
+        entityId: userId,
+        metadata: {
+          previousOverride,
+          newOverride: tier,
+          reason: reason.trim(),
+        },
+      });
+
+      createNotification({
+        userId,
+        type: "SYSTEM",
+        title: "Your seller tier has been adjusted",
+        body: `Your seller tier has been adjusted by our team. Reason: ${reason.trim()}`,
+        link: "/dashboard/seller",
+      }).catch(() => {});
+    }
+
+    return { success: true, data: undefined };
+  } catch (err) {
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "Failed to update tier override. Please try again.",
+      ),
     };
   }
 }

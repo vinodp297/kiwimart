@@ -17,8 +17,8 @@ import {
 import { formatPrice, relativeTime } from "@/lib/utils";
 import { getImageUrl, getDefaultAvatar } from "@/lib/image";
 import {
-  calculateSellerTier,
-  TIER_REQUIREMENTS,
+  calculateSellerTierSync,
+  TIER_REQUIREMENTS_DEFAULT,
   TIER_CONFIG,
 } from "@/lib/seller-tiers";
 import type { PerformanceTier } from "@/lib/seller-tiers";
@@ -193,7 +193,7 @@ function TierProgress({
   avgRating: number;
 }) {
   // Assume 100% completion rate for dashboard display (we don't have raw order counts here)
-  const currentTier = calculateSellerTier({
+  const currentTier = calculateSellerTierSync({
     completedSales,
     avgRating,
     completionRate: 100,
@@ -226,7 +226,7 @@ function TierProgress({
     );
   }
 
-  const req = TIER_REQUIREMENTS[nextTierKey] ?? { sales: 0, rating: 0 };
+  const req = TIER_REQUIREMENTS_DEFAULT[nextTierKey] ?? { sales: 0, rating: 0 };
   const cfg = TIER_CONFIG[nextTierKey] ?? { icon: "", label: "", colour: "" };
 
   const salesPct = Math.min(
@@ -494,7 +494,8 @@ export default function SellerDashboardPage() {
             </h1>
             <p className="text-[#73706A] text-[14px] leading-relaxed mb-6">
               To access your seller dashboard and start listing items, please
-              read and accept KiwiMart&apos;s seller terms and conditions.
+              read and accept {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}
+              &apos;s seller terms and conditions.
             </p>
             <Link
               href="/seller/onboarding"
@@ -554,6 +555,31 @@ export default function SellerDashboardPage() {
               >
                 Connect Stripe →
               </a>
+            </div>
+          )}
+
+          {/* ── Phone verification banner ─────────────────────────────── */}
+          {!user.phoneVerified && !user.idVerified && (
+            <div
+              className="flex flex-col sm:flex-row items-start sm:items-center
+                gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 mb-6"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-[13.5px] font-semibold text-amber-900">
+                  📱 Verify your phone number
+                </p>
+                <p className="text-[12.5px] text-amber-700 mt-0.5">
+                  Unlock 50 listings and 3-day payouts by verifying your phone.
+                </p>
+              </div>
+              <Link
+                href="/seller/onboarding"
+                className="shrink-0 px-4 py-2 bg-amber-400 text-amber-900
+                  font-semibold text-[12.5px] rounded-full hover:bg-amber-500
+                  transition-colors whitespace-nowrap"
+              >
+                Verify now →
+              </Link>
             </div>
           )}
 
@@ -1225,30 +1251,42 @@ function SellerListingRow({
                 Draft
               </span>
             )}
-            <ConditionBadge condition={listing.condition as Condition} />
-            {listing.status !== "draft" && (
-              <>
-                <span className="text-[12px] text-[#9E9A91]">
-                  {listing.viewCount.toLocaleString("en-NZ")} views
-                </span>
-                <span className="text-[12px] text-[#9E9A91]">
-                  {listing.watcherCount} watchers
-                </span>
-                {listing.offerCount > 0 && (
-                  <span className="text-[12px] text-amber-600 font-semibold">
-                    {listing.offerCount} offer
-                    {listing.offerCount > 1 ? "s" : ""}
-                  </span>
-                )}
-                {daysLeft !== null && (
-                  <span
-                    className={`text-[11.5px] ${daysLeft <= 7 ? "text-red-500" : "text-[#9E9A91]"}`}
-                  >
-                    Expires in {daysLeft}d
-                  </span>
-                )}
-              </>
+            {listing.status === "PENDING_REVIEW" && (
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                Under Review
+              </span>
             )}
+            {listing.status === "NEEDS_CHANGES" && (
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                Needs Changes
+              </span>
+            )}
+            <ConditionBadge condition={listing.condition as Condition} />
+            {listing.status !== "draft" &&
+              listing.status !== "PENDING_REVIEW" &&
+              listing.status !== "NEEDS_CHANGES" && (
+                <>
+                  <span className="text-[12px] text-[#9E9A91]">
+                    {listing.viewCount.toLocaleString("en-NZ")} views
+                  </span>
+                  <span className="text-[12px] text-[#9E9A91]">
+                    {listing.watcherCount} watchers
+                  </span>
+                  {listing.offerCount > 0 && (
+                    <span className="text-[12px] text-amber-600 font-semibold">
+                      {listing.offerCount} offer
+                      {listing.offerCount > 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {daysLeft !== null && (
+                    <span
+                      className={`text-[11.5px] ${daysLeft <= 7 ? "text-red-500" : "text-[#9E9A91]"}`}
+                    >
+                      Expires in {daysLeft}d
+                    </span>
+                  )}
+                </>
+              )}
           </div>
         </div>
 

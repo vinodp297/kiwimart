@@ -79,7 +79,10 @@ function VerifyEmailContent() {
         <div className="bg-[#FAFAF8] border border-[#E3E0D9] rounded-xl p-4 text-left text-[13px] text-[#73706A] space-y-2 mb-6">
           <p>📬 Check your spam/junk folder if not in inbox</p>
           <p>⏱ Link is valid for 24 hours</p>
-          <p>🛍 You can browse KiwiMart while waiting</p>
+          <p>
+            🛍 You can browse {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}{" "}
+            while waiting
+          </p>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -87,7 +90,7 @@ function VerifyEmailContent() {
             href="/"
             className="inline-block bg-[#141414] text-white px-6 py-3 rounded-xl text-[14px] font-medium hover:bg-[#2A2A2A] transition-colors"
           >
-            Browse KiwiMart
+            Browse {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}
           </Link>
           <Link
             href="/login"

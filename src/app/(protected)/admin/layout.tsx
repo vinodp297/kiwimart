@@ -47,7 +47,9 @@ export default async function AdminLayout({
       <aside className="w-64 bg-[#141414] min-h-screen flex-shrink-0 flex flex-col fixed top-0 left-0 h-full z-30">
         {/* Logo */}
         <div className="p-6 border-b border-white/10">
-          <p className="text-white font-semibold text-[15px]">🥝 KiwiMart</p>
+          <p className="text-white font-semibold text-[15px]">
+            🥝 {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}
+          </p>
           <p className="text-[#73706A] text-[11px] mt-0.5">Admin Panel</p>
         </div>
 

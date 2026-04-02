@@ -41,13 +41,16 @@ import {
   cancelOrderSchema as CancelOrderSchema,
 } from "@/server/validators";
 
-import { VALID_COURIERS } from "@/shared/constants";
+import { captureListingSnapshot } from "@/server/services/listing-snapshot.service";
+import { pickupQueue } from "@/lib/queue";
+import { getListValues } from "@/lib/dynamic-lists";
 
 // ── createOrder ───────────────────────────────────────────────────────────────
 
 export async function createOrder(params: {
   listingId: string;
   idempotencyKey?: string;
+  fulfillmentType?: "SHIPPED" | "CASH_ON_PICKUP" | "ONLINE_PAYMENT_PICKUP";
   shippingAddress?: {
     name: string;
     line1: string;
@@ -56,7 +59,7 @@ export async function createOrder(params: {
     region: string;
     postcode: string;
   };
-}): Promise<ActionResult<{ orderId: string; clientSecret: string }>> {
+}): Promise<ActionResult<{ orderId: string; clientSecret: string | null }>> {
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders as unknown as Headers);
 
@@ -79,6 +82,19 @@ export async function createOrder(params: {
       success: false,
       error: "Too many orders placed. Please wait before trying again.",
       reason: "rate_limited",
+    };
+  }
+
+  // 2b. Email verification check
+  const buyer = await db.user.findUnique({
+    where: { id: user.id },
+    select: { emailVerified: true },
+  });
+  if (!buyer?.emailVerified) {
+    return {
+      success: false,
+      error: "Please verify your email address before placing an order.",
+      reason: "email_not_verified",
     };
   }
 
@@ -189,34 +205,147 @@ export async function createOrder(params: {
   }
 
   // 5b. Calculate totals (server-side — never trust client prices)
-  const shippingNzd =
-    listing.shippingOption === "PICKUP" ? 0 : (listing.shippingNzd ?? 0);
+  const fulfillmentType = parsed.data.fulfillmentType ?? "SHIPPED";
+  const isPickupOrder =
+    fulfillmentType === "CASH_ON_PICKUP" ||
+    fulfillmentType === "ONLINE_PAYMENT_PICKUP";
+  const shippingNzd = isPickupOrder
+    ? 0
+    : listing.shippingOption === "PICKUP"
+      ? 0
+      : (listing.shippingNzd ?? 0);
   const totalNzd = listing.priceNzd + shippingNzd;
 
-  // 5c. Create order row (status: AWAITING_PAYMENT until Stripe confirms)
-  const order = await db.order.create({
-    data: {
-      buyerId: user.id,
-      sellerId: listing.sellerId,
+  // 5c. Create order row + freeze listing snapshot — both atomic inside one
+  //     transaction. If captureListingSnapshot throws (listing missing, DB error),
+  //     the entire transaction rolls back and no order is persisted.
+  let order: { id: string };
+  try {
+    order = await db.$transaction(async (tx) => {
+      // CASH_ON_PICKUP skips payment — starts directly as AWAITING_PICKUP
+      // ONLINE_PAYMENT_PICKUP starts as AWAITING_PAYMENT (webhook transitions to AWAITING_PICKUP)
+      // SHIPPED follows the normal flow
+      const initialStatus =
+        fulfillmentType === "CASH_ON_PICKUP"
+          ? "AWAITING_PICKUP"
+          : "AWAITING_PAYMENT";
+
+      const created = await tx.order.create({
+        data: {
+          buyerId: user.id,
+          sellerId: listing.sellerId,
+          listingId: listing.id,
+          itemNzd: listing.priceNzd,
+          shippingNzd,
+          totalNzd,
+          status: initialStatus,
+          fulfillmentType,
+          ...(isPickupOrder ? { pickupStatus: "AWAITING_SCHEDULE" } : {}),
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+          ...(parsed.data.shippingAddress
+            ? {
+                shippingName: parsed.data.shippingAddress.name,
+                shippingLine1: parsed.data.shippingAddress.line1,
+                shippingLine2: parsed.data.shippingAddress.line2,
+                shippingCity: parsed.data.shippingAddress.city,
+                shippingRegion: parsed.data.shippingAddress.region,
+                shippingPostcode: parsed.data.shippingAddress.postcode,
+              }
+            : {}),
+        },
+        select: { id: true },
+      });
+
+      // Capture listing state at purchase time — immutable evidence for disputes
+      await captureListingSnapshot(created.id, listing.id, tx);
+
+      return created;
+    });
+  } catch (txErr) {
+    // Snapshot or order creation failed — release the reservation so other
+    // buyers can still purchase this listing.
+    await db.listing
+      .updateMany({
+        where: { id: parsed.data.listingId, status: "RESERVED" },
+        data: { status: "ACTIVE" },
+      })
+      .catch(() => {});
+
+    logger.error("order.create.transaction-failed", {
       listingId: listing.id,
-      itemNzd: listing.priceNzd,
-      shippingNzd,
-      totalNzd,
-      status: "AWAITING_PAYMENT",
-      ...(idempotencyKey ? { idempotencyKey } : {}),
-      ...(parsed.data.shippingAddress
-        ? {
-            shippingName: parsed.data.shippingAddress.name,
-            shippingLine1: parsed.data.shippingAddress.line1,
-            shippingLine2: parsed.data.shippingAddress.line2,
-            shippingCity: parsed.data.shippingAddress.city,
-            shippingRegion: parsed.data.shippingAddress.region,
-            shippingPostcode: parsed.data.shippingAddress.postcode,
-          }
-        : {}),
-    },
-    select: { id: true },
-  });
+      userId: user.id,
+      error: txErr instanceof Error ? txErr.message : String(txErr),
+    });
+
+    return {
+      success: false,
+      error: "Order could not be created. Please try again.",
+      reason: "order_creation_failed" as const,
+    };
+  }
+
+  // ── CASH_ON_PICKUP — no payment, return immediately ───────────────────────
+  if (fulfillmentType === "CASH_ON_PICKUP") {
+    audit({
+      userId: user.id,
+      action: "ORDER_CREATED",
+      entityType: "Order",
+      entityId: order.id,
+      metadata: { listingId: listing.id, totalNzd, fulfillmentType },
+      ip,
+    });
+
+    orderEventService.recordEvent({
+      orderId: order.id,
+      type: ORDER_EVENT_TYPES.ORDER_CREATED,
+      actorId: user.id,
+      actorRole: ACTOR_ROLES.BUYER,
+      summary: `Cash-on-pickup order placed for "${listing.title}" — $${(totalNzd / 100).toFixed(2)} NZD`,
+      metadata: { listingId: listing.id, totalNzd, fulfillmentType },
+    });
+
+    // Notify both parties (fire-and-forget)
+    createNotification({
+      userId: user.id,
+      type: "ORDER_PLACED",
+      title: "Order placed",
+      body: `Order placed. Now arrange a pickup time with the seller.`,
+      orderId: order.id,
+      link: `/orders/${order.id}`,
+    }).catch(() => {});
+
+    createNotification({
+      userId: listing.sellerId,
+      type: "ORDER_PLACED",
+      title: "New pickup order received!",
+      body: `New cash-on-pickup order for "${listing.title}". Arrange a pickup time with the buyer.`,
+      orderId: order.id,
+      link: `/orders/${order.id}`,
+    }).catch(() => {});
+
+    // Schedule pickup deadline job (48 hours)
+    const deadlineJobId = `pickup-deadline-${order.id}`;
+    pickupQueue
+      .add(
+        "PICKUP_JOB",
+        { type: "PICKUP_SCHEDULE_DEADLINE" as const, orderId: order.id },
+        { delay: 48 * 60 * 60 * 1000, jobId: deadlineJobId },
+      )
+      .then(() => {
+        db.order
+          .update({
+            where: { id: order.id },
+            data: { scheduleDeadlineJobId: deadlineJobId },
+          })
+          .catch(() => {});
+      })
+      .catch(() => {});
+
+    return {
+      success: true,
+      data: { orderId: order.id, clientSecret: null },
+    };
+  }
 
   // 5d. Create Stripe PaymentIntent — FIX 7: clean up order on failure
   // FIX A: Hard-fail if seller's Connect account is invalid.
@@ -320,15 +449,38 @@ export async function createOrder(params: {
       .then((buyer) => {
         const buyerName =
           buyer?.displayName ?? user.email.split("@")[0] ?? "Buyer";
-        createNotification({
-          userId: listing.sellerId,
-          type: "ORDER_PLACED",
-          title: "New order received! 🎉",
-          body: `${buyerName} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
-          listingId: listing.id,
-          orderId: order.id,
-          link: "/dashboard/seller?tab=orders",
-        }).catch(() => {});
+
+        if (fulfillmentType === "ONLINE_PAYMENT_PICKUP") {
+          // Pickup-specific notifications
+          createNotification({
+            userId: user.id,
+            type: "ORDER_PLACED",
+            title: "Order placed",
+            body: `Order placed. Now arrange a pickup time with the seller.`,
+            orderId: order.id,
+            link: `/orders/${order.id}`,
+          }).catch(() => {});
+          createNotification({
+            userId: listing.sellerId,
+            type: "ORDER_PLACED",
+            title: "New pickup order received!",
+            body: `${buyerName} placed a pickup order for "${listing.title}". Agree a pickup time within 24 hours.`,
+            orderId: order.id,
+            link: `/orders/${order.id}`,
+          }).catch(() => {});
+        } else {
+          // Standard shipping notification
+          createNotification({
+            userId: listing.sellerId,
+            type: "ORDER_PLACED",
+            title: "New order received! 🎉",
+            body: `${buyerName} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
+            listingId: listing.id,
+            orderId: order.id,
+            link: "/dashboard/seller?tab=orders",
+          }).catch(() => {});
+        }
+
         sendOrderConfirmationEmail({
           to: user.email,
           buyerName,
@@ -340,6 +492,26 @@ export async function createOrder(params: {
         }).catch(() => {});
       })
       .catch(() => {});
+
+    // Schedule pickup deadline for ONLINE_PAYMENT_PICKUP orders
+    if (fulfillmentType === "ONLINE_PAYMENT_PICKUP") {
+      const deadlineJobId = `pickup-deadline-${order.id}`;
+      pickupQueue
+        .add(
+          "PICKUP_JOB",
+          { type: "PICKUP_SCHEDULE_DEADLINE" as const, orderId: order.id },
+          { delay: 48 * 60 * 60 * 1000, jobId: deadlineJobId },
+        )
+        .then(() => {
+          db.order
+            .update({
+              where: { id: order.id },
+              data: { scheduleDeadlineJobId: deadlineJobId },
+            })
+            .catch(() => {});
+        })
+        .catch(() => {});
+    }
 
     return {
       success: true,
@@ -520,6 +692,13 @@ export async function markDispatched(params: {
           "Please check your input and try again.",
       };
     }
+
+    // Validate courier against the dynamic COURIERS list
+    const validCouriers = await getListValues("COURIERS");
+    if (!validCouriers.includes(parsed.data.courier)) {
+      return { success: false, error: "Invalid courier selection." };
+    }
+
     await orderService.markDispatched(parsed.data, user.id);
     return { success: true, data: undefined };
   } catch (err) {
@@ -542,7 +721,10 @@ import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 import { validateImageFile } from "@/server/lib/fileValidation";
 
 const EVIDENCE_MAX_SIZE = 5 * 1024 * 1024; // 5MB
-const EVIDENCE_MAX_FILES = 4;
+const EVIDENCE_MAX_FILES = parseInt(
+  process.env.DISPUTE_EVIDENCE_MAX_FILES ?? "4",
+  10,
+);
 
 export async function uploadOrderEvidence(
   formData: FormData,

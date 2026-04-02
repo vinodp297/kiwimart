@@ -42,6 +42,7 @@ import {
   type OrderForStatus,
 } from "@/lib/orderStatusMessages";
 import ProblemResolver from "@/components/ProblemResolver";
+import { PickupStatusBanner } from "@/components/pickup/PickupStatusBanner";
 import { submitCounterEvidence } from "@/server/actions/counterEvidence";
 
 // ── Courier URL detection ────────────────────────────────────────────────────
@@ -263,16 +264,18 @@ function buildSyntheticEvents(order: OrderDetailData): TimelineEvent[] {
     });
   }
 
-  if (order.disputeOpenedAt) {
+  if (order.dispute?.openedAt) {
     events.push({
       id: synId(),
       type: "DISPUTE_OPENED",
       actorRole: "BUYER",
-      summary: order.disputeReason
-        ? `Buyer opened dispute: ${order.disputeReason.replace(/_/g, " ").toLowerCase()}`
+      summary: order.dispute?.reason
+        ? `Buyer opened dispute: ${order.dispute?.reason.replace(/_/g, " ").toLowerCase()}`
         : "Buyer opened dispute",
-      metadata: order.disputeReason ? { reason: order.disputeReason } : null,
-      createdAt: order.disputeOpenedAt,
+      metadata: order.dispute?.reason
+        ? { reason: order.dispute?.reason }
+        : null,
+      createdAt: order.dispute?.openedAt,
       actor: null,
     });
   }
@@ -971,12 +974,12 @@ export default function OrderDetailPage() {
       createdAt: order.createdAt,
       dispatchedAt: order.dispatchedAt,
       completedAt: order.completedAt,
-      disputeOpenedAt: order.disputeOpenedAt,
+      disputeOpenedAt: order.dispute?.openedAt ?? null,
       cancelledAt: order.cancelledAt,
       cancelReason: order.cancelReason,
       cancelledBy: order.cancelledBy,
       trackingNumber: order.trackingNumber,
-      sellerRespondedAt: order.sellerRespondedAt,
+      sellerRespondedAt: order.dispute?.sellerRespondedAt ?? null,
       listingTitle: order.listingTitle,
       otherPartyName: order.otherPartyName,
       isBuyer: order.isBuyer,
@@ -1051,6 +1054,23 @@ export default function OrderDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* ── Pickup Status Banner ──────────────────────────────────────── */}
+          {order.fulfillmentType !== "SHIPPED" && (
+            <div className="mb-4">
+              <PickupStatusBanner
+                pickupStatus={order.pickupStatus}
+                fulfillmentType={order.fulfillmentType}
+                pickupScheduledAt={order.pickupScheduledAt}
+                pickupWindowExpiresAt={order.pickupWindowExpiresAt}
+                otpExpiresAt={order.otpExpiresAt}
+                rescheduleCount={order.rescheduleCount}
+                userRole={order.isBuyer ? "BUYER" : "SELLER"}
+                orderId={order.id}
+                listingTitle={order.listingTitle}
+              />
+            </div>
+          )}
 
           {/* ── Status info box (Fix 8) ───────────────────────────────────── */}
           {statusInfo && (
@@ -1346,44 +1366,47 @@ export default function OrderDetailPage() {
                 <div className="flex items-center gap-2 text-[12.5px]">
                   <span className="text-[#9E9A91]">Status:</span>
                   <span
-                    className={`font-medium ${order.sellerRespondedAt ? "text-sky-700" : "text-amber-700"}`}
+                    className={`font-medium ${order.dispute?.sellerRespondedAt ? "text-sky-700" : "text-amber-700"}`}
                   >
-                    {order.sellerRespondedAt
+                    {order.dispute?.sellerRespondedAt
                       ? "Under review"
                       : "Awaiting seller response"}
                   </span>
                 </div>
-                {order.disputeReason && (
+                {order.dispute?.reason && (
                   <div className="text-[12.5px]">
                     <span className="text-[#9E9A91]">Reason: </span>
                     <span className="text-[#141414]">
-                      {order.disputeReason.replace(/_/g, " ").toLowerCase()}
+                      {order.dispute?.reason.replace(/_/g, " ").toLowerCase()}
                     </span>
                   </div>
                 )}
-                {order.disputeNotes && (
+                {order.dispute?.buyerStatement && (
                   <div className="text-[12.5px]">
                     <span className="text-[#9E9A91]">Description: </span>
                     <span className="text-[#141414] line-clamp-3">
-                      {order.disputeNotes}
+                      {order.dispute?.buyerStatement}
                     </span>
                   </div>
                 )}
-                {order.sellerRespondedAt && order.sellerResponse && (
-                  <div className="bg-[#FAFAF8] rounded-xl p-3 border border-[#E3E0D9]">
-                    <p className="text-[11.5px] text-[#9E9A91] font-medium mb-1">
-                      Seller response (
-                      {new Date(order.sellerRespondedAt).toLocaleDateString(
-                        "en-NZ",
-                        { day: "numeric", month: "short" },
-                      )}
-                      )
-                    </p>
-                    <p className="text-[12.5px] text-[#141414] line-clamp-4">
-                      {order.sellerResponse}
-                    </p>
-                  </div>
-                )}
+                {order.dispute?.sellerRespondedAt &&
+                  order.dispute?.sellerStatement && (
+                    <div className="bg-[#FAFAF8] rounded-xl p-3 border border-[#E3E0D9]">
+                      <p className="text-[11.5px] text-[#9E9A91] font-medium mb-1">
+                        Seller response (
+                        {new Date(
+                          order.dispute?.sellerRespondedAt,
+                        ).toLocaleDateString("en-NZ", {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                        )
+                      </p>
+                      <p className="text-[12.5px] text-[#141414] line-clamp-4">
+                        {order.dispute?.sellerStatement}
+                      </p>
+                    </div>
+                  )}
                 <div className="bg-sky-50 rounded-xl p-3 border border-sky-100">
                   <p className="text-[12px] text-sky-800">
                     {richStatus.whatHappensNext}
@@ -1400,32 +1423,32 @@ export default function OrderDetailPage() {
               <div className="mt-5 space-y-3">
                 {/* Seller response countdown timer */}
                 {!order.isBuyer &&
-                  !order.sellerResponse &&
-                  order.disputeOpenedAt && (
+                  !order.dispute?.sellerStatement &&
+                  order.dispute?.openedAt && (
                     <DisputeCountdownTimer
-                      disputeOpenedAt={order.disputeOpenedAt}
+                      disputeOpenedAt={order.dispute!.openedAt}
                     />
                   )}
 
                 {/* Buyer's dispute claim */}
                 <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-[12.5px] text-red-800">
                   <p className="font-semibold mb-1">Dispute details</p>
-                  {order.disputeReason && (
+                  {order.dispute?.reason && (
                     <p>
                       Reason:{" "}
-                      {order.disputeReason.replace(/_/g, " ").toLowerCase()}
+                      {order.dispute?.reason.replace(/_/g, " ").toLowerCase()}
                     </p>
                   )}
-                  {order.disputeNotes && (
+                  {order.dispute?.buyerStatement && (
                     <p className="mt-1.5 whitespace-pre-wrap">
-                      {order.disputeNotes}
+                      {order.dispute?.buyerStatement}
                     </p>
                   )}
                   {/* Trust & Safety message is shown in the top status banner */}
                 </div>
 
                 {/* Seller's response (if submitted) */}
-                {order.sellerResponse && (
+                {order.dispute?.sellerStatement && (
                   <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12.5px] text-amber-900">
                     <p className="font-semibold mb-1 flex items-center gap-1.5">
                       <svg
@@ -1441,11 +1464,11 @@ export default function OrderDetailPage() {
                       Seller response
                     </p>
                     <p className="whitespace-pre-wrap">
-                      {order.sellerResponse}
+                      {order.dispute?.sellerStatement}
                     </p>
-                    {order.sellerRespondedAt && (
+                    {order.dispute?.sellerRespondedAt && (
                       <p className="mt-1.5 text-[11px] opacity-60">
-                        Responded {fmtDate(order.sellerRespondedAt)}
+                        Responded {fmtDate(order.dispute?.sellerRespondedAt)}
                       </p>
                     )}
                   </div>
@@ -1453,7 +1476,7 @@ export default function OrderDetailPage() {
 
                 {/* Seller response form (if seller hasn't responded yet) */}
                 {!order.isBuyer &&
-                  !order.sellerResponse &&
+                  !order.dispute?.sellerStatement &&
                   !showSellerResponse && (
                     <button
                       type="button"
@@ -1466,7 +1489,7 @@ export default function OrderDetailPage() {
                   )}
 
                 {!order.isBuyer &&
-                  !order.sellerResponse &&
+                  !order.dispute?.sellerStatement &&
                   showSellerResponse && (
                     <div className="p-4 rounded-xl bg-white border border-[#E3E0D9]">
                       <label className="text-[12.5px] font-semibold text-[#141414] mb-1.5 block">
@@ -1967,7 +1990,7 @@ export default function OrderDetailPage() {
             {/* Buyer: open dispute */}
             {order.isBuyer &&
               (order.status === "dispatched" || order.status === "delivered") &&
-              !order.disputeReason && (
+              !order.dispute?.reason && (
                 <Button
                   variant="ghost"
                   size="md"
@@ -2058,7 +2081,7 @@ export default function OrderDetailPage() {
               !["awaiting_payment", "cancelled", "refunded"].includes(
                 order.status,
               ) &&
-              !order.disputeReason && (
+              !order.dispute?.reason && (
                 <button
                   type="button"
                   onClick={() => setShowProblemResolver(true)}
@@ -2938,7 +2961,8 @@ export default function OrderDetailPage() {
             </div>
             <Alert variant="info">
               The other party has 48 hours to accept, reject, or counter-offer.
-              Accepted partial refunds will be processed by the KiwiMart team.
+              Accepted partial refunds will be processed by the{" "}
+              {process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} team.
             </Alert>
             <Button
               variant="gold"
@@ -3171,13 +3195,18 @@ interface OrderDetailData {
   dispatchedAt: string | null;
   deliveredAt: string | null;
   completedAt: string | null;
-  disputeOpenedAt: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
-  disputeReason: string | null;
-  disputeNotes: string | null;
-  sellerResponse: string | null;
-  sellerRespondedAt: string | null;
+  // Dispute data from standalone Dispute model
+  dispute: {
+    reason: string;
+    status: string;
+    buyerStatement: string | null;
+    sellerStatement: string | null;
+    openedAt: string;
+    sellerRespondedAt: string | null;
+    resolvedAt: string | null;
+  } | null;
   isBuyer: boolean;
   buyerId: string;
   sellerId: string;
@@ -3187,6 +3216,13 @@ interface OrderDetailData {
   cancelledBy: string | null;
   cancelReason: string | null;
   cancelledAt: string | null;
+  // Pickup fields
+  fulfillmentType: string;
+  pickupStatus: string | null;
+  pickupScheduledAt: string | null;
+  pickupWindowExpiresAt: string | null;
+  otpExpiresAt: string | null;
+  rescheduleCount: number;
 }
 
 // ── Modal wrapper ───────────────────────────────────────────────────────────

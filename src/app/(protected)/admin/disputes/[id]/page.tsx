@@ -4,7 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminDisputesService } from "@/modules/admin/admin-disputes.service";
-import { getDisputeEvidenceUrls } from "@/server/actions/disputes";
+import { getSignedEvidenceFromRecords } from "@/server/actions/disputes";
+import { markUnderReview } from "@/server/services/dispute/dispute.service";
 import CaseView from "./CaseView";
 import type { Metadata } from "next";
 
@@ -26,11 +27,16 @@ export default async function DisputeCasePage(props: {
   const caseData = await adminDisputesService.getCaseDetail(id);
   if (!caseData) notFound();
 
-  // Generate signed URLs for buyer evidence photos
-  const evidenceSignedUrls =
-    caseData.order.disputeEvidenceUrls.length > 0
-      ? await getDisputeEvidenceUrls(caseData.order.disputeEvidenceUrls)
+  // Generate signed URLs for evidence photos from Dispute model
+  const evidenceSignedItems =
+    caseData.dispute?.evidence && caseData.dispute.evidence.length > 0
+      ? await getSignedEvidenceFromRecords(caseData.dispute.evidence)
       : [];
+
+  // Mark dispute as under review when admin opens the case
+  if (caseData.dispute) {
+    markUnderReview(caseData.dispute.id).catch(() => {});
+  }
 
   // Serialize dates for client component
   const serialized = {
@@ -39,12 +45,37 @@ export default async function DisputeCasePage(props: {
       createdAt: caseData.order.createdAt.toISOString(),
       dispatchedAt: caseData.order.dispatchedAt?.toISOString() ?? null,
       completedAt: caseData.order.completedAt?.toISOString() ?? null,
-      disputeOpenedAt: caseData.order.disputeOpenedAt?.toISOString() ?? null,
-      sellerRespondedAt:
-        caseData.order.sellerRespondedAt?.toISOString() ?? null,
-      disputeResolvedAt:
-        caseData.order.disputeResolvedAt?.toISOString() ?? null,
+      fulfillmentType: caseData.order.fulfillmentType,
+      pickupStatus: caseData.order.pickupStatus,
+      pickupScheduledAt:
+        caseData.order.pickupScheduledAt?.toISOString() ?? null,
+      otpInitiatedAt: caseData.order.otpInitiatedAt?.toISOString() ?? null,
+      pickupConfirmedAt:
+        caseData.order.pickupConfirmedAt?.toISOString() ?? null,
+      pickupRejectedAt: caseData.order.pickupRejectedAt?.toISOString() ?? null,
+      rescheduleCount: caseData.order.rescheduleCount,
+      pickupRescheduleRequests: caseData.order.pickupRescheduleRequests.map(
+        (req) => ({
+          ...req,
+          proposedTime: req.proposedTime.toISOString(),
+          respondedAt: req.respondedAt?.toISOString() ?? null,
+          createdAt: req.createdAt.toISOString(),
+        }),
+      ),
     },
+    dispute: caseData.dispute
+      ? {
+          ...caseData.dispute,
+          openedAt: caseData.dispute.openedAt.toISOString(),
+          sellerRespondedAt:
+            caseData.dispute.sellerRespondedAt?.toISOString() ?? null,
+          resolvedAt: caseData.dispute.resolvedAt?.toISOString() ?? null,
+          evidence: caseData.dispute.evidence.map((e) => ({
+            ...e,
+            createdAt: e.createdAt.toISOString(),
+          })),
+        }
+      : null,
     listing: caseData.listing,
     buyer: {
       ...caseData.buyer,
@@ -73,7 +104,13 @@ export default async function DisputeCasePage(props: {
       ...ce,
       createdAt: ce.createdAt.toISOString(),
     })),
-    evidenceSignedUrls,
+    evidenceSignedItems,
+    snapshot: caseData.snapshot
+      ? {
+          ...caseData.snapshot,
+          capturedAt: caseData.snapshot.capturedAt.toISOString(),
+        }
+      : null,
   };
 
   return (

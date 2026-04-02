@@ -323,7 +323,8 @@ export default function CartPage() {
             </svg>
             <p className="text-[12px] text-emerald-700">
               <span className="font-bold text-emerald-800">
-                $3,000 Buyer Protection
+                {process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"}{" "}
+                Buyer Protection
               </span>{" "}
               — Payment held securely until you confirm delivery
             </p>

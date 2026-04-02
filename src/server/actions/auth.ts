@@ -124,8 +124,7 @@ export async function registerUser(
   });
 
   // 5g. Send verification email (non-blocking; welcome email sent after verification)
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const verifyUrl = `${appUrl}/api/verify-email?token=${verifyToken}`;
   try {
     const { sendVerificationEmail } = await import("@/server/email");
@@ -373,8 +372,7 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
     },
   });
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const verifyUrl = `${appUrl}/api/verify-email?token=${token}`;
 
   try {

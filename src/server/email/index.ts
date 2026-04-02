@@ -5,6 +5,33 @@
 
 import { sendTransactionalEmail } from "./transport";
 
+// ── Email configuration from environment ─────────────────────────────────────
+const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
+const COMPANY_LEGAL_NAME_CFG =
+  process.env.COMPANY_LEGAL_NAME ?? "Buyzi Limited";
+const COMPANY_ADDRESS_CFG =
+  process.env.COMPANY_ADDRESS ?? "Auckland, New Zealand";
+const SUPPORT_EMAIL_CFG =
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz";
+const BUYER_PROTECTION_DISPLAY =
+  process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000";
+const OFFER_EXPIRY_HOURS_CFG = process.env.OFFER_EXPIRY_HOURS ?? "72";
+const OFFER_PURCHASE_WINDOW_CFG =
+  process.env.OFFER_PURCHASE_WINDOW_HOURS ?? "24";
+const REFUND_DAYS_MIN = process.env.REFUND_PROCESSING_DAYS_MIN ?? "5";
+const REFUND_DAYS_MAX = process.env.REFUND_PROCESSING_DAYS_MAX ?? "10";
+const PAYOUT_DAYS_MIN = process.env.PAYOUT_PROCESSING_DAYS_MIN ?? "2";
+const PAYOUT_DAYS_MAX = process.env.PAYOUT_PROCESSING_DAYS_MAX ?? "3";
+const RETURN_SHIP_DAYS = process.env.RETURN_SHIPPING_WINDOW_DAYS ?? "7";
+const LISTING_POLICY_PATH_CFG =
+  process.env.LISTING_POLICY_PATH ?? "/policies/listing-guidelines";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
+if (!process.env.NEXT_PUBLIC_APP_URL) {
+  console.error(
+    "[email] NEXT_PUBLIC_APP_URL is not set — email links will be broken",
+  );
+}
+
 // ── Helper: HTML-escape ───────────────────────────────────────────────────────
 
 function esc(str: string): string {
@@ -53,14 +80,14 @@ function baseTemplate(content: string, previewText: string): string {
   <div class="wrapper">
     <div class="card">
       <div class="header">
-        <div class="logo">🥝 KiwiMart</div>
+        <div class="logo">🥝 ${APP_NAME}</div>
       </div>
       <div class="body">${content}</div>
     </div>
     <div class="footer">
-      KiwiMart Limited · Auckland, New Zealand<br>
-      <a href="${process.env.NEXT_PUBLIC_APP_URL}/unsubscribe" style="color:#C9C5BC;">Unsubscribe</a> ·
-      <a href="${process.env.NEXT_PUBLIC_APP_URL}/privacy" style="color:#C9C5BC;">Privacy Policy</a>
+      ${COMPANY_LEGAL_NAME_CFG} · ${COMPANY_ADDRESS_CFG}<br>
+      <a href="${APP_URL}/unsubscribe" style="color:#C9C5BC;">Unsubscribe</a> ·
+      <a href="${APP_URL}/privacy" style="color:#C9C5BC;">Privacy Policy</a>
     </div>
   </div>
 </body>
@@ -76,22 +103,22 @@ export async function sendVerificationEmail(params: {
 }): Promise<void> {
   const html = baseTemplate(
     `<h1>Verify your email address</h1>
-    <p>Hi ${esc(params.displayName)}, thanks for joining KiwiMart!</p>
+    <p>Hi ${esc(params.displayName)}, thanks for joining ${APP_NAME}!</p>
     <p>Click the button below to verify your email and activate your account. This link expires in <strong>24 hours</strong>.</p>
     <a href="${esc(params.verifyUrl)}" class="btn">Verify my email →</a>
     <hr class="divider">
     <div class="trust">
       ✓ Check your spam folder if not received<br>
-      ✓ You can still browse KiwiMart while waiting
+      ✓ You can still browse ${APP_NAME} while waiting
     </div>
     <p style="font-size:12px; color:#C9C5BC; margin-top:16px;">
-      If you didn't create a KiwiMart account, you can safely ignore this email.
+      If you didn't create a ${APP_NAME} account, you can safely ignore this email.
     </p>`,
-    `Verify your KiwiMart email address`,
+    `Verify your ${APP_NAME} email address`,
   );
   await sendTransactionalEmail({
     to: params.to,
-    subject: "Verify your KiwiMart email address",
+    subject: `Verify your ${APP_NAME} email address`,
     html,
   });
 }
@@ -101,19 +128,19 @@ export async function sendWelcomeEmail(params: {
   displayName: string;
 }): Promise<void> {
   const html = baseTemplate(
-    `<h1>Welcome to KiwiMart, ${esc(params.displayName)}! 🥝</h1>
+    `<h1>Welcome to ${APP_NAME}, ${esc(params.displayName)}! 🥝</h1>
     <p>You're now part of Aotearoa's most trusted marketplace. Millions of Kiwis buy and sell here — and now so can you.</p>
     <p>Here's what you can do right now:</p>
     <p><strong>🔍 Browse listings</strong> — find great deals from NZ sellers near you.</p>
     <p><strong>📦 List an item</strong> — sell in under 2 minutes, $0 listing fee.</p>
-    <p><strong>🛡 $3,000 protection</strong> — every purchase backed by KiwiMart's buyer protection.</p>
-    <a href="${process.env.NEXT_PUBLIC_APP_URL}" class="btn">Start exploring →</a>
+    <p><strong>🛡 ${BUYER_PROTECTION_DISPLAY} protection</strong> — every purchase backed by ${APP_NAME}'s buyer protection.</p>
+    <a href="${APP_URL}" class="btn">Start exploring →</a>
     <div class="trust">Your account is protected by secure escrow payments and ID-verified sellers.</div>`,
-    `Welcome to KiwiMart, ${params.displayName}!`,
+    `Welcome to ${APP_NAME}, ${params.displayName}!`,
   );
   await sendTransactionalEmail({
     to: params.to,
-    subject: `Welcome to KiwiMart, ${params.displayName}! 🥝`,
+    subject: `Welcome to ${APP_NAME}, ${params.displayName}! 🥝`,
     html,
   });
 }
@@ -126,17 +153,17 @@ export async function sendPasswordResetEmail(params: {
 }): Promise<void> {
   const html = baseTemplate(
     `<h1>Reset your password</h1>
-    <p>Hi ${esc(params.displayName)}, we received a request to reset your KiwiMart password.</p>
+    <p>Hi ${esc(params.displayName)}, we received a request to reset your ${APP_NAME} password.</p>
     <p>Click the button below to set a new password. This link expires in <strong>${params.expiresInMinutes} minutes</strong>.</p>
     <a href="${esc(params.resetUrl)}" class="btn">Reset my password →</a>
     <hr class="divider">
-    <p style="font-size:12px;">If you didn't request this, ignore this email — your password won't change. If you're worried about your account, <a href="${process.env.NEXT_PUBLIC_APP_URL}/support" style="color:#D4A843;">contact support</a>.</p>
+    <p style="font-size:12px;">If you didn't request this, ignore this email — your password won't change. If you're worried about your account, <a href="${APP_URL}/support" style="color:#D4A843;">contact support</a>.</p>
     <p style="font-size:11px; color:#C9C5BC;">For security, this link can only be used once and expires after ${params.expiresInMinutes} minutes.</p>`,
-    "Reset your KiwiMart password",
+    `Reset your ${APP_NAME} password`,
   );
   await sendTransactionalEmail({
     to: params.to,
-    subject: "Reset your KiwiMart password",
+    subject: `Reset your ${APP_NAME} password`,
     html,
   });
 }
@@ -155,7 +182,7 @@ export async function sendOfferReceivedEmail(params: {
     <p>Hi ${esc(params.sellerName)}, <strong>${esc(params.buyerName)}</strong> has made an offer of <strong>${esc(formatted)}</strong> on your listing:</p>
     <p><strong>${esc(params.listingTitle)}</strong></p>
     <a href="${esc(params.listingUrl)}" class="btn">View offer →</a>
-    <p style="font-size:12px; color:#9E9A91;">Offers expire after 48 hours. Sign in to accept or decline.</p>`,
+    <p style="font-size:12px; color:#9E9A91;">Offers expire after ${OFFER_EXPIRY_HOURS_CFG} hours. Sign in to accept or decline.</p>`,
     `You received a ${formatted} offer`,
   );
   await sendTransactionalEmail({
@@ -180,9 +207,9 @@ export async function sendOfferResponseEmail(params: {
     params.accepted
       ? `<h1>Your offer was accepted! 🎉</h1>
         <p>Hi ${esc(params.buyerName)}, great news — the seller has accepted your offer on <strong>${esc(params.listingTitle)}</strong>.</p>
-        <p>Complete your purchase within <strong>24 hours</strong> to secure the item.</p>
+        <p>Complete your purchase within <strong>${OFFER_PURCHASE_WINDOW_CFG} hours</strong> to secure the item.</p>
         <a href="${esc(params.listingUrl)}" class="btn">Complete purchase →</a>
-        <div class="trust">Your payment is protected by KiwiMart's $3,000 Buyer Protection. Funds are held in escrow until you confirm delivery.</div>`
+        <div class="trust">Your payment is protected by ${APP_NAME}'s ${BUYER_PROTECTION_DISPLAY} Buyer Protection. Funds are held in escrow until you confirm delivery.</div>`
       : `<h1>Offer update</h1>
         <p>Hi ${esc(params.buyerName)}, the seller has declined your offer on <strong>${esc(params.listingTitle)}</strong>.</p>
         <p>You can make a new offer or browse similar listings.</p>
@@ -208,7 +235,7 @@ export async function sendOrderDispatchedEmail(params: {
         ? `<p>Tracking number: <strong>${esc(params.trackingNumber)}</strong>${params.trackingUrl ? ` — <a href="${esc(params.trackingUrl)}" style="color:#D4A843;">track your parcel</a>` : ""}</p>`
         : ""
     }
-    <p>Once you receive and inspect your item, please confirm delivery in KiwiMart so the seller gets paid.</p>
+    <p>Once you receive and inspect your item, please confirm delivery in ${APP_NAME} so the seller gets paid.</p>
     <a href="${esc(params.orderUrl)}" class="btn">View order →</a>
     <div class="trust">Your payment is held securely until you confirm receipt. Don't confirm delivery until you're happy with the item.</div>`,
     "Your order has been dispatched",
@@ -241,7 +268,7 @@ export async function sendDeliveryReminderEmail(params: {
       If you have not received the item or it is not as described, open a dispute before then.
     </div>
     <a href="${esc(params.confirmUrl)}" class="btn">Confirm delivery →</a>
-    <p style="font-size:12px; color:#9E9A91;">If there is an issue with your order, <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer" style="color:#D4A843;">open a dispute</a> before the auto-release date.</p>`,
+    <p style="font-size:12px; color:#9E9A91;">If there is an issue with your order, <a href="${APP_URL}/dashboard/buyer" style="color:#D4A843;">open a dispute</a> before the auto-release date.</p>`,
     `Reminder: please confirm delivery — ${params.listingTitle}`,
   );
   await sendTransactionalEmail({
@@ -260,8 +287,6 @@ export async function sendOrderConfirmationEmail(params: {
   orderId: string;
   listingId: string;
 }): Promise<void> {
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
   const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
   const html = baseTemplate(
     `<h1>Your order is confirmed! 🎉</h1>
@@ -291,7 +316,7 @@ export async function sendOrderConfirmationEmail(params: {
     1. The seller will dispatch your item<br>
     2. You'll receive a shipping notification with tracking details<br>
     3. Once you receive the item, confirm delivery to release payment</p>
-    <a href="${appUrl}/dashboard/buyer?tab=orders" class="btn">View your order →</a>`,
+    <a href="${APP_URL}/dashboard/buyer?tab=orders" class="btn">View your order →</a>`,
     `Order confirmed — ${params.listingTitle}`,
   );
   await sendTransactionalEmail({
@@ -309,8 +334,6 @@ export async function sendNewMessageEmail(params: {
   listingTitle?: string;
   listingId?: string;
 }): Promise<void> {
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
   const preview =
     params.messagePreview.length > 120
       ? `${params.messagePreview.slice(0, 117)}...`
@@ -323,8 +346,8 @@ export async function sendNewMessageEmail(params: {
       <p style="margin:0;font-size:14px;font-style:italic;color:#141414">"${esc(preview)}"</p>
       <p style="margin:8px 0 0;font-size:12px;color:#9E9A91">— ${esc(params.senderName)}</p>
     </div>
-    <a href="${appUrl}/dashboard/buyer?tab=messages" class="btn">Reply to ${esc(params.senderName)} →</a>
-    <p style="font-size:12px;color:#C9C5BC;text-align:center">You are receiving this because someone messaged you on KiwiMart.</p>`,
+    <a href="${APP_URL}/dashboard/buyer?tab=messages" class="btn">Reply to ${esc(params.senderName)} →</a>
+    <p style="font-size:12px;color:#C9C5BC;text-align:center">You are receiving this because someone messaged you on ${APP_NAME}.</p>`,
     `New message from ${params.senderName}`,
   );
   await sendTransactionalEmail({
@@ -343,8 +366,6 @@ export async function sendDisputeOpenedEmail(params: {
   reason: string;
   description: string;
 }): Promise<void> {
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app";
   const formattedReason = params.reason
     .replace(/_/g, " ")
     .toLowerCase()
@@ -368,8 +389,8 @@ export async function sendDisputeOpenedEmail(params: {
         <td style="color:#141414;padding:6px 0;line-height:1.6">${esc(params.description)}</td>
       </tr>
     </table>
-    <p>Our team will review this dispute. <strong>Do not contact the buyer outside of KiwiMart.</strong></p>
-    <a href="${appUrl}/dashboard/seller" class="btn">View dispute →</a>`,
+    <p>Our team will review this dispute. <strong>Do not contact the buyer outside of ${APP_NAME}.</strong></p>
+    <a href="${APP_URL}/dashboard/seller" class="btn">View dispute →</a>`,
     `⚠️ Dispute opened — ${params.listingTitle}`,
   );
   await sendTransactionalEmail({
@@ -398,7 +419,7 @@ export async function sendFinalDeliveryReminderEmail(params: {
       If you have NOT received the item or it is NOT as described, please open a dispute immediately.
     </div>
     <a href="${esc(params.confirmUrl)}" class="btn">Confirm delivery →</a>
-    <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer" class="btn-secondary">Open a dispute</a>
+    <a href="${APP_URL}/dashboard/buyer" class="btn-secondary">Open a dispute</a>
     <p style="font-size:12px; color:#9E9A91;">Once payment is released it cannot be reversed. Act now if there is an issue.</p>`,
     `⚠️ Action required — payment releases tomorrow for ${params.listingTitle}`,
   );
@@ -407,6 +428,278 @@ export async function sendFinalDeliveryReminderEmail(params: {
     subject: `⚠️ Action required — payment releases tomorrow for ${params.listingTitle}`,
     html,
   });
+}
+
+// ── Listing moderation emails ────────────────────────────────────────────────
+
+export async function sendListingApprovedEmail(params: {
+  to: string;
+  sellerName: string;
+  listingTitle: string;
+  listingUrl: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Your listing is live!</h1>
+    <p>Hi ${esc(params.sellerName)}, great news — your listing has been approved and is now visible to buyers.</p>
+    <p style="font-size:18px; font-weight:700; margin:16px 0;">${esc(params.listingTitle)}</p>
+    <a href="${esc(params.listingUrl)}" class="btn">View your listing</a>
+    <div class="trust">Your listing is now live on ${APP_NAME}. Buyers can find it in search results and browse pages.</div>`,
+    `Your listing "${params.listingTitle}" is now live`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Your listing is live — "${params.listingTitle}"`,
+    html,
+  });
+}
+
+export async function sendListingNeedsChangesEmail(params: {
+  to: string;
+  sellerName: string;
+  listingTitle: string;
+  moderationNote: string;
+  editUrl: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Your listing needs changes</h1>
+    <p>Hi ${esc(params.sellerName)}, our team reviewed your listing and it needs a few changes before it can go live.</p>
+    <p style="font-size:18px; font-weight:700; margin:16px 0;">${esc(params.listingTitle)}</p>
+    <div class="warning">
+      <strong>Reviewer note:</strong><br>
+      ${esc(params.moderationNote)}
+    </div>
+    <p>Please update your listing and resubmit for review.</p>
+    <a href="${esc(params.editUrl)}" class="btn">Edit your listing</a>
+    <p style="font-size:12px; color:#9E9A91;">If you have questions about this review, please contact our support team.</p>`,
+    `Your listing "${params.listingTitle}" needs changes`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Action needed — "${params.listingTitle}" requires changes`,
+    html,
+  });
+}
+
+export async function sendListingRejectedEmail(params: {
+  to: string;
+  sellerName: string;
+  listingTitle: string;
+  rejectionReason: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Listing not approved</h1>
+    <p>Hi ${esc(params.sellerName)}, unfortunately your listing could not be approved.</p>
+    <p style="font-size:18px; font-weight:700; margin:16px 0;">${esc(params.listingTitle)}</p>
+    <div class="warning">
+      <strong>Reason:</strong><br>
+      ${esc(params.rejectionReason)}
+    </div>
+    <p>Please review our <a href="${APP_URL}${LISTING_POLICY_PATH_CFG}" style="color:#D4A843;">listing guidelines</a> and try again with a new listing that complies with our policies.</p>
+    <p style="font-size:12px; color:#9E9A91;">If you believe this was a mistake, please contact our support team.</p>`,
+    `Your listing "${params.listingTitle}" was not approved`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Listing not approved — "${params.listingTitle}"`,
+    html,
+  });
+}
+
+// ── Payout & order lifecycle emails ─────────────────────────────────────────
+
+export async function sendPayoutInitiatedEmail(params: {
+  to: string;
+  sellerName: string;
+  amountNzd: number; // in cents
+  listingTitle: string;
+  orderId: string;
+  estimatedArrival: string;
+}): Promise<void> {
+  const amount = `$${(params.amountNzd / 100).toFixed(2)} NZD`;
+  const html = baseTemplate(
+    `<h1>Your payout is on its way 💰</h1>
+    <p>Hi ${esc(params.sellerName)},</p>
+    <p>Great news — your payout of <strong>${esc(amount)}</strong> for the sale of <strong>"${esc(params.listingTitle)}"</strong> has been initiated and is on its way to your bank account.</p>
+    <div class="trust">
+      ✓ Estimated arrival: <strong>${esc(params.estimatedArrival)}</strong><br>
+      ✓ Your payout is being processed via Stripe Connect
+    </div>
+    <p>If you have any questions about your payout, you can view the order details in your dashboard.</p>
+    <a href="${APP_URL}/orders/${esc(params.orderId)}" class="btn">View Order →</a>`,
+    `Your payout of ${amount} is on its way`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Your ${APP_NAME} payout is on its way`,
+    html,
+  });
+}
+
+export async function sendCancellationEmail(params: {
+  to: string;
+  recipientName: string;
+  recipientRole: "buyer" | "seller";
+  orderId: string;
+  listingTitle: string;
+  cancellationReason: string;
+  refundAmount: number | null; // in cents; null = no refund applies
+}): Promise<void> {
+  const isBuyer = params.recipientRole === "buyer";
+  const subject = isBuyer
+    ? `Your order has been cancelled — ${params.listingTitle}`
+    : `An order has been cancelled — ${params.listingTitle}`;
+
+  const reasonHtml = params.cancellationReason
+    ? `<p><strong>Reason:</strong> ${esc(params.cancellationReason)}</p>`
+    : "";
+
+  let bodyContent: string;
+  if (isBuyer) {
+    const refundHtml =
+      params.refundAmount != null && params.refundAmount > 0
+        ? `<div class="trust">Your refund of <strong>$${(params.refundAmount / 100).toFixed(2)} NZD</strong> will be returned to your original payment method within ${REFUND_DAYS_MIN}–${REFUND_DAYS_MAX} business days.</div>`
+        : "";
+    bodyContent = `<h1>Your order has been cancelled</h1>
+    <p>Hi ${esc(params.recipientName)},</p>
+    <p>Your order for <strong>"${esc(params.listingTitle)}"</strong> has been cancelled.</p>
+    ${reasonHtml}
+    ${refundHtml}
+    <a href="${APP_URL}/orders/${esc(params.orderId)}" class="btn">View Order →</a>`;
+  } else {
+    bodyContent = `<h1>An order has been cancelled</h1>
+    <p>Hi ${esc(params.recipientName)},</p>
+    <p>The order for <strong>"${esc(params.listingTitle)}"</strong> has been cancelled.</p>
+    ${reasonHtml}
+    <p>The item is now available to relist if you wish.</p>
+    <a href="${APP_URL}/orders/${esc(params.orderId)}" class="btn">View Order →</a>`;
+  }
+
+  const html = baseTemplate(bodyContent, subject);
+  await sendTransactionalEmail({ to: params.to, subject, html });
+}
+
+export async function sendDisputeResolvedEmail(params: {
+  to: string;
+  recipientName: string;
+  recipientRole: "buyer" | "seller";
+  orderId: string;
+  listingTitle: string;
+  resolution: "BUYER_WON" | "SELLER_WON" | "PARTIAL_REFUND";
+  refundAmount: number | null; // in cents; used for BUYER_WON and PARTIAL_REFUND
+  adminNote: string | null;
+}): Promise<void> {
+  const isBuyer = params.recipientRole === "buyer";
+  const refundFmt =
+    params.refundAmount != null
+      ? `$${(params.refundAmount / 100).toFixed(2)} NZD`
+      : "";
+
+  // Subject varies by role + resolution outcome
+  let subject: string;
+  if (isBuyer) {
+    if (params.resolution === "BUYER_WON") {
+      subject = `Dispute resolved in your favour — ${params.listingTitle}`;
+    } else if (params.resolution === "SELLER_WON") {
+      subject = `Dispute outcome — ${params.listingTitle}`;
+    } else {
+      subject = `Dispute resolved — partial refund issued for ${params.listingTitle}`;
+    }
+  } else {
+    if (params.resolution === "SELLER_WON") {
+      subject = `Dispute resolved in your favour — ${params.listingTitle}`;
+    } else if (params.resolution === "BUYER_WON") {
+      subject = `Dispute outcome — ${params.listingTitle}`;
+    } else {
+      subject = `Dispute resolved — partial refund issued for ${params.listingTitle}`;
+    }
+  }
+
+  // Main message body varies by role + resolution
+  let mainMessage: string;
+  if (isBuyer) {
+    if (params.resolution === "BUYER_WON") {
+      mainMessage = `<p>We have reviewed your dispute for <strong>"${esc(params.listingTitle)}"</strong> and decided in your favour.</p>
+      <div class="trust">Your refund of <strong>${esc(refundFmt)}</strong> will be returned to your original payment method within ${REFUND_DAYS_MIN}–${REFUND_DAYS_MAX} business days.</div>`;
+    } else if (params.resolution === "SELLER_WON") {
+      mainMessage = `<p>We have reviewed your dispute for <strong>"${esc(params.listingTitle)}"</strong>. After reviewing all evidence, we were unable to rule in your favour on this occasion.</p>
+      <p>If you believe this decision is incorrect, please <a href="${APP_URL}/support" style="color:#D4A843;">contact our support team</a>.</p>`;
+    } else {
+      mainMessage = `<p>We have reviewed your dispute for <strong>"${esc(params.listingTitle)}"</strong> and issued a partial refund of <strong>${esc(refundFmt)}</strong>.</p>
+      <div class="trust">This will be returned to your original payment method within ${REFUND_DAYS_MIN}–${REFUND_DAYS_MAX} business days.</div>`;
+    }
+  } else {
+    if (params.resolution === "BUYER_WON") {
+      mainMessage = `<p>We have reviewed the dispute for <strong>"${esc(params.listingTitle)}"</strong> and ruled in the buyer's favour.</p>
+      <p>Your payout for this order will not be released. If you believe this decision is incorrect, please <a href="${APP_URL}/support" style="color:#D4A843;">contact our support team</a>.</p>`;
+    } else if (params.resolution === "SELLER_WON") {
+      mainMessage = `<p>We have reviewed the dispute for <strong>"${esc(params.listingTitle)}"</strong> and decided in your favour.</p>
+      <div class="trust">Your payout will be released within ${PAYOUT_DAYS_MIN}–${PAYOUT_DAYS_MAX} business days.</div>`;
+    } else {
+      mainMessage = `<p>We have reviewed the dispute for <strong>"${esc(params.listingTitle)}"</strong>. A partial refund of <strong>${esc(refundFmt)}</strong> has been issued to the buyer.</p>
+      <div class="trust">The remaining balance will be released to you within ${PAYOUT_DAYS_MIN}–${PAYOUT_DAYS_MAX} business days.</div>`;
+    }
+  }
+
+  const adminNoteHtml = params.adminNote
+    ? `<div class="warning"><strong>Note from our team:</strong><br>${esc(params.adminNote)}</div>`
+    : "";
+
+  const html = baseTemplate(
+    `<h1>Dispute resolved</h1>
+    <p>Hi ${esc(params.recipientName)},</p>
+    ${mainMessage}
+    ${adminNoteHtml}
+    <a href="${APP_URL}/orders/${esc(params.orderId)}" class="btn">View Order →</a>`,
+    subject,
+  );
+  await sendTransactionalEmail({ to: params.to, subject, html });
+}
+
+export async function sendReturnRequestEmail(params: {
+  to: string;
+  recipientName: string;
+  recipientRole: "buyer" | "seller";
+  orderId: string;
+  listingTitle: string;
+  action: "REQUESTED" | "APPROVED" | "REJECTED";
+  reason: string | null;
+  sellerNote: string | null;
+}): Promise<void> {
+  let subject: string;
+  if (params.action === "REQUESTED") {
+    subject = `Return requested for your order — ${params.listingTitle}`;
+  } else if (params.action === "APPROVED") {
+    subject = `Your return request has been approved — ${params.listingTitle}`;
+  } else {
+    subject = `Your return request — ${params.listingTitle}`;
+  }
+
+  let bodyContent: string;
+  if (params.action === "REQUESTED") {
+    bodyContent = `<h1>Return requested for your order</h1>
+    <p>Hi ${esc(params.recipientName)},</p>
+    <p>A buyer has requested a return for <strong>"${esc(params.listingTitle)}"</strong>.</p>
+    ${params.reason ? `<p><strong>Their reason:</strong> ${esc(params.reason)}</p>` : ""}
+    <p>Please respond to this request from your order dashboard within 3 days.</p>
+    <a href="${APP_URL}/orders/${esc(params.orderId)}" class="btn">View Return Request →</a>`;
+  } else if (params.action === "APPROVED") {
+    bodyContent = `<h1>Your return request has been approved 🎉</h1>
+    <p>Hi ${esc(params.recipientName)},</p>
+    <p>Good news — your return request for <strong>"${esc(params.listingTitle)}"</strong> has been approved.</p>
+    ${params.sellerNote ? `<div class="trust"><strong>Message from seller:</strong><br>${esc(params.sellerNote)}</div>` : ""}
+    <p>Please ship the item back within ${RETURN_SHIP_DAYS} days. Once the seller confirms receipt, your refund will be processed.</p>
+    <a href="${APP_URL}/orders/${esc(params.orderId)}" class="btn">View Order →</a>`;
+  } else {
+    bodyContent = `<h1>Your return request</h1>
+    <p>Hi ${esc(params.recipientName)},</p>
+    <p>Your return request for <strong>"${esc(params.listingTitle)}"</strong> has been reviewed.</p>
+    ${params.sellerNote ? `<div class="warning"><strong>Message from seller:</strong><br>${esc(params.sellerNote)}</div>` : ""}
+    <p>If you believe this decision is unfair, you can <a href="${APP_URL}/orders/${esc(params.orderId)}" style="color:#D4A843;">open a dispute</a> from your order page.</p>
+    <a href="${APP_URL}/orders/${esc(params.orderId)}" class="btn">View Order →</a>`;
+  }
+
+  const html = baseTemplate(bodyContent, subject);
+  await sendTransactionalEmail({ to: params.to, subject, html });
 }
 
 export async function sendPriceDropEmail(params: {
@@ -440,7 +733,7 @@ export async function sendPriceDropEmail(params: {
     <hr class="divider">
     <p style="font-size:11px; color:#C9C5BC;">
       You're receiving this because you have price drop alerts enabled for this listing.
-      <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/buyer?tab=watchlist" style="color:#C9C5BC;">Manage alerts</a>
+      <a href="${APP_URL}/dashboard/buyer?tab=watchlist" style="color:#C9C5BC;">Manage alerts</a>
     </p>`,
     `Price dropped ${params.dropPercent}% on ${params.listingTitle}`,
   );

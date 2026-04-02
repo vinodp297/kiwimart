@@ -5,6 +5,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { requireUser } from "@/server/lib/requireUser";
 import db from "@/lib/db";
+import { getListValues } from "@/lib/dynamic-lists";
 import type { ActionResult } from "@/types";
 import {
   completeOnboardingSchema,
@@ -12,25 +13,6 @@ import {
 } from "@/server/validators";
 
 export type { CompleteOnboardingInput };
-
-const NZ_REGIONS = [
-  "Auckland",
-  "Wellington",
-  "Canterbury",
-  "Waikato",
-  "Bay of Plenty",
-  "Otago",
-  "Hawke's Bay",
-  "Manawatū-Whanganui",
-  "Northland",
-  "Tasman",
-  "Nelson",
-  "Marlborough",
-  "Southland",
-  "Taranaki",
-  "Gisborne",
-  "West Coast",
-] as const;
 
 // ── completeOnboarding ────────────────────────────────────────────────────────
 
@@ -50,14 +32,14 @@ export async function completeOnboarding(
 
     const { intent, region } = parsed.data;
 
+    const validRegions = await getListValues("NZ_REGIONS");
+
     await db.user.update({
       where: { id: user.id },
       data: {
         onboardingCompleted: true,
         onboardingIntent: intent,
-        ...(region && NZ_REGIONS.includes(region as (typeof NZ_REGIONS)[number])
-          ? { region }
-          : {}),
+        ...(region && validRegions.includes(region) ? { region } : {}),
       },
     });
 

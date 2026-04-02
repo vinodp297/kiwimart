@@ -17,8 +17,7 @@ import RecentlyViewed from "@/components/RecentlyViewed";
 
 export const metadata: Metadata = {
   title: "New Zealand's Trusted Marketplace",
-  description:
-    "Buy and sell with confidence on KiwiMart. Secure escrow payments, $3,000 buyer protection, and verified NZ sellers. Browse 120,000+ listings across Aotearoa.",
+  description: `Buy and sell with confidence on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}. Secure escrow payments, ${process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} buyer protection, and verified NZ sellers. Browse 120,000+ listings across Aotearoa.`,
   keywords: [
     "marketplace",
     "buy",
@@ -29,17 +28,16 @@ export const metadata: Metadata = {
     "second hand",
   ],
   openGraph: {
-    title: "KiwiMart — New Zealand's Trusted Marketplace",
-    description:
-      "Buy and sell with confidence. Secure escrow, $3,000 buyer protection.",
+    title: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} — New Zealand's Trusted Marketplace`,
+    description: `Buy and sell with confidence. Secure escrow, ${process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} buyer protection.`,
     url: "https://kiwimart.co.nz",
-    siteName: "KiwiMart",
+    siteName: process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi",
     locale: "en_NZ",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "KiwiMart — New Zealand's Trusted Marketplace",
+    title: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} — New Zealand's Trusted Marketplace`,
   },
   alternates: {
     canonical: "https://kiwimart.co.nz",
@@ -82,7 +80,7 @@ const TRUST_BADGES = [
         <path d="m9 12 2 2 4-4" />
       </svg>
     ),
-    title: "$3,000 Buyer Protection",
+    title: `${process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} Buyer Protection`,
     description: "Full cover on every eligible purchase, no questions asked.",
     highlight: true,
   },
@@ -374,8 +372,9 @@ export default async function HomePage() {
 
               <p className="mt-4 text-[15.5px] text-white/65 leading-relaxed max-w-xl">
                 Aotearoa's most trusted marketplace. Every transaction secured
-                by escrow, every purchase backed by $3,000 buyer protection.
-                Shop local. Shop safe.
+                by escrow, every purchase backed by{" "}
+                {process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"}{" "}
+                buyer protection. Shop local. Shop safe.
               </p>
 
               <form
@@ -513,7 +512,7 @@ export default async function HomePage() {
           className="max-w-7xl mx-auto px-6 pt-14"
         >
           <SectionHeader
-            title="Why KiwiMart?"
+            title={`Why ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}?`}
             subtitle="Your safety is our priority on every transaction"
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -569,7 +568,7 @@ export default async function HomePage() {
 
         {/* SELL CTA BAND */}
         <section
-          aria-label="Sell on KiwiMart"
+          aria-label={`Sell on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}`}
           className="bg-[#141414] text-white"
         >
           <div

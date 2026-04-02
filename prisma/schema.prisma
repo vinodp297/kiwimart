@@ -33,6 +33,8 @@ enum ListingCondition {
 
 enum ListingStatus {
   DRAFT
+  PENDING_REVIEW
+  NEEDS_CHANGES
   ACTIVE
   RESERVED
   SOLD
@@ -49,12 +51,56 @@ enum ShippingOption {
 enum OrderStatus {
   AWAITING_PAYMENT
   PAYMENT_HELD
+  AWAITING_PICKUP
   DISPATCHED
   DELIVERED
   COMPLETED
   DISPUTED
   REFUNDED
   CANCELLED
+}
+
+enum PickupStatus {
+  AWAITING_SCHEDULE
+  SCHEDULING
+  SCHEDULED
+  RESCHEDULING
+  OTP_INITIATED
+  COMPLETED
+  REJECTED_AT_PICKUP
+  BUYER_NO_SHOW
+  SELLER_NO_SHOW
+  CANCELLED
+}
+
+enum FulfillmentType {
+  SHIPPED
+  CASH_ON_PICKUP
+  ONLINE_PAYMENT_PICKUP
+}
+
+enum RescheduleRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum SellerRescheduleReason {
+  ITEM_NOT_READY
+  UNAVAILABLE_AT_AGREED_TIME
+  LOCATION_OR_ADDRESS_ISSUE
+  FAMILY_OR_PERSONAL_EMERGENCY
+  OTHER
+}
+
+enum BuyerRescheduleReason {
+  UNAVAILABLE_AT_AGREED_TIME
+  TRANSPORT_OR_TRAVEL_ISSUE
+  CHANGED_PICKUP_LOCATION
+  FAMILY_OR_PERSONAL_EMERGENCY
+  OTHER
 }
 
 enum OfferStatus {
@@ -84,6 +130,29 @@ enum DisputeReason {
   OTHER
 }
 
+enum DisputeStatus {
+  OPEN
+  AWAITING_SELLER_RESPONSE
+  SELLER_RESPONDED
+  UNDER_REVIEW
+  AUTO_RESOLVING
+  RESOLVED_BUYER
+  RESOLVED_SELLER
+  PARTIAL_RESOLUTION
+  CLOSED
+}
+
+enum DisputeSource {
+  STANDARD
+  PICKUP_REJECTION
+}
+
+enum EvidenceUploadedBy {
+  BUYER
+  SELLER
+  ADMIN
+}
+
 enum AuditAction {
   USER_REGISTER
   USER_LOGIN
@@ -93,6 +162,10 @@ enum AuditAction {
   LISTING_CREATED
   LISTING_UPDATED
   LISTING_DELETED
+  LISTING_APPROVED
+  LISTING_NEEDS_CHANGES
+  LISTING_REJECTED
+  LISTING_AUTO_REJECTED
   ORDER_CREATED
   ORDER_STATUS_CHANGED
   OFFER_CREATED
@@ -122,6 +195,16 @@ enum AuditAction {
   BUSINESS_DETAILS_UPDATED
   MFA_ENABLED
   MFA_DISABLED
+  PLATFORM_CONFIG_UPDATED
+  SELLER_TIER_DOWNGRADED
+  SELLER_TIER_OVERRIDE_SET
+  SELLER_TIER_OVERRIDE_REMOVED
+  DYNAMIC_LIST_ITEM_CREATED
+  DYNAMIC_LIST_ITEM_UPDATED
+  DYNAMIC_LIST_ITEM_DELETED
+  DYNAMIC_LIST_REORDERED
+  LISTING_EDITED_WHILE_PENDING
+  LISTING_REMOVED_POST_EDIT
 }
 
 enum VerificationStatus {
@@ -154,6 +237,41 @@ enum AdminRole {
   SUPPORT_ADMIN
   SELLER_MANAGER
   READ_ONLY_ADMIN
+}
+
+enum ConfigValueType {
+  INTEGER
+  DECIMAL
+  BOOLEAN
+  STRING
+  JSON
+}
+
+enum ConfigCategory {
+  SELLER_TIERS
+  FINANCIAL
+  TIME_LIMITS
+  LISTING_RULES
+  FRAUD_RULES
+  PICKUP_RULES
+  PLATFORM_LIMITS
+}
+
+enum DynamicListType {
+  BANNED_KEYWORDS
+  RISK_KEYWORDS
+  NZ_REGIONS
+  COURIERS
+  DISPUTE_REASONS
+  LISTING_CONDITIONS
+  REVIEW_TAGS
+  REPORT_REASONS
+  SELLER_RESCHEDULE_REASONS
+  BUYER_RESCHEDULE_REASONS
+  PICKUP_REJECT_REASONS
+  DELIVERY_ISSUE_TYPES
+  PROBLEM_TYPES
+  QUICK_FILTER_CHIPS
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -275,6 +393,16 @@ model User {
   initiatedInteractions  OrderInteraction[]  @relation("InteractionInitiator")
   respondedInteractions  OrderInteraction[]  @relation("InteractionResponder")
   trustMetrics           TrustMetrics?
+  pickupRescheduleRequests PickupRescheduleRequest[]
+  disputeEvidence          DisputeEvidence[]
+  platformConfigUpdates    PlatformConfig[]
+  dynamicListUpdates       DynamicListItem[] @relation("DynamicListUpdater")
+
+  // Seller tier override (set by admin or automated downgrade)
+  sellerTierOverride       String?
+  sellerTierOverrideReason String?   @db.Text
+  sellerTierOverrideAt     DateTime?
+  sellerTierOverrideBy     String?
 
   @@index([email])
   @@index([username])
@@ -414,6 +542,14 @@ model Listing {
   // Full-text search vector (maintained by Postgres trigger)
   searchVector Unsupported("tsvector")?
   
+  // Moderation (listing approval system)
+  autoRiskScore      Int?       // 0–100 computed risk score from auto-review
+  autoRiskFlags      String[]   @default([]) // rule names that triggered (e.g. HIGH_VALUE_ITEM, SINGLE_IMAGE)
+  moderationNote     String?    @db.Text // admin message explaining what to fix / reject reason
+  moderatedBy        String?    // admin userId who took moderation action
+  moderatedAt        DateTime?  // when admin actioned the listing
+  resubmissionCount  Int        @default(0)  // how many times seller has resubmitted after changes requested
+
   // Lifecycle
   publishedAt DateTime?
   expiresAt   DateTime?
@@ -434,6 +570,7 @@ model Listing {
   cartItems    CartItem[]
   priceHistory ListingPriceHistory[]
   recentViews  RecentlyViewed[]
+  snapshots    ListingSnapshot[]
 
   @@index([sellerId])
   @@index([status])
@@ -509,14 +646,26 @@ model Order {
   deliveredAt    DateTime?
   completedAt    DateTime?
   
-  // Dispute
-  disputeReason       DisputeReason?
-  disputeOpenedAt     DateTime?
-  disputeNotes        String?       @db.Text
-  disputeResolvedAt   DateTime?
-  disputeEvidenceUrls String[]  @default([])
-  sellerResponse      String?       @db.Text
-  sellerRespondedAt   DateTime?
+  // Dispute (standalone model — one-to-one via orderId @unique)
+  dispute             Dispute?
+
+  // Fulfillment
+  fulfillmentType         FulfillmentType  @default(SHIPPED)
+
+  // Pickup
+  pickupStatus            PickupStatus?
+  pickupScheduledAt       DateTime?
+  pickupWindowExpiresAt   DateTime?
+  otpInitiatedAt          DateTime?
+  otpExpiresAt            DateTime?
+  otpCodeHash             String?
+  rescheduleCount         Int              @default(0)
+  pickupConfirmedAt       DateTime?
+  pickupRejectedAt        DateTime?
+  pickupCancelledAt       DateTime?
+  pickupWindowJobId       String?
+  scheduleDeadlineJobId   String?
+  otpJobId                String?
 
   // Cancellation
   cancelledBy  String?    // 'BUYER' | 'SELLER' | 'SYSTEM'
@@ -541,9 +690,11 @@ model Order {
   listing Listing @relation(fields: [listingId], references: [id])
   review  Review?
   payout  Payout?
+  snapshot     ListingSnapshot?
   items        OrderItem[]
   events       OrderEvent[]
   interactions OrderInteraction[]
+  pickupRescheduleRequests PickupRescheduleRequest[]
 
   @@index([buyerId])
   @@index([sellerId])
@@ -554,6 +705,59 @@ model Order {
   @@index([buyerId, status])
   @@index([sellerId, status])
   @@index([sellerId, completedAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Disputes (standalone model — one dispute per order)
+// ─────────────────────────────────────────────────────────────────────────────
+// All dispute data now lives here instead of on the Order model.
+// OrderStatus.DISPUTED remains as the queue-filter signal.
+
+model Dispute {
+  id                   String          @id @default(cuid())
+  orderId              String          @unique
+
+  reason               DisputeReason
+  source               DisputeSource   @default(STANDARD)
+  status               DisputeStatus   @default(OPEN)
+
+  buyerStatement       String?         @db.Text
+  sellerStatement      String?         @db.Text
+  adminNotes           String?         @db.Text
+
+  resolution           String?
+  refundAmount         Int?
+
+  autoResolutionScore  Int?
+  autoResolutionReason String?         @db.Text
+
+  openedAt             DateTime        @default(now())
+  sellerRespondedAt    DateTime?
+  resolvedAt           DateTime?
+
+  order                Order           @relation(fields: [orderId], references: [id])
+  evidence             DisputeEvidence[]
+
+  @@index([status])
+  @@index([openedAt])
+}
+
+model DisputeEvidence {
+  id          String              @id @default(cuid())
+  disputeId   String
+  uploadedBy  EvidenceUploadedBy
+  uploaderId  String
+
+  r2Key       String
+  fileType    String              @default("image")
+  label       String?
+
+  createdAt   DateTime            @default(now())
+
+  dispute     Dispute             @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  uploader    User                @relation(fields: [uploaderId], references: [id])
+
+  @@index([disputeId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1063,6 +1267,72 @@ model OrderItem {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Listing Snapshot — immutable copy of a listing captured at order creation
+// ─────────────────────────────────────────────────────────────────────────────
+// Written once when an order is created; never updated.
+// Used in disputes so a seller cannot edit their listing after purchase and
+// change the evidence. Admin dispute view always shows the snapshot, not the
+// live listing.
+
+model ListingSnapshot {
+  id              String   @id @default(cuid())
+  orderId         String   @unique
+  listingId       String
+
+  title           String
+  description     String          @db.Text
+  condition       ListingCondition
+  priceNzd        Int
+  shippingNzd     Int
+  categoryName    String
+  subcategoryName String?
+  shippingOption  ShippingOption
+  isNegotiable    Boolean
+
+  // JSON arrays stored as opaque blobs — see listing-snapshot.service.ts for shape
+  images          Json    // [{ r2Key: string, thumbnailKey: string | null, order: number }]
+  attributes      Json    // [{ label: string, value: string, order: number }]
+
+  capturedAt      DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
+
+  @@index([listingId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pickup Reschedule Requests
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PickupRescheduleRequest {
+  id              String                    @id @default(cuid())
+  orderId         String
+  requestedById   String
+  requestedByRole String                    // BUYER or SELLER
+
+  sellerReason    SellerRescheduleReason?
+  buyerReason     BuyerRescheduleReason?
+  reasonNote      String?                   @db.Text
+
+  proposedTime    DateTime
+  status          RescheduleRequestStatus   @default(PENDING)
+
+  responseNote    String?
+  respondedAt     DateTime?
+  expiresAt       DateTime
+  rescheduleJobId String?
+
+  createdAt       DateTime                  @default(now())
+
+  order           Order                     @relation(fields: [orderId], references: [id])
+  requestedBy     User                      @relation(fields: [requestedById], references: [id])
+
+  @@index([orderId])
+  @@index([status, expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Seller Verification Applications (Feature P1-4)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1135,5 +1405,52 @@ model RecentlyViewed {
 
   @@unique([userId, listingId])
   @@index([userId, viewedAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform Configuration (admin-editable business rules)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PlatformConfig {
+  id          String          @id @default(cuid())
+  key         String          @unique
+  value       String          @db.Text
+  type        ConfigValueType
+  category    ConfigCategory
+  label       String
+  description String          @db.Text
+  unit        String?
+  minValue    String?
+  maxValue    String?
+  updatedBy   String?
+  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime        @default(now())
+
+  updater     User?           @relation(fields: [updatedBy], references: [id])
+
+  @@index([category])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic Lists — admin-editable content lists (keywords, regions, reasons)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DynamicListItem {
+  id          String          @id @default(cuid())
+  listType    DynamicListType
+  value       String          // primary value (keyword, region name, etc.)
+  label       String?         // display label (if different from value)
+  description String?         @db.Text
+  metadata    Json?           // extra fields: emoji, colour, lat/lng, hints, etc.
+  sortOrder   Int             @default(0)
+  active      Boolean         @default(true)
+  updatedBy   String?
+  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime        @default(now())
+
+  updater     User?           @relation("DynamicListUpdater", fields: [updatedBy], references: [id])
+
+  @@unique([listType, value])
+  @@index([listType, active, sortOrder])
 }
 

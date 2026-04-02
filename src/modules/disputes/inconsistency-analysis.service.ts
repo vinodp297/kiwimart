@@ -29,12 +29,15 @@ export async function analyzeInconsistencies(
       trackingNumber: true,
       dispatchedAt: true,
       completedAt: true,
-      disputeReason: true,
-      disputeNotes: true,
-      disputeOpenedAt: true,
-      disputeEvidenceUrls: true,
-      sellerResponse: true,
-      sellerRespondedAt: true,
+      dispute: {
+        select: {
+          reason: true,
+          buyerStatement: true,
+          openedAt: true,
+          sellerStatement: true,
+          sellerRespondedAt: true,
+        },
+      },
       listing: {
         select: {
           title: true,
@@ -70,9 +73,10 @@ export async function analyzeInconsistencies(
     db.order.count({
       where: {
         buyerId: order.buyerId,
-        disputeOpenedAt: {
-          not: null,
-          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        dispute: {
+          openedAt: {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          },
         },
       },
     }),
@@ -87,7 +91,7 @@ export async function analyzeInconsistencies(
     dispatchMeta.dispatchPhotos.length > 0;
 
   // 1. Buyer confirmed delivery OK then filed dispute
-  if (deliveryOkEvent && order.disputeOpenedAt) {
+  if (deliveryOkEvent && order.dispute?.openedAt) {
     const deliveryOkMeta = (deliveryOkEvent.metadata ?? {}) as Record<
       string,
       unknown
@@ -95,7 +99,7 @@ export async function analyzeInconsistencies(
     const condition = deliveryOkMeta.itemCondition ?? "ok";
     alerts.push({
       type: "alert",
-      message: `Buyer confirmed delivery as "${String(condition)}" on ${deliveryOkEvent.createdAt.toLocaleDateString("en-NZ")} then filed a dispute${order.disputeOpenedAt ? ` on ${new Date(order.disputeOpenedAt).toLocaleDateString("en-NZ")}` : ""}.`,
+      message: `Buyer confirmed delivery as "${String(condition)}" on ${deliveryOkEvent.createdAt.toLocaleDateString("en-NZ")} then filed a dispute${order.dispute.openedAt ? ` on ${new Date(order.dispute.openedAt).toLocaleDateString("en-NZ")}` : ""}.`,
       severity: "high",
     });
   }
@@ -113,8 +117,8 @@ export async function analyzeInconsistencies(
   // 3. Seller has dispatch photos but buyer claims damage (photo conflict)
   if (
     hasDispatchPhotos &&
-    (order.disputeReason === "ITEM_NOT_AS_DESCRIBED" ||
-      order.disputeReason === "ITEM_DAMAGED")
+    (order.dispute?.reason === "ITEM_NOT_AS_DESCRIBED" ||
+      order.dispute?.reason === "ITEM_DAMAGED")
   ) {
     alerts.push({
       type: "warning",
@@ -125,7 +129,7 @@ export async function analyzeInconsistencies(
   }
 
   // 4. Tracking/completion shows delivered but buyer says not received
-  if (order.completedAt && order.disputeReason === "ITEM_NOT_RECEIVED") {
+  if (order.completedAt && order.dispute?.reason === "ITEM_NOT_RECEIVED") {
     alerts.push({
       type: "alert",
       message: `Order was marked as delivered/completed on ${new Date(order.completedAt).toLocaleDateString("en-NZ")} but buyer claims item was not received.`,
@@ -134,8 +138,11 @@ export async function analyzeInconsistencies(
   }
 
   // 5. Change-of-mind disguised as "not as described"
-  if (order.disputeReason === "ITEM_NOT_AS_DESCRIBED" && order.disputeNotes) {
-    const notes = order.disputeNotes.toLowerCase();
+  if (
+    order.dispute?.reason === "ITEM_NOT_AS_DESCRIBED" &&
+    order.dispute?.buyerStatement
+  ) {
+    const notes = order.dispute.buyerStatement.toLowerCase();
     const changeOfMindPhrases = [
       "changed my mind",
       "change of mind",
@@ -179,15 +186,15 @@ export async function analyzeInconsistencies(
   }
 
   // 8. Listing condition vs dispute claim mismatch
-  if (order.listing?.condition && order.disputeReason) {
+  if (order.listing?.condition && order.dispute?.reason) {
     const cond = order.listing.condition.toLowerCase();
     const isLowCondition = ["fair", "good", "poor"].includes(cond);
     const claimsDefect =
-      order.disputeReason === "ITEM_NOT_AS_DESCRIBED" ||
-      order.disputeReason === "ITEM_DAMAGED";
+      order.dispute.reason === "ITEM_NOT_AS_DESCRIBED" ||
+      order.dispute.reason === "ITEM_DAMAGED";
 
-    if (isLowCondition && claimsDefect && order.disputeNotes) {
-      const notes = order.disputeNotes.toLowerCase();
+    if (isLowCondition && claimsDefect && order.dispute.buyerStatement) {
+      const notes = order.dispute.buyerStatement.toLowerCase();
       const wearComplaints = [
         "scratch",
         "worn",

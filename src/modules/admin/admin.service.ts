@@ -15,6 +15,11 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { sendDisputeResolvedEmail } from "@/server/email";
+import {
+  getDisputeByOrderId,
+  resolveDispute as resolveDisputeRecord,
+} from "@/server/services/dispute/dispute.service";
 import type { ReportAction, DisputeFavour } from "./admin.types";
 
 export class AdminService {
@@ -155,6 +160,10 @@ export class AdminService {
         id: true,
         status: true,
         stripePaymentIntentId: true,
+        buyerId: true,
+        sellerId: true,
+        listingId: true,
+        listing: { select: { title: true } },
       },
     });
 
@@ -169,17 +178,36 @@ export class AdminService {
     // Extract after null check so TypeScript narrows the type inside the async callback
     const paymentIntentId = order.stripePaymentIntentId;
 
+    // Fetch dispute record for resolution
+    const dispute = await getDisputeByOrderId(orderId);
+
     try {
       await withLock(`dispute:${orderId}`, async () => {
         if (favour === "buyer") {
           // DB first (optimistic) — then Stripe refund.
-          // If Stripe fails, the order is already REFUNDED in DB so admin can retry Stripe.
-          await transitionOrder(
-            orderId,
-            "REFUNDED",
-            { disputeResolvedAt: new Date() },
-            { fromStatus: order.status },
-          );
+          await db.$transaction(async (tx) => {
+            await transitionOrder(
+              orderId,
+              "REFUNDED",
+              {},
+              { tx, fromStatus: order.status },
+            );
+            // Restore listing to ACTIVE so seller can re-list
+            if (order.listingId) {
+              await tx.listing.update({
+                where: { id: order.listingId },
+                data: { status: "ACTIVE" },
+              });
+            }
+            if (dispute) {
+              await resolveDisputeRecord({
+                disputeId: dispute.id,
+                decision: "BUYER_WON",
+                resolvedBy: adminUserId,
+                tx,
+              });
+            }
+          });
 
           try {
             await paymentService.refundPayment({
@@ -211,7 +239,6 @@ export class AdminService {
               "COMPLETED",
               {
                 completedAt: new Date(),
-                disputeResolvedAt: new Date(),
               },
               { tx, fromStatus: order.status },
             );
@@ -219,6 +246,14 @@ export class AdminService {
               where: { orderId },
               data: { status: "PROCESSING", initiatedAt: new Date() },
             });
+            if (dispute) {
+              await resolveDisputeRecord({
+                disputeId: dispute.id,
+                decision: "SELLER_WON",
+                resolvedBy: adminUserId,
+                tx,
+              });
+            }
           });
         }
       });
@@ -261,6 +296,71 @@ export class AdminService {
     });
 
     logger.info("admin.dispute.resolved", { orderId, favour, adminUserId });
+
+    // In-app notifications for both parties
+    const buyerMsg =
+      favour === "buyer"
+        ? `Your dispute for "${order.listing.title}" was resolved in your favour — a refund has been issued.`
+        : `Your dispute for "${order.listing.title}" was resolved in favour of the seller.`;
+    const sellerMsg =
+      favour === "seller"
+        ? `The dispute for "${order.listing.title}" was resolved in your favour — payment will be released.`
+        : `The dispute for "${order.listing.title}" was resolved in favour of the buyer.`;
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Dispute resolved",
+      body: buyerMsg,
+      orderId,
+      link: `/orders/${orderId}`,
+    }).catch(() => {});
+    createNotification({
+      userId: order.sellerId,
+      type: "SYSTEM",
+      title: "Dispute resolved",
+      body: sellerMsg,
+      orderId,
+      link: `/orders/${orderId}`,
+    }).catch(() => {});
+
+    // Fire-and-forget dispute resolved emails to both parties
+    db.order
+      .findUnique({
+        where: { id: orderId },
+        select: {
+          totalNzd: true,
+          buyer: { select: { email: true, displayName: true } },
+          seller: { select: { email: true, displayName: true } },
+          listing: { select: { title: true } },
+        },
+      })
+      .then((o) => {
+        if (!o) return;
+        const resolution =
+          favour === "buyer" ? ("BUYER_WON" as const) : ("SELLER_WON" as const);
+        const refundAmount = favour === "buyer" ? o.totalNzd : null;
+        sendDisputeResolvedEmail({
+          to: o.buyer.email,
+          recipientName: o.buyer.displayName ?? "there",
+          recipientRole: "buyer",
+          orderId,
+          listingTitle: o.listing.title,
+          resolution,
+          refundAmount,
+          adminNote: null,
+        }).catch(() => {});
+        sendDisputeResolvedEmail({
+          to: o.seller.email,
+          recipientName: o.seller.displayName ?? "there",
+          recipientRole: "seller",
+          orderId,
+          listingTitle: o.listing.title,
+          resolution,
+          refundAmount: null,
+          adminNote: null,
+        }).catch(() => {});
+      })
+      .catch(() => {});
   }
 
   /**
@@ -302,16 +402,30 @@ export class AdminService {
 
     const paymentIntentId = order.stripePaymentIntentId;
 
+    // Fetch dispute record
+    const dispute = await getDisputeByOrderId(orderId);
+
     await withLock(`dispute:${orderId}`, async () => {
-      await transitionOrder(
-        orderId,
-        "COMPLETED",
-        {
-          completedAt: new Date(),
-          disputeResolvedAt: new Date(),
-        },
-        { fromStatus: order.status },
-      );
+      await db.$transaction(async (tx) => {
+        await transitionOrder(
+          orderId,
+          "COMPLETED",
+          {
+            completedAt: new Date(),
+          },
+          { tx, fromStatus: order.status },
+        );
+        if (dispute) {
+          await resolveDisputeRecord({
+            disputeId: dispute.id,
+            decision: "PARTIAL",
+            refundAmount: amountCents,
+            adminNotes: reason,
+            resolvedBy: adminUserId,
+            tx,
+          });
+        }
+      });
 
       try {
         await paymentService.refundPayment({
@@ -387,6 +501,42 @@ export class AdminService {
       amountCents,
       adminUserId,
     });
+
+    // Fire-and-forget partial refund emails to both parties
+    db.user
+      .findMany({
+        where: { id: { in: [order.buyerId, order.sellerId] } },
+        select: { id: true, email: true, displayName: true },
+      })
+      .then((users) => {
+        const buyer = users.find((u) => u.id === order.buyerId);
+        const seller = users.find((u) => u.id === order.sellerId);
+        if (buyer) {
+          sendDisputeResolvedEmail({
+            to: buyer.email,
+            recipientName: buyer.displayName ?? "there",
+            recipientRole: "buyer",
+            orderId,
+            listingTitle: order.listing.title,
+            resolution: "PARTIAL_REFUND",
+            refundAmount: amountCents,
+            adminNote: reason,
+          }).catch(() => {});
+        }
+        if (seller) {
+          sendDisputeResolvedEmail({
+            to: seller.email,
+            recipientName: seller.displayName ?? "there",
+            recipientRole: "seller",
+            orderId,
+            listingTitle: order.listing.title,
+            resolution: "PARTIAL_REFUND",
+            refundAmount: amountCents,
+            adminNote: reason,
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }
 
   /**

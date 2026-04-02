@@ -19,6 +19,34 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
+interface SnapshotImage {
+  r2Key: string;
+  thumbnailKey: string | null;
+  order: number;
+}
+
+interface SnapshotAttribute {
+  label: string;
+  value: string;
+  order: number;
+}
+
+interface ListingSnapshotData {
+  title: string;
+  description: string;
+  condition: string;
+  priceNzd: number;
+  shippingNzd: number;
+  categoryName: string;
+  subcategoryName: string | null;
+  shippingOption: string;
+  isNegotiable: boolean;
+  // Json fields — Prisma returns these as unknown; cast inside the component
+  images: unknown;
+  attributes: unknown;
+  capturedAt: string;
+}
+
 interface AutoResolution {
   decision: string;
   score: number;
@@ -44,6 +72,38 @@ interface TimelineEvent {
   actor: { displayName: string | null; username: string } | null;
 }
 
+interface EvidenceItem {
+  id: string;
+  url: string;
+  uploadedBy: string;
+  label: string | null;
+  createdAt: string;
+}
+
+interface DisputeData {
+  id: string;
+  reason: string;
+  status: string;
+  source: string;
+  buyerStatement: string | null;
+  sellerStatement: string | null;
+  adminNotes: string | null;
+  resolution: string | null;
+  refundAmount: number | null;
+  autoResolutionScore: number | null;
+  autoResolutionReason: string | null;
+  openedAt: string;
+  sellerRespondedAt: string | null;
+  resolvedAt: string | null;
+  evidence: Array<{
+    id: string;
+    r2Key: string;
+    uploadedBy: string;
+    label: string | null;
+    createdAt: string;
+  }>;
+}
+
 interface CaseData {
   order: {
     id: string;
@@ -54,14 +114,29 @@ interface CaseData {
     completedAt: string | null;
     trackingNumber: string | null;
     stripePaymentIntentId: string | null;
-    disputeReason: string | null;
-    disputeNotes: string | null;
-    disputeOpenedAt: string | null;
-    disputeEvidenceUrls: string[];
-    sellerResponse: string | null;
-    sellerRespondedAt: string | null;
-    disputeResolvedAt: string | null;
+    // Pickup fields
+    fulfillmentType?: string;
+    pickupStatus?: string | null;
+    pickupScheduledAt?: string | null;
+    otpInitiatedAt?: string | null;
+    pickupConfirmedAt?: string | null;
+    pickupRejectedAt?: string | null;
+    rescheduleCount?: number;
+    pickupRescheduleRequests?: Array<{
+      id: string;
+      requestedByRole: string;
+      sellerReason: string | null;
+      buyerReason: string | null;
+      reasonNote: string | null;
+      proposedTime: string;
+      status: string;
+      responseNote: string | null;
+      respondedAt: string | null;
+      createdAt: string;
+      requestedBy: { displayName: string | null };
+    }>;
   };
+  dispute: DisputeData | null;
   listing: {
     id: string;
     title: string;
@@ -125,6 +200,7 @@ interface CaseData {
   }>;
   autoResolution: AutoResolution | null;
   inconsistencies: Inconsistency[];
+  snapshot: ListingSnapshotData | null;
   counterEvidence: Array<{
     id: string;
     actorRole: string;
@@ -133,7 +209,7 @@ interface CaseData {
     createdAt: string;
     actor: { displayName: string | null } | null;
   }>;
-  evidenceSignedUrls: string[];
+  evidenceSignedItems: EvidenceItem[];
 }
 
 interface Props {
@@ -141,6 +217,20 @@ interface Props {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+const CONDITION_LABELS: Record<string, string> = {
+  NEW: "Brand new",
+  LIKE_NEW: "Like new",
+  GOOD: "Good",
+  FAIR: "Fair",
+  PARTS: "Parts only",
+};
+
+const SHIPPING_LABELS: Record<string, string> = {
+  PICKUP: "Pickup only",
+  COURIER: "Courier",
+  BOTH: "Pickup or courier",
+};
 
 const REASON_LABELS: Record<string, string> = {
   ITEM_NOT_RECEIVED: "Item not received",
@@ -190,14 +280,29 @@ function hoursSince(iso: string | null): number {
 // ── Component ────────────────────────────────────────────────────────────
 
 export default function CaseView({ data }: Props) {
-  const { order, listing, buyer, seller, autoResolution, inconsistencies } =
-    data;
+  const {
+    order,
+    dispute,
+    listing,
+    buyer,
+    seller,
+    autoResolution,
+    inconsistencies,
+  } = data;
   const router = useRouter();
 
-  const isResolved = !!order.disputeResolvedAt;
+  const isResolved = !!dispute?.resolvedAt;
   const isNotAsDescribed =
-    order.disputeReason === "ITEM_NOT_AS_DESCRIBED" ||
-    order.disputeReason === "ITEM_DAMAGED";
+    dispute?.reason === "ITEM_NOT_AS_DESCRIBED" ||
+    dispute?.reason === "ITEM_DAMAGED";
+
+  // Split evidence by uploader
+  const buyerEvidence = data.evidenceSignedItems.filter(
+    (e) => e.uploadedBy === "BUYER",
+  );
+  const sellerEvidence = data.evidenceSignedItems.filter(
+    (e) => e.uploadedBy === "SELLER",
+  );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -209,24 +314,32 @@ export default function CaseView({ data }: Props) {
         {/* B: Buyer's Claim */}
         <Section title="The dispute — Buyer's claim">
           <div className="space-y-3">
-            {order.disputeReason && (
-              <span className="inline-block px-3 py-1 rounded-full text-[12px] font-semibold bg-red-50 text-red-700 border border-red-200">
-                {REASON_LABELS[order.disputeReason] ?? order.disputeReason}
-              </span>
+            {dispute?.reason && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-block px-3 py-1 rounded-full text-[12px] font-semibold bg-red-50 text-red-700 border border-red-200">
+                  {REASON_LABELS[dispute.reason] ?? dispute.reason}
+                </span>
+                {dispute.source === "PICKUP_REJECTION" && (
+                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                    Pickup rejection
+                  </span>
+                )}
+                <DisputeStatusBadge status={dispute.status} />
+              </div>
             )}
-            {order.disputeNotes && (
+            {dispute?.buyerStatement && (
               <p className="text-[13px] text-[#141414] leading-relaxed whitespace-pre-wrap">
-                {order.disputeNotes}
+                {dispute.buyerStatement}
               </p>
             )}
             <p className="text-[11px] text-[#9E9A91]">
-              Filed: {fmtDateTime(order.disputeOpenedAt)}
+              Filed: {fmtDateTime(dispute?.openedAt ?? null)}
             </p>
 
             {/* Buyer evidence photos */}
-            {data.evidenceSignedUrls.length > 0 && (
+            {buyerEvidence.length > 0 && (
               <PhotoGrid
-                photos={data.evidenceSignedUrls}
+                photos={buyerEvidence.map((e) => e.url)}
                 label="Buyer's evidence"
               />
             )}
@@ -262,26 +375,34 @@ export default function CaseView({ data }: Props) {
 
         {/* C: Seller's Response */}
         <Section title="Seller's response">
-          {order.sellerResponse ? (
+          {dispute?.sellerStatement ? (
             <div className="space-y-2">
               <p className="text-[13px] text-[#141414] leading-relaxed whitespace-pre-wrap">
-                {order.sellerResponse}
+                {dispute.sellerStatement}
               </p>
               <p className="text-[11px] text-[#9E9A91]">
-                Responded: {fmtDateTime(order.sellerRespondedAt)}
+                Responded: {fmtDateTime(dispute.sellerRespondedAt)}
               </p>
+              {/* Seller evidence photos */}
+              {sellerEvidence.length > 0 && (
+                <PhotoGrid
+                  photos={sellerEvidence.map((e) => e.url)}
+                  label="Seller's evidence"
+                />
+              )}
             </div>
           ) : (
             <div>
               <p
                 className={`text-[13px] font-medium ${
-                  hoursSince(order.disputeOpenedAt) > 72
+                  hoursSince(dispute?.openedAt ?? null) > 72
                     ? "text-red-600"
                     : "text-amber-600"
                 }`}
               >
-                Seller has not responded. {hoursSince(order.disputeOpenedAt)}h
-                since dispute was filed.
+                Seller has not responded.{" "}
+                {hoursSince(dispute?.openedAt ?? null)}h since dispute was
+                filed.
               </p>
             </div>
           )}
@@ -341,6 +462,120 @@ export default function CaseView({ data }: Props) {
           </Section>
         )}
 
+        {/* Pickup Details — only for pickup orders */}
+        {data.order.fulfillmentType &&
+          data.order.fulfillmentType !== "SHIPPED" && (
+            <Section title="Pickup Details">
+              <div className="space-y-2 text-[13px]">
+                <div className="flex gap-2 flex-wrap">
+                  <span className="inline-flex items-center text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                    {data.order.fulfillmentType === "CASH_ON_PICKUP"
+                      ? "Cash on Pickup"
+                      : "Online Payment Pickup"}
+                  </span>
+                  {data.order.pickupStatus && (
+                    <span className="inline-flex items-center text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      {data.order.pickupStatus.replace(/_/g, " ")}
+                    </span>
+                  )}
+                </div>
+                {data.order.pickupScheduledAt && (
+                  <p className="text-[#73706A]">
+                    <strong>Scheduled:</strong>{" "}
+                    {fmtDateTime(data.order.pickupScheduledAt)}
+                  </p>
+                )}
+                {data.order.otpInitiatedAt && (
+                  <p className="text-[#73706A]">
+                    <strong>OTP Initiated:</strong>{" "}
+                    {fmtDateTime(data.order.otpInitiatedAt)}
+                  </p>
+                )}
+                {data.order.pickupConfirmedAt && (
+                  <p className="text-[#73706A]">
+                    <strong>Confirmed:</strong>{" "}
+                    {fmtDateTime(data.order.pickupConfirmedAt)}
+                  </p>
+                )}
+                {data.order.pickupRejectedAt && (
+                  <p className="text-red-600">
+                    <strong>Rejected at pickup:</strong>{" "}
+                    {fmtDateTime(data.order.pickupRejectedAt)}
+                  </p>
+                )}
+                {data.order.rescheduleCount != null &&
+                  data.order.rescheduleCount > 0 && (
+                    <p className="text-[#73706A]">
+                      <strong>Reschedules:</strong> {data.order.rescheduleCount}
+                    </p>
+                  )}
+                {(data.order.pickupStatus === "SELLER_NO_SHOW" ||
+                  data.order.pickupStatus === "BUYER_NO_SHOW") && (
+                  <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">
+                    {data.order.pickupStatus === "SELLER_NO_SHOW"
+                      ? "Seller did not show up for the scheduled pickup. Order was auto-cancelled and buyer refunded."
+                      : "Buyer did not enter the OTP code within the allowed time. Payment was auto-released to seller."}
+                  </div>
+                )}
+                {/* Reschedule history */}
+                {data.order.pickupRescheduleRequests &&
+                  data.order.pickupRescheduleRequests.length > 0 && (
+                    <div className="mt-3 border-t border-[#E3E0D9] pt-3">
+                      <p className="text-[11px] font-semibold text-[#9E9A91] uppercase tracking-wider mb-2">
+                        Reschedule History
+                      </p>
+                      <div className="space-y-2">
+                        {data.order.pickupRescheduleRequests.map((req) => (
+                          <div
+                            key={req.id}
+                            className="rounded-lg bg-[#F8F7F4] p-2.5 text-[12px] border border-[#E3E0D9]"
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-[#141414]">
+                                {req.requestedBy.displayName ?? "User"} (
+                                {req.requestedByRole})
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  req.status === "ACCEPTED"
+                                    ? "bg-green-100 text-green-700"
+                                    : req.status === "REJECTED"
+                                      ? "bg-red-100 text-red-700"
+                                      : req.status === "EXPIRED"
+                                        ? "bg-gray-100 text-gray-600"
+                                        : "bg-amber-100 text-amber-700"
+                                }`}
+                              >
+                                {req.status}
+                              </span>
+                            </div>
+                            <p className="text-[#73706A] mt-0.5">
+                              Reason:{" "}
+                              {(
+                                req.sellerReason ??
+                                req.buyerReason ??
+                                "—"
+                              ).replace(/_/g, " ")}
+                              {req.reasonNote && ` — "${req.reasonNote}"`}
+                            </p>
+                            <p className="text-[#9E9A91] mt-0.5">
+                              Proposed: {fmtDateTime(req.proposedTime)} ·
+                              Requested: {fmtDateTime(req.createdAt)}
+                              {req.respondedAt &&
+                                ` · Responded: ${fmtDateTime(req.respondedAt)}`}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            </Section>
+          )}
+
+        {/* Listing Snapshot — immutable copy captured at order creation */}
+        <ListingSnapshotSection snapshot={data.snapshot} />
+
         {/* Listing Comparison (for not as described) */}
         {isNotAsDescribed && (
           <Section title="Listing comparison">
@@ -348,7 +583,7 @@ export default function CaseView({ data }: Props) {
               {/* What was listed */}
               <div className="bg-[#F8F7F4] rounded-xl p-4 border border-[#E3E0D9]">
                 <p className="text-[10px] font-semibold text-[#9E9A91] uppercase tracking-wider mb-2">
-                  What was listed
+                  Current listing (may differ)
                 </p>
                 <p className="text-[13px] font-semibold text-[#141414]">
                   {listing.title}
@@ -384,20 +619,20 @@ export default function CaseView({ data }: Props) {
                 <p className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-2">
                   What buyer received
                 </p>
-                {order.disputeNotes && (
+                {dispute?.buyerStatement && (
                   <p className="text-[12px] text-red-800 line-clamp-4">
-                    {order.disputeNotes}
+                    {dispute.buyerStatement}
                   </p>
                 )}
-                {data.evidenceSignedUrls.length > 0 && (
+                {buyerEvidence.length > 0 && (
                   <div className="mt-3 flex gap-2">
-                    {data.evidenceSignedUrls.slice(0, 3).map((url, i) => (
+                    {buyerEvidence.slice(0, 3).map((e, i) => (
                       <div
-                        key={url}
+                        key={e.id}
                         className="w-16 h-16 rounded-lg overflow-hidden border border-red-200"
                       >
                         <img
-                          src={url}
+                          src={e.url}
                           alt={`Evidence ${i + 1}`}
                           className="w-full h-full object-cover"
                         />
@@ -579,7 +814,7 @@ export default function CaseView({ data }: Props) {
               <p className="text-[11px] text-amber-700 mt-0.5">
                 Consumer Guarantees Act obligations apply — the buyer has
                 stronger consumer rights.
-                {order.disputeReason === "CHANGED_MIND" &&
+                {dispute?.reason === "CHANGED_MIND" &&
                   " CGA may require acceptance of returns for business sellers."}
               </p>
             </div>
@@ -589,13 +824,13 @@ export default function CaseView({ data }: Props) {
         {/* I: Resolution Actions + SOP */}
         <Section title="Resolution">
           {/* SOP Guidance */}
-          {order.disputeReason && SOP[order.disputeReason] && (
+          {dispute?.reason && SOP[dispute.reason] && (
             <div className="bg-sky-50 rounded-lg p-3 border border-sky-200 mb-4">
               <p className="text-[10px] font-semibold text-sky-600 uppercase tracking-wider mb-1">
                 Standard procedure
               </p>
               <p className="text-[12px] text-sky-800 leading-relaxed">
-                {SOP[order.disputeReason]}
+                {SOP[dispute!.reason]}
               </p>
             </div>
           )}
@@ -606,7 +841,7 @@ export default function CaseView({ data }: Props) {
                 This dispute has been resolved
               </p>
               <p className="text-[11px] text-emerald-600 mt-1">
-                Resolved: {fmtDate(order.disputeResolvedAt)}
+                Resolved: {fmtDate(dispute?.resolvedAt ?? null)}
               </p>
             </div>
           ) : (
@@ -747,6 +982,139 @@ function ProfileCard({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Listing Snapshot Section ─────────────────────────────────────────────
+// Shows the immutable copy of the listing that was captured at purchase time.
+// This is the evidence admin should use — the live listing may have been edited.
+
+function ListingSnapshotSection({
+  snapshot,
+}: {
+  snapshot: ListingSnapshotData | null;
+}) {
+  if (!snapshot) {
+    return (
+      <div className="bg-[#F8F7F4] rounded-2xl border border-[#E3E0D9] p-5">
+        <h3 className="text-[13px] font-semibold text-[#141414] mb-2">
+          Listing at time of purchase
+        </h3>
+        <p className="text-[12px] text-[#9E9A91] italic">
+          No snapshot available — this order was placed before listing snapshots
+          were introduced.
+        </p>
+      </div>
+    );
+  }
+
+  const capturedDate = new Date(snapshot.capturedAt).toLocaleDateString(
+    "en-NZ",
+    { day: "numeric", month: "long", year: "numeric" },
+  );
+
+  // Safe-cast the JSON blobs — we control the write path in captureListingSnapshot
+  const images = (snapshot.images as SnapshotImage[] | null) ?? [];
+  const attributes = (snapshot.attributes as SnapshotAttribute[] | null) ?? [];
+
+  return (
+    <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-1">
+        <h3 className="text-[13px] font-semibold text-amber-900">
+          Listing at time of purchase
+        </h3>
+        <span className="text-[10px] font-bold text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full uppercase tracking-wide">
+          Evidence
+        </span>
+      </div>
+      <p className="text-[11px] text-amber-700 mb-4">
+        Captured on {capturedDate}. This is what the buyer saw — unaffected by
+        any edits made after purchase.
+      </p>
+
+      {/* Title + condition + price row */}
+      <div className="flex items-start gap-3 flex-wrap mb-3">
+        <p className="text-[14px] font-semibold text-[#141414] flex-1 min-w-0">
+          {snapshot.title}
+        </p>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-[10.5px] font-semibold text-amber-800 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full">
+            {CONDITION_LABELS[snapshot.condition] ?? snapshot.condition}
+          </span>
+          <span className="text-[13px] font-bold text-[#141414]">
+            ${(snapshot.priceNzd / 100).toFixed(2)}
+          </span>
+        </div>
+      </div>
+
+      {/* Category + shipping row */}
+      <div className="flex items-center gap-3 text-[11.5px] text-amber-800 mb-3 flex-wrap">
+        <span>
+          {snapshot.categoryName}
+          {snapshot.subcategoryName ? ` › ${snapshot.subcategoryName}` : ""}
+        </span>
+        <span className="text-amber-400">·</span>
+        <span>
+          {SHIPPING_LABELS[snapshot.shippingOption] ?? snapshot.shippingOption}
+        </span>
+        {snapshot.shippingNzd > 0 && (
+          <>
+            <span className="text-amber-400">·</span>
+            <span>Shipping: ${(snapshot.shippingNzd / 100).toFixed(2)}</span>
+          </>
+        )}
+        {snapshot.isNegotiable && (
+          <>
+            <span className="text-amber-400">·</span>
+            <span>Negotiable</span>
+          </>
+        )}
+      </div>
+
+      {/* Images — horizontal scroll row */}
+      {images.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-3">
+          {images.map((img, i) => (
+            <div
+              key={img.r2Key}
+              className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden border border-amber-200"
+            >
+              <img
+                src={getImageUrl(img.thumbnailKey ?? img.r2Key)}
+                alt={`Listing photo ${i + 1}`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Description */}
+      <div className="max-h-40 overflow-y-auto rounded-lg bg-white border border-amber-200 p-3 mb-3">
+        <p className="text-[12px] text-[#141414] leading-relaxed whitespace-pre-wrap">
+          {snapshot.description}
+        </p>
+      </div>
+
+      {/* Attributes */}
+      {attributes.length > 0 && (
+        <div className="space-y-1">
+          {attributes.map((attr) => (
+            <div
+              key={`${attr.label}-${attr.order}`}
+              className="flex gap-2 text-[11.5px]"
+            >
+              <span className="text-amber-700 font-medium min-w-[100px]">
+                {attr.label}:
+              </span>
+              <span className="text-[#141414]">{attr.value}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1167,5 +1535,44 @@ function ResolutionActions({
         <p className="text-[11.5px] text-red-600 font-medium">{error}</p>
       )}
     </div>
+  );
+}
+
+// ── Dispute Status Badge ────────────────────────────────────────────────
+
+const DISPUTE_STATUS_COLORS: Record<string, string> = {
+  OPEN: "bg-blue-50 text-blue-700 border-blue-200",
+  AWAITING_SELLER_RESPONSE: "bg-amber-50 text-amber-700 border-amber-200",
+  SELLER_RESPONDED: "bg-purple-50 text-purple-700 border-purple-200",
+  UNDER_REVIEW: "bg-amber-50 text-amber-700 border-amber-200",
+  AUTO_RESOLVING: "bg-amber-50 text-amber-700 border-amber-200",
+  RESOLVED_BUYER: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  RESOLVED_SELLER: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  PARTIAL_RESOLUTION: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  CLOSED: "bg-gray-50 text-gray-600 border-gray-200",
+};
+
+const DISPUTE_STATUS_LABELS: Record<string, string> = {
+  OPEN: "Open",
+  AWAITING_SELLER_RESPONSE: "Awaiting seller",
+  SELLER_RESPONDED: "Seller responded",
+  UNDER_REVIEW: "Under review",
+  AUTO_RESOLVING: "Auto-resolving",
+  RESOLVED_BUYER: "Buyer won",
+  RESOLVED_SELLER: "Seller won",
+  PARTIAL_RESOLUTION: "Partial",
+  CLOSED: "Closed",
+};
+
+function DisputeStatusBadge({ status }: { status: string }) {
+  return (
+    <span
+      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+        DISPUTE_STATUS_COLORS[status] ??
+        "bg-gray-50 text-gray-600 border-gray-200"
+      }`}
+    >
+      {DISPUTE_STATUS_LABELS[status] ?? status.replace(/_/g, " ")}
+    </span>
   );
 }

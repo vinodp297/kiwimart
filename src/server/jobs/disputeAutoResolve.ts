@@ -7,6 +7,7 @@
 // 3. Escalate expired OrderInteractions to disputes
 
 import db from "@/lib/db";
+import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { logger } from "@/shared/logger";
 import {
   autoResolutionService,
@@ -151,17 +152,24 @@ export async function processDisputeAutoResolution(): Promise<{
 
   // ── 2. Re-evaluate unresponsive disputes (72h+) ──────────────────
   try {
-    const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
+    const sellerResponseHours = await getConfigInt(
+      CONFIG_KEYS.DISPUTE_SELLER_RESPONSE_HOURS,
+    );
+    const responseDeadline = new Date(
+      Date.now() - sellerResponseHours * 60 * 60 * 1000,
+    );
 
     const unresponsive = await db.order.findMany({
       where: {
         status: "DISPUTED",
-        disputeOpenedAt: { not: null, lte: seventyTwoHoursAgo },
-        sellerRespondedAt: null,
-        disputeResolvedAt: null,
+        dispute: {
+          openedAt: { lte: responseDeadline },
+          sellerRespondedAt: null,
+          resolvedAt: null,
+        },
       },
       take: 100,
-      orderBy: { disputeOpenedAt: "asc" },
+      orderBy: { dispute: { openedAt: "asc" } },
       select: { id: true },
     });
 

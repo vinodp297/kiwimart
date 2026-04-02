@@ -3,6 +3,7 @@
 // Offer lifecycle operations. Framework-free.
 
 import db from "@/lib/db";
+import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { audit } from "@/server/lib/audit";
 import { withLock } from "@/server/lib/distributedLock";
 import { logger } from "@/shared/logger";
@@ -45,9 +46,10 @@ export class OfferService {
         'Your offer must be less than the asking price. Use "Buy Now" instead.',
       );
     }
-    if (amountCents < listing.priceNzd * 0.5) {
+    const offerMinPct = await getConfigInt(CONFIG_KEYS.OFFER_MIN_PERCENTAGE);
+    if (amountCents < listing.priceNzd * (offerMinPct / 100)) {
       throw AppError.validation(
-        "Offers below 50% of the asking price are not accepted.",
+        `Offers below ${offerMinPct}% of the asking price are not accepted.`,
       );
     }
 
@@ -60,6 +62,7 @@ export class OfferService {
       );
     }
 
+    const offerExpiryHours = await getConfigInt(CONFIG_KEYS.OFFER_EXPIRY_HOURS);
     const offer = await db.offer.create({
       data: {
         listingId: input.listingId,
@@ -67,7 +70,7 @@ export class OfferService {
         sellerId: listing.sellerId,
         amountNzd: amountCents,
         note: input.note ?? null,
-        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + offerExpiryHours * 60 * 60 * 1000),
       },
       select: { id: true },
     });
