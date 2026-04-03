@@ -18,6 +18,7 @@ import type {
 import db from "@/lib/db";
 import { getImageUrl, getDefaultAvatar } from "@/lib/image";
 import { auth } from "@/lib/auth";
+import type { Session } from "next-auth";
 import { getTagConfig } from "@/lib/review-tags";
 import type { ReviewTagType } from "@/lib/review-tags";
 import { BlockButton } from "@/components/seller/BlockButton";
@@ -124,7 +125,7 @@ export default async function SellerProfilePage({
   const { username } = await params;
 
   let user: Awaited<ReturnType<typeof getSellerByUsername>> = null;
-  let session: { user?: { id?: string } } | null = null;
+  let session: Session | null = null;
 
   try {
     const [fetchedUser, fetchedSession] = await Promise.all([
@@ -132,7 +133,7 @@ export default async function SellerProfilePage({
       auth(),
     ]);
     user = fetchedUser;
-    session = fetchedSession as { user?: { id?: string } } | null;
+    session = fetchedSession;
   } catch (err) {
     console.error("[SellerProfile] Failed to load seller data:", err);
     notFound();

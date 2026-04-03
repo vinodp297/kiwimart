@@ -35,7 +35,7 @@ export default function AdminUsersPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const isAdmin = (session?.user as { isAdmin?: boolean } | undefined)?.isAdmin;
+  const isAdmin = session?.user?.isAdmin;
 
   useEffect(() => {
     if (status === "authenticated" && !isAdmin)

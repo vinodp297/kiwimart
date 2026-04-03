@@ -15,6 +15,16 @@
 import db from "@/lib/db";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
+import { Prisma, OrderStatus } from "@prisma/client";
+
+// Metadata carried through a status transition (e.g. reason, reference IDs).
+// Deliberately wide but excludes `any` — callers must use serialisable values.
+// Date is included because timestamps (e.g. completedAt, cancelledAt) are
+// commonly set alongside a status change.
+export type TransitionData = Record<
+  string,
+  string | number | boolean | Date | null | undefined
+>;
 
 // ── Valid transitions ─────────────────────────────────────────────────────
 // Key = current status, Value = allowed next statuses.
@@ -60,18 +70,14 @@ export function assertOrderTransition(
 //   tx          — Prisma transaction client (pass when already inside a tx)
 //   fromStatus  — known current status (skips internal findUnique read)
 //
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function transitionOrder(
   orderId: string,
   to: string,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: Record<string, any> = {},
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  options: { tx?: any; fromStatus?: string } = {},
+  data: TransitionData = {},
+  options: { tx?: Prisma.TransactionClient; fromStatus?: string } = {},
 ): Promise<void> {
   const { tx, fromStatus } = options;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const client: any = tx ?? db;
+  const client: Prisma.TransactionClient | typeof db = tx ?? db;
 
   let currentStatus = fromStatus;
 
@@ -90,9 +96,11 @@ export async function transitionOrder(
 
   // Apply with optimistic lock: include current status in WHERE
   // If another process already transitioned this order, count will be 0
+  // assertOrderTransition() above guarantees currentStatus and to are valid
+  // OrderStatus enum values — the casts here are safe by construction.
   const result = await client.order.updateMany({
-    where: { id: orderId, status: currentStatus },
-    data: { status: to, ...data },
+    where: { id: orderId, status: currentStatus as OrderStatus },
+    data: { status: to as OrderStatus, ...data },
   });
 
   if (result.count === 0) {
