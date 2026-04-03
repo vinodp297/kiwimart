@@ -9,6 +9,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { requireUser } from "@/server/lib/requireUser";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { getImageUrl, getThumbUrl } from "@/lib/image";
 import type { ActionResult } from "@/types";
 
@@ -145,27 +146,7 @@ export async function fetchBuyerDashboard(): Promise<
 
     const [dbUser, orders, watchlist, threads] = await Promise.all([
       // User profile
-      db.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          displayName: true,
-          email: true,
-          username: true,
-          avatarKey: true,
-          createdAt: true,
-          sellerEnabled: true,
-          idVerified: true,
-          phoneVerified: true,
-          emailVerified: true,
-          region: true,
-          bio: true,
-          onboardingIntent: true,
-          onboardingCompleted: true,
-          stripeOnboarded: true,
-          sellerTermsAcceptedAt: true,
-        },
-      }),
+      userRepository.findForDashboard(userId),
       // Orders as buyer
       db.order.findMany({
         where: { buyerId: userId },
@@ -307,17 +288,7 @@ export async function fetchBuyerDashboard(): Promise<
       .filter(Boolean) as string[];
 
     const [otherUsers, listings] = await Promise.all([
-      otherUserIds.length > 0
-        ? db.user.findMany({
-            where: { id: { in: otherUserIds } },
-            select: {
-              id: true,
-              displayName: true,
-              username: true,
-              avatarKey: true,
-            },
-          })
-        : Promise.resolve([]),
+      userRepository.findManyByIds(otherUserIds),
       listingIds.length > 0
         ? db.listing.findMany({
             where: { id: { in: listingIds } },
@@ -507,27 +478,7 @@ export async function fetchSellerDashboard(): Promise<
       sellerOrders,
       payouts,
     ] = await Promise.all([
-      db.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          displayName: true,
-          email: true,
-          username: true,
-          avatarKey: true,
-          createdAt: true,
-          sellerEnabled: true,
-          idVerified: true,
-          phoneVerified: true,
-          emailVerified: true,
-          region: true,
-          bio: true,
-          onboardingIntent: true,
-          onboardingCompleted: true,
-          stripeOnboarded: true,
-          sellerTermsAcceptedAt: true,
-        },
-      }),
+      userRepository.findForDashboard(userId),
       db.order.aggregate({
         where: { sellerId: userId, status: "COMPLETED" },
         _count: true,

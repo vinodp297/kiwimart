@@ -3,7 +3,7 @@
 // ─── MFA Server Actions ─────────────────────────────────────────────────────
 
 import { headers } from "next/headers";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import { audit } from "@/server/lib/audit";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
@@ -35,10 +35,7 @@ export async function initMfaSetup(): Promise<
     }
 
     // Check not already enabled
-    const dbUser = await db.user.findUnique({
-      where: { id: user.id },
-      select: { mfaEnabled: true, email: true },
-    });
+    const dbUser = await userRepository.findMfaInfo(user.id);
     if (!dbUser) return { success: false, error: "User not found." };
     if (dbUser.mfaEnabled) {
       return { success: false, error: "MFA is already enabled." };
@@ -159,10 +156,7 @@ export async function getMfaStatus(): Promise<
   try {
     const user = await requireUser();
 
-    const dbUser = await db.user.findUnique({
-      where: { id: user.id },
-      select: { mfaEnabled: true },
-    });
+    const dbUser = await userRepository.findMfaInfo(user.id);
     if (!dbUser) return { success: false, error: "User not found." };
 
     const backupCodesRemaining = dbUser.mfaEnabled

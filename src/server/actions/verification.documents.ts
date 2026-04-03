@@ -12,6 +12,7 @@ import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { logger } from "@/shared/logger";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import crypto from "crypto";
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -127,10 +128,7 @@ export async function submitIdVerification(
     }
 
     // Check not already verified
-    const dbUser = await db.user.findUnique({
-      where: { id: user.id },
-      select: { idVerified: true, sellerEnabled: true },
-    });
+    const dbUser = await userRepository.findVerificationDocStatus(user.id);
     if (!dbUser) return { success: false, error: "User not found." };
     if (dbUser.idVerified)
       return { success: false, error: "Your identity is already verified." };
@@ -174,17 +172,10 @@ export async function submitIdVerification(
     });
 
     // Set user.idSubmittedAt
-    await db.user.update({
-      where: { id: user.id },
-      data: { idSubmittedAt: new Date() },
-    });
+    await userRepository.update(user.id, { idSubmittedAt: new Date() });
 
     // Notify admins
-    const admins = await db.user.findMany({
-      where: { isAdmin: true },
-      select: { id: true },
-      take: 10,
-    });
+    const admins = await userRepository.findAdmins();
     for (const admin of admins) {
       createNotification({
         userId: admin.id,

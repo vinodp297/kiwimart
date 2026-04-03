@@ -9,7 +9,7 @@ import { safeActionError } from "@/shared/errors";
 //   • Onboarding URLs are short-lived and single-use
 
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { audit } from "@/server/lib/audit";
 import type { ActionResult } from "@/types";
 import { stripe } from "@/infrastructure/stripe/client";
@@ -23,17 +23,7 @@ export async function createStripeConnectAccount(): Promise<
     const authedUser = await requireUser();
 
     // 5a. Check if user already has a Connect account
-    const user = await db.user.findUnique({
-      where: { id: authedUser.id },
-      select: {
-        id: true,
-        stripeAccountId: true,
-        stripeOnboarded: true,
-        sellerEnabled: true,
-        email: true,
-        displayName: true,
-      },
-    });
+    const user = await userRepository.findForStripeConnect(authedUser.id);
 
     if (!user) return { success: false, error: "User not found." };
 
@@ -77,10 +67,7 @@ export async function createStripeConnectAccount(): Promise<
     });
 
     // 5c. Store account ID on user
-    await db.user.update({
-      where: { id: user.id },
-      data: { stripeAccountId: account.id },
-    });
+    await userRepository.update(user.id, { stripeAccountId: account.id });
 
     // 5d. Create onboarding link
     const accountLink = await stripe.accountLinks.create({
@@ -122,10 +109,7 @@ export async function getStripeOnboardingUrl(): Promise<
   try {
     const authedUser = await requireUser();
 
-    const user = await db.user.findUnique({
-      where: { id: authedUser.id },
-      select: { stripeAccountId: true, stripeOnboarded: true },
-    });
+    const user = await userRepository.findStripeStatus(authedUser.id);
 
     if (!user) return { success: false, error: "User not found." };
     if (!user.stripeAccountId) {
@@ -174,10 +158,7 @@ export async function getStripeAccountStatus(): Promise<
   try {
     const authedUser = await requireUser();
 
-    const user = await db.user.findUnique({
-      where: { id: authedUser.id },
-      select: { stripeAccountId: true, stripeOnboarded: true },
-    });
+    const user = await userRepository.findStripeStatus(authedUser.id);
 
     if (!user) return { success: false, error: "User not found." };
 
@@ -203,9 +184,8 @@ export async function getStripeAccountStatus(): Promise<
 
     // Sync onboarded status if changed
     if (onboarded !== user.stripeOnboarded) {
-      await db.user.update({
-        where: { id: authedUser.id },
-        data: { stripeOnboarded: onboarded },
+      await userRepository.update(authedUser.id, {
+        stripeOnboarded: onboarded,
       });
     }
 

@@ -14,7 +14,7 @@ import { safeActionError } from "@/shared/errors";
 //   profiles/{userId}/cover/{uuid}.jpg
 
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { rateLimit } from "@/server/lib/rateLimit";
 import type { ActionResult } from "@/types";
 import crypto from "crypto";
@@ -181,23 +181,19 @@ export async function confirmProfileImageUpload(params: {
     }
 
     // Fetch old key for cleanup
-    const current = await db.user.findUnique({
-      where: { id: user.id },
-      select: { avatarKey: true, coverImageKey: true },
-    });
+    const current = await userRepository.findImageKeys(user.id);
     const oldKey =
       params.imageType === "avatar"
         ? current?.avatarKey
         : current?.coverImageKey;
 
     // Update user record — only after validation passes
-    await db.user.update({
-      where: { id: user.id },
-      data:
-        params.imageType === "avatar"
-          ? { avatarKey: params.r2Key }
-          : { coverImageKey: params.r2Key },
-    });
+    await userRepository.update(
+      user.id,
+      params.imageType === "avatar"
+        ? { avatarKey: params.r2Key }
+        : { coverImageKey: params.r2Key },
+    );
 
     // Delete old image from R2 (fire-and-forget, skip seed/external URLs)
     if (oldKey && oldKey.startsWith("profiles/")) {

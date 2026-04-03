@@ -5,6 +5,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { headers } from "next/headers";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { audit } from "@/server/lib/audit";
@@ -53,10 +54,7 @@ export async function acceptSellerTerms(): Promise<ActionResult<void>> {
   }
 
   // 5. Execute
-  await db.user.update({
-    where: { id: user.id },
-    data: { sellerTermsAcceptedAt: new Date() },
-  });
+  await userRepository.update(user.id, { sellerTermsAcceptedAt: new Date() });
 
   // 6. Audit
   audit({
@@ -105,10 +103,7 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
   }
 
   // 4. Check not already submitted or verified
-  const dbUser = await db.user.findUnique({
-    where: { id: user.id },
-    select: { idVerified: true, idSubmittedAt: true },
-  });
+  const dbUser = await userRepository.findIdVerificationStatus(user.id);
 
   if (!dbUser) return { success: false, error: "User not found." };
   if (dbUser.idVerified)
@@ -122,10 +117,7 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
 
   // 5. Execute
   const now = new Date();
-  await db.user.update({
-    where: { id: user.id },
-    data: { idSubmittedAt: now },
-  });
+  await userRepository.update(user.id, { idSubmittedAt: now });
 
   // 6. Audit
   audit({
@@ -189,10 +181,7 @@ export async function approveIdVerification(
   }
 
   // 3. Check user exists and has a pending submission
-  const target = await db.user.findUnique({
-    where: { id: parsed.data.userId },
-    select: { id: true, email: true, idVerified: true, idSubmittedAt: true },
-  });
+  const target = await userRepository.findForIdApproval(parsed.data.userId);
 
   if (!target) return { success: false, error: "User not found." };
   if (target.idVerified)
@@ -206,9 +195,9 @@ export async function approveIdVerification(
 
   // 4. Execute
   const now = new Date();
-  await db.user.update({
-    where: { id: target.id },
-    data: { idVerified: true, idVerifiedAt: now },
+  await userRepository.update(target.id, {
+    idVerified: true,
+    idVerifiedAt: now,
   });
 
   // 5. Audit
@@ -278,10 +267,7 @@ export async function rejectIdVerification(
 
     const { userId, reason, notes } = parsed.data;
 
-    const target = await db.user.findUnique({
-      where: { id: userId },
-      select: { id: true, idVerified: true, idSubmittedAt: true, email: true },
-    });
+    const target = await userRepository.findForIdApproval(userId);
     if (!target) return { success: false, error: "User not found." };
     if (target.idVerified)
       return { success: false, error: "User is already ID verified." };
@@ -307,10 +293,7 @@ export async function rejectIdVerification(
     });
 
     // Clear idSubmittedAt so user can resubmit
-    await db.user.update({
-      where: { id: userId },
-      data: { idSubmittedAt: null },
-    });
+    await userRepository.update(userId, { idSubmittedAt: null });
 
     audit({
       userId: guard.userId,

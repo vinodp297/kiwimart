@@ -4,6 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // ─── Seller Verification Application Actions ─────────────────────────────────
 
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { audit } from "@/server/lib/audit";
@@ -18,20 +19,7 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
     const user = await requireUser();
 
     // Check not already verified
-    const dbUser = await db.user.findUnique({
-      where: { id: user.id },
-      select: {
-        isVerifiedSeller: true,
-        phone: true,
-        verificationApplication: { select: { status: true } },
-        _count: {
-          select: {
-            sellerOrders: { where: { status: "COMPLETED" } },
-            reviews: { where: { approved: true } },
-          },
-        },
-      },
-    });
+    const dbUser = await userRepository.findForVerificationApplication(user.id);
 
     if (!dbUser) return { success: false, error: "User not found." };
     if (dbUser.isVerifiedSeller)
@@ -88,11 +76,7 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
     });
 
     // Notify admins
-    const admins = await db.user.findMany({
-      where: { isAdmin: true },
-      select: { id: true },
-      take: 10,
-    });
+    const admins = await userRepository.findAdmins();
     for (const admin of admins) {
       createNotification({
         userId: admin.id,
@@ -163,9 +147,9 @@ export async function reviewVerificationApplication(
 
     // If approved, mark user as verified seller
     if (decision === "APPROVED") {
-      await db.user.update({
-        where: { id: sellerId },
-        data: { isVerifiedSeller: true, verifiedSellerAt: new Date() },
+      await userRepository.update(sellerId, {
+        isVerifiedSeller: true,
+        verifiedSellerAt: new Date(),
       });
 
       createNotification({

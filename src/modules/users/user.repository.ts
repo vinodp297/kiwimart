@@ -1,15 +1,35 @@
-import { db } from "@/lib/db";
+import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
 // User repository — data access only, no business logic.
-// All stubs will be filled in Phase 2 by migrating calls from:
-//   - src/modules/users/user.service.ts
-//   - src/server/actions/auth.ts
-//   - src/server/actions/account.ts
-//   - src/server/actions/seller.ts
-//   - src/server/actions/listings.ts (seller check)
+// Every db.user.* call from the 7 server action files is migrated here.
 // ---------------------------------------------------------------------------
+
+// ── Select-shape types ─────────────────────────────────────────────────────
+
+const dashboardSelect = {
+  id: true,
+  displayName: true,
+  email: true,
+  username: true,
+  avatarKey: true,
+  createdAt: true,
+  sellerEnabled: true,
+  idVerified: true,
+  phoneVerified: true,
+  emailVerified: true,
+  region: true,
+  bio: true,
+  onboardingIntent: true,
+  onboardingCompleted: true,
+  stripeOnboarded: true,
+  sellerTermsAcceptedAt: true,
+} as const;
+
+export type DashboardUser = Prisma.UserGetPayload<{
+  select: typeof dashboardSelect;
+}>;
 
 export type UserPublicProfile = Prisma.UserGetPayload<{
   select: {
@@ -50,187 +70,503 @@ export type UserForSeller = Prisma.UserGetPayload<{
   };
 }>;
 
+// ── Repository ─────────────────────────────────────────────────────────────
+
 export const userRepository = {
-  /** Find a user by ID for auth checks (email verified, banned, etc.).
-   * @source src/server/actions/orders.ts, src/server/actions/listings.ts */
-  async findByIdForAuth(id: string): Promise<UserForAuth | null> {
-    // TODO: move from src/server/actions/orders.ts
-    throw new Error("Not implemented");
+  // -------------------------------------------------------------------------
+  // Existence checks (registration)
+  // -------------------------------------------------------------------------
+
+  /** Check if an email is already registered.
+   * @source src/server/actions/auth.ts — registerUser */
+  async existsByEmail(email: string): Promise<boolean> {
+    const found = await db.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    return found !== null;
   },
 
-  /** Find a user by ID for seller operations.
-   * @source src/server/actions/seller.ts, src/server/actions/listings.ts */
-  async findByIdForSeller(id: string): Promise<UserForSeller | null> {
-    // TODO: move from src/server/actions/seller.ts
-    throw new Error("Not implemented");
+  /** Check if a username is already taken.
+   * @source src/server/actions/auth.ts — registerUser */
+  async existsByUsername(username: string): Promise<boolean> {
+    const found = await db.user.findUnique({
+      where: { username },
+      select: { id: true },
+    });
+    return found !== null;
   },
 
-  /** Find a user by ID with public profile fields.
-   * @source src/app/(public)/sellers/[username]/page.tsx */
-  async findByIdPublic(id: string): Promise<UserPublicProfile | null> {
-    // TODO: move from src/app/(public)/sellers/[username]/page.tsx
-    throw new Error("Not implemented");
+  // -------------------------------------------------------------------------
+  // Single-user finders (by id)
+  // -------------------------------------------------------------------------
+
+  /** Fetch password hash for verification.
+   * @source src/server/actions/account.ts — changePassword */
+  async findPasswordHash(
+    id: string,
+  ): Promise<{ passwordHash: string | null } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { passwordHash: true },
+    });
   },
 
-  /** Find a user by username.
-   * @source src/app/(public)/sellers/[username]/page.tsx */
-  async findByUsername(username: string): Promise<UserPublicProfile | null> {
-    // TODO: move from src/app/(public)/sellers/[username]/page.tsx
-    throw new Error("Not implemented");
+  /** Fetch emailVerified flag only (lightweight check).
+   * @source src/server/actions/orders.ts — createOrder */
+  async findEmailVerified(
+    id: string,
+  ): Promise<{ emailVerified: Date | null } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { emailVerified: true },
+    });
   },
 
-  /** Find a user by email.
-   * @source src/server/actions/auth.ts */
-  async findByEmail(
-    email: string,
-  ): Promise<Prisma.UserGetPayload<{
-    select: { id: true; email: true; passwordHash: true; isBanned: true };
-  }> | null> {
-    // TODO: move from src/server/actions/auth.ts
-    throw new Error("Not implemented");
+  /** Fetch fields needed before creating a listing.
+   * @source src/server/actions/listings.ts — createListing */
+  async findForListingAuth(id: string): Promise<{
+    emailVerified: Date | null;
+    sellerEnabled: boolean;
+    sellerTermsAcceptedAt: Date | null;
+    displayName: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        emailVerified: true,
+        sellerEnabled: true,
+        sellerTermsAcceptedAt: true,
+        displayName: true,
+      },
+    });
   },
 
-  /** Update user profile fields.
-   * @source src/modules/users/user.service.ts */
-  async updateProfile(id: string, data: Prisma.UserUpdateInput): Promise<void> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
+  /** Fetch seller profile for auto-review engine.
+   * @source src/server/actions/listings.ts — createListing, updateListing */
+  async findForAutoReview(id: string): Promise<{
+    id: string;
+    isBanned: boolean;
+    phoneVerified: boolean;
+    idVerified: boolean;
+    displayName: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        isBanned: true,
+        phoneVerified: true,
+        idVerified: true,
+        displayName: true,
+      },
+    });
   },
 
-  /** Update user password hash (used in password change).
-   * @source src/modules/users/user.service.ts */
-  async updatePassword(id: string, passwordHash: string): Promise<void> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
+  /** Fetch display name only (for admin notifications in listings).
+   * @source src/server/actions/listings.ts — updateListing */
+  async findDisplayName(id: string): Promise<string | null> {
+    const user = await db.user.findUnique({
+      where: { id },
+      select: { displayName: true },
+    });
+    return user?.displayName ?? null;
   },
 
-  /** Clear all sessions for a user (used after password change or ban).
-   * @source src/modules/users/user.service.ts, src/modules/admin/admin.service.ts */
+  /** Fetch email + displayName (for notification/email flows).
+   * @source src/server/actions/listings.ts — updateListing */
+  async findEmailInfo(
+    id: string,
+  ): Promise<{ email: string; displayName: string } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { email: true, displayName: true },
+    });
+  },
+
+  /** Fetch display info for cart/checkout UI.
+   * @source src/server/actions/cart.ts — getCart */
+  async findDisplayInfo(
+    id: string,
+  ): Promise<{ displayName: string; username: string } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { displayName: true, username: true },
+    });
+  },
+
+  /** Fetch Stripe info for a seller (checkout/payment flows).
+   * @source src/server/actions/cart.ts — cartCheckout */
+  async findWithStripe(id: string): Promise<{
+    stripeAccountId: string | null;
+    stripeOnboarded: boolean;
+    displayName: string;
+    email: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        stripeAccountId: true,
+        stripeOnboarded: true,
+        displayName: true,
+        email: true,
+      },
+    });
+  },
+
+  /** Fetch dashboard profile data (buyer or seller dashboard).
+   * @source src/server/actions/dashboard.ts — fetchBuyerDashboard, fetchSellerDashboard */
+  async findForDashboard(id: string): Promise<DashboardUser | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: dashboardSelect,
+    });
+  },
+
+  /** Fetch ID verification status.
+   * @source src/server/actions/seller.ts — submitIdVerification */
+  async findIdVerificationStatus(
+    id: string,
+  ): Promise<{ idVerified: boolean; idSubmittedAt: Date | null } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { idVerified: true, idSubmittedAt: true },
+    });
+  },
+
+  /** Fetch fields needed for admin ID approval/rejection.
+   * @source src/server/actions/seller.ts — approveIdVerification, rejectIdVerification */
+  async findForIdApproval(id: string): Promise<{
+    id: string;
+    email: string;
+    idVerified: boolean;
+    idSubmittedAt: Date | null;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        idVerified: true,
+        idSubmittedAt: true,
+      },
+    });
+  },
+
+  // -------------------------------------------------------------------------
+  // Single-user finders (by email)
+  // -------------------------------------------------------------------------
+
+  /** Fetch a user by email with profile fields (forgot password, login).
+   * @source src/server/actions/auth.ts — requestPasswordReset */
+  async findByEmail(email: string): Promise<{
+    id: string;
+    email: string;
+    displayName: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, displayName: true },
+    });
+  },
+
+  /** Fetch for resend-verification flow (needs emailVerified + profile).
+   * @source src/server/actions/auth.ts — resendVerificationEmail */
+  async findForEmailVerification(id: string): Promise<{
+    id: string;
+    email: string;
+    displayName: string;
+    emailVerified: Date | null;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        emailVerified: true,
+      },
+    });
+  },
+
+  // -------------------------------------------------------------------------
+  // Multi-user finders
+  // -------------------------------------------------------------------------
+
+  /** Find admin/trust-safety users for notifications.
+   * @source src/server/actions/listings.ts — updateListing */
+  async findAdmins(roles?: string[]): Promise<{ id: string }[]> {
+    return db.user.findMany({
+      where: {
+        isAdmin: true,
+        isBanned: false,
+        ...(roles
+          ? {
+              adminRole: {
+                in: roles as Prisma.EnumAdminRoleFilter<"User">["in"],
+              },
+            }
+          : {}),
+      },
+      select: { id: true },
+    });
+  },
+
+  /** Find many users by IDs (thread participant lookup, email batches).
+   * @source src/server/actions/dashboard.ts — fetchBuyerDashboard */
+  async findManyByIds(ids: string[]): Promise<
+    {
+      id: string;
+      displayName: string;
+      username: string;
+      avatarKey: string | null;
+    }[]
+  > {
+    if (ids.length === 0) return [];
+    return db.user.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        displayName: true,
+        username: true,
+        avatarKey: true,
+      },
+    });
+  },
+
+  // -------------------------------------------------------------------------
+  // Writes
+  // -------------------------------------------------------------------------
+
+  /** Create a new user (registration).
+   * @source src/server/actions/auth.ts — registerUser */
+  async create(
+    data: Prisma.UserCreateInput,
+  ): Promise<{ id: string; email: string; displayName: string }> {
+    return db.user.create({
+      data,
+      select: { id: true, email: true, displayName: true },
+    });
+  },
+
+  /** Generic update — accepts any UserUpdateInput.
+   * Pass `tx` when called inside a transaction.
+   * @source multiple server action files */
+  async update(
+    id: string,
+    data: Prisma.UserUpdateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.user.update({ where: { id }, data });
+  },
+
+  /** Clear all sessions for a user (password change, ban, delete account).
+   * @source src/server/actions/account.ts, auth.ts, admin.service.ts */
   async deleteAllSessions(
     userId: string,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
+    const client = tx ?? db;
+    await client.session.deleteMany({ where: { userId } });
   },
 
-  /** Ban a user (set isBanned, bannedAt, bannedReason).
-   * @source src/modules/admin/admin.service.ts */
-  async ban(
+  // -------------------------------------------------------------------------
+  // Additional finders (batch 3b — remaining server action files)
+  // -------------------------------------------------------------------------
+
+  /** Check if a user with this email is already an admin.
+   * @source src/server/actions/adminTeam.ts — inviteAdmin */
+  async findIsAdminByEmail(
+    email: string,
+  ): Promise<{ isAdmin: boolean } | null> {
+    return db.user.findUnique({
+      where: { email },
+      select: { isAdmin: true },
+    });
+  },
+
+  /** Check if an NZBN is already registered to another user.
+   * @source src/server/actions/business.ts — updateBusinessDetails */
+  async existsByNzbn(nzbn: string, excludeUserId: string): Promise<boolean> {
+    const found = await db.user.findFirst({
+      where: { nzbn, id: { not: excludeUserId } },
+      select: { id: true },
+    });
+    return found !== null;
+  },
+
+  /** Fetch minimal profile (id + displayName) for block/unblock flows.
+   * @source src/server/actions/blocks.ts — blockUser */
+  async findBasicProfile(
     id: string,
-    reason: string,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+  ): Promise<{ id: string; displayName: string } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { id: true, displayName: true },
+    });
   },
 
-  /** Unban a user.
-   * @source src/modules/admin/admin.service.ts */
-  async unban(id: string): Promise<void> {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+  /** Fetch onboarding status fields.
+   * @source src/server/actions/onboarding.ts — getOnboardingStatus */
+  async findOnboardingStatus(id: string): Promise<{
+    onboardingCompleted: boolean;
+    onboardingIntent: string | null;
+    region: string | null;
+    bio: string | null;
+    displayName: string;
+    emailVerified: Date | null;
+    stripeOnboarded: boolean;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        onboardingCompleted: true,
+        onboardingIntent: true,
+        region: true,
+        bio: true,
+        displayName: true,
+        emailVerified: true,
+        stripeOnboarded: true,
+      },
+    });
   },
 
-  /** Toggle sellerEnabled flag.
-   * @source src/modules/admin/admin.service.ts */
-  async setSellerEnabled(id: string, enabled: boolean): Promise<void> {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+  /** Fetch MFA-related fields (enabled status + email for QR code).
+   * @source src/server/actions/mfa.ts — initMfaSetup, getMfaStatus */
+  async findMfaInfo(
+    id: string,
+  ): Promise<{ mfaEnabled: boolean; email: string } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { mfaEnabled: true, email: true },
+    });
   },
 
-  /** Record seller terms acceptance.
-   * @source src/server/actions/seller.ts */
-  async acceptSellerTerms(id: string, acceptedAt: Date): Promise<void> {
-    // TODO: move from src/server/actions/seller.ts
-    throw new Error("Not implemented");
+  /** Fetch profile image keys for cleanup on upload.
+   * @source src/server/actions/profile-images.ts — confirmProfileImageUpload */
+  async findImageKeys(
+    id: string,
+  ): Promise<{
+    avatarKey: string | null;
+    coverImageKey: string | null;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { avatarKey: true, coverImageKey: true },
+    });
   },
 
-  /** Mark ID verification as submitted.
-   * @source src/server/actions/seller.ts */
-  async setIdSubmitted(id: string, submittedAt: Date): Promise<void> {
-    // TODO: move from src/server/actions/seller.ts
-    throw new Error("Not implemented");
+  /** Admin support lookup — search by email/username/displayName.
+   * @source src/server/actions/support.ts — lookupUser */
+  async findForSupport(query: string) {
+    return db.user.findFirst({
+      where: {
+        OR: [
+          { email: { contains: query, mode: "insensitive" as const } },
+          { username: { contains: query, mode: "insensitive" as const } },
+          { displayName: { contains: query, mode: "insensitive" as const } },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        displayName: true,
+        emailVerified: true,
+        phoneVerified: true,
+        idVerified: true,
+        sellerEnabled: true,
+        stripeOnboarded: true,
+        isBanned: true,
+        createdAt: true,
+        region: true,
+        _count: {
+          select: {
+            listings: true,
+            buyerOrders: true,
+            sellerOrders: true,
+          },
+        },
+      },
+    });
   },
 
-  /** Approve ID verification.
-   * @source src/server/actions/seller.ts */
-  async approveId(id: string, verifiedAt: Date): Promise<void> {
-    // TODO: move from src/server/actions/seller.ts
-    throw new Error("Not implemented");
+  /** Fetch Stripe Connect account info for onboarding.
+   * @source src/server/actions/stripe.ts — createStripeConnectAccount */
+  async findForStripeConnect(id: string): Promise<{
+    id: string;
+    stripeAccountId: string | null;
+    stripeOnboarded: boolean;
+    sellerEnabled: boolean;
+    email: string;
+    displayName: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        stripeAccountId: true,
+        stripeOnboarded: true,
+        sellerEnabled: true,
+        email: true,
+        displayName: true,
+      },
+    });
   },
 
-  /** Find blocked user relationship (bidirectional check).
-   * @source src/modules/messaging/message.service.ts */
-  async findBlock(
-    userA: string,
-    userB: string,
-  ): Promise<Prisma.BlockedUserGetPayload<{ select: { id: true } }> | null> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
+  /** Fetch Stripe onboarding status only.
+   * @source src/server/actions/stripe.ts — getStripeOnboardingUrl, getStripeAccountStatus */
+  async findStripeStatus(id: string): Promise<{
+    stripeAccountId: string | null;
+    stripeOnboarded: boolean;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { stripeAccountId: true, stripeOnboarded: true },
+    });
   },
 
-  /** Find multiple users by IDs (for admin notifications, emails).
-   * @source src/server/actions/orders.ts, src/modules/admin/admin.service.ts */
-  async findManyByIds(
-    ids: string[],
-  ): Promise<
-    Prisma.UserGetPayload<{
-      select: { id: true; email: true; displayName: true };
-    }>[]
-  > {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+  /** Fetch fields needed to check verification application eligibility.
+   * @source src/server/actions/verification.application.ts — applyForVerification */
+  async findForVerificationApplication(id: string) {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        isVerifiedSeller: true,
+        phone: true,
+        verificationApplication: { select: { status: true } },
+        _count: {
+          select: {
+            sellerOrders: { where: { status: "COMPLETED" } },
+            reviews: { where: { approved: true } },
+          },
+        },
+      },
+    });
   },
 
-  // -------------------------------------------------------------------------
-  // Phone verification
-  // -------------------------------------------------------------------------
-
-  /** Delete all existing phone verification tokens for a user.
-   * @source src/modules/users/user.service.ts */
-  async deletePhoneTokens(userId: string): Promise<void> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
+  /** Fetch ID verification + seller status for document submission.
+   * @source src/server/actions/verification.documents.ts — submitIdVerification */
+  async findVerificationDocStatus(
+    id: string,
+  ): Promise<{ idVerified: boolean; sellerEnabled: boolean } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { idVerified: true, sellerEnabled: true },
+    });
   },
 
-  /** Create a phone verification token.
-   * @source src/modules/users/user.service.ts */
-  async createPhoneToken(
-    data: Prisma.PhoneVerificationTokenCreateInput,
-  ): Promise<void> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Find a valid (unused, unexpired) phone verification token.
-   * @source src/modules/users/user.service.ts */
-  async findValidPhoneToken(
-    userId: string,
-  ): Promise<Prisma.PhoneVerificationTokenGetPayload<{
-    select: {
-      id: true;
-      codeHash: true;
-      phone: true;
-      attempts: true;
-      expiresAt: true;
-    };
-  }> | null> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Increment phone token attempt counter.
-   * @source src/modules/users/user.service.ts */
-  async incrementPhoneTokenAttempts(tokenId: string): Promise<void> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Set user's verified phone number.
-   * @source src/modules/users/user.service.ts */
-  async setPhone(userId: string, encryptedPhone: string): Promise<void> {
-    // TODO: move from src/modules/users/user.service.ts
-    throw new Error("Not implemented");
+  /** Fetch fields for admin seller tier override.
+   * @source src/server/actions/admin.ts — setSellerTierOverride */
+  async findForTierOverride(id: string): Promise<{
+    id: string;
+    sellerTierOverride: string | null;
+    displayName: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { id: true, sellerTierOverride: true, displayName: true },
+    });
   },
 };
