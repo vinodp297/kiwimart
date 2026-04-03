@@ -1,3 +1,4 @@
+import "server-only";
 // src/lib/platform-config/config.service.ts
 // ─── Platform Config Service (Cached) ───────────────────────────────────────
 // Reads business rule values from the PlatformConfig table with a 5-minute

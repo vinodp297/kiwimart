@@ -1,3 +1,4 @@
+import "server-only";
 // src/lib/platform-config/index.ts
 // ─── Barrel Export ──────────────────────────────────────────────────────────
 

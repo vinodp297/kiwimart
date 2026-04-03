@@ -10,7 +10,7 @@ import {
   getConfigFloat,
   getConfigInt,
 } from "@/lib/platform-config";
-import { calculateSellerTier } from "@/lib/seller-tiers";
+import { calculateSellerTier } from "@/lib/seller-tiers.server";
 import type { PerformanceTier } from "@/lib/seller-tiers";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";

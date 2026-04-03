@@ -1,2956 +1,1578 @@
 // prisma/seed.ts
-// ─── KiwiMart Comprehensive Dev/Test Seed ───────────────────────────────────
-// Exercises EVERY feature in the application including Phase 4 additions.
-// Run: npx prisma db seed
+// Buyzi — Complete Fresh Seed
+// 11 users: 3 buyers, 4 sellers, 4 admins
+// All scenarios covered: every order status, disputes with
+// evidence, pickup orders, offers, messages, reviews, payouts
 
-import { PrismaClient, Prisma } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { loadEnvConfig } from "@next/env";
-
-loadEnvConfig(process.cwd());
+import argon2 from "argon2";
+import { createHash } from "crypto";
 
 const adapter = new PrismaPg({
-  connectionString:
-    process.env.DATABASE_DIRECT_URL ?? process.env.DATABASE_URL!,
+  connectionString: process.env.DATABASE_URL!,
 });
 const db = new PrismaClient({ adapter });
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-async function hash(password: string): Promise<string> {
-  const { hashPassword } = await import("../src/server/lib/password");
-  return hashPassword(password);
+const now = new Date();
+const ago = (ms: number) => new Date(now.getTime() - ms);
+const future = (ms: number) => new Date(now.getTime() + ms);
+const MIN = 60 * 1000;
+const HOUR = 60 * MIN;
+const DAY = 24 * HOUR;
+
+function sha256(val: string) {
+  return createHash("sha256").update(val).digest("hex");
 }
 
-const DAY = 86_400_000;
-const HOUR = 3_600_000;
-const MIN = 60_000;
-const ago = (ms: number) => new Date(Date.now() - ms);
-const future = (ms: number) => new Date(Date.now() + ms);
-
-function img(id: string): string {
-  return `https://images.unsplash.com/${id}?w=800&h=600&fit=crop`;
-}
-
-// ── Wipe (reverse dependency order) ─────────────────────────────────────────
+// ─── Wipe ────────────────────────────────────────────────────────────────────
 
 async function wipeDatabase() {
   console.log("🗑️  Wiping database...");
-  await db.trustMetrics.deleteMany();
-  await db.orderEvent.deleteMany();
-  await db.orderInteraction.deleteMany();
-  await db.notification.deleteMany();
+  // Delete in strict dependency order — children before parents
   await db.auditLog.deleteMany();
+  await db.platformConfig.deleteMany();
+  await db.dynamicListItem.deleteMany();
+  await db.notification.deleteMany();
   await db.report.deleteMany();
-  await db.blockedUser.deleteMany();
-  await db.adminInvitation.deleteMany();
-  await db.phoneVerificationToken.deleteMany();
-  await db.stripeEvent.deleteMany();
-  await db.message.deleteMany();
-  await db.messageThread.deleteMany();
   await db.reviewTag.deleteMany();
   await db.review.deleteMany();
+  await db.message.deleteMany();
+  await db.messageThread.deleteMany();
+  await db.watchlistItem.deleteMany();
+  await db.recentlyViewed.deleteMany();
   await db.offer.deleteMany();
   await db.payout.deleteMany();
+  await db.pickupRescheduleRequest.deleteMany();
+  await db.disputeEvidence.deleteMany();
+  await db.dispute.deleteMany();
+  await db.listingSnapshot.deleteMany();
+  await db.orderInteraction.deleteMany();
+  await db.orderEvent.deleteMany();
   await db.orderItem.deleteMany();
-  await db.order.deleteMany();
-  await db.watchlistItem.deleteMany();
   await db.cartItem.deleteMany();
   await db.cart.deleteMany();
+  await db.order.deleteMany();
   await db.listingPriceHistory.deleteMany();
-  await db.recentlyViewed.deleteMany();
   await db.listingAttribute.deleteMany();
   await db.listingImage.deleteMany();
   await db.listing.deleteMany();
+  await db.trustMetrics.deleteMany();
   await db.verificationApplication.deleteMany();
-  await db.passwordResetToken.deleteMany();
+  await db.phoneVerificationToken.deleteMany();
   await db.emailVerificationToken.deleteMany();
+  await db.passwordResetToken.deleteMany();
+  await db.adminInvitation.deleteMany();
+  await db.stripeEvent.deleteMany();
+  await db.blockedUser.deleteMany();
   await db.session.deleteMany();
   await db.account.deleteMany();
-  await db.dynamicListItem.deleteMany();
+  await db.verificationToken.deleteMany();
   await db.subcategory.deleteMany();
   await db.category.deleteMany();
   await db.user.deleteMany();
-  await db.verificationToken.deleteMany();
   console.log("✅ Database wiped");
 }
 
-// ── Categories ──────────────────────────────────────────────────────────────
+// ─── Categories ──────────────────────────────────────────────────────────────
 
-const CATEGORIES = [
-  {
-    id: "electronics",
-    name: "Electronics",
-    icon: "💻",
-    slug: "electronics",
-    displayOrder: 1,
-    subcategories: [
-      "Mobile Phones",
-      "Computers",
-      "Tablets",
-      "Audio",
-      "Cameras & Drones",
-      "TV & Home Theatre",
-    ],
-  },
-  {
-    id: "fashion",
-    name: "Fashion",
-    icon: "👗",
-    slug: "fashion",
-    displayOrder: 2,
-    subcategories: [
-      "Women's Clothing",
-      "Men's Clothing",
-      "Shoes",
-      "Bags & Accessories",
-      "Jackets & Coats",
-      "Jewellery",
-    ],
-  },
-  {
-    id: "home-garden",
-    name: "Home & Garden",
-    icon: "🏡",
-    slug: "home-garden",
-    displayOrder: 3,
-    subcategories: [
-      "Furniture",
-      "Appliances",
-      "BBQs & Outdoor",
-      "Garden & Landscaping",
-      "Kitchen",
-      "Lighting",
-    ],
-  },
-  {
-    id: "sports",
-    name: "Sports & Outdoors",
-    icon: "🏉",
-    slug: "sports",
-    displayOrder: 4,
-    subcategories: [
-      "Cycling",
-      "Running & Fitness",
-      "Water Sports",
-      "Snow Sports",
-      "Camping & Hiking",
-      "Golf",
-    ],
-  },
-  {
-    id: "property",
-    name: "Property",
-    icon: "🏘️",
-    slug: "property",
-    displayOrder: 6,
-    subcategories: ["Rentals", "For Sale", "Flatmates"],
-  },
-  {
-    id: "baby-kids",
-    name: "Baby & Kids",
-    icon: "🍼",
-    slug: "baby-kids",
-    displayOrder: 7,
-    subcategories: [
-      "Baby Gear",
-      "Children's Clothing",
-      "Toys & Games",
-      "Books",
-      "Nursery Furniture",
-    ],
-  },
-  {
-    id: "collectibles",
-    name: "Collectibles",
-    icon: "🏺",
-    slug: "collectibles",
-    displayOrder: 8,
-    subcategories: [
-      "Art",
-      "Sports Memorabilia",
-      "Coins & Stamps",
-      "Antiques",
-      "Books & Comics",
-    ],
-  },
-  {
-    id: "business",
-    name: "Tools & Equipment",
-    icon: "🔧",
-    slug: "business",
-    displayOrder: 9,
-    subcategories: [
-      "Power Tools",
-      "Hand Tools",
-      "Office Furniture",
-      "Industrial Equipment",
-      "Safety Equipment",
-    ],
-  },
-];
+async function seedCategories() {
+  console.log("📂 Creating categories...");
 
-// ══════════════════════════════════════════════════════════════════════════════
-// MAIN
-// ══════════════════════════════════════════════════════════════════════════════
+  const cats = [
+    {
+      id: "cat-electronics",
+      name: "Electronics",
+      icon: "📱",
+      slug: "electronics",
+      displayOrder: 1,
+    },
+    {
+      id: "cat-fashion",
+      name: "Fashion",
+      icon: "👗",
+      slug: "fashion",
+      displayOrder: 2,
+    },
+    {
+      id: "cat-home",
+      name: "Home & Garden",
+      icon: "🏡",
+      slug: "home-garden",
+      displayOrder: 3,
+    },
+    {
+      id: "cat-sports",
+      name: "Sports & Outdoors",
+      icon: "⚽",
+      slug: "sports-outdoors",
+      displayOrder: 4,
+    },
+    {
+      id: "cat-baby",
+      name: "Baby & Kids",
+      icon: "🧸",
+      slug: "baby-kids",
+      displayOrder: 5,
+    },
+    {
+      id: "cat-collectibles",
+      name: "Collectibles",
+      icon: "🏺",
+      slug: "collectibles",
+      displayOrder: 6,
+    },
+    {
+      id: "cat-tools",
+      name: "Tools & Equipment",
+      icon: "🔧",
+      slug: "tools-equipment",
+      displayOrder: 7,
+    },
+    {
+      id: "cat-vehicles",
+      name: "Vehicles & Parts",
+      icon: "🚗",
+      slug: "vehicles-parts",
+      displayOrder: 8,
+    },
+  ];
 
-async function main() {
-  await wipeDatabase();
+  const subcats: { categoryId: string; name: string; slug: string }[] = [
+    // Electronics
+    { categoryId: "cat-electronics", name: "Phones", slug: "phones" },
+    { categoryId: "cat-electronics", name: "Laptops", slug: "laptops" },
+    { categoryId: "cat-electronics", name: "Tablets", slug: "tablets" },
+    { categoryId: "cat-electronics", name: "Audio", slug: "audio" },
+    { categoryId: "cat-electronics", name: "Cameras", slug: "cameras" },
+    { categoryId: "cat-electronics", name: "Gaming", slug: "gaming" },
+    // Fashion
+    {
+      categoryId: "cat-fashion",
+      name: "Mens Clothing",
+      slug: "mens-clothing",
+    },
+    {
+      categoryId: "cat-fashion",
+      name: "Womens Clothing",
+      slug: "womens-clothing",
+    },
+    { categoryId: "cat-fashion", name: "Shoes", slug: "shoes" },
+    { categoryId: "cat-fashion", name: "Jewellery", slug: "jewellery" },
+    // Home
+    { categoryId: "cat-home", name: "Furniture", slug: "furniture" },
+    { categoryId: "cat-home", name: "Kitchen", slug: "kitchen" },
+    { categoryId: "cat-home", name: "Garden", slug: "garden" },
+    // Sports
+    { categoryId: "cat-sports", name: "Bikes", slug: "bikes" },
+    { categoryId: "cat-sports", name: "Camping", slug: "camping" },
+    { categoryId: "cat-sports", name: "Fitness", slug: "fitness" },
+    // Baby
+    { categoryId: "cat-baby", name: "Prams & Strollers", slug: "prams" },
+    { categoryId: "cat-baby", name: "Clothing", slug: "clothing" },
+    // Collectibles
+    { categoryId: "cat-collectibles", name: "Art", slug: "art" },
+    { categoryId: "cat-collectibles", name: "Coins", slug: "coins" },
+    // Tools
+    { categoryId: "cat-tools", name: "Power Tools", slug: "power-tools" },
+    { categoryId: "cat-tools", name: "Hand Tools", slug: "hand-tools" },
+    // Vehicles
+    { categoryId: "cat-vehicles", name: "Car Parts", slug: "car-parts" },
+  ];
 
-  // ── Categories ──────────────────────────────────────────────────────────
-
-  console.log("\n📂 Creating categories...");
-  for (const cat of CATEGORIES) {
-    const { subcategories, ...catData } = cat;
-    await db.category.create({ data: catData });
-    for (const subName of subcategories) {
-      const slug = subName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-      await db.subcategory.create({
-        data: { categoryId: cat.id, name: subName, slug },
-      });
-    }
+  for (const cat of cats) {
+    await db.category.create({ data: cat });
   }
-  console.log(`✅ ${CATEGORIES.length} categories created`);
+  for (const sub of subcats) {
+    await db.subcategory.create({ data: sub });
+  }
 
-  // ── Passwords ───────────────────────────────────────────────────────────
+  console.log(`✅ ${cats.length} categories, ${subcats.length} subcategories`);
+  return { cats };
+}
 
-  console.log("\n🔑 Hashing passwords...");
-  const [buyerHash, sellerHash, adminHash] = await Promise.all([
-    hash("BuyerPass123!"),
-    hash("SellerPass123!"),
-    hash("AdminPass123!"),
-  ]);
+// ─── Users ───────────────────────────────────────────────────────────────────
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // USERS
-  // ══════════════════════════════════════════════════════════════════════════
+async function seedUsers() {
+  console.log("👤 Creating users...");
 
-  console.log("\n👤 Creating users...");
+  const buyerPass = await argon2.hash("BuyerPass123!", {
+    type: argon2.argon2id,
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 1,
+  });
+  const sellerPass = await argon2.hash("SellerPass123!", {
+    type: argon2.argon2id,
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 1,
+  });
+  const adminPass = await argon2.hash("AdminPass123!", {
+    type: argon2.argon2id,
+    memoryCost: 65536,
+    timeCost: 3,
+    parallelism: 1,
+  });
 
-  // ── Buyers ──────────────────────────────────────────────────────────────
+  // ── BUYERS ──────────────────────────────────────────────────────────────
 
-  const sarah = await db.user.create({
+  // Buyer 1 — Active buyer, normal orders, reviews, watchlist
+  const buyer1 = await db.user.create({
     data: {
-      email: "sarah@kiwimart.test",
-      username: "sarah_mitchell",
+      email: "sarah@buyzi.test",
+      username: "sarah_nz",
       displayName: "Sarah Mitchell",
-      passwordHash: buyerHash,
-      emailVerified: ago(45 * DAY),
-      phoneVerified: true,
-      phoneVerifiedAt: ago(40 * DAY),
-      onboardingCompleted: true,
-      onboardingIntent: "BUY",
-      region: "Auckland",
-      suburb: "Ponsonby",
-      agreedTermsAt: ago(45 * DAY),
-    },
-  });
-
-  const james = await db.user.create({
-    data: {
-      email: "james@kiwimart.test",
-      username: "james_cooper",
-      displayName: "James Cooper",
-      passwordHash: buyerHash,
-      emailVerified: ago(15 * DAY),
-      onboardingCompleted: true,
-      onboardingIntent: "BUY",
-      region: "Wellington",
-      suburb: "Te Aro",
-      agreedTermsAt: ago(15 * DAY),
-    },
-  });
-
-  const emma = await db.user.create({
-    data: {
-      email: "emma@kiwimart.test",
-      username: "emma_wilson",
-      displayName: "Emma Wilson",
-      passwordHash: buyerHash,
+      passwordHash: buyerPass,
       emailVerified: ago(30 * DAY),
+      phone: "+6421111001",
       phoneVerified: true,
       phoneVerifiedAt: ago(25 * DAY),
+      region: "Auckland",
+      suburb: "Ponsonby",
       onboardingCompleted: true,
-      onboardingIntent: "BOTH",
-      region: "Christchurch",
-      suburb: "Riccarton",
+      agreeMarketing: true,
       agreedTermsAt: ago(30 * DAY),
+      createdAt: ago(30 * DAY),
     },
   });
 
-  // ── Sellers ─────────────────────────────────────────────────────────────
-
-  const mike = await db.user.create({
+  // Buyer 2 — Dispute buyer, has open and resolved disputes
+  const buyer2 = await db.user.create({
     data: {
-      email: "techhub@kiwimart.test",
-      username: "techhub_nz",
-      displayName: "TechHub NZ",
-      passwordHash: sellerHash,
+      email: "james@buyzi.test",
+      username: "james_auckland",
+      displayName: "James Chen",
+      passwordHash: buyerPass,
+      emailVerified: ago(20 * DAY),
+      phone: "+6421111002",
+      phoneVerified: true,
+      phoneVerifiedAt: ago(18 * DAY),
+      region: "Wellington",
+      suburb: "Thorndon",
+      onboardingCompleted: true,
+      agreedTermsAt: ago(20 * DAY),
+      createdAt: ago(20 * DAY),
+    },
+  });
+
+  // Buyer 3 — Pickup buyer, tests OTP flow and COP
+  const buyer3 = await db.user.create({
+    data: {
+      email: "emma@buyzi.test",
+      username: "emma_welly",
+      displayName: "Emma Thompson",
+      passwordHash: buyerPass,
+      emailVerified: ago(15 * DAY),
+      phone: "+6421111003",
+      phoneVerified: true,
+      phoneVerifiedAt: ago(14 * DAY),
+      region: "Canterbury",
+      suburb: "Riccarton",
+      onboardingCompleted: true,
+      agreedTermsAt: ago(15 * DAY),
+      createdAt: ago(15 * DAY),
+    },
+  });
+
+  // ── SELLERS ─────────────────────────────────────────────────────────────
+
+  // Seller 1 — Gold tier, ID verified, many completed sales, trusted
+  const seller1 = await db.user.create({
+    data: {
+      email: "mike@buyzi.test",
+      username: "mike_tech",
+      displayName: "Mike Anderson",
+      passwordHash: sellerPass,
       emailVerified: ago(90 * DAY),
+      phone: "+6421222001",
       phoneVerified: true,
       phoneVerifiedAt: ago(85 * DAY),
       idVerified: true,
       idVerifiedAt: ago(80 * DAY),
-      idSubmittedAt: ago(82 * DAY),
-      bio: "Auckland's trusted electronics store. All items tested and verified. Fast tracked shipping NZ-wide. 100+ happy customers.",
-      sellerEnabled: true,
+      isVerifiedSeller: true,
+      verifiedSellerAt: ago(80 * DAY),
+      sellerTermsAcceptedAt: ago(88 * DAY),
+      stripeAccountId: "acct_test_mike",
       stripeOnboarded: true,
-      stripeAccountId: "acct_1RTestTechHubNZ001",
       stripeChargesEnabled: true,
       stripePayoutsEnabled: true,
-      sellerTermsAcceptedAt: ago(90 * DAY),
-      onboardingCompleted: true,
-      onboardingIntent: "SELL",
       region: "Auckland",
       suburb: "Newmarket",
+      onboardingCompleted: true,
       agreedTermsAt: ago(90 * DAY),
-      isVerifiedSeller: true,
-      verifiedSellerAt: ago(70 * DAY),
+      createdAt: ago(90 * DAY),
     },
   });
 
-  const rachel = await db.user.create({
+  // Seller 2 — New L1 seller, not verified, limited listings
+  const seller2 = await db.user.create({
     data: {
-      email: "kiwihome@kiwimart.test",
-      username: "kiwi_home_style",
-      displayName: "Kiwi Home & Style",
-      passwordHash: sellerHash,
-      emailVerified: ago(60 * DAY),
-      phoneVerified: true,
-      phoneVerifiedAt: ago(55 * DAY),
-      bio: "Curated homewares, collectibles, and unique finds. Based in Wellington — local pickup welcome. Quality guaranteed.",
-      sellerEnabled: true,
+      email: "rachel@buyzi.test",
+      username: "rachel_crafts",
+      displayName: "Rachel Green",
+      passwordHash: sellerPass,
+      emailVerified: ago(10 * DAY),
+      phone: "+6421222002",
+      phoneVerified: false,
+      idVerified: false,
+      sellerTermsAcceptedAt: ago(9 * DAY),
+      stripeAccountId: "acct_test_rachel",
       stripeOnboarded: true,
-      stripeAccountId: "acct_1RTestKiwiHome0002",
       stripeChargesEnabled: true,
-      stripePayoutsEnabled: true,
-      sellerTermsAcceptedAt: ago(60 * DAY),
-      onboardingCompleted: true,
-      onboardingIntent: "SELL",
-      region: "Wellington",
-      suburb: "Kelburn",
-      agreedTermsAt: ago(60 * DAY),
-    },
-  });
-
-  const tom = await db.user.create({
-    data: {
-      email: "peak@kiwimart.test",
-      username: "peak_outdoors",
-      displayName: "Peak Outdoors",
-      passwordHash: sellerHash,
-      emailVerified: ago(50 * DAY),
-      phoneVerified: true,
-      phoneVerifiedAt: ago(45 * DAY),
-      idVerified: true,
-      idVerifiedAt: ago(40 * DAY),
-      idSubmittedAt: ago(42 * DAY),
-      bio: "Everything for the NZ outdoor lifestyle. Cycling, camping, water sports, snow gear. Based in Queenstown.",
-      sellerEnabled: true,
-      stripeOnboarded: true,
-      stripeAccountId: "acct_1RTestPeakOutdr003",
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: true,
-      sellerTermsAcceptedAt: ago(50 * DAY),
-      onboardingCompleted: true,
-      onboardingIntent: "SELL",
-      region: "Otago",
-      suburb: "Queenstown",
-      agreedTermsAt: ago(50 * DAY),
-      isVerifiedSeller: true,
-      verifiedSellerAt: ago(35 * DAY),
-    },
-  });
-
-  const aroha = await db.user.create({
-    data: {
-      email: "stylenz@kiwimart.test",
-      username: "style_nz",
-      displayName: "StyleNZ",
-      passwordHash: sellerHash,
-      emailVerified: ago(20 * DAY),
-      bio: "Fashion-forward clothing, accessories, and kids' essentials. New stock added weekly. Hamilton-based.",
-      sellerEnabled: true,
-      stripeOnboarded: true,
-      stripeAccountId: "acct_1RTestStyleNZ00004",
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: true,
-      sellerTermsAcceptedAt: ago(20 * DAY),
-      onboardingCompleted: true,
-      onboardingIntent: "SELL",
+      stripePayoutsEnabled: false,
       region: "Waikato",
       suburb: "Hamilton Central",
-      agreedTermsAt: ago(20 * DAY),
+      onboardingCompleted: true,
+      agreedTermsAt: ago(10 * DAY),
+      createdAt: ago(10 * DAY),
     },
   });
 
-  // ── Admins ──────────────────────────────────────────────────────────────
+  // Seller 3 — High dispute rate, downgrade candidate, Silver tier
+  const seller3 = await db.user.create({
+    data: {
+      email: "tom@buyzi.test",
+      username: "tom_outdoors",
+      displayName: "Tom Wilson",
+      passwordHash: sellerPass,
+      emailVerified: ago(60 * DAY),
+      phone: "+6421222003",
+      phoneVerified: true,
+      phoneVerifiedAt: ago(55 * DAY),
+      idVerified: false,
+      sellerTermsAcceptedAt: ago(58 * DAY),
+      stripeAccountId: "acct_test_tom",
+      stripeOnboarded: true,
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+      region: "Otago",
+      suburb: "Queenstown",
+      onboardingCompleted: true,
+      agreedTermsAt: ago(60 * DAY),
+      createdAt: ago(60 * DAY),
+    },
+  });
+
+  // Seller 4 — Pickup specialist, handles COP and OTP orders
+  const seller4 = await db.user.create({
+    data: {
+      email: "aroha@buyzi.test",
+      username: "aroha_handmade",
+      displayName: "Aroha Williams",
+      passwordHash: sellerPass,
+      emailVerified: ago(45 * DAY),
+      phone: "+6421222004",
+      phoneVerified: true,
+      phoneVerifiedAt: ago(43 * DAY),
+      idVerified: true,
+      idVerifiedAt: ago(40 * DAY),
+      isVerifiedSeller: true,
+      verifiedSellerAt: ago(40 * DAY),
+      sellerTermsAcceptedAt: ago(44 * DAY),
+      stripeAccountId: "acct_test_aroha",
+      stripeOnboarded: true,
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+      region: "Bay of Plenty",
+      suburb: "Tauranga",
+      onboardingCompleted: true,
+      agreedTermsAt: ago(45 * DAY),
+      createdAt: ago(45 * DAY),
+    },
+  });
+
+  // ── ADMINS ──────────────────────────────────────────────────────────────
 
   const superAdmin = await db.user.create({
     data: {
-      email: "admin@kiwimart.test",
-      username: "admin",
-      displayName: "Super Admin",
-      passwordHash: adminHash,
+      email: "admin@buyzi.test",
+      username: "super_admin",
+      displayName: "Admin User",
+      passwordHash: adminPass,
       emailVerified: ago(120 * DAY),
       isAdmin: true,
       adminRole: "SUPER_ADMIN",
-      onboardingCompleted: true,
+      mfaEnabled: false,
       region: "Auckland",
-      suburb: "Auckland CBD",
-      agreedTermsAt: ago(120 * DAY),
+      onboardingCompleted: true,
+      createdAt: ago(120 * DAY),
     },
   });
 
-  const disputeAdmin = await db.user.create({
+  const disputesAdmin = await db.user.create({
     data: {
-      email: "disputes@kiwimart.test",
+      email: "disputes@buyzi.test",
       username: "disputes_admin",
-      displayName: "Dispute Manager",
-      passwordHash: adminHash,
-      emailVerified: ago(90 * DAY),
+      displayName: "Disputes Admin",
+      passwordHash: adminPass,
+      emailVerified: ago(100 * DAY),
       isAdmin: true,
       adminRole: "DISPUTES_ADMIN",
-      onboardingCompleted: true,
       region: "Wellington",
-      suburb: "Wellington CBD",
-      agreedTermsAt: ago(90 * DAY),
+      onboardingCompleted: true,
+      createdAt: ago(100 * DAY),
     },
   });
 
-  await db.user.create({
+  const contentAdmin = await db.user.create({
     data: {
-      email: "content@kiwimart.test",
+      email: "content@buyzi.test",
       username: "content_admin",
-      displayName: "Content Moderator",
-      passwordHash: adminHash,
-      emailVerified: ago(60 * DAY),
+      displayName: "Content Admin",
+      passwordHash: adminPass,
+      emailVerified: ago(100 * DAY),
       isAdmin: true,
       adminRole: "TRUST_SAFETY_ADMIN",
-      onboardingCompleted: true,
       region: "Auckland",
-      suburb: "Auckland CBD",
-      agreedTermsAt: ago(60 * DAY),
+      onboardingCompleted: true,
+      createdAt: ago(100 * DAY),
     },
   });
 
-  await db.user.create({
+  const financeAdmin = await db.user.create({
     data: {
-      email: "finance@kiwimart.test",
+      email: "finance@buyzi.test",
       username: "finance_admin",
       displayName: "Finance Admin",
-      passwordHash: adminHash,
-      emailVerified: ago(90 * DAY),
+      passwordHash: adminPass,
+      emailVerified: ago(100 * DAY),
       isAdmin: true,
       adminRole: "FINANCE_ADMIN",
-      onboardingCompleted: true,
       region: "Auckland",
-      suburb: "Auckland CBD",
-      agreedTermsAt: ago(90 * DAY),
+      onboardingCompleted: true,
+      createdAt: ago(100 * DAY),
     },
   });
 
-  console.log("✅ 11 users created (3 buyers, 4 sellers, 4 admins)");
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // LISTINGS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n🛍️  Creating listings...");
-
-  type LD = Parameters<typeof db.listing.create>[0]["data"];
-  async function L(
-    data: LD,
-    imgs: string[],
-    attrs?: [string, string][],
-  ): Promise<string> {
-    const listing = await db.listing.create({ data });
-    for (let i = 0; i < imgs.length; i++) {
-      await db.listingImage.create({
-        data: {
-          listingId: listing.id,
-          r2Key: imgs[i]!,
-          thumbnailKey: imgs[i]!,
-          altText: listing.title,
-          order: i,
-          scanned: true,
-          safe: true,
-        },
-      });
-    }
-    if (attrs) {
-      for (let i = 0; i < attrs.length; i++) {
-        await db.listingAttribute.create({
-          data: {
-            listingId: listing.id,
-            label: attrs[i]![0],
-            value: attrs[i]![1],
-            order: i,
-          },
-        });
-      }
-    }
-    return listing.id;
-  }
-
-  function active(
-    sellerId: string,
-    title: string,
-    desc: string,
-    priceNzd: number,
-    condition: "NEW" | "LIKE_NEW" | "GOOD" | "FAIR" | "PARTS",
-    categoryId: string,
-    subcategoryName: string,
-    region: string,
-    suburb: string,
-    shipping: "COURIER" | "PICKUP" | "BOTH" = "BOTH",
-    shippingNzd: number | null = 800,
-    daysAgo: number = 7,
-  ): LD {
-    return {
-      sellerId,
-      title,
-      description: desc,
-      priceNzd,
-      condition,
-      status: "ACTIVE",
-      categoryId,
-      subcategoryName,
-      region,
-      suburb,
-      shippingOption: shipping,
-      shippingNzd,
-      offersEnabled: true,
-      publishedAt: ago(daysAgo * DAY),
-      expiresAt: future(30 * DAY),
-      createdAt: ago(daysAgo * DAY),
-      viewCount: Math.floor(Math.random() * 200) + 10,
-      watcherCount: Math.floor(Math.random() * 15),
-    };
-  }
-
-  // ── ELECTRONICS ─────────────────────────────────────────────────────────
-
-  // Mobile Phones
-  const iphone = await L(
-    active(
-      mike.id,
-      "iPhone 15 Pro Max 256GB — Natural Titanium",
-      "Purchased from Apple NZ in November 2024. Excellent condition with original box, charger, and AppleCare+ until March 2026. Screen protector since day one — no scratches.",
-      189900,
-      "LIKE_NEW",
-      "electronics",
-      "Mobile Phones",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1695048133142-1a20484d2569"),
-      img("photo-1592750475338-74b7b21085ab"),
-      img("photo-1510557880182-3d4d3cba35a5"),
-    ],
-    [
-      ["Storage", "256GB"],
-      ["Colour", "Natural Titanium"],
-      ["AppleCare+", "Until Mar 2026"],
-    ],
-  );
-
-  const samsung = await L(
-    active(
-      mike.id,
-      "Samsung Galaxy S24 Ultra 512GB — Titanium Grey",
-      "Flagship Samsung with S-Pen. Bought Jan 2025. Dual SIM, NZ model. Comes with original box and Samsung case. Perfect screen, zero marks.",
-      169900,
-      "LIKE_NEW",
-      "electronics",
-      "Mobile Phones",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1610945265064-0e34e5519bbf"),
-      img("photo-1511707171634-5f897ff02aa9"),
-      img("photo-1598327106026-d9521da673d1"),
-    ],
-    [
-      ["Storage", "512GB"],
-      ["Colour", "Titanium Grey"],
-      ["Warranty", "Samsung NZ"],
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "Google Pixel 8 Pro 128GB — Obsidian",
-      "Unlocked Pixel 8 Pro with amazing camera system. Perfect for photography enthusiasts. Clean IMEI, factory reset. Includes original charger.",
-      89900,
-      "GOOD",
-      "electronics",
-      "Mobile Phones",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1598327105666-5b89351aff97"),
-      img("photo-1605236453806-6ff36851218e"),
-    ],
-  );
-
-  // Computers
-  const macbook = await L(
-    active(
-      mike.id,
-      'MacBook Pro 14" M3 Pro — 18GB/512GB Space Black',
-      "2024 MacBook Pro with M3 Pro chip. 96 battery cycles, AppleCare+ active. Used lightly for web development. Comes with original box, charger, and MagSafe cable.",
-      289900,
-      "LIKE_NEW",
-      "electronics",
-      "Computers",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1517336714731-489689fd1ca8"),
-      img("photo-1611186871348-b1ce696e52c9"),
-      img("photo-1541807084-5c52b6b3adef"),
-      img("photo-1629131726692-1accd0c53ce0"),
-    ],
-    [
-      ["Chip", "M3 Pro"],
-      ["RAM", "18GB"],
-      ["Storage", "512GB SSD"],
-      ["Battery Cycles", "96"],
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "Custom Gaming PC — RTX 4070 Super / Ryzen 7 7800X3D",
-      "Built in Dec 2024. Meshify 2 case, 32GB DDR5, 1TB NVMe. Plays everything at 1440p max settings. Never overclocked. Includes all original boxes.",
-      249900,
-      "LIKE_NEW",
-      "electronics",
-      "Computers",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1587202372775-e229f172b9d7"),
-      img("photo-1591488320449-011701bb6704"),
-      img("photo-1593640408182-31c70c8268f5"),
-    ],
-    [
-      ["GPU", "RTX 4070 Super"],
-      ["CPU", "Ryzen 7 7800X3D"],
-      ["RAM", "32GB DDR5"],
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "Dell XPS 15 (2024) — i7/32GB/1TB",
-      "Dell XPS 15 with OLED display. Stunning screen for creative work. Includes USB-C dock and carry sleeve. Light wear on palm rest.",
-      199900,
-      "GOOD",
-      "electronics",
-      "Computers",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1496181133206-80ce9b88a853"),
-      img("photo-1588872657578-7efd1f1555ed"),
-    ],
-  );
-
-  // Audio
-  const airpods = await L(
-    active(
-      mike.id,
-      "AirPods Pro 2nd Gen (USB-C) — Sealed Box",
-      "Brand new sealed AirPods Pro 2 with USB-C charging case. NZ Apple warranty. Won in a raffle — I already have a pair.",
-      39900,
-      "NEW",
-      "electronics",
-      "Audio",
-      "Auckland",
-      "Newmarket",
-      "COURIER",
-      600,
-    ),
-    [
-      img("photo-1588423771073-b8903fba2b76"),
-      img("photo-1606220588913-b3aacb4d2f46"),
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "Sony WH-1000XM5 Noise-Cancelling Headphones",
-      "Industry-leading noise cancellation. Silver colour. Lightly used for commuting. Includes case, cables, and flight adapter.",
-      34900,
-      "LIKE_NEW",
-      "electronics",
-      "Audio",
-      "Auckland",
-      "Newmarket",
-      "BOTH",
-      500,
-    ),
-    [
-      img("photo-1546435770-a3e426bf472b"),
-      img("photo-1505740420928-5e560c06d30e"),
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "JBL Charge 5 Portable Bluetooth Speaker — Teal",
-      "Waterproof portable speaker with incredible bass. Perfect for summer BBQs. Battery lasts 20+ hours. Minor scuff on base.",
-      14900,
-      "GOOD",
-      "electronics",
-      "Audio",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1608043152269-423dbba4e7e1"),
-      img("photo-1589003077984-894e133dabab"),
-    ],
-  );
-
-  // Cameras & Drones
-  await L(
-    active(
-      mike.id,
-      "DJI Mini 4 Pro Fly More Combo",
-      "Complete drone kit with 3 batteries, charging hub, carrying case. Registered with CAA NZ. Sub-249g so no licence needed. Only 12 flights.",
-      129900,
-      "LIKE_NEW",
-      "electronics",
-      "Cameras & Drones",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1473968512647-3e447244af8f"),
-      img("photo-1507582020474-9a35b7d455d9"),
-      img("photo-1527977966376-1c8408f9f108"),
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "Sony A7C II Mirrorless Camera — Body Only",
-      "Compact full-frame mirrorless. 33MP sensor. Perfect for travel and street photography. Low shutter count (8,200). Original box and warranty card.",
-      249900,
-      "LIKE_NEW",
-      "electronics",
-      "Cameras & Drones",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1516035069371-29a1b244cc32"),
-      img("photo-1502920917128-1aa500764cbd"),
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "GoPro Hero 12 Black Bundle",
-      "GoPro Hero 12 with 3 batteries, head mount, chest mount, and 128GB SD card. Great for skiing and mountain biking. Some cosmetic wear.",
-      49900,
-      "GOOD",
-      "electronics",
-      "Cameras & Drones",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1526170375885-4d8ecf77b99f"),
-      img("photo-1564466809058-bf4114d55352"),
-    ],
-  );
-
-  // Gaming
-  await L(
-    active(
-      mike.id,
-      "PlayStation 5 Slim — Disc Edition + 2 Controllers",
-      "PS5 Slim disc edition with two DualSense controllers (white + midnight black). Includes HDMI cable and power cord. Factory reset.",
-      74900,
-      "GOOD",
-      "electronics",
-      "TV & Home Theatre",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1606144042614-b2417e99c4e3"),
-      img("photo-1622297845775-5ff3fef71d13"),
-    ],
-  );
-
-  await L(
-    active(
-      mike.id,
-      "Nintendo Switch OLED — White + Mario Kart 8",
-      "Switch OLED with Mario Kart 8 Deluxe cartridge. Screen is immaculate. Joycons have no drift. Includes dock and carry case.",
-      44900,
-      "LIKE_NEW",
-      "electronics",
-      "TV & Home Theatre",
-      "Auckland",
-      "Newmarket",
-    ),
-    [
-      img("photo-1578303512597-81e6cc155b3e"),
-      img("photo-1612287230202-1ff1d85d1bdf"),
-    ],
-  );
-
-  // ── FASHION ─────────────────────────────────────────────────────────────
-
-  // Women's Clothing
-  await L(
-    active(
-      aroha.id,
-      "Kowtow Organic Cotton Midi Dress — Sage Green, Size M",
-      "Beautiful ethical fashion piece from NZ brand Kowtow. 100% organic cotton. Worn twice for events. Like-new condition. True to size.",
-      12900,
-      "LIKE_NEW",
-      "fashion",
-      "Women's Clothing",
-      "Waikato",
-      "Hamilton Central",
-      "COURIER",
-      600,
-    ),
-    [
-      img("photo-1595777457583-95e059d581b8"),
-      img("photo-1572804013309-59a88b7e92f1"),
-    ],
-    [
-      ["Brand", "Kowtow"],
-      ["Size", "M"],
-      ["Material", "Organic Cotton"],
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      "Karen Walker Runaway Sunglasses — Tortoiseshell",
-      "Iconic Karen Walker frames. Comes with original case and cleaning cloth. No scratches on lenses. Authentic — purchased from Karen Walker Britomart.",
-      24900,
-      "LIKE_NEW",
-      "fashion",
-      "Bags & Accessories",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1511499767150-a48a237f0083"),
-      img("photo-1473496169904-658ba7c44d8a"),
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      'Lululemon Align Leggings 25" — Black, Size 8',
-      "Classic Align leggings in black. Super soft Nulu fabric. No pilling, great condition. Size 8 NZ.",
-      6900,
-      "GOOD",
-      "fashion",
-      "Women's Clothing",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1506629082955-511b1aa562c8"),
-      img("photo-1548036328-c9fa89d128fa"),
-    ],
-  );
-
-  // Men's Clothing
-  await L(
-    active(
-      aroha.id,
-      "Swanndri Original Wool Bush Shirt — Forest Green, XL",
-      "Classic Kiwi bush shirt. Genuine Swanndri, made in NZ. Heavy wool, perfect for tramping. Worn but heaps of life left.",
-      8900,
-      "GOOD",
-      "fashion",
-      "Men's Clothing",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1594938298603-c8148c4dae35"),
-      img("photo-1489987707025-afc232f7ea0f"),
-    ],
-  );
-
-  const allbirds = await L(
-    active(
-      aroha.id,
-      "Allbirds Wool Runners — Natural Grey, Men's 10",
-      "NZ's favourite sustainable sneakers. Light wear on soles, uppers are clean. Machine washable. Original box included.",
-      9900,
-      "GOOD",
-      "fashion",
-      "Shoes",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1542291026-7eec264c27ff"),
-      img("photo-1460353581641-37baddab0fa2"),
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      "Huffer Classic Down Jacket — Black, Men's L",
-      "Huffer puffer jacket. Warm and lightweight. Small mark on sleeve (barely noticeable). Great for Wellington winters.",
-      12900,
-      "FAIR",
-      "fashion",
-      "Jackets & Coats",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1544923246-77307dd270c3"),
-      img("photo-1551028719-00167b16eac5"),
-    ],
-  );
-
-  // Shoes
-  await L(
-    active(
-      aroha.id,
-      "Nike Air Max 90 — Triple White, Women's 7",
-      "Classic Air Max 90 in all white. Worn a handful of times. Slight creasing on toe box. Comes with original box.",
-      11900,
-      "GOOD",
-      "fashion",
-      "Shoes",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1600185365926-3a2ce3cdb9eb"),
-      img("photo-1606107557195-0e29a4b5b4aa"),
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      "Dr. Martens 1460 Boots — Cherry Red, UK 9",
-      "Genuine Doc Martens. Broken in and super comfortable. Minor scuffing adds character. Still waterproof.",
-      14900,
-      "FAIR",
-      "fashion",
-      "Shoes",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1520639888713-7851133b1ed0"),
-      img("photo-1605812860427-4024433a70fd"),
-    ],
-  );
-
-  // Jewellery
-  const necklace = await L(
-    active(
-      aroha.id,
-      "Pounamu Greenstone Koru Necklace — Hand-Carved",
-      "Authentic NZ greenstone (pounamu) koru pendant on waxed cord. Hand-carved by West Coast artisan. Comes with certificate of authenticity.",
-      15900,
-      "NEW",
-      "fashion",
-      "Jewellery",
-      "Waikato",
-      "Hamilton Central",
-      "COURIER",
-      500,
-    ),
-    [
-      img("photo-1515562141589-67f0d97e6e51"),
-      img("photo-1535632066927-ab7c9ab60908"),
-    ],
-    [
-      ["Material", "NZ Pounamu"],
-      ["Artist", "West Coast Artisan"],
-      ["Certificate", "Included"],
-    ],
-  );
-
-  // ── HOME & GARDEN ───────────────────────────────────────────────────────
-
-  // Furniture
-  const couch = await L(
-    active(
-      rachel.id,
-      "Freedom Modular Sofa — 3-Seater, Charcoal Linen",
-      "Freedom Furniture modular sofa. Removable washable covers. Very comfortable. Moving house — must go. Pickup from Kelburn.",
-      149900,
-      "GOOD",
-      "home-garden",
-      "Furniture",
-      "Wellington",
-      "Kelburn",
-      "PICKUP",
-      null,
-    ),
-    [
-      img("photo-1555041469-a586c61ea9bc"),
-      img("photo-1493663284031-b7e3aefcae8e"),
-      img("photo-1540574163026-643ea20ade25"),
-    ],
-    [
-      ["Brand", "Freedom"],
-      ["Seats", "3"],
-      ["Material", "Linen"],
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "Solid Rimu Dining Table — Seats 6",
-      "Beautiful native NZ timber dining table. Solid rimu with natural grain. Made by a local craftsman. Seats 6 comfortably. Minor surface marks from regular use.",
-      89900,
-      "GOOD",
-      "home-garden",
-      "Furniture",
-      "Wellington",
-      "Kelburn",
-      "PICKUP",
-      null,
-    ),
-    [
-      img("photo-1617806118233-18e1de247200"),
-      img("photo-1595428774223-ef52624120d2"),
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "IKEA KALLAX Shelving Unit 4x4 — White",
-      "16-cube KALLAX shelving unit. Perfect for vinyl records or books. Disassembled and ready for pickup. All hardware included.",
-      12900,
-      "GOOD",
-      "home-garden",
-      "Furniture",
-      "Wellington",
-      "Kelburn",
-      "PICKUP",
-      null,
-    ),
-    [
-      img("photo-1594620302200-9a762244a156"),
-      img("photo-1598300042247-d088f8ab3a91"),
-    ],
-  );
-
-  // Appliances
-  const kitchenaid = await L(
-    active(
-      rachel.id,
-      "KitchenAid Artisan Stand Mixer — Empire Red",
-      "5-quart KitchenAid Artisan. Iconic red colour. Includes paddle, whisk, and dough hook. Barely used — received as gift but prefer my Breville.",
-      59900,
-      "LIKE_NEW",
-      "home-garden",
-      "Appliances",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1585515320310-259814833e62"),
-      img("photo-1574269909862-7e1d70bb8078"),
-    ],
-    [
-      ["Model", "Artisan"],
-      ["Capacity", "5 Quart"],
-      ["Colour", "Empire Red"],
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "Breville Barista Express Espresso Machine",
-      "Make cafe-quality coffee at home. Built-in grinder. Includes tamper, milk jug, and cleaning kit. Descaled monthly. Small dent on drip tray.",
-      44900,
-      "GOOD",
-      "home-garden",
-      "Appliances",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1517668808822-9ebb02f2a0e6"),
-      img("photo-1495474472287-4d71bcdd2085"),
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "Dyson V15 Detect Absolute Cordless Vacuum",
-      "Dyson V15 with laser detection. Shows dust particles in real time. Battery still holds 60-minute charge. Wall mount included.",
-      69900,
-      "GOOD",
-      "home-garden",
-      "Appliances",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1558618666-fcd25c85f82e"),
-      img("photo-1527515637462-cee1395c35b6"),
-    ],
-  );
-
-  // BBQs & Outdoor
-  await L(
-    active(
-      rachel.id,
-      "Weber Spirit II E-310 3-Burner BBQ — Black",
-      "Weber gas BBQ with 3 burners. Cast iron grill grates. Includes cover and gas bottle. Perfect for Kiwi summers. Ignition works perfectly.",
-      59900,
-      "GOOD",
-      "home-garden",
-      "BBQs & Outdoor",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1529690380740-babdb26fda38"),
-      img("photo-1555939594-58d7cb561ad1"),
-    ],
-  );
-
-  // Kitchen
-  await L(
-    active(
-      rachel.id,
-      "Le Creuset Dutch Oven 26cm — Marseille Blue",
-      "Iconic Le Creuset cast iron pot. The 26cm is perfect for family-sized meals. Beautiful blue colour. Heavy but worth it.",
-      29900,
-      "GOOD",
-      "home-garden",
-      "Kitchen",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1585442420538-a6a0e7abb1d7"),
-      img("photo-1584990347449-a6a6256d0f56"),
-    ],
-  );
-
-  // Lighting
-  await L(
-    active(
-      rachel.id,
-      "Mid-Century Modern Floor Lamp — Brass & Walnut",
-      "Stunning retro floor lamp with brass arm and walnut base. Adjustable height. LED bulb included. Adds instant style to any room.",
-      19900,
-      "GOOD",
-      "home-garden",
-      "Lighting",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1507473885765-e6ed057ab6fe"),
-      img("photo-1513506003901-1e6a229e2d15"),
-    ],
-  );
-
-  // ── SPORTS & OUTDOORS ───────────────────────────────────────────────────
-
-  // Cycling
-  const ebike = await L(
-    active(
-      tom.id,
-      "Specialized Turbo Vado 4.0 E-Bike — Size L",
-      "Premium commuter e-bike with Specialized 1.2 motor. 150km range. Hydraulic disc brakes. Serviced last month at Evolution Cycles Queenstown. Lights and mudguards included.",
-      399900,
-      "GOOD",
-      "sports",
-      "Cycling",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1571068316344-75bc76f77890"),
-      img("photo-1485965120184-e220f721d03e"),
-      img("photo-1532298229144-0ec0c57515c7"),
-    ],
-    [
-      ["Frame Size", "L (54cm)"],
-      ["Motor", "Specialized 1.2"],
-      ["Range", "~150km"],
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "Trek Marlin 8 Mountain Bike — Size M",
-      "Hardtail MTB perfect for NZ trails. Shimano Deore 1x12. RockShox Judy fork. Tubeless-ready wheels. Great bike for intermediate riders.",
-      129900,
-      "GOOD",
-      "sports",
-      "Cycling",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1576435728678-68d0fbf94e91"),
-      img("photo-1511994298241-608e28f14fde"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "Giro Aether MIPS Helmet — Matte Black, Size L",
-      "Top-end road cycling helmet. MIPS protection. Excellent ventilation. No crashes, replaced due to upgrade.",
-      14900,
-      "LIKE_NEW",
-      "sports",
-      "Cycling",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1557803175-29e4601a1a0a"),
-      img("photo-1558618666-fcd25c85f82e"),
-    ],
-  );
-
-  // Running & Fitness
-  await L(
-    active(
-      tom.id,
-      "Garmin Forerunner 265 — Black",
-      "GPS running watch with AMOLED display. Tracks running, cycling, swimming. Heart rate, training readiness, body battery. 2 months old.",
-      44900,
-      "LIKE_NEW",
-      "sports",
-      "Running & Fitness",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1523275335684-37898b6baf30"),
-      img("photo-1508685096489-7aacd43bd3b1"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "Rogue Echo Bike — Air Bike",
-      "Brutal cardio machine. Full-body workout. Very sturdy. Barely used — that's the problem. Moving and can't take it. Pickup only Queenstown.",
-      89900,
-      "LIKE_NEW",
-      "sports",
-      "Running & Fitness",
-      "Otago",
-      "Queenstown",
-      "PICKUP",
-      null,
-    ),
-    [
-      img("photo-1534438327276-14e5300c3a48"),
-      img("photo-1517836357463-d25dfeac3438"),
-    ],
-  );
-
-  // Water Sports
-  const kayak = await L(
-    active(
-      tom.id,
-      "Perception Pescador 12 Sit-On-Top Kayak — Sunset",
-      "12-foot fishing/touring kayak. Incredibly stable. Rod holders, dry hatch, and comfortable seat. Perfect for NZ lakes and harbours.",
-      89900,
-      "GOOD",
-      "sports",
-      "Water Sports",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1544551763-46a013bb70d5"),
-      img("photo-1472745942893-4b9f730c7668"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "O'Neill Psycho Tech 4/3mm Wetsuit — Men's MT",
-      "Premium winter wetsuit. 4/3mm thickness perfect for Dunedin surf. Zipperless entry. Some minor fading but fully waterproof.",
-      19900,
-      "FAIR",
-      "sports",
-      "Water Sports",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1530549387789-4c1017266635"),
-      img("photo-1535639818669-c059d2f038e6"),
-    ],
-  );
-
-  // Camping & Hiking
-  const tent = await L(
-    active(
-      tom.id,
-      "MSR Hubba Hubba NX 2-Person Tent",
-      "Ultralight backpacking tent. Perfect for NZ's Great Walks. 1.5kg packed weight. Sets up in under 3 minutes. Includes footprint.",
-      49900,
-      "GOOD",
-      "sports",
-      "Camping & Hiking",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1504280390367-361c6d9f38f4"),
-      img("photo-1478131143081-80f7f84ca84d"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "Osprey Atmos AG 65L Backpack — Men's M",
-      "Incredible comfort for multi-day tramping. Anti-Gravity suspension system. Rain cover included. Used on Milford Track — performed flawlessly.",
-      24900,
-      "GOOD",
-      "sports",
-      "Camping & Hiking",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1622560480605-d83c853bc5c3"),
-      img("photo-1553062407-98eeb64c6a62"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "Jetboil Flash Cooking System",
-      "Boils 500ml in 100 seconds. Compact, clips onto fuel canister. Essential for NZ tramping. Includes pot cozy and measuring cup.",
-      9900,
-      "GOOD",
-      "sports",
-      "Camping & Hiking",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1510672981848-a1c4f1cb5ccc"),
-      img("photo-1504851149312-7a075b496cc7"),
-    ],
-  );
-
-  // Snow Sports
-  await L(
-    active(
-      tom.id,
-      "Burton Custom Snowboard 158cm + Union Force Bindings",
-      "Burton Custom — the quiver killer. Paired with Union Force bindings (L). Board has some base scratches but edges are sharp. Freshly waxed.",
-      44900,
-      "GOOD",
-      "sports",
-      "Snow Sports",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1551698618-1dfe5d97d256"),
-      img("photo-1605540436563-5bca919ae766"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "Smith I/O Mag Goggles — ChromaPop Sun Black",
-      "Premium ski/snowboard goggles with magnetic lens swap. Includes low-light lens. Anti-fog works brilliantly. No scratches on either lens.",
-      19900,
-      "LIKE_NEW",
-      "sports",
-      "Snow Sports",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1517483000871-1dbf64a6e1c6"),
-      img("photo-1551524164-687a55dd1126"),
-    ],
-  );
-
-  // Golf
-  await L(
-    active(
-      tom.id,
-      "TaylorMade Stealth 2 Driver 10.5° — Stiff Shaft",
-      "TaylorMade's carbon-face driver. Low spin, long distance. Stiff flex, right-handed. Head cover included. A few sky marks on the crown.",
-      39900,
-      "GOOD",
-      "sports",
-      "Golf",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1535131749006-b7f58c99034b"),
-      img("photo-1587174486073-ae5e5cff23aa"),
-    ],
-  );
-
-  // ── PROPERTY ────────────────────────────────────────────────────────────
-
-  await L(
-    active(
-      rachel.id,
-      "Sunny 2BR Apartment — Kelburn, Wellington",
-      "Bright north-facing apartment near Victoria University. 2 bedrooms, 1 bathroom, open-plan living. Includes carpark. Available from April 1st. $550/week.",
-      55000,
-      "GOOD",
-      "property",
-      "Rentals",
-      "Wellington",
-      "Kelburn",
-      "PICKUP",
-      null,
-      3,
-    ),
-    [
-      img("photo-1502672260266-1c1ef2d93688"),
-      img("photo-1560448204-e02f11c3d0e2"),
-      img("photo-1513694203232-719a280e022f"),
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "Flatmate Wanted — Newtown, Wellington",
-      "Room available in friendly 3-person flat. Close to hospital and shops. $230/week including internet. Must like cats.",
-      23000,
-      "GOOD",
-      "property",
-      "Flatmates",
-      "Wellington",
-      "Newtown",
-      "PICKUP",
-      null,
-      5,
-    ),
-    [
-      img("photo-1522708323590-d24dbb6b0267"),
-      img("photo-1493809842364-78817add7ffb"),
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "Investment Property — 3BR House, Lower Hutt",
-      "Solid 1960s weatherboard on 600m² section. Recently re-roofed. Three bedrooms, one bathroom, single garage. Currently tenanted at $600/wk. Motivated vendor.",
-      62500000,
-      "GOOD",
-      "property",
-      "For Sale",
-      "Wellington",
-      "Lower Hutt",
-      "PICKUP",
-      null,
-      10,
-    ),
-    [
-      img("photo-1570129477492-45c003edd2be"),
-      img("photo-1512917774080-9991f1c4c750"),
-    ],
-  );
-
-  // ── BABY & KIDS ─────────────────────────────────────────────────────────
-
-  await L(
-    active(
-      aroha.id,
-      "Bugaboo Fox 5 Complete Pram — Midnight Black",
-      "Top-of-the-line pram with bassinet and seat. All-terrain wheels. Includes rain cover, sun canopy, and cup holder. Used for 10 months.",
-      89900,
-      "GOOD",
-      "baby-kids",
-      "Baby Gear",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1591088398332-8a7791972843"),
-      img("photo-1519689680058-66b0120e6a2f"),
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      "LEGO Technic Porsche 911 GT3 RS (42056)",
-      "Complete set with instructions. All 2,704 pieces present. Built once, carefully disassembled. Original box slightly damaged. Great display piece.",
-      39900,
-      "GOOD",
-      "baby-kids",
-      "Toys & Games",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1560961911-ba7ef651a56c"),
-      img("photo-1587654780291-39c9404d7dd5"),
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      "Bundle of Children's Books (Age 3-7) — 25 Books",
-      "Curated collection including Dr Seuss, Julia Donaldson, and NZ authors. Some have stickers on covers but all pages are clean. Great for new readers.",
-      2900,
-      "FAIR",
-      "baby-kids",
-      "Books",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1512820790803-83ca734da794"),
-      img("photo-1544716278-ca5e3f4abd8c"),
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      "Mocka Cot + Mattress — White",
-      "Sturdy wooden cot converts to toddler bed. Includes inner-spring mattress. No bite marks on rails. Meets NZ safety standards.",
-      17900,
-      "GOOD",
-      "baby-kids",
-      "Nursery Furniture",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1522771739844-6a9f6d5f14af"),
-      img("photo-1596461404969-9ae70f2830c1"),
-    ],
-  );
-
-  await L(
-    active(
-      aroha.id,
-      "Kids' Icebreaker Merino Thermal Set — Size 4",
-      "NZ merino base layer set (top + bottoms). Excellent for skiing or cold school days. No holes or pilling. Quick-dry.",
-      4900,
-      "GOOD",
-      "baby-kids",
-      "Children's Clothing",
-      "Waikato",
-      "Hamilton Central",
-    ),
-    [
-      img("photo-1519238263530-99bdd11df2ea"),
-      img("photo-1471286174890-9c112ffca5b4"),
-    ],
-  );
-
-  // ── COLLECTIBLES ────────────────────────────────────────────────────────
-
-  await L(
-    active(
-      rachel.id,
-      "1972 All Blacks Test Match Programme — vs Wales",
-      "Original programme from the 1972 NZ vs Wales test. Good condition for its age. Some foxing on edges. A real piece of rugby history.",
-      19900,
-      "FAIR",
-      "collectibles",
-      "Sports Memorabilia",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1612872087720-bb876e2e67d1"),
-      img("photo-1518091043644-c1d4457512c6"),
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "NZ Pre-Decimal Coin Set — 1933–1965 Collection",
-      "Complete set of pre-decimal NZ coins including silver florins. Presented in display case. Some coins show circulation wear.",
-      34900,
-      "GOOD",
-      "collectibles",
-      "Coins & Stamps",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1621955964441-c173e01fca5c"),
-      img("photo-1598537735707-1be73a39f120"),
-    ],
-  );
-
-  const painting = await L(
-    active(
-      rachel.id,
-      "Original Oil Painting — Milford Sound at Dawn",
-      "Original oil on canvas by Wellington artist. 60x90cm. Captures the misty morning light at Milford Sound. Framed in native timber. Certificate of authenticity.",
-      45000,
-      "NEW",
-      "collectibles",
-      "Art",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1579762715118-a6f1d789cc15"),
-      img("photo-1500462918059-b1a0cb512f1d"),
-    ],
-    [
-      ["Medium", "Oil on Canvas"],
-      ["Size", "60x90cm"],
-      ["Frame", "NZ Native Timber"],
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "Antique Kauri Jewellery Box — c.1920",
-      "Beautiful hand-crafted kauri wood jewellery box. Velvet-lined interior with mirror. Brass hinges and clasp. Minor patina adds character.",
-      22900,
-      "FAIR",
-      "collectibles",
-      "Antiques",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1570913149827-d2ac84ab3f9a"),
-      img("photo-1584589167171-541ce45f1eea"),
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "First Edition — 'The Bone People' by Keri Hulme",
-      "First edition, first printing of the 1984 Booker Prize winner. Dust jacket in good condition with minor shelf wear. A NZ literary treasure.",
-      29900,
-      "GOOD",
-      "collectibles",
-      "Books & Comics",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1544947950-fa07a98d237f"),
-      img("photo-1512820790803-83ca734da794"),
-    ],
-  );
-
-  // ── TOOLS & EQUIPMENT ───────────────────────────────────────────────────
-
-  await L(
-    active(
-      tom.id,
-      "Makita 18V LXT Drill/Impact Driver Combo Kit",
-      "Makita's legendary combo kit. Includes drill driver, impact driver, 2x 5.0Ah batteries, dual charger, and carry bag. Contractor-grade.",
-      44900,
-      "GOOD",
-      "business",
-      "Power Tools",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1504148455328-c376907d081c"),
-      img("photo-1572981779307-38b8cabb2407"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "Stanley FatMax 65-Piece Socket Set",
-      "Complete metric and imperial socket set. Chrome vanadium steel. Lifetime warranty. Case has a crack but all pieces present.",
-      8900,
-      "GOOD",
-      "business",
-      "Hand Tools",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1581783898377-1c85bf937427"),
-      img("photo-1530124566582-a45a7e5fefb8"),
-    ],
-  );
-
-  await L(
-    active(
-      rachel.id,
-      "Herman Miller Aeron Chair — Size B, Graphite",
-      "The gold standard of office chairs. Fully loaded with tilt limiter, lumbar support, and adjustable arms. Some wear on armrests.",
-      89900,
-      "GOOD",
-      "business",
-      "Office Furniture",
-      "Wellington",
-      "Kelburn",
-    ),
-    [
-      img("photo-1580480055273-228ff5388ef8"),
-      img("photo-1541558869434-2840d308329a"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      'Husqvarna 435e II Chainsaw — 16" Bar',
-      "Reliable homeowner chainsaw. X-Torq engine for low emissions. Recently serviced with new chain. Includes carrying case and spare chain.",
-      44900,
-      "GOOD",
-      "business",
-      "Power Tools",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1516478177764-9fe5bd7e9717"),
-      img("photo-1585771724684-38269d6639fd"),
-    ],
-  );
-
-  await L(
-    active(
-      tom.id,
-      "3M Peltor X5A Ear Muffs — NRR 31dB",
-      "Highest-rated 3M hearing protection. Perfect for chainsaw work, shooting, or loud machinery. Lightly used, clean pads.",
-      5900,
-      "LIKE_NEW",
-      "business",
-      "Safety Equipment",
-      "Otago",
-      "Queenstown",
-    ),
-    [
-      img("photo-1504328345606-18bbc8c9d7d1"),
-      img("photo-1581092160607-ee22621dd758"),
-    ],
-  );
-
-  // ── DRAFT & SOLD listings ──────────────────────────────────────────────
-
-  // Draft listing
-  await L(
-    {
-      sellerId: mike.id,
-      title: "iPhone 14 Pro — Space Black (Draft)",
-      description: "Still writing this listing...",
-      priceNzd: 99900,
-      condition: "GOOD",
-      status: "DRAFT",
-      categoryId: "electronics",
-      subcategoryName: "Mobile Phones",
-      region: "Auckland",
-      suburb: "Newmarket",
-      shippingOption: "COURIER",
-      shippingNzd: 800,
-      createdAt: ago(1 * DAY),
-    },
-    [img("photo-1678911820864-e2c567c655d7")],
-  );
-
-  // Sold listings (used for completed orders)
-  const soldMixer = await L(
-    {
-      sellerId: rachel.id,
-      title: "Breville Bakery Boss Stand Mixer — Silver",
-      description:
-        "12-speed stand mixer with all attachments. Great for baking. Sold!",
-      priceNzd: 29900,
-      condition: "GOOD",
-      status: "SOLD",
-      categoryId: "home-garden",
-      subcategoryName: "Appliances",
-      region: "Wellington",
-      suburb: "Kelburn",
-      shippingOption: "COURIER",
-      shippingNzd: 1500,
-      publishedAt: ago(25 * DAY),
-      soldAt: ago(20 * DAY),
-      createdAt: ago(25 * DAY),
-    },
-    [img("photo-1594385208974-2f8bb2a76ddc")],
-  );
-
-  const soldHeadphones = await L(
-    {
-      sellerId: mike.id,
-      title: "Bose QuietComfort Ultra Headphones",
-      description:
-        "Premium noise-cancelling headphones. CustomTune technology. Sold to happy buyer.",
-      priceNzd: 42900,
-      condition: "LIKE_NEW",
-      status: "SOLD",
-      categoryId: "electronics",
-      subcategoryName: "Audio",
-      region: "Auckland",
-      suburb: "Newmarket",
-      shippingOption: "COURIER",
-      shippingNzd: 600,
-      publishedAt: ago(28 * DAY),
-      soldAt: ago(22 * DAY),
-      createdAt: ago(28 * DAY),
-    },
-    [img("photo-1505740420928-5e560c06d30e")],
-  );
-
-  const soldJacket = await L(
-    {
-      sellerId: aroha.id,
-      title: "Kathmandu Epiq Down Jacket — Women's 12",
-      description:
-        "800-fill goose down. Ultra-warm. Sold to a buyer heading to Queenstown.",
-      priceNzd: 17900,
-      condition: "GOOD",
-      status: "SOLD",
-      categoryId: "fashion",
-      subcategoryName: "Jackets & Coats",
-      region: "Waikato",
-      suburb: "Hamilton Central",
-      shippingOption: "COURIER",
-      shippingNzd: 800,
-      publishedAt: ago(22 * DAY),
-      soldAt: ago(18 * DAY),
-      createdAt: ago(22 * DAY),
-    },
-    [img("photo-1544923246-77307dd270c3")],
-  );
-
-  const soldWatch = await L(
-    {
-      sellerId: mike.id,
-      title: "Apple Watch Series 9 — Midnight Aluminium 45mm",
-      description: "Apple Watch with Sport Band. Great condition. Sold.",
-      priceNzd: 54900,
-      condition: "LIKE_NEW",
-      status: "SOLD",
-      categoryId: "electronics",
-      subcategoryName: "Mobile Phones",
-      region: "Auckland",
-      suburb: "Newmarket",
-      shippingOption: "COURIER",
-      shippingNzd: 500,
-      publishedAt: ago(20 * DAY),
-      soldAt: ago(15 * DAY),
-      createdAt: ago(20 * DAY),
-    },
-    [img("photo-1546868871-af0de0ae72be")],
-  );
-
-  const soldBike = await L(
-    {
-      sellerId: tom.id,
-      title: "Giant Trance X Advanced 29 2 — Size M",
-      description:
-        "Full suspension trail bike. Fox 36 fork, Shimano XT groupset. Sold.",
-      priceNzd: 379900,
-      condition: "GOOD",
-      status: "SOLD",
-      categoryId: "sports",
-      subcategoryName: "Cycling",
-      region: "Otago",
-      suburb: "Queenstown",
-      shippingOption: "COURIER",
-      shippingNzd: 6000,
-      publishedAt: ago(30 * DAY),
-      soldAt: ago(25 * DAY),
-      createdAt: ago(30 * DAY),
-    },
-    [img("photo-1576435728678-68d0fbf94e91")],
-  );
-
-  const soldCamera = await L(
-    {
-      sellerId: mike.id,
-      title: "Canon EOS R6 Mark II — Body Only",
-      description: "Full-frame mirrorless. 24.2MP. Great autofocus. Sold.",
-      priceNzd: 289900,
-      condition: "LIKE_NEW",
-      status: "SOLD",
-      categoryId: "electronics",
-      subcategoryName: "Cameras & Drones",
-      region: "Auckland",
-      suburb: "Newmarket",
-      shippingOption: "COURIER",
-      shippingNzd: 1000,
-      publishedAt: ago(26 * DAY),
-      soldAt: ago(21 * DAY),
-      createdAt: ago(26 * DAY),
-    },
-    [img("photo-1516035069371-29a1b244cc32")],
-  );
-
-  const soldBackpack = await L(
-    {
-      sellerId: tom.id,
-      title: "Arc'teryx Alpha SV Jacket — Men's L, Dynasty",
-      description: "The ultimate hardshell. GORE-TEX Pro. Sold.",
-      priceNzd: 89900,
-      condition: "GOOD",
-      status: "SOLD",
-      categoryId: "fashion",
-      subcategoryName: "Jackets & Coats",
-      region: "Otago",
-      suburb: "Queenstown",
-      shippingOption: "COURIER",
-      shippingNzd: 800,
-      publishedAt: ago(24 * DAY),
-      soldAt: ago(19 * DAY),
-      createdAt: ago(24 * DAY),
-    },
-    [img("photo-1544923246-77307dd270c3")],
-  );
-
-  // Extra sold listings for dispute/refund orders
-  const soldTablet = await L(
-    {
-      sellerId: mike.id,
-      title: 'iPad Pro 12.9" M2 256GB — Space Grey',
-      description: "iPad Pro with Magic Keyboard. Sold.",
-      priceNzd: 149900,
-      condition: "LIKE_NEW",
-      status: "SOLD",
-      categoryId: "electronics",
-      subcategoryName: "Tablets",
-      region: "Auckland",
-      suburb: "Newmarket",
-      shippingOption: "COURIER",
-      shippingNzd: 800,
-      publishedAt: ago(18 * DAY),
-      soldAt: ago(14 * DAY),
-      createdAt: ago(18 * DAY),
-    },
-    [img("photo-1544244015-0df4b3ffc6b0")],
-  );
-
-  const soldVase = await L(
-    {
-      sellerId: rachel.id,
-      title: "Handmade Ceramic Vase — Large, Celadon Glaze",
-      description: "Studio pottery vase. Sold.",
-      priceNzd: 8900,
-      condition: "NEW",
-      status: "SOLD",
-      categoryId: "home-garden",
-      subcategoryName: "Kitchen",
-      region: "Wellington",
-      suburb: "Kelburn",
-      shippingOption: "COURIER",
-      shippingNzd: 1200,
-      publishedAt: ago(20 * DAY),
-      soldAt: ago(16 * DAY),
-      createdAt: ago(20 * DAY),
-    },
-    [img("photo-1581783898377-1c85bf937427")],
-  );
-
-  const soldSpeaker = await L(
-    {
-      sellerId: tom.id,
-      title: "Sonos Move 2 — Portable Speaker, Black",
-      description: "Premium portable speaker. Sold.",
-      priceNzd: 59900,
-      condition: "LIKE_NEW",
-      status: "SOLD",
-      categoryId: "electronics",
-      subcategoryName: "Audio",
-      region: "Otago",
-      suburb: "Queenstown",
-      shippingOption: "COURIER",
-      shippingNzd: 1000,
-      publishedAt: ago(15 * DAY),
-      soldAt: ago(10 * DAY),
-      createdAt: ago(15 * DAY),
-    },
-    [img("photo-1608043152269-423dbba4e7e1")],
-  );
-
-  const soldArt = await L(
-    {
-      sellerId: rachel.id,
-      title: "Vintage NZ Travel Poster — Mount Cook, Framed",
-      description: "Reproduction vintage poster. Sold.",
-      priceNzd: 12900,
-      condition: "NEW",
-      status: "SOLD",
-      categoryId: "collectibles",
-      subcategoryName: "Art",
-      region: "Wellington",
-      suburb: "Kelburn",
-      shippingOption: "COURIER",
-      shippingNzd: 1500,
-      publishedAt: ago(22 * DAY),
-      soldAt: ago(17 * DAY),
-      createdAt: ago(22 * DAY),
-    },
-    [img("photo-1579762715118-a6f1d789cc15")],
-  );
-
-  const listingCount = await db.listing.count();
-  console.log(`✅ ${listingCount} listings created`);
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // ORDERS + ORDER EVENTS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n📦 Creating orders and events...");
-
-  async function E(
-    orderId: string,
-    type: string,
-    actorId: string | null,
-    actorRole: string,
-    summary: string,
-    metadata: Record<string, unknown> | null,
-    createdAt: Date,
-  ) {
-    await db.orderEvent.create({
+  console.log("✅ 11 users created");
+  return {
+    buyer1,
+    buyer2,
+    buyer3,
+    seller1,
+    seller2,
+    seller3,
+    seller4,
+    superAdmin,
+    disputesAdmin,
+    contentAdmin,
+    financeAdmin,
+  };
+}
+
+// ─── Listings ────────────────────────────────────────────────────────────────
+
+async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
+  console.log("🛍️  Creating listings...");
+  const { seller1, seller2, seller3, seller4, contentAdmin } = users;
+
+  // Helper to create listing with images
+  async function makeListing(data: {
+    sellerId: string;
+    title: string;
+    description: string;
+    priceNzd: number;
+    shippingNzd?: number;
+    condition: "NEW" | "LIKE_NEW" | "GOOD" | "FAIR" | "PARTS";
+    status:
+      | "DRAFT"
+      | "PENDING_REVIEW"
+      | "NEEDS_CHANGES"
+      | "ACTIVE"
+      | "RESERVED"
+      | "SOLD"
+      | "EXPIRED"
+      | "REMOVED";
+    categoryId: string;
+    subcategoryName?: string;
+    region: string;
+    suburb: string;
+    shippingOption: "PICKUP" | "COURIER" | "BOTH";
+    offersEnabled?: boolean;
+    isNegotiable?: boolean;
+    isUrgent?: boolean;
+    shipsNationwide?: boolean;
+    publishedAt?: Date;
+    soldAt?: Date;
+    createdAt?: Date;
+    autoRiskScore?: number;
+    autoRiskFlags?: string[];
+    moderationNote?: string;
+    moderatedBy?: string;
+    moderatedAt?: Date;
+    resubmissionCount?: number;
+    previousPriceNzd?: number;
+    priceDroppedAt?: Date;
+  }) {
+    const listing = await db.listing.create({
       data: {
-        orderId,
-        type,
-        actorId,
-        actorRole,
-        summary,
-        metadata: (metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-        createdAt,
+        sellerId: data.sellerId,
+        title: data.title,
+        description: data.description,
+        priceNzd: data.priceNzd,
+        shippingNzd: data.shippingNzd ?? 0,
+        condition: data.condition,
+        status: data.status,
+        categoryId: data.categoryId,
+        subcategoryName: data.subcategoryName ?? null,
+        region: data.region,
+        suburb: data.suburb,
+        shippingOption: data.shippingOption,
+        offersEnabled: data.offersEnabled ?? true,
+        isNegotiable: data.isNegotiable ?? false,
+        isUrgent: data.isUrgent ?? false,
+        shipsNationwide: data.shipsNationwide ?? false,
+        publishedAt:
+          data.publishedAt ?? (data.status === "ACTIVE" ? ago(7 * DAY) : null),
+        soldAt: data.soldAt ?? null,
+        expiresAt: data.status === "ACTIVE" ? future(23 * DAY) : null,
+        createdAt: data.createdAt ?? ago(8 * DAY),
+        autoRiskScore: data.autoRiskScore ?? null,
+        autoRiskFlags: data.autoRiskFlags ?? [],
+        moderationNote: data.moderationNote ?? null,
+        moderatedBy: data.moderatedBy ?? null,
+        moderatedAt: data.moderatedAt ?? null,
+        resubmissionCount: data.resubmissionCount ?? 0,
+        previousPriceNzd: data.previousPriceNzd ?? null,
+        priceDroppedAt: data.priceDroppedAt ?? null,
       },
     });
+    // Add a listing image (R2 key placeholder)
+    await db.listingImage.create({
+      data: {
+        listingId: listing.id,
+        r2Key: `listings/${listing.id}/1.webp`,
+        thumbnailKey: `listings/${listing.id}/1-thumb.webp`,
+        order: 0,
+        scanned: true,
+        safe: true,
+        scannedAt: ago(1 * HOUR),
+        processedAt: ago(1 * HOUR),
+      },
+    });
+    return listing;
   }
 
-  // ── Group 1: COMPLETED orders (6) ──────────────────────────────────────
+  // ── SELLER 1 (Mike — Gold, ID verified) ─────────────────────────────────
+  // Active listings for purchase
+  const listingMacbook = await makeListing({
+    sellerId: seller1.id,
+    title: "MacBook Pro 14-inch M3 Pro Space Black",
+    description:
+      "MacBook Pro 14-inch with M3 Pro chip, 18GB RAM, 512GB SSD. Space Black. Purchased 6 months ago. Excellent condition, minimal use. Comes with original charger and box. Perfect for developers and creatives. No scratches, no dents. Battery health 97%.",
+    priceNzd: 289900,
+    shippingNzd: 800,
+    condition: "LIKE_NEW",
+    status: "ACTIVE",
+    categoryId: "cat-electronics",
+    subcategoryName: "Laptops",
+    region: "Auckland",
+    suburb: "Newmarket",
+    shippingOption: "COURIER",
+    offersEnabled: true,
+    isNegotiable: true,
+    shipsNationwide: true,
+    previousPriceNzd: 309900,
+    priceDroppedAt: ago(2 * DAY),
+  });
 
-  // Completed 1: Sarah bought mixer from Rachel (normal completion)
+  const listingIphone = await makeListing({
+    sellerId: seller1.id,
+    title: "iPhone 15 Pro Max 256GB Natural Titanium",
+    description:
+      "iPhone 15 Pro Max 256GB in Natural Titanium. Purchased new 4 months ago. Used carefully with case and screen protector from day one. Battery health 99%. No marks or scratches. Comes with original Apple box, unused charging cable and adapter. Selling as upgrading to different colour.",
+    priceNzd: 189900,
+    shippingNzd: 600,
+    condition: "LIKE_NEW",
+    status: "ACTIVE",
+    categoryId: "cat-electronics",
+    subcategoryName: "Phones",
+    region: "Auckland",
+    suburb: "Newmarket",
+    shippingOption: "BOTH",
+    offersEnabled: true,
+    shipsNationwide: true,
+  });
+
+  const listingSamsungTv = await makeListing({
+    sellerId: seller1.id,
+    title: "Samsung 65-inch QLED 4K Smart TV QN90B",
+    description:
+      "Samsung 65-inch QLED 4K TV model QN90B. Purchased 18 months ago. Picture quality is outstanding — Neo Quantum HDR, 120Hz refresh rate. All original remotes and stands included. Minor usage only. Selling as moving to smaller apartment. Pick up preferred from Newmarket or can arrange courier at buyers cost.",
+    priceNzd: 159900,
+    shippingNzd: 8000,
+    condition: "GOOD",
+    status: "ACTIVE",
+    categoryId: "cat-electronics",
+    subcategoryName: "Gaming",
+    region: "Auckland",
+    suburb: "Newmarket",
+    shippingOption: "BOTH",
+    offersEnabled: true,
+    isNegotiable: true,
+    isUrgent: true,
+  });
+
+  // SOLD listings (used for completed orders)
+  const listingSoldHeadphones = await makeListing({
+    sellerId: seller1.id,
+    title: "Sony WH-1000XM5 Wireless Headphones Black",
+    description:
+      "Sony WH-1000XM5 noise cancelling headphones in black. Used for 8 months. Excellent noise cancellation still works perfectly. Comes with original case and cables. Some light wear on ear cushions but fully functional.",
+    priceNzd: 42900,
+    shippingNzd: 600,
+    condition: "GOOD",
+    status: "SOLD",
+    categoryId: "cat-electronics",
+    subcategoryName: "Audio",
+    region: "Auckland",
+    suburb: "Newmarket",
+    shippingOption: "COURIER",
+    offersEnabled: false,
+    soldAt: ago(22 * DAY),
+    createdAt: ago(30 * DAY),
+  });
+
+  const listingSoldCamera = await makeListing({
+    sellerId: seller1.id,
+    title: "Canon EOS R6 Mark II Body Only",
+    description:
+      "Canon EOS R6 Mark II mirrorless camera body. Around 5000 shutter actuations. Fantastic autofocus, great in low light. No signs of damage. Comes with original battery, charger, strap and box. Selling as upgrading to R5 Mark II.",
+    priceNzd: 289900,
+    shippingNzd: 1000,
+    condition: "LIKE_NEW",
+    status: "SOLD",
+    categoryId: "cat-electronics",
+    subcategoryName: "Cameras",
+    region: "Auckland",
+    suburb: "Newmarket",
+    shippingOption: "COURIER",
+    offersEnabled: false,
+    soldAt: ago(18 * DAY),
+    createdAt: ago(25 * DAY),
+  });
+
+  const listingSoldWatch = await makeListing({
+    sellerId: seller1.id,
+    title: "Apple Watch Series 9 GPS 45mm Midnight",
+    description:
+      "Apple Watch Series 9 GPS 45mm in Midnight Aluminium with Midnight Sport Band. 6 months old. Always had screen protector. Battery health excellent. Comes with charger and extra sports band. Selling as received a new one as a gift.",
+    priceNzd: 54900,
+    shippingNzd: 500,
+    condition: "LIKE_NEW",
+    status: "SOLD",
+    categoryId: "cat-electronics",
+    subcategoryName: "Phones",
+    region: "Auckland",
+    suburb: "Newmarket",
+    shippingOption: "COURIER",
+    offersEnabled: false,
+    soldAt: ago(15 * DAY),
+    createdAt: ago(20 * DAY),
+  });
+
+  // ── SELLER 2 (Rachel — New L1 seller) ───────────────────────────────────
+  // Listings in various moderation states for admin queue testing
+  const listingPendingReview = await makeListing({
+    sellerId: seller2.id,
+    title: "Handmade Ceramic Mug Set of 4",
+    description:
+      "Beautiful handmade ceramic mugs in earthy tones. Each mug is unique — slight variations in glaze are part of the charm. Dishwasher safe. Approx 350ml capacity. Perfect for coffee or tea. Made locally in Hamilton.",
+    priceNzd: 8900,
+    shippingNzd: 1200,
+    condition: "NEW",
+    status: "PENDING_REVIEW",
+    categoryId: "cat-home",
+    subcategoryName: "Kitchen",
+    region: "Waikato",
+    suburb: "Hamilton Central",
+    shippingOption: "COURIER",
+    autoRiskScore: 35,
+    autoRiskFlags: ["NEW_SELLER", "FIRST_LISTINGS"],
+    createdAt: ago(2 * HOUR),
+  });
+
+  const listingNeedsChanges = await makeListing({
+    sellerId: seller2.id,
+    title: "Kids Bike 20 inch",
+    description: "Kids bike for sale.",
+    priceNzd: 4900,
+    shippingNzd: 0,
+    condition: "GOOD",
+    status: "NEEDS_CHANGES",
+    categoryId: "cat-sports",
+    subcategoryName: "Bikes",
+    region: "Waikato",
+    suburb: "Hamilton Central",
+    shippingOption: "PICKUP",
+    autoRiskScore: 50,
+    autoRiskFlags: ["NEW_SELLER", "SHORT_DESCRIPTION", "SINGLE_IMAGE"],
+    moderationNote:
+      "Please improve your description — tell buyers the brand, size, any defects, and what is included. The current description is too short for buyers to make an informed decision. Also add more photos showing the condition of the bike.",
+    moderatedBy: contentAdmin.id,
+    moderatedAt: ago(3 * HOUR),
+    resubmissionCount: 0,
+    createdAt: ago(6 * HOUR),
+  });
+
+  const listingHighRisk = await makeListing({
+    sellerId: seller2.id,
+    title: "Vintage Rolex Submariner Watch",
+    description:
+      "Vintage Rolex Submariner from the 1970s. Great condition for its age. Serial number available on request. Price firm.",
+    priceNzd: 850000,
+    shippingNzd: 2000,
+    condition: "GOOD",
+    status: "PENDING_REVIEW",
+    categoryId: "cat-collectibles",
+    subcategoryName: "Coins",
+    region: "Waikato",
+    suburb: "Hamilton Central",
+    shippingOption: "COURIER",
+    autoRiskScore: 80,
+    autoRiskFlags: [
+      "NEW_SELLER",
+      "HIGH_VALUE_ITEM",
+      "FIRST_LISTINGS",
+      "SHORT_DESCRIPTION",
+    ],
+    createdAt: ago(1 * HOUR),
+  });
+
+  const listingDraft = await makeListing({
+    sellerId: seller2.id,
+    title: "Craft Supplies Bundle",
+    description:
+      "Various craft supplies including yarn, fabric, buttons and more.",
+    priceNzd: 3500,
+    shippingNzd: 800,
+    condition: "NEW",
+    status: "DRAFT",
+    categoryId: "cat-home",
+    subcategoryName: "Garden",
+    region: "Waikato",
+    suburb: "Hamilton Central",
+    shippingOption: "COURIER",
+    createdAt: ago(30 * MIN),
+  });
+
+  // ── SELLER 3 (Tom — High dispute rate) ──────────────────────────────────
+  const listingKayak = await makeListing({
+    sellerId: seller3.id,
+    title: "Ocean Kayak Trident 13 Angler",
+    description:
+      "Ocean Kayak Trident 13 Angler fishing kayak. In good condition with some scratches on the hull from normal use. Comes with paddle, seat, and rod holders. Great stable platform for fishing. Selling as I have bought a motorised boat.",
+    priceNzd: 89900,
+    shippingNzd: 3000,
+    condition: "GOOD",
+    status: "ACTIVE",
+    categoryId: "cat-sports",
+    subcategoryName: "Camping",
+    region: "Otago",
+    suburb: "Queenstown",
+    shippingOption: "BOTH",
+    offersEnabled: true,
+    isNegotiable: true,
+  });
+
+  const listingTent = await makeListing({
+    sellerId: seller3.id,
+    title: "MSR Hubba Hubba NX2 Tent",
+    description:
+      "MSR Hubba Hubba NX2 two-person backpacking tent. Used on 3 trips. Seams still well-sealed. All poles, pegs and guylines included. Footprint also included (sold separately normally). Storing due to back injury preventing further hiking.",
+    priceNzd: 49900,
+    shippingNzd: 1500,
+    condition: "GOOD",
+    status: "ACTIVE",
+    categoryId: "cat-sports",
+    subcategoryName: "Camping",
+    region: "Otago",
+    suburb: "Queenstown",
+    shippingOption: "COURIER",
+    offersEnabled: true,
+  });
+
+  // SOLD listings for disputed and refunded orders
+  const listingSoldSpeaker = await makeListing({
+    sellerId: seller3.id,
+    title: "Sonos Move 2 Portable Speaker Black",
+    description:
+      "Sonos Move 2 portable speaker in black. About 8 months old. Great sound quality. Comes with charging base and original box. Battery lasts around 24 hours. Selling as upgrading to the fixed home system.",
+    priceNzd: 59900,
+    shippingNzd: 1000,
+    condition: "LIKE_NEW",
+    status: "SOLD",
+    categoryId: "cat-electronics",
+    subcategoryName: "Audio",
+    region: "Otago",
+    suburb: "Queenstown",
+    shippingOption: "COURIER",
+    offersEnabled: false,
+    soldAt: ago(9 * DAY),
+    createdAt: ago(14 * DAY),
+  });
+
+  const listingSoldTablet = await makeListing({
+    sellerId: seller3.id,
+    title: "iPad Pro 12.9-inch M2 256GB Space Grey",
+    description:
+      "iPad Pro 12.9-inch with M2 chip, 256GB, Space Grey WiFi. Comes with Apple Pencil 2nd gen and Magic Keyboard. Minor scuff on back corner. No screen damage. Face ID works perfectly. All original accessories included.",
+    priceNzd: 149900,
+    shippingNzd: 800,
+    condition: "GOOD",
+    status: "SOLD",
+    categoryId: "cat-electronics",
+    subcategoryName: "Tablets",
+    region: "Otago",
+    suburb: "Queenstown",
+    shippingOption: "COURIER",
+    offersEnabled: false,
+    soldAt: ago(10 * DAY),
+    createdAt: ago(16 * DAY),
+  });
+
+  // ── SELLER 4 (Aroha — Pickup specialist) ────────────────────────────────
+  const listingPickupBike = await makeListing({
+    sellerId: seller4.id,
+    title: "Giant Defy Advanced 2 Road Bike Size M",
+    description:
+      "Giant Defy Advanced 2 road bike, size Medium. Carbon frame, Shimano 105 groupset. Purchased 2 years ago, ridden about 3000km. Well maintained, recently serviced. Tyres have plenty of life. Perfect bike for long-distance road riding. Pickup only from Tauranga — too large and fragile to ship.",
+    priceNzd: 185000,
+    shippingNzd: 0,
+    condition: "GOOD",
+    status: "ACTIVE",
+    categoryId: "cat-sports",
+    subcategoryName: "Bikes",
+    region: "Bay of Plenty",
+    suburb: "Tauranga",
+    shippingOption: "PICKUP",
+    offersEnabled: true,
+    isNegotiable: true,
+  });
+
+  const listingCopFurniture = await makeListing({
+    sellerId: seller4.id,
+    title: "Solid Oak Dining Table 6-Seater",
+    description:
+      "Beautiful solid oak dining table seating 6 comfortably. 180cm x 90cm. Some minor marks from normal use but very solid and sturdy. No chairs included. This is a large heavy item so cash on pickup only from Tauranga. Buyer responsible for arranging transport.",
+    priceNzd: 55000,
+    shippingNzd: 0,
+    condition: "GOOD",
+    status: "ACTIVE",
+    categoryId: "cat-home",
+    subcategoryName: "Furniture",
+    region: "Bay of Plenty",
+    suburb: "Tauranga",
+    shippingOption: "PICKUP",
+    offersEnabled: false,
+    isNegotiable: true,
+  });
+
+  const listingPickupSold = await makeListing({
+    sellerId: seller4.id,
+    title: "Kathmandu Epiq Down Jacket Womens Size 12",
+    description:
+      "Kathmandu Epiq Down Jacket in Navy, Womens Size 12. Excellent warmth-to-weight ratio. Worn a handful of times last winter. No damage or staining. All zips work perfectly. Comes in original stuff sack.",
+    priceNzd: 17900,
+    shippingNzd: 800,
+    condition: "GOOD",
+    status: "SOLD",
+    categoryId: "cat-fashion",
+    subcategoryName: "Womens Clothing",
+    region: "Bay of Plenty",
+    suburb: "Tauranga",
+    shippingOption: "BOTH",
+    offersEnabled: false,
+    soldAt: ago(2 * DAY),
+    createdAt: ago(5 * DAY),
+  });
+
+  const listingCopSold = await makeListing({
+    sellerId: seller4.id,
+    title: "Handmade Macrame Wall Hanging Large",
+    description:
+      "Large handmade macrame wall hanging, approximately 80cm wide and 120cm long. Made from natural cotton rope. Beautiful bohemian style, would suit a living room or bedroom. Cash on pickup from Tauranga only.",
+    priceNzd: 12900,
+    shippingNzd: 0,
+    condition: "NEW",
+    status: "SOLD",
+    categoryId: "cat-collectibles",
+    subcategoryName: "Art",
+    region: "Bay of Plenty",
+    suburb: "Tauranga",
+    shippingOption: "PICKUP",
+    offersEnabled: false,
+    soldAt: ago(3 * DAY),
+    createdAt: ago(6 * DAY),
+  });
+
+  console.log("✅ Listings created");
+
+  return {
+    // Active — for purchase
+    listingMacbook,
+    listingIphone,
+    listingSamsungTv,
+    listingKayak,
+    listingTent,
+    listingPickupBike,
+    listingCopFurniture,
+    // Moderation states
+    listingPendingReview,
+    listingNeedsChanges,
+    listingHighRisk,
+    listingDraft,
+    // Sold — for orders
+    listingSoldHeadphones,
+    listingSoldCamera,
+    listingSoldWatch,
+    listingSoldSpeaker,
+    listingSoldTablet,
+    listingPickupSold,
+    listingCopSold,
+  };
+}
+
+// ─── Helper: create listing snapshot ────────────────────────────────────────
+
+async function makeSnapshot(
+  orderId: string,
+  listing: {
+    id: string;
+    title: string;
+    description: string;
+    condition: "NEW" | "LIKE_NEW" | "GOOD" | "FAIR" | "PARTS";
+    priceNzd: number;
+    shippingNzd: number | null;
+    shippingOption: "PICKUP" | "COURIER" | "BOTH";
+    isNegotiable: boolean;
+    categoryId: string;
+  },
+  categoryName: string,
+) {
+  return db.listingSnapshot.create({
+    data: {
+      orderId,
+      listingId: listing.id,
+      title: listing.title,
+      description: listing.description,
+      condition: listing.condition,
+      priceNzd: listing.priceNzd,
+      shippingNzd: listing.shippingNzd ?? 0,
+      categoryName,
+      subcategoryName: null,
+      shippingOption: listing.shippingOption,
+      isNegotiable: listing.isNegotiable,
+      images: [
+        {
+          r2Key: `listings/${listing.id}/1.webp`,
+          thumbnailKey: `listings/${listing.id}/1-thumb.webp`,
+          order: 0,
+        },
+      ],
+      attributes: [],
+      capturedAt: new Date(),
+    },
+  });
+}
+
+// ─── Helper: create order event ──────────────────────────────────────────────
+
+async function makeEvent(
+  orderId: string,
+  type: string,
+  actorId: string | null,
+  actorRole: string,
+  summary: string,
+  metadata?: Record<string, unknown>,
+  createdAt?: Date,
+) {
+  return db.orderEvent.create({
+    data: {
+      orderId,
+      type,
+      actorId,
+      actorRole,
+      summary,
+      metadata: metadata as never,
+      createdAt: createdAt ?? new Date(),
+    },
+  });
+}
+
+// ─── Orders ──────────────────────────────────────────────────────────────────
+
+async function seedOrders(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  listings: Awaited<ReturnType<typeof seedListings>>,
+) {
+  console.log("📦 Creating orders...");
+  const { buyer1, buyer2, buyer3, seller1, seller3, seller4, disputesAdmin } =
+    users;
+  const {
+    listingSoldHeadphones,
+    listingSoldCamera,
+    listingSoldWatch,
+    listingSoldSpeaker,
+    listingSoldTablet,
+    listingPickupSold,
+    listingCopSold,
+    listingMacbook,
+    listingPickupBike,
+    listingCopFurniture,
+  } = listings;
+
+  // ── GROUP 1: COMPLETED orders ────────────────────────────────────────────
+
+  // comp1: Sarah bought Sony headphones from Mike — fully completed with review
   const comp1 = await db.order.create({
     data: {
-      buyerId: sarah.id,
-      sellerId: rachel.id,
-      listingId: soldMixer,
-      itemNzd: 29900,
-      shippingNzd: 1500,
-      totalNzd: 31400,
+      buyerId: buyer1.id,
+      sellerId: seller1.id,
+      listingId: listingSoldHeadphones.id,
+      itemNzd: 42900,
+      shippingNzd: 600,
+      totalNzd: 43500,
       status: "COMPLETED",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_comp1",
       trackingNumber: "NZ100200300",
-      dispatchedAt: ago(18 * DAY),
-      deliveredAt: ago(16 * DAY),
-      completedAt: ago(13 * DAY),
+      trackingUrl:
+        "https://www.nzpost.co.nz/tools/tracking?trackid=NZ100200300",
+      dispatchedAt: ago(20 * DAY),
+      deliveredAt: ago(17 * DAY),
+      completedAt: ago(14 * DAY),
       shippingName: "Sarah Mitchell",
-      shippingLine1: "42 Ponsonby Road",
+      shippingLine1: "12 Ponsonby Road",
       shippingCity: "Auckland",
       shippingRegion: "Auckland",
       shippingPostcode: "1011",
-      createdAt: ago(20 * DAY),
+      createdAt: ago(22 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(comp1.id, listingSoldHeadphones, "Electronics");
+  await makeEvent(
     comp1.id,
     "ORDER_CREATED",
-    sarah.id,
+    buyer1.id,
     "BUYER",
-    "Order placed for Breville Bakery Boss Stand Mixer",
-    null,
-    ago(20 * DAY),
+    "Order placed by Sarah Mitchell",
+    {},
+    ago(22 * DAY),
   );
-  await E(
+  await makeEvent(
     comp1.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
-    "Payment of $314.00 held in escrow",
-    null,
-    new Date(ago(20 * DAY).getTime() + 2 * MIN),
+    "Payment of $435.00 held in escrow",
+    { amount: 43500 },
+    ago(22 * DAY),
   );
-  await E(
+  await makeEvent(
     comp1.id,
     "DISPATCHED",
-    rachel.id,
+    seller1.id,
     "SELLER",
-    "Dispatched via NZ Post — tracking NZ100200300",
+    "Order dispatched via NZ Post",
     {
-      trackingNumber: "NZ100200300",
       courier: "NZ Post",
-      estimatedDeliveryDate: ago(16 * DAY).toISOString(),
-      dispatchPhotos: [img("photo-1594385208974-2f8bb2a76ddc")],
+      trackingNumber: "NZ100200300",
+      dispatchPhotos: [`orders/${comp1.id}/dispatch-1.webp`],
     },
-    ago(18 * DAY),
+    ago(20 * DAY),
   );
-  await E(
+  await makeEvent(
     comp1.id,
     "DELIVERED",
     null,
     "SYSTEM",
-    "Tracking shows item delivered",
-    null,
-    ago(16 * DAY),
+    "Order marked as delivered",
+    {},
+    ago(17 * DAY),
   );
-  await E(
+  await makeEvent(
     comp1.id,
     "DELIVERY_CONFIRMED_OK",
-    sarah.id,
+    buyer1.id,
     "BUYER",
     "Buyer confirmed item received in good condition",
     { itemCondition: "ok" },
     ago(15 * DAY),
   );
-  await E(
+  await makeEvent(
     comp1.id,
     "COMPLETED",
     null,
     "SYSTEM",
-    "Order completed. Payment released to seller.",
-    null,
-    ago(13 * DAY),
+    "Order completed, payout released to seller",
+    {},
+    ago(14 * DAY),
+  );
+  await makeEvent(
+    comp1.id,
+    "REVIEW_SUBMITTED",
+    buyer1.id,
+    "BUYER",
+    "Buyer left a 4.5-star review",
+    { rating: 45 },
+    ago(14 * DAY),
   );
 
-  // Completed 2: Emma bought headphones from Mike
+  // comp2: Sarah bought Canon camera from Mike
   const comp2 = await db.order.create({
     data: {
-      buyerId: emma.id,
-      sellerId: mike.id,
-      listingId: soldHeadphones,
-      itemNzd: 42900,
-      shippingNzd: 600,
-      totalNzd: 43500,
-      status: "COMPLETED",
-      stripePaymentIntentId: "pi_test_comp2",
-      trackingNumber: "NZ200300400",
-      dispatchedAt: ago(20 * DAY),
-      deliveredAt: ago(18 * DAY),
-      completedAt: ago(15 * DAY),
-      shippingName: "Emma Wilson",
-      shippingLine1: "15 Riccarton Road",
-      shippingCity: "Christchurch",
-      shippingRegion: "Canterbury",
-      shippingPostcode: "8041",
-      createdAt: ago(22 * DAY),
-    },
-  });
-  await E(
-    comp2.id,
-    "ORDER_CREATED",
-    emma.id,
-    "BUYER",
-    "Order placed for Bose QuietComfort Ultra Headphones",
-    null,
-    ago(22 * DAY),
-  );
-  await E(
-    comp2.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment of $435.00 held in escrow",
-    null,
-    new Date(ago(22 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    comp2.id,
-    "DISPATCHED",
-    mike.id,
-    "SELLER",
-    "Dispatched via courier — tracking NZ200300400",
-    {
-      trackingNumber: "NZ200300400",
-      courier: "CourierPost",
-      estimatedDeliveryDate: ago(18 * DAY).toISOString(),
-      dispatchPhotos: [
-        img("photo-1505740420928-5e560c06d30e"),
-        img("photo-1505740420928-5e560c06d30f"),
-      ],
-    },
-    ago(20 * DAY),
-  );
-  await E(
-    comp2.id,
-    "DELIVERED",
-    null,
-    "SYSTEM",
-    "Tracking shows item delivered",
-    null,
-    ago(18 * DAY),
-  );
-  await E(
-    comp2.id,
-    "DELIVERY_CONFIRMED_OK",
-    emma.id,
-    "BUYER",
-    "Buyer confirmed delivery",
-    { itemCondition: "ok" },
-    ago(17 * DAY),
-  );
-  await E(
-    comp2.id,
-    "COMPLETED",
-    null,
-    "SYSTEM",
-    "Order completed. Payment released.",
-    null,
-    ago(15 * DAY),
-  );
-
-  // Completed 3: James bought jacket from Aroha
-  const comp3 = await db.order.create({
-    data: {
-      buyerId: james.id,
-      sellerId: aroha.id,
-      listingId: soldJacket,
-      itemNzd: 17900,
-      shippingNzd: 800,
-      totalNzd: 18700,
-      status: "COMPLETED",
-      stripePaymentIntentId: "pi_test_comp3",
-      trackingNumber: "NZ300400500",
-      dispatchedAt: ago(16 * DAY),
-      deliveredAt: ago(14 * DAY),
-      completedAt: ago(11 * DAY),
-      shippingName: "James Cooper",
-      shippingLine1: "8 Cuba Street",
-      shippingCity: "Wellington",
-      shippingRegion: "Wellington",
-      shippingPostcode: "6011",
-      createdAt: ago(18 * DAY),
-    },
-  });
-  await E(
-    comp3.id,
-    "ORDER_CREATED",
-    james.id,
-    "BUYER",
-    "Order placed for Kathmandu Epiq Down Jacket",
-    null,
-    ago(18 * DAY),
-  );
-  await E(
-    comp3.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment of $187.00 held",
-    null,
-    new Date(ago(18 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    comp3.id,
-    "DISPATCHED",
-    aroha.id,
-    "SELLER",
-    "Dispatched via NZ Post",
-    {
-      trackingNumber: "NZ300400500",
-      courier: "NZ Post",
-      estimatedDeliveryDate: ago(14 * DAY).toISOString(),
-    },
-    ago(16 * DAY),
-  );
-  await E(
-    comp3.id,
-    "DELIVERED",
-    null,
-    "SYSTEM",
-    "Item delivered",
-    null,
-    ago(14 * DAY),
-  );
-  await E(
-    comp3.id,
-    "DELIVERY_CONFIRMED_OK",
-    james.id,
-    "BUYER",
-    "Buyer confirmed receipt",
-    { itemCondition: "ok" },
-    ago(13 * DAY),
-  );
-  await E(
-    comp3.id,
-    "COMPLETED",
-    null,
-    "SYSTEM",
-    "Order completed.",
-    null,
-    ago(11 * DAY),
-  );
-
-  // Completed 4: Sarah bought watch from Mike
-  const comp4 = await db.order.create({
-    data: {
-      buyerId: sarah.id,
-      sellerId: mike.id,
-      listingId: soldWatch,
-      itemNzd: 54900,
-      shippingNzd: 500,
-      totalNzd: 55400,
-      status: "COMPLETED",
-      stripePaymentIntentId: "pi_test_comp4",
-      trackingNumber: "NZ400500600",
-      dispatchedAt: ago(14 * DAY),
-      deliveredAt: ago(12 * DAY),
-      completedAt: ago(9 * DAY),
-      shippingName: "Sarah Mitchell",
-      shippingLine1: "42 Ponsonby Road",
-      shippingCity: "Auckland",
-      shippingRegion: "Auckland",
-      shippingPostcode: "1011",
-      createdAt: ago(15 * DAY),
-    },
-  });
-  await E(
-    comp4.id,
-    "ORDER_CREATED",
-    sarah.id,
-    "BUYER",
-    "Order placed for Apple Watch Series 9",
-    null,
-    ago(15 * DAY),
-  );
-  await E(
-    comp4.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment of $554.00 held",
-    null,
-    new Date(ago(15 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    comp4.id,
-    "DISPATCHED",
-    mike.id,
-    "SELLER",
-    "Dispatched via CourierPost",
-    {
-      trackingNumber: "NZ400500600",
-      courier: "CourierPost",
-      estimatedDeliveryDate: ago(12 * DAY).toISOString(),
-      dispatchPhotos: [img("photo-1546868871-af0de0ae72be")],
-    },
-    ago(14 * DAY),
-  );
-  await E(
-    comp4.id,
-    "DELIVERED",
-    null,
-    "SYSTEM",
-    "Item delivered",
-    null,
-    ago(12 * DAY),
-  );
-  await E(
-    comp4.id,
-    "DELIVERY_CONFIRMED_OK",
-    sarah.id,
-    "BUYER",
-    "Confirmed in good condition",
-    { itemCondition: "ok" },
-    ago(11 * DAY),
-  );
-  await E(
-    comp4.id,
-    "COMPLETED",
-    null,
-    "SYSTEM",
-    "Order completed.",
-    null,
-    ago(9 * DAY),
-  );
-
-  // Completed 5: Auto-completed (Emma bought bike from Tom, didn't confirm in 14 days)
-  const comp5 = await db.order.create({
-    data: {
-      buyerId: emma.id,
-      sellerId: tom.id,
-      listingId: soldBike,
-      itemNzd: 379900,
-      shippingNzd: 6000,
-      totalNzd: 385900,
-      status: "COMPLETED",
-      stripePaymentIntentId: "pi_test_comp5",
-      trackingNumber: "NZ500600700",
-      dispatchedAt: ago(24 * DAY),
-      deliveredAt: ago(22 * DAY),
-      completedAt: ago(8 * DAY),
-      shippingName: "Emma Wilson",
-      shippingLine1: "15 Riccarton Road",
-      shippingCity: "Christchurch",
-      shippingRegion: "Canterbury",
-      shippingPostcode: "8041",
-      createdAt: ago(25 * DAY),
-    },
-  });
-  await E(
-    comp5.id,
-    "ORDER_CREATED",
-    emma.id,
-    "BUYER",
-    "Order placed for Giant Trance X Advanced",
-    null,
-    ago(25 * DAY),
-  );
-  await E(
-    comp5.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment of $3,859.00 held",
-    null,
-    new Date(ago(25 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    comp5.id,
-    "DISPATCHED",
-    tom.id,
-    "SELLER",
-    "Dispatched via courier",
-    {
-      trackingNumber: "NZ500600700",
-      courier: "Mainfreight",
-      estimatedDeliveryDate: ago(22 * DAY).toISOString(),
-      dispatchPhotos: [img("photo-1576435728678-68d0fbf94e91")],
-    },
-    ago(24 * DAY),
-  );
-  await E(
-    comp5.id,
-    "DELIVERED",
-    null,
-    "SYSTEM",
-    "Item delivered",
-    null,
-    ago(22 * DAY),
-  );
-  await E(
-    comp5.id,
-    "AUTO_COMPLETED",
-    null,
-    "SYSTEM",
-    "Auto-completed: buyer did not report issues within 14 days",
-    null,
-    ago(8 * DAY),
-  );
-  await E(
-    comp5.id,
-    "COMPLETED",
-    null,
-    "SYSTEM",
-    "Order auto-completed.",
-    null,
-    ago(8 * DAY),
-  );
-
-  // Completed 6: Completed after delivery issue resolved (James bought camera from Mike)
-  const comp6 = await db.order.create({
-    data: {
-      buyerId: james.id,
-      sellerId: mike.id,
-      listingId: soldCamera,
+      buyerId: buyer1.id,
+      sellerId: seller1.id,
+      listingId: listingSoldCamera.id,
       itemNzd: 289900,
       shippingNzd: 1000,
       totalNzd: 290900,
       status: "COMPLETED",
-      stripePaymentIntentId: "pi_test_comp6",
-      trackingNumber: "NZ600700800",
-      dispatchedAt: ago(19 * DAY),
-      deliveredAt: ago(17 * DAY),
-      completedAt: ago(12 * DAY),
-      shippingName: "James Cooper",
-      shippingLine1: "8 Cuba Street",
-      shippingCity: "Wellington",
-      shippingRegion: "Wellington",
-      shippingPostcode: "6011",
-      createdAt: ago(21 * DAY),
+      fulfillmentType: "SHIPPED",
+      stripePaymentIntentId: "pi_test_comp2",
+      trackingNumber: "NZ200300400",
+      trackingUrl:
+        "https://www.nzpost.co.nz/tools/tracking?trackid=NZ200300400",
+      dispatchedAt: ago(17 * DAY),
+      deliveredAt: ago(14 * DAY),
+      completedAt: ago(11 * DAY),
+      shippingName: "Sarah Mitchell",
+      shippingLine1: "12 Ponsonby Road",
+      shippingCity: "Auckland",
+      shippingRegion: "Auckland",
+      shippingPostcode: "1011",
+      createdAt: ago(19 * DAY),
     },
   });
-  await E(
-    comp6.id,
+  await makeSnapshot(comp2.id, listingSoldCamera, "Electronics");
+  await makeEvent(
+    comp2.id,
     "ORDER_CREATED",
-    james.id,
+    buyer1.id,
     "BUYER",
-    "Order placed for Canon EOS R6 Mark II",
-    null,
-    ago(21 * DAY),
+    "Order placed by Sarah Mitchell",
+    {},
+    ago(19 * DAY),
   );
-  await E(
-    comp6.id,
+  await makeEvent(
+    comp2.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
-    "Payment of $2,909.00 held",
-    null,
-    new Date(ago(21 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    comp6.id,
-    "DISPATCHED",
-    mike.id,
-    "SELLER",
-    "Dispatched via CourierPost",
-    {
-      trackingNumber: "NZ600700800",
-      courier: "CourierPost",
-      estimatedDeliveryDate: ago(17 * DAY).toISOString(),
-      dispatchPhotos: [img("photo-1516035069371-29a1b244cc32")],
-    },
+    "Payment of $2,909.00 held in escrow",
+    { amount: 290900 },
     ago(19 * DAY),
   );
-  await E(
-    comp6.id,
+  await makeEvent(
+    comp2.id,
+    "DISPATCHED",
+    seller1.id,
+    "SELLER",
+    "Order dispatched via CourierPost",
+    {
+      courier: "CourierPost",
+      trackingNumber: "NZ200300400",
+      dispatchPhotos: [
+        `orders/${comp2.id}/dispatch-1.webp`,
+        `orders/${comp2.id}/dispatch-2.webp`,
+      ],
+    },
+    ago(17 * DAY),
+  );
+  await makeEvent(
+    comp2.id,
     "DELIVERED",
     null,
     "SYSTEM",
-    "Tracking shows item delivered",
-    null,
-    ago(17 * DAY),
-  );
-  await E(
-    comp6.id,
-    "DELIVERY_ISSUE_REPORTED",
-    james.id,
-    "BUYER",
-    "Buyer reported: outer box was dented on arrival but camera seems fine inside",
-    { issue: "Box was dented but contents appear intact" },
-    ago(16 * DAY),
-  );
-  await E(
-    comp6.id,
-    "DELIVERY_CONFIRMED_OK",
-    james.id,
-    "BUYER",
-    "Buyer confirmed item is actually fine after inspection",
-    {
-      itemCondition: "ok",
-      note: "Camera works perfectly, was just the outer shipping box",
-    },
+    "Order marked as delivered",
+    {},
     ago(14 * DAY),
   );
-  await E(
-    comp6.id,
+  await makeEvent(
+    comp2.id,
+    "DELIVERY_CONFIRMED_OK",
+    buyer1.id,
+    "BUYER",
+    "Buyer confirmed item received in good condition",
+    { itemCondition: "ok" },
+    ago(12 * DAY),
+  );
+  await makeEvent(
+    comp2.id,
     "COMPLETED",
     null,
     "SYSTEM",
-    "Order completed.",
-    null,
-    ago(12 * DAY),
+    "Order completed, payout released to seller",
+    {},
+    ago(11 * DAY),
   );
 
-  // ── Group 2: DISPATCHED orders (3) ─────────────────────────────────────
+  // comp3: James bought Apple Watch from Mike
+  const comp3 = await db.order.create({
+    data: {
+      buyerId: buyer2.id,
+      sellerId: seller1.id,
+      listingId: listingSoldWatch.id,
+      itemNzd: 54900,
+      shippingNzd: 500,
+      totalNzd: 55400,
+      status: "COMPLETED",
+      fulfillmentType: "SHIPPED",
+      stripePaymentIntentId: "pi_test_comp3",
+      trackingNumber: "NZ300400500",
+      dispatchedAt: ago(12 * DAY),
+      deliveredAt: ago(9 * DAY),
+      completedAt: ago(6 * DAY),
+      shippingName: "James Chen",
+      shippingLine1: "45 Lambton Quay",
+      shippingCity: "Wellington",
+      shippingRegion: "Wellington",
+      shippingPostcode: "6011",
+      createdAt: ago(14 * DAY),
+    },
+  });
+  await makeSnapshot(comp3.id, listingSoldWatch, "Electronics");
+  await makeEvent(
+    comp3.id,
+    "ORDER_CREATED",
+    buyer2.id,
+    "BUYER",
+    "Order placed by James Chen",
+    {},
+    ago(14 * DAY),
+  );
+  await makeEvent(
+    comp3.id,
+    "PAYMENT_HELD",
+    null,
+    "SYSTEM",
+    "Payment held in escrow",
+    {},
+    ago(14 * DAY),
+  );
+  await makeEvent(
+    comp3.id,
+    "DISPATCHED",
+    seller1.id,
+    "SELLER",
+    "Order dispatched via NZ Post",
+    { courier: "NZ Post", trackingNumber: "NZ300400500" },
+    ago(12 * DAY),
+  );
+  await makeEvent(
+    comp3.id,
+    "DELIVERED",
+    null,
+    "SYSTEM",
+    "Delivered",
+    {},
+    ago(9 * DAY),
+  );
+  await makeEvent(
+    comp3.id,
+    "DELIVERY_CONFIRMED_OK",
+    buyer2.id,
+    "BUYER",
+    "Item received in good condition",
+    {},
+    ago(7 * DAY),
+  );
+  await makeEvent(
+    comp3.id,
+    "COMPLETED",
+    null,
+    "SYSTEM",
+    "Order completed",
+    {},
+    ago(6 * DAY),
+  );
 
-  // Dispatched 1: Overdue delivery (estimated delivery in the past)
+  // ── GROUP 2: DISPATCHED orders ───────────────────────────────────────────
+
+  // disp1: Sarah — dispatched, overdue delivery
   const disp1 = await db.order.create({
     data: {
-      buyerId: sarah.id,
-      sellerId: tom.id,
-      listingId: soldBackpack,
-      itemNzd: 89900,
-      shippingNzd: 800,
-      totalNzd: 90700,
+      buyerId: buyer1.id,
+      sellerId: seller1.id,
+      listingId: listingSoldCamera.id,
+      itemNzd: 289900,
+      shippingNzd: 1000,
+      totalNzd: 290900,
       status: "DISPATCHED",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_disp1",
       trackingNumber: "NZ700800901",
       dispatchedAt: ago(7 * DAY),
       shippingName: "Sarah Mitchell",
-      shippingLine1: "42 Ponsonby Road",
+      shippingLine1: "12 Ponsonby Road",
       shippingCity: "Auckland",
       shippingRegion: "Auckland",
       shippingPostcode: "1011",
-      createdAt: ago(8 * DAY),
+      createdAt: ago(9 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(disp1.id, listingSoldCamera, "Electronics");
+  await makeEvent(
     disp1.id,
     "ORDER_CREATED",
-    sarah.id,
+    buyer1.id,
     "BUYER",
     "Order placed",
-    null,
-    ago(8 * DAY),
+    {},
+    ago(9 * DAY),
   );
-  await E(
+  await makeEvent(
     disp1.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
     "Payment held",
-    null,
-    new Date(ago(8 * DAY).getTime() + 2 * MIN),
+    {},
+    ago(9 * DAY),
   );
-  await E(
+  await makeEvent(
     disp1.id,
     "DISPATCHED",
-    tom.id,
+    seller1.id,
     "SELLER",
-    "Dispatched via courier",
+    "Dispatched via CourierPost",
     {
-      trackingNumber: "NZ700800901",
       courier: "CourierPost",
-      estimatedDeliveryDate: ago(4 * DAY).toISOString(),
-      dispatchPhotos: [img("photo-1544923246-77307dd270c3")],
+      trackingNumber: "NZ700800901",
+      estimatedDelivery: ago(4 * DAY).toISOString(),
     },
     ago(7 * DAY),
   );
-  await E(
+  await makeEvent(
     disp1.id,
     "DELIVERY_REMINDER_SENT",
     null,
     "SYSTEM",
-    "Reminder sent: has your item arrived?",
-    null,
+    "Delivery reminder sent to buyer",
+    {},
     ago(1 * DAY),
   );
 
-  // Dispatched 2: Expected delivery tomorrow
+  // disp2: James bought Sonos — dispatched, arriving tomorrow
   const disp2 = await db.order.create({
     data: {
-      buyerId: james.id,
-      sellerId: aroha.id,
-      listingId: allbirds,
-      itemNzd: 9900,
-      shippingNzd: 600,
-      totalNzd: 10500,
+      buyerId: buyer2.id,
+      sellerId: seller3.id,
+      listingId: listingSoldSpeaker.id,
+      itemNzd: 59900,
+      shippingNzd: 1000,
+      totalNzd: 60900,
       status: "DISPATCHED",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_disp2",
       trackingNumber: "NZ800900102",
-      dispatchedAt: ago(2 * DAY),
-      shippingName: "James Cooper",
-      shippingLine1: "8 Cuba Street",
+      dispatchedAt: ago(3 * DAY),
+      shippingName: "James Chen",
+      shippingLine1: "45 Lambton Quay",
       shippingCity: "Wellington",
       shippingRegion: "Wellington",
       shippingPostcode: "6011",
-      createdAt: ago(3 * DAY),
+      createdAt: ago(5 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(disp2.id, listingSoldSpeaker, "Electronics");
+  await makeEvent(
     disp2.id,
     "ORDER_CREATED",
-    james.id,
+    buyer2.id,
     "BUYER",
-    "Order placed for Allbirds Wool Runners",
+    "Order placed",
+    {},
+    ago(5 * DAY),
+  );
+  await makeEvent(
+    disp2.id,
+    "PAYMENT_HELD",
     null,
+    "SYSTEM",
+    "Payment held",
+    {},
+    ago(5 * DAY),
+  );
+  await makeEvent(
+    disp2.id,
+    "DISPATCHED",
+    seller3.id,
+    "SELLER",
+    "Dispatched via NZ Post",
+    {
+      courier: "NZ Post",
+      trackingNumber: "NZ800900102",
+      estimatedDelivery: future(1 * DAY).toISOString(),
+    },
     ago(3 * DAY),
   );
-  await E(
-    disp2.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment held",
-    null,
-    new Date(ago(3 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    disp2.id,
-    "DISPATCHED",
-    aroha.id,
-    "SELLER",
-    "Dispatched",
-    {
-      trackingNumber: "NZ800900102",
-      courier: "NZ Post",
-      estimatedDeliveryDate: future(1 * DAY).toISOString(),
-    },
-    ago(2 * DAY),
-  );
 
-  // Dispatched 3: Dispatched today
-  const disp3 = await db.order.create({
-    data: {
-      buyerId: emma.id,
-      sellerId: rachel.id,
-      listingId: kitchenaid,
-      itemNzd: 59900,
-      shippingNzd: 1500,
-      totalNzd: 61400,
-      status: "DISPATCHED",
-      stripePaymentIntentId: "pi_test_disp3",
-      trackingNumber: "NZ900100203",
-      dispatchedAt: ago(2 * HOUR),
-      shippingName: "Emma Wilson",
-      shippingLine1: "15 Riccarton Road",
-      shippingCity: "Christchurch",
-      shippingRegion: "Canterbury",
-      shippingPostcode: "8041",
-      createdAt: ago(2 * DAY),
-    },
-  });
-  await E(
-    disp3.id,
-    "ORDER_CREATED",
-    emma.id,
-    "BUYER",
-    "Order placed for KitchenAid Artisan Stand Mixer",
-    null,
-    ago(2 * DAY),
-  );
-  await E(
-    disp3.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment held",
-    null,
-    new Date(ago(2 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    disp3.id,
-    "DISPATCHED",
-    rachel.id,
-    "SELLER",
-    "Dispatched today",
-    {
-      trackingNumber: "NZ900100203",
-      courier: "CourierPost",
-      estimatedDeliveryDate: future(3 * DAY).toISOString(),
-      dispatchPhotos: [img("photo-1585515320310-259814833e62")],
-    },
-    ago(2 * HOUR),
-  );
+  // ── GROUP 3: PAYMENT_HELD orders (awaiting dispatch) ────────────────────
 
-  // ── Group 3: PAYMENT_HELD orders (2) ───────────────────────────────────
-
-  // Payment held 1: Fresh (created today)
+  // ph1: Emma bought iPad — new order, seller needs to dispatch
   const ph1 = await db.order.create({
     data: {
-      buyerId: sarah.id,
-      sellerId: aroha.id,
-      listingId: necklace,
-      itemNzd: 15900,
-      shippingNzd: 500,
-      totalNzd: 16400,
+      buyerId: buyer3.id,
+      sellerId: seller3.id,
+      listingId: listingSoldTablet.id,
+      itemNzd: 149900,
+      shippingNzd: 800,
+      totalNzd: 150700,
       status: "PAYMENT_HELD",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_ph1",
-      shippingName: "Sarah Mitchell",
-      shippingLine1: "42 Ponsonby Road",
-      shippingCity: "Auckland",
-      shippingRegion: "Auckland",
-      shippingPostcode: "1011",
+      shippingName: "Emma Thompson",
+      shippingLine1: "8 Riccarton Road",
+      shippingCity: "Christchurch",
+      shippingRegion: "Canterbury",
+      shippingPostcode: "8011",
       createdAt: ago(3 * HOUR),
     },
   });
-  await E(
+  await makeSnapshot(ph1.id, listingSoldTablet, "Electronics");
+  await makeEvent(
     ph1.id,
     "ORDER_CREATED",
-    sarah.id,
+    buyer3.id,
     "BUYER",
-    "Order placed for Pounamu Greenstone Koru Necklace",
-    null,
+    "Order placed by Emma Thompson",
+    {},
     ago(3 * HOUR),
   );
-  await E(
+  await makeEvent(
     ph1.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
-    "Payment of $164.00 held in escrow",
-    null,
-    ago(3 * HOUR - 2 * MIN),
+    "Payment of $1,507.00 held in escrow",
+    { amount: 150700 },
+    ago(3 * HOUR),
   );
 
-  // Payment held 2: 2 days old (dispatch reminder territory)
+  // ph2: Sarah bought MacBook — older order, seller delayed
   const ph2 = await db.order.create({
     data: {
-      buyerId: james.id,
-      sellerId: rachel.id,
-      listingId: painting,
-      itemNzd: 45000,
-      shippingNzd: 2000,
-      totalNzd: 47000,
+      buyerId: buyer1.id,
+      sellerId: seller1.id,
+      listingId: listingMacbook.id,
+      itemNzd: 289900,
+      shippingNzd: 800,
+      totalNzd: 290700,
       status: "PAYMENT_HELD",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_ph2",
-      shippingName: "James Cooper",
-      shippingLine1: "8 Cuba Street",
-      shippingCity: "Wellington",
-      shippingRegion: "Wellington",
-      shippingPostcode: "6011",
+      shippingName: "Sarah Mitchell",
+      shippingLine1: "12 Ponsonby Road",
+      shippingCity: "Auckland",
+      shippingRegion: "Auckland",
+      shippingPostcode: "1011",
       createdAt: ago(2 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(ph2.id, listingMacbook, "Electronics");
+  await makeEvent(
     ph2.id,
     "ORDER_CREATED",
-    james.id,
+    buyer1.id,
     "BUYER",
-    "Order placed for Original Oil Painting — Milford Sound",
-    null,
+    "Order placed",
+    {},
     ago(2 * DAY),
   );
-  await E(
+  await makeEvent(
     ph2.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
-    "Payment of $470.00 held",
-    null,
-    new Date(ago(2 * DAY).getTime() + 2 * MIN),
+    "Payment held in escrow",
+    {},
+    ago(2 * DAY),
   );
 
-  // ── Group 4: AWAITING_PAYMENT (1) ──────────────────────────────────────
+  // ── GROUP 4: DISPUTED orders ─────────────────────────────────────────────
 
-  const awp1 = await db.order.create({
-    data: {
-      buyerId: emma.id,
-      sellerId: mike.id,
-      listingId: samsung,
-      itemNzd: 169900,
-      shippingNzd: 800,
-      totalNzd: 170700,
-      status: "AWAITING_PAYMENT",
-      shippingName: "Emma Wilson",
-      shippingLine1: "15 Riccarton Road",
-      shippingCity: "Christchurch",
-      shippingRegion: "Canterbury",
-      shippingPostcode: "8041",
-      createdAt: ago(1 * HOUR),
-    },
-  });
-  await E(
-    awp1.id,
-    "ORDER_CREATED",
-    emma.id,
-    "BUYER",
-    "Order created — awaiting payment",
-    null,
-    ago(1 * HOUR),
-  );
-
-  // ── Group 5: DISPUTED orders (3) ───────────────────────────────────────
-
-  // Dispute A: "Item damaged" — Sarah vs TechHub NZ (seller has NOT responded, within 72h)
+  // dispA: James vs Tom — iPad damaged, seller NOT yet responded
   const dispA = await db.order.create({
     data: {
-      buyerId: sarah.id,
-      sellerId: mike.id,
-      listingId: soldTablet,
+      buyerId: buyer2.id,
+      sellerId: seller3.id,
+      listingId: listingSoldTablet.id,
       itemNzd: 149900,
       shippingNzd: 800,
       totalNzd: 150700,
       status: "DISPUTED",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_dispA",
-      trackingNumber: "NZ110220330",
+      trackingNumber: "NZ400500600",
       dispatchedAt: ago(10 * DAY),
       deliveredAt: ago(8 * DAY),
-      shippingName: "Sarah Mitchell",
-      shippingLine1: "42 Ponsonby Road",
-      shippingCity: "Auckland",
-      shippingRegion: "Auckland",
-      shippingPostcode: "1011",
-      createdAt: ago(14 * DAY),
+      shippingName: "James Chen",
+      shippingLine1: "45 Lambton Quay",
+      shippingCity: "Wellington",
+      shippingRegion: "Wellington",
+      shippingPostcode: "6011",
+      createdAt: ago(12 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(dispA.id, listingSoldTablet, "Electronics");
+  await makeEvent(
     dispA.id,
     "ORDER_CREATED",
-    sarah.id,
+    buyer2.id,
     "BUYER",
-    'Order placed for iPad Pro 12.9" M2',
-    null,
-    ago(14 * DAY),
+    "Order placed",
+    {},
+    ago(12 * DAY),
   );
-  await E(
+  await makeEvent(
     dispA.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
     "Payment held",
-    null,
-    new Date(ago(14 * DAY).getTime() + 2 * MIN),
+    {},
+    ago(12 * DAY),
   );
-  await E(
+  await makeEvent(
     dispA.id,
     "DISPATCHED",
-    mike.id,
+    seller3.id,
     "SELLER",
-    "Dispatched",
+    "Dispatched via CourierPost",
     {
-      trackingNumber: "NZ110220330",
       courier: "CourierPost",
-      estimatedDeliveryDate: ago(8 * DAY).toISOString(),
+      trackingNumber: "NZ400500600",
       dispatchPhotos: [
-        img("photo-1544244015-0df4b3ffc6b0"),
-        img("photo-1544244015-0df4b3ffc6b1"),
+        `orders/${dispA.id}/dispatch-1.webp`,
+        `orders/${dispA.id}/dispatch-2.webp`,
       ],
     },
     ago(10 * DAY),
   );
-  await E(
+  await makeEvent(
     dispA.id,
     "DELIVERED",
     null,
     "SYSTEM",
-    "Tracking shows delivered",
-    null,
+    "Delivered",
+    {},
     ago(8 * DAY),
   );
-  await E(
+  await makeEvent(
     dispA.id,
     "DISPUTE_OPENED",
-    sarah.id,
+    buyer2.id,
     "BUYER",
-    "Dispute opened: Item damaged — screen has visible crack",
-    {
-      reason: "ITEM_DAMAGED",
-      description: "iPad screen cracked in bottom-left corner",
-      evidenceCount: 2,
-    },
+    "Buyer opened dispute: item damaged",
+    { reason: "ITEM_DAMAGED" },
     ago(1 * DAY),
   );
+
   const disputeA = await db.dispute.create({
     data: {
       orderId: dispA.id,
@@ -2958,7 +1580,7 @@ async function main() {
       source: "STANDARD",
       status: "OPEN",
       buyerStatement:
-        "The iPad Pro screen has a visible crack across the bottom-left corner. It was not mentioned in the listing and was clearly present before shipping. I've attached photos of the damage.",
+        "The iPad arrived with a cracked screen. The screen has a visible crack running diagonally across it. The outer box also had dents suggesting it was dropped during transit. The item was not packaged adequately — just bubble wrap with no box. I have photos showing the damage.",
       openedAt: ago(1 * DAY),
     },
   });
@@ -2967,522 +1589,375 @@ async function main() {
       {
         disputeId: disputeA.id,
         uploadedBy: "BUYER",
-        uploaderId: sarah.id,
-        r2Key: "disputes/sarah/evidence-crack-1.webp",
+        uploaderId: buyer2.id,
+        r2Key: `disputes/${disputeA.id}/cracked-screen-1.webp`,
+        fileType: "image",
+        label: "Cracked screen — front view",
       },
       {
         disputeId: disputeA.id,
         uploadedBy: "BUYER",
-        uploaderId: sarah.id,
-        r2Key: "disputes/sarah/evidence-crack-2.webp",
+        uploaderId: buyer2.id,
+        r2Key: `disputes/${disputeA.id}/cracked-screen-2.webp`,
+        fileType: "image",
+        label: "Cracked screen — close up",
+      },
+      {
+        disputeId: disputeA.id,
+        uploadedBy: "BUYER",
+        uploaderId: buyer2.id,
+        r2Key: `disputes/${disputeA.id}/damaged-packaging.webp`,
+        fileType: "image",
+        label: "Damaged outer box",
       },
     ],
   });
 
-  // Dispute B: "Item not received" — Emma vs Peak Outdoors (past 72h, no seller response)
+  // dispB: Emma vs Mike — Sonos not received, seller responded with tracking
   const dispB = await db.order.create({
     data: {
-      buyerId: emma.id,
-      sellerId: tom.id,
-      listingId: soldSpeaker,
+      buyerId: buyer3.id,
+      sellerId: seller1.id,
+      listingId: listingSoldSpeaker.id,
       itemNzd: 59900,
       shippingNzd: 1000,
       totalNzd: 60900,
       status: "DISPUTED",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_dispB",
-      trackingNumber: "NZ220330440",
-      dispatchedAt: ago(9 * DAY),
-      shippingName: "Emma Wilson",
-      shippingLine1: "15 Riccarton Road",
+      trackingNumber: "NZ500600700",
+      dispatchedAt: ago(12 * DAY),
+      shippingName: "Emma Thompson",
+      shippingLine1: "8 Riccarton Road",
       shippingCity: "Christchurch",
       shippingRegion: "Canterbury",
-      shippingPostcode: "8041",
-      createdAt: ago(10 * DAY),
+      shippingPostcode: "8011",
+      createdAt: ago(14 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(dispB.id, listingSoldSpeaker, "Electronics");
+  await makeEvent(
     dispB.id,
     "ORDER_CREATED",
-    emma.id,
+    buyer3.id,
     "BUYER",
-    "Order placed for Sonos Move 2",
-    null,
-    ago(10 * DAY),
+    "Order placed",
+    {},
+    ago(14 * DAY),
   );
-  await E(
+  await makeEvent(
     dispB.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
     "Payment held",
-    null,
-    new Date(ago(10 * DAY).getTime() + 2 * MIN),
+    {},
+    ago(14 * DAY),
   );
-  await E(
+  await makeEvent(
     dispB.id,
     "DISPATCHED",
-    tom.id,
+    seller1.id,
     "SELLER",
-    "Dispatched — no dispatch photos provided",
-    { trackingNumber: "NZ220330440", courier: "NZ Post" },
-    ago(9 * DAY),
+    "Dispatched via NZ Post",
+    {
+      courier: "NZ Post",
+      trackingNumber: "NZ500600700",
+      dispatchPhotos: [`orders/${dispB.id}/dispatch-1.webp`],
+    },
+    ago(12 * DAY),
   );
-  await E(
+  await makeEvent(
     dispB.id,
     "DISPUTE_OPENED",
-    emma.id,
+    buyer3.id,
     "BUYER",
-    "Dispute opened: Item not received — tracking shows no movement",
+    "Buyer opened dispute: item not received",
     { reason: "ITEM_NOT_RECEIVED" },
-    ago(4 * DAY),
+    ago(5 * DAY),
   );
-  // Auto-resolution queued (should auto-refund: no tracking movement, seller unresponsive, no dispatch photos)
-  await E(
+  await makeEvent(
     dispB.id,
-    "AUTO_RESOLVED",
-    null,
-    "SYSTEM",
-    "Auto-resolution: REFUND queued (score: +70). Cooling period: 24 hours.",
-    {
-      decision: "AUTO_REFUND",
-      score: 70,
-      factors: {
-        NO_TRACKING_NUMBER: false,
-        TRACKING_NO_MOVEMENT_7D: true,
-        NO_DISPATCH_PHOTOS: true,
-        SELLER_UNRESPONSIVE_72H: true,
-      },
-      coolingPeriodEnds: future(20 * HOUR).toISOString(),
-      status: "QUEUED",
-    },
-    ago(1 * DAY),
+    "DISPUTE_SELLER_RESPONDED",
+    seller1.id,
+    "SELLER",
+    "Seller provided tracking evidence",
+    {},
+    ago(3 * DAY),
   );
-  await db.dispute.create({
+
+  const disputeB = await db.dispute.create({
     data: {
       orderId: dispB.id,
       reason: "ITEM_NOT_RECEIVED",
       source: "STANDARD",
-      status: "OPEN",
-      buyerStatement:
-        "The seller says it was dispatched 9 days ago but I have never received it. Tracking shows no movement since day one. I think the package is lost.",
-      openedAt: ago(4 * DAY),
-    },
-  });
-
-  // Dispute C: "Not as described" — James vs Kiwi Home & Style (seller HAS responded)
-  const dispC = await db.order.create({
-    data: {
-      buyerId: james.id,
-      sellerId: rachel.id,
-      listingId: soldVase,
-      itemNzd: 8900,
-      shippingNzd: 1200,
-      totalNzd: 10100,
-      status: "DISPUTED",
-      stripePaymentIntentId: "pi_test_dispC",
-      trackingNumber: "NZ330440550",
-      dispatchedAt: ago(14 * DAY),
-      deliveredAt: ago(12 * DAY),
-      shippingName: "James Cooper",
-      shippingLine1: "8 Cuba Street",
-      shippingCity: "Wellington",
-      shippingRegion: "Wellington",
-      shippingPostcode: "6011",
-      createdAt: ago(16 * DAY),
-    },
-  });
-  await E(
-    dispC.id,
-    "ORDER_CREATED",
-    james.id,
-    "BUYER",
-    "Order placed for Handmade Ceramic Vase",
-    null,
-    ago(16 * DAY),
-  );
-  await E(
-    dispC.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment held",
-    null,
-    new Date(ago(16 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    dispC.id,
-    "DISPATCHED",
-    rachel.id,
-    "SELLER",
-    "Dispatched",
-    {
-      trackingNumber: "NZ330440550",
-      courier: "NZ Post",
-      dispatchPhotos: [img("photo-1581783898377-1c85bf937427")],
-    },
-    ago(14 * DAY),
-  );
-  await E(
-    dispC.id,
-    "DELIVERED",
-    null,
-    "SYSTEM",
-    "Delivered",
-    null,
-    ago(12 * DAY),
-  );
-  await E(
-    dispC.id,
-    "DISPUTE_OPENED",
-    james.id,
-    "BUYER",
-    "Dispute opened: Item not as described — vase much smaller than expected",
-    { reason: "ITEM_NOT_AS_DESCRIBED" },
-    ago(5 * DAY),
-  );
-  await E(
-    dispC.id,
-    "DISPUTE_RESPONDED",
-    rachel.id,
-    "SELLER",
-    "Seller responded: 'Large' refers to glaze style. Offered return.",
-    null,
-    ago(4 * DAY),
-  );
-  await db.dispute.create({
-    data: {
-      orderId: dispC.id,
-      reason: "ITEM_NOT_AS_DESCRIBED",
-      source: "STANDARD",
       status: "SELLER_RESPONDED",
       buyerStatement:
-        "The vase is much smaller than it appeared in the photos. The listing said 'Large' but it's barely 15cm tall. Very misleading.",
+        "It has been 12 days and I still have not received my Sonos speaker. The tracking shows it left Queenstown 12 days ago but has not been updated since. I believe it may be lost in transit.",
       sellerStatement:
-        "I'm sorry the vase wasn't what you expected. The listing does say 'Large' which refers to the glaze style, not the physical size. I understand the confusion though. Happy to accept a return if you'd like to send it back at my expense.",
-      sellerRespondedAt: ago(4 * DAY),
+        "I dispatched the item promptly on the day after purchase via NZ Post. I have the receipt and dispatch photos. The tracking number NZ500600700 shows the item was scanned at the Auckland sorting facility. I believe there may be a delay at the Christchurch end. I would suggest contacting NZ Post.",
+      sellerRespondedAt: ago(3 * DAY),
       openedAt: ago(5 * DAY),
     },
   });
-
-  // ── Group 6: CANCELLED orders (2) ──────────────────────────────────────
-
-  // Cancel A: Auto-approved within free window
-  const canA = await db.order.create({
-    data: {
-      buyerId: emma.id,
-      sellerId: aroha.id,
-      listingId: necklace,
-      itemNzd: 15900,
-      shippingNzd: 500,
-      totalNzd: 16400,
-      status: "CANCELLED",
-      stripePaymentIntentId: "pi_test_canA",
-      cancelledBy: emma.id,
-      cancelReason: "Changed my mind — found one locally",
-      cancelledAt: ago(6 * DAY),
-      createdAt: ago(6 * DAY + 2 * HOUR),
-    },
+  await db.disputeEvidence.createMany({
+    data: [
+      {
+        disputeId: disputeB.id,
+        uploadedBy: "BUYER",
+        uploaderId: buyer3.id,
+        r2Key: `disputes/${disputeB.id}/tracking-screenshot.webp`,
+        fileType: "image",
+        label: "Tracking page screenshot — no movement",
+      },
+      {
+        disputeId: disputeB.id,
+        uploadedBy: "SELLER",
+        uploaderId: seller1.id,
+        r2Key: `disputes/${disputeB.id}/dispatch-receipt.webp`,
+        fileType: "image",
+        label: "NZ Post dispatch receipt",
+      },
+      {
+        disputeId: disputeB.id,
+        uploadedBy: "SELLER",
+        uploaderId: seller1.id,
+        r2Key: `disputes/${disputeB.id}/pre-dispatch-photo.webp`,
+        fileType: "image",
+        label: "Item pre-dispatch — shows condition",
+      },
+    ],
   });
-  await E(
-    canA.id,
-    "ORDER_CREATED",
-    emma.id,
-    "BUYER",
-    "Order placed",
-    null,
-    ago(6 * DAY + 2 * HOUR),
-  );
-  await E(
-    canA.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment held",
-    null,
-    ago(6 * DAY + 2 * HOUR - 2 * MIN),
-  );
-  await E(
-    canA.id,
-    "CANCEL_REQUESTED",
-    emma.id,
-    "BUYER",
-    "Buyer requested cancellation: Changed my mind",
-    { reason: "Changed my mind — found one locally" },
-    ago(6 * DAY + 1 * HOUR),
-  );
-  await E(
-    canA.id,
-    "CANCEL_AUTO_APPROVED",
-    null,
-    "SYSTEM",
-    "Cancellation auto-approved (within free window)",
-    null,
-    ago(6 * DAY + 1 * HOUR),
-  );
-  await E(
-    canA.id,
-    "CANCELLED",
-    null,
-    "SYSTEM",
-    "Order cancelled. Payment refunded.",
-    null,
-    ago(6 * DAY),
-  );
 
-  // Cancel B: Seller-approved
-  const canB = await db.order.create({
-    data: {
-      buyerId: james.id,
-      sellerId: mike.id,
-      listingId: airpods,
-      itemNzd: 39900,
-      shippingNzd: 600,
-      totalNzd: 40500,
-      status: "CANCELLED",
-      stripePaymentIntentId: "pi_test_canB",
-      cancelledBy: james.id,
-      cancelReason: "Bought from another seller",
-      cancelledAt: ago(5 * DAY),
-      createdAt: ago(7 * DAY),
-    },
-  });
-  await E(
-    canB.id,
-    "ORDER_CREATED",
-    james.id,
-    "BUYER",
-    "Order placed for AirPods Pro 2nd Gen",
-    null,
-    ago(7 * DAY),
-  );
-  await E(
-    canB.id,
-    "PAYMENT_HELD",
-    null,
-    "SYSTEM",
-    "Payment held",
-    null,
-    new Date(ago(7 * DAY).getTime() + 2 * MIN),
-  );
-  await E(
-    canB.id,
-    "CANCEL_REQUESTED",
-    james.id,
-    "BUYER",
-    "Buyer requested cancellation: Bought from another seller",
-    { reason: "Bought from another seller" },
-    ago(6 * DAY),
-  );
-  await E(
-    canB.id,
-    "CANCEL_APPROVED",
-    mike.id,
-    "SELLER",
-    "Seller approved cancellation: No worries, happy to cancel",
-    { responseNote: "No worries, happy to cancel" },
-    ago(5 * DAY),
-  );
-  await E(
-    canB.id,
-    "CANCELLED",
-    null,
-    "SYSTEM",
-    "Order cancelled.",
-    null,
-    ago(5 * DAY),
-  );
+  // ── GROUP 5: REFUNDED orders ─────────────────────────────────────────────
 
-  // ── Group 7: REFUNDED orders (2) ───────────────────────────────────────
-
-  // Refund A: Admin resolved dispute in buyer's favour
+  // refA: Sarah vs Mike — dispute resolved, buyer won, admin decision
   const refA = await db.order.create({
     data: {
-      buyerId: sarah.id,
-      sellerId: rachel.id,
-      listingId: soldArt,
-      itemNzd: 12900,
-      shippingNzd: 1500,
-      totalNzd: 14400,
+      buyerId: buyer1.id,
+      sellerId: seller1.id,
+      listingId: listingSoldHeadphones.id,
+      itemNzd: 42900,
+      shippingNzd: 600,
+      totalNzd: 43500,
       status: "REFUNDED",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_refA",
-      trackingNumber: "NZ440550660",
-      dispatchedAt: ago(20 * DAY),
-      deliveredAt: ago(18 * DAY),
+      trackingNumber: "NZ600700800",
+      dispatchedAt: ago(25 * DAY),
+      deliveredAt: ago(22 * DAY),
       shippingName: "Sarah Mitchell",
-      shippingLine1: "42 Ponsonby Road",
+      shippingLine1: "12 Ponsonby Road",
       shippingCity: "Auckland",
       shippingRegion: "Auckland",
       shippingPostcode: "1011",
-      createdAt: ago(22 * DAY),
+      createdAt: ago(27 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(refA.id, listingSoldHeadphones, "Electronics");
+  await makeEvent(
     refA.id,
     "ORDER_CREATED",
-    sarah.id,
+    buyer1.id,
     "BUYER",
     "Order placed",
-    null,
-    ago(22 * DAY),
+    {},
+    ago(27 * DAY),
   );
-  await E(
+  await makeEvent(
     refA.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
     "Payment held",
-    null,
-    new Date(ago(22 * DAY).getTime() + 2 * MIN),
+    {},
+    ago(27 * DAY),
   );
-  await E(
+  await makeEvent(
     refA.id,
     "DISPATCHED",
-    rachel.id,
+    seller1.id,
     "SELLER",
     "Dispatched",
-    { trackingNumber: "NZ440550660", courier: "NZ Post" },
-    ago(20 * DAY),
+    { courier: "CourierPost", trackingNumber: "NZ600700800" },
+    ago(25 * DAY),
   );
-  await E(
+  await makeEvent(
     refA.id,
     "DELIVERED",
     null,
     "SYSTEM",
     "Delivered",
-    null,
-    ago(18 * DAY),
+    {},
+    ago(22 * DAY),
   );
-  await E(
+  await makeEvent(
     refA.id,
     "DISPUTE_OPENED",
-    sarah.id,
+    buyer1.id,
     "BUYER",
-    "Dispute: Item not as described",
-    null,
-    ago(15 * DAY),
+    "Buyer opened dispute: item not as described",
+    { reason: "ITEM_NOT_AS_DESCRIBED" },
+    ago(20 * DAY),
   );
-  await E(
+  await makeEvent(
     refA.id,
-    "DISPUTE_RESPONDED",
-    rachel.id,
+    "DISPUTE_SELLER_RESPONDED",
+    seller1.id,
     "SELLER",
-    "Seller responded",
-    null,
-    ago(14 * DAY),
+    "Seller responded to dispute",
+    {},
+    ago(18 * DAY),
   );
-  await E(
+  await makeEvent(
     refA.id,
     "DISPUTE_RESOLVED",
-    disputeAdmin.id,
+    disputesAdmin.id,
     "ADMIN",
-    "Dispute resolved in favour of buyer — refund issued",
-    {
-      favour: "buyer",
-      resolution: "refund",
-      reason: "Item significantly not as described",
-    },
-    ago(12 * DAY),
+    "Admin resolved dispute in buyer's favour. Full refund issued.",
+    { favour: "buyer", refundAmount: 43500 },
+    ago(15 * DAY),
   );
-  await E(
+  await makeEvent(
     refA.id,
     "REFUNDED",
     null,
     "SYSTEM",
-    "Refund of $144.00 processed",
-    null,
-    ago(12 * DAY),
+    "Full refund of $435.00 processed",
+    { amount: 43500 },
+    ago(15 * DAY),
   );
-  await db.dispute.create({
+
+  const disputeRefA = await db.dispute.create({
     data: {
       orderId: refA.id,
       reason: "ITEM_NOT_AS_DESCRIBED",
       source: "STANDARD",
       status: "RESOLVED_BUYER",
       buyerStatement:
-        "The poster is a cheap inkjet print, not a quality reproduction as described. The frame is also plastic, not wood.",
+        "The headphones were listed as GOOD condition but arrived with a broken left ear cup hinge and a deep scratch on the right side. None of this was disclosed in the listing.",
       sellerStatement:
-        "The listing clearly says 'reproduction'. I believe the quality is fair for the price.",
-      sellerRespondedAt: ago(14 * DAY),
-      openedAt: ago(15 * DAY),
-      resolvedAt: ago(12 * DAY),
+        "The item was in good condition when I sent it. There must have been damage during transit.",
+      adminNotes:
+        "Listing described as GOOD condition with no mention of damage. Buyer photos clearly show hinge damage and deep scratch consistent with pre-existing damage, not transit damage. Seller dispatch photos not available. Ruling in buyer's favour.",
+      resolution: "BUYER_WON",
+      refundAmount: 43500,
+      openedAt: ago(20 * DAY),
+      sellerRespondedAt: ago(18 * DAY),
+      resolvedAt: ago(15 * DAY),
     },
   });
+  await db.disputeEvidence.createMany({
+    data: [
+      {
+        disputeId: disputeRefA.id,
+        uploadedBy: "BUYER",
+        uploaderId: buyer1.id,
+        r2Key: `disputes/${disputeRefA.id}/broken-hinge.webp`,
+        fileType: "image",
+        label: "Broken left ear cup hinge",
+      },
+      {
+        disputeId: disputeRefA.id,
+        uploadedBy: "BUYER",
+        uploaderId: buyer1.id,
+        r2Key: `disputes/${disputeRefA.id}/scratch.webp`,
+        fileType: "image",
+        label: "Deep scratch on right cup",
+      },
+      {
+        disputeId: disputeRefA.id,
+        uploadedBy: "SELLER",
+        uploaderId: seller1.id,
+        r2Key: `disputes/${disputeRefA.id}/seller-response.webp`,
+        fileType: "image",
+        label: "Seller claims transit damage",
+      },
+    ],
+  });
 
-  // Refund B: Auto-refunded by system (seller unresponsive)
+  // refB: James vs Tom — auto-refunded, seller unresponsive
   const refB = await db.order.create({
     data: {
-      buyerId: emma.id,
-      sellerId: tom.id,
-      listingId: kayak,
-      itemNzd: 89900,
-      shippingNzd: 3000,
-      totalNzd: 92900,
+      buyerId: buyer2.id,
+      sellerId: seller3.id,
+      listingId: listingSoldSpeaker.id,
+      itemNzd: 59900,
+      shippingNzd: 1000,
+      totalNzd: 60900,
       status: "REFUNDED",
+      fulfillmentType: "SHIPPED",
       stripePaymentIntentId: "pi_test_refB",
-      trackingNumber: "NZ550660770",
+      trackingNumber: "NZ700800901B",
       dispatchedAt: ago(18 * DAY),
-      shippingName: "Emma Wilson",
-      shippingLine1: "15 Riccarton Road",
-      shippingCity: "Christchurch",
-      shippingRegion: "Canterbury",
-      shippingPostcode: "8041",
+      shippingName: "James Chen",
+      shippingLine1: "45 Lambton Quay",
+      shippingCity: "Wellington",
+      shippingRegion: "Wellington",
+      shippingPostcode: "6011",
       createdAt: ago(20 * DAY),
     },
   });
-  await E(
+  await makeSnapshot(refB.id, listingSoldSpeaker, "Electronics");
+  await makeEvent(
     refB.id,
     "ORDER_CREATED",
-    emma.id,
+    buyer2.id,
     "BUYER",
     "Order placed",
-    null,
+    {},
     ago(20 * DAY),
   );
-  await E(
+  await makeEvent(
     refB.id,
     "PAYMENT_HELD",
     null,
     "SYSTEM",
     "Payment held",
-    null,
-    new Date(ago(20 * DAY).getTime() + 2 * MIN),
+    {},
+    ago(20 * DAY),
   );
-  await E(
+  await makeEvent(
     refB.id,
     "DISPATCHED",
-    tom.id,
+    seller3.id,
     "SELLER",
     "Dispatched",
-    { trackingNumber: "NZ550660770", courier: "NZ Post" },
+    { courier: "NZ Post", trackingNumber: "NZ700800901B" },
     ago(18 * DAY),
   );
-  await E(
+  await makeEvent(
     refB.id,
     "DISPUTE_OPENED",
-    emma.id,
+    buyer2.id,
     "BUYER",
-    "Dispute: Item not received",
-    null,
+    "Buyer opened dispute: item not received",
+    { reason: "ITEM_NOT_RECEIVED" },
     ago(12 * DAY),
   );
-  await E(
+  await makeEvent(
     refB.id,
     "AUTO_RESOLVED",
     null,
     "SYSTEM",
-    "Auto-refunded: seller did not respond within 72 hours",
-    { decision: "AUTO_REFUND", score: 75, status: "EXECUTED" },
+    "Auto-resolved: seller unresponsive after 72 hours",
+    {
+      decision: "AUTO_REFUND",
+      score: 75,
+      factors: ["SELLER_UNRESPONSIVE_72H", "TRACKING_NO_MOVEMENT_7D"],
+    },
     ago(9 * DAY),
   );
-  await E(
+  await makeEvent(
     refB.id,
     "REFUNDED",
     null,
     "SYSTEM",
-    "Auto-refund of $929.00 processed",
-    null,
+    "Full refund of $609.00 processed",
+    { amount: 60900 },
     ago(8 * DAY),
   );
+
   await db.dispute.create({
     data: {
       orderId: refB.id,
@@ -3490,1561 +1965,1467 @@ async function main() {
       source: "STANDARD",
       status: "RESOLVED_BUYER",
       buyerStatement:
-        "Never received the kayak. Tracking hasn't updated since dispatch.",
+        "I have been waiting 18 days and the item has not arrived. Tracking shows no movement for 10 days.",
+      autoResolutionScore: 75,
+      autoResolutionReason:
+        "Seller did not respond within 72 hours. Tracking shows no movement for 10+ days. Auto-refund triggered.",
+      resolution: "BUYER_WON",
+      refundAmount: 60900,
       openedAt: ago(12 * DAY),
       resolvedAt: ago(8 * DAY),
     },
   });
 
-  const orderCount = await db.order.count();
-  console.log(`✅ ${orderCount} orders created with full event chains`);
+  // ── GROUP 6: CANCELLED orders ────────────────────────────────────────────
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ORDER INTERACTIONS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n🤝 Creating order interactions...");
-
-  // Active 1: CANCEL_REQUEST — James on ph2 (painting order)
-  const int1 = await db.orderInteraction.create({
+  // canA: Emma cancelled within free window
+  const canA = await db.order.create({
     data: {
-      orderId: ph2.id,
-      type: "CANCEL_REQUEST",
-      status: "PENDING",
-      initiatedById: james.id,
-      initiatorRole: "BUYER",
-      reason:
-        "Found a better price at a local gallery. Would like to cancel if possible.",
-      expiresAt: future(48 * HOUR),
-      autoAction: "AUTO_APPROVE",
-      createdAt: ago(4 * HOUR),
+      buyerId: buyer3.id,
+      sellerId: seller1.id,
+      listingId: listingSoldWatch.id,
+      itemNzd: 54900,
+      shippingNzd: 500,
+      totalNzd: 55400,
+      status: "CANCELLED",
+      fulfillmentType: "SHIPPED",
+      stripePaymentIntentId: "pi_test_canA",
+      cancelledBy: "BUYER",
+      cancelReason: "Changed my mind — found a better deal locally",
+      cancelledAt: ago(10 * DAY + 45 * MIN),
+      shippingName: "Emma Thompson",
+      shippingLine1: "8 Riccarton Road",
+      shippingCity: "Christchurch",
+      shippingRegion: "Canterbury",
+      shippingPostcode: "8011",
+      createdAt: ago(10 * DAY + 1 * HOUR),
     },
   });
-  await E(
-    ph2.id,
+  await makeSnapshot(canA.id, listingSoldWatch, "Electronics");
+  await makeEvent(
+    canA.id,
+    "ORDER_CREATED",
+    buyer3.id,
+    "BUYER",
+    "Order placed",
+    {},
+    ago(10 * DAY + 1 * HOUR),
+  );
+  await makeEvent(
+    canA.id,
+    "PAYMENT_HELD",
+    null,
+    "SYSTEM",
+    "Payment held",
+    {},
+    ago(10 * DAY + 1 * HOUR),
+  );
+  await makeEvent(
+    canA.id,
     "CANCEL_REQUESTED",
-    james.id,
+    buyer3.id,
     "BUYER",
-    "Buyer requested cancellation: Found better price locally",
-    { interactionId: int1.id },
-    ago(4 * HOUR),
+    "Buyer requested cancellation within free window",
+    { reason: "Changed my mind" },
+    ago(10 * DAY + 45 * MIN),
+  );
+  await makeEvent(
+    canA.id,
+    "CANCEL_AUTO_APPROVED",
+    null,
+    "SYSTEM",
+    "Cancellation auto-approved — within 60-minute window",
+    {},
+    ago(10 * DAY + 45 * MIN),
+  );
+  await makeEvent(
+    canA.id,
+    "CANCELLED",
+    null,
+    "SYSTEM",
+    "Order cancelled, payment refunded",
+    {},
+    ago(10 * DAY + 45 * MIN),
   );
 
-  // Active 2: RETURN_REQUEST — Emma on comp2 (headphones from Mike, completed)
-  const int2 = await db.orderInteraction.create({
+  // canB: James cancellation approved by seller
+  const canB = await db.order.create({
     data: {
-      orderId: comp2.id,
-      type: "RETURN_REQUEST",
-      status: "PENDING",
-      initiatedById: emma.id,
-      initiatorRole: "BUYER",
-      reason:
-        "The colour is different from the listing photos. Listed as silver but they're more of a cream/beige colour.",
-      expiresAt: future(72 * HOUR),
-      autoAction: "AUTO_ESCALATE",
-      createdAt: ago(6 * HOUR),
+      buyerId: buyer2.id,
+      sellerId: seller1.id,
+      listingId: listingSoldHeadphones.id,
+      itemNzd: 42900,
+      shippingNzd: 600,
+      totalNzd: 43500,
+      status: "CANCELLED",
+      fulfillmentType: "SHIPPED",
+      stripePaymentIntentId: "pi_test_canB",
+      cancelledBy: "BUYER",
+      cancelReason: "Bought from another seller",
+      cancelledAt: ago(8 * DAY),
+      shippingName: "James Chen",
+      shippingLine1: "45 Lambton Quay",
+      shippingCity: "Wellington",
+      shippingRegion: "Wellington",
+      shippingPostcode: "6011",
+      createdAt: ago(8 * DAY + 4 * HOUR),
     },
   });
-  await E(
-    comp2.id,
-    "RETURN_REQUESTED",
-    emma.id,
+  await makeSnapshot(canB.id, listingSoldHeadphones, "Electronics");
+  await makeEvent(
+    canB.id,
+    "ORDER_CREATED",
+    buyer2.id,
     "BUYER",
-    "Buyer requested return: Colour different from listing",
-    { interactionId: int2.id },
-    ago(6 * HOUR),
+    "Order placed",
+    {},
+    ago(8 * DAY + 4 * HOUR),
   );
-
-  // Active 3: SHIPPING_DELAY — Rachel on disp3 (KitchenAid to Emma)
-  const int3 = await db.orderInteraction.create({
-    data: {
-      orderId: disp3.id,
-      type: "SHIPPING_DELAY",
-      status: "PENDING",
-      initiatedById: rachel.id,
-      initiatorRole: "SELLER",
-      reason:
-        "Supplier delay — the courier pickup was rescheduled. New estimated delivery is 2 days later than originally quoted.",
-      details: {
-        newEstimatedDate: future(5 * DAY).toISOString(),
-        originalEstimatedDate: future(3 * DAY).toISOString(),
-      },
-      expiresAt: future(7 * DAY),
-      autoAction: "AUTO_APPROVE",
-      createdAt: ago(1 * HOUR),
-    },
-  });
-  await E(
-    disp3.id,
-    "SHIPPING_DELAY_NOTIFIED",
-    rachel.id,
+  await makeEvent(
+    canB.id,
+    "PAYMENT_HELD",
+    null,
+    "SYSTEM",
+    "Payment held",
+    {},
+    ago(8 * DAY + 4 * HOUR),
+  );
+  await makeEvent(
+    canB.id,
+    "CANCEL_REQUESTED",
+    buyer2.id,
+    "BUYER",
+    "Buyer requested cancellation — bought elsewhere",
+    { reason: "Bought from another seller" },
+    ago(8 * DAY + 2 * HOUR),
+  );
+  await makeEvent(
+    canB.id,
+    "CANCEL_APPROVED",
+    seller1.id,
     "SELLER",
-    "Seller notified of shipping delay: courier pickup rescheduled",
-    { interactionId: int3.id },
-    ago(1 * HOUR),
+    "Seller approved cancellation",
+    { note: "No worries, happy to cancel for you" },
+    ago(8 * DAY + 1 * HOUR),
+  );
+  await makeEvent(
+    canB.id,
+    "CANCELLED",
+    null,
+    "SYSTEM",
+    "Order cancelled, payment refunded",
+    {},
+    ago(8 * DAY),
   );
 
-  // Active 4: PARTIAL_REFUND_REQUEST — Sarah on comp4 (watch from Mike)
-  const int4 = await db.orderInteraction.create({
+  // ── GROUP 7: PICKUP orders ────────────────────────────────────────────────
+
+  // pickup1: Emma buying jacket from Aroha — ONLINE_PAYMENT_PICKUP, scheduling
+  const pickup1 = await db.order.create({
     data: {
-      orderId: comp4.id,
-      type: "PARTIAL_REFUND_REQUEST",
-      status: "PENDING",
-      initiatedById: sarah.id,
-      initiatorRole: "BUYER",
-      reason:
-        "There's a small scratch on the watch case that wasn't mentioned in the listing. Not dealbreaker but I'd like a partial refund.",
-      details: { requestedAmount: 5000 },
-      expiresAt: future(48 * HOUR),
-      autoAction: "AUTO_ESCALATE",
-      createdAt: ago(12 * HOUR),
+      buyerId: buyer3.id,
+      sellerId: seller4.id,
+      listingId: listingPickupSold.id,
+      itemNzd: 17900,
+      shippingNzd: 0,
+      totalNzd: 17900,
+      status: "AWAITING_PICKUP",
+      fulfillmentType: "ONLINE_PAYMENT_PICKUP",
+      stripePaymentIntentId: "pi_test_pickup1",
+      pickupStatus: "SCHEDULING",
+      rescheduleCount: 0,
+      shippingName: "Emma Thompson",
+      shippingLine1: "8 Riccarton Road",
+      shippingCity: "Christchurch",
+      shippingRegion: "Canterbury",
+      shippingPostcode: "8011",
+      createdAt: ago(2 * DAY),
     },
   });
-  await E(
-    comp4.id,
-    "PARTIAL_REFUND_REQUESTED",
-    sarah.id,
+  await makeSnapshot(pickup1.id, listingPickupSold, "Fashion");
+  await makeEvent(
+    pickup1.id,
+    "ORDER_CREATED",
+    buyer3.id,
     "BUYER",
-    "Buyer requested partial refund of $50.00: scratch not mentioned in listing",
-    { interactionId: int4.id, amount: 5000 },
-    ago(12 * HOUR),
+    "Pickup order placed by Emma Thompson",
+    {},
+    ago(2 * DAY),
+  );
+  await makeEvent(
+    pickup1.id,
+    "PAYMENT_HELD",
+    null,
+    "SYSTEM",
+    "Payment of $179.00 authorised and held",
+    { amount: 17900 },
+    ago(2 * DAY),
   );
 
-  // Active 5: DELIVERY_ISSUE on disp1 (overdue delivery — Sarah waiting for backpack)
-  const int5 = await db.orderInteraction.create({
+  // Create message thread with pickup proposal
+  const thread1 = await db.messageThread.create({
     data: {
-      orderId: disp1.id,
-      type: "CANCEL_REQUEST",
-      status: "PENDING",
-      initiatedById: sarah.id,
-      initiatorRole: "BUYER",
-      reason:
-        "Package arrived damaged — outer box was crushed. Haven't opened inner packaging yet.",
-      expiresAt: future(72 * HOUR),
-      autoAction: "AUTO_ESCALATE",
-      createdAt: ago(5 * HOUR),
+      participant1Id: buyer3.id,
+      participant2Id: seller4.id,
+      listingId: listingPickupSold.id,
+      lastMessageAt: ago(18 * HOUR),
     },
   });
-  await E(
-    disp1.id,
-    "DELIVERY_ISSUE_REPORTED",
-    sarah.id,
+  await db.message.create({
+    data: {
+      threadId: thread1.id,
+      senderId: buyer3.id,
+      body: JSON.stringify({
+        type: "PICKUP_PROPOSAL",
+        proposedBy: "BUYER",
+        proposedTime: future(2 * DAY).toISOString(),
+        location: "Tauranga City Centre",
+      }),
+      createdAt: ago(20 * HOUR),
+    },
+  });
+  await db.message.create({
+    data: {
+      threadId: thread1.id,
+      senderId: seller4.id,
+      body: "Hi Emma! I can do that time. Works well for me. See you then!",
+      createdAt: ago(18 * HOUR),
+    },
+  });
+
+  // pickup2: James buying macrame from Aroha — OTP_INITIATED (test OTP = 123456)
+  const pickup2 = await db.order.create({
+    data: {
+      buyerId: buyer2.id,
+      sellerId: seller4.id,
+      listingId: listingCopSold.id,
+      itemNzd: 12900,
+      shippingNzd: 0,
+      totalNzd: 12900,
+      status: "AWAITING_PICKUP",
+      fulfillmentType: "ONLINE_PAYMENT_PICKUP",
+      stripePaymentIntentId: "pi_test_pickup2",
+      pickupStatus: "OTP_INITIATED",
+      pickupScheduledAt: ago(30 * MIN),
+      pickupWindowExpiresAt: future(30 * MIN),
+      otpInitiatedAt: ago(5 * MIN),
+      otpExpiresAt: future(25 * MIN),
+      otpCodeHash: sha256("123456"),
+      rescheduleCount: 0,
+      shippingName: "James Chen",
+      shippingLine1: "45 Lambton Quay",
+      shippingCity: "Wellington",
+      shippingRegion: "Wellington",
+      shippingPostcode: "6011",
+      createdAt: ago(1 * DAY),
+    },
+  });
+  await makeSnapshot(pickup2.id, listingCopSold, "Collectibles");
+  await makeEvent(
+    pickup2.id,
+    "ORDER_CREATED",
+    buyer2.id,
     "BUYER",
-    "Buyer reported: package arrived damaged",
-    { interactionId: int5.id },
-    ago(5 * HOUR),
+    "Pickup order placed",
+    {},
+    ago(1 * DAY),
+  );
+  await makeEvent(
+    pickup2.id,
+    "PAYMENT_HELD",
+    null,
+    "SYSTEM",
+    "Payment authorised and held",
+    {},
+    ago(1 * DAY),
+  );
+  await makeEvent(
+    pickup2.id,
+    "PICKUP_OTP_INITIATED",
+    seller4.id,
+    "SELLER",
+    "Seller initiated pickup OTP — code sent to buyer via SMS",
+    { otpSentTo: buyer2.phone },
+    ago(5 * MIN),
   );
 
-  // Active 6: CANCEL_REQUEST about to expire (2 hours left) — on ph1
-  const int6 = await db.orderInteraction.create({
+  // pickup3: Sarah with COP — cash on pickup, awaiting schedule
+  const pickup3 = await db.order.create({
     data: {
-      orderId: ph1.id,
-      type: "CANCEL_REQUEST",
-      status: "PENDING",
-      initiatedById: sarah.id,
-      initiatorRole: "BUYER",
-      reason: "Actually I want to keep it, but testing the system.",
-      expiresAt: future(2 * HOUR),
-      autoAction: "AUTO_APPROVE",
-      createdAt: ago(46 * HOUR),
+      buyerId: buyer1.id,
+      sellerId: seller4.id,
+      listingId: listingCopFurniture.id,
+      itemNzd: 55000,
+      shippingNzd: 0,
+      totalNzd: 55000,
+      status: "AWAITING_PICKUP",
+      fulfillmentType: "CASH_ON_PICKUP",
+      stripePaymentIntentId: null,
+      pickupStatus: "AWAITING_SCHEDULE",
+      rescheduleCount: 0,
+      shippingName: "Sarah Mitchell",
+      shippingLine1: "12 Ponsonby Road",
+      shippingCity: "Auckland",
+      shippingRegion: "Auckland",
+      shippingPostcode: "1011",
+      createdAt: ago(1 * DAY),
     },
   });
-  await E(
-    ph1.id,
-    "CANCEL_REQUESTED",
-    sarah.id,
+  await makeSnapshot(pickup3.id, listingCopFurniture, "Home & Garden");
+  await makeEvent(
+    pickup3.id,
+    "ORDER_CREATED",
+    buyer1.id,
     "BUYER",
-    "Buyer requested cancellation (about to expire)",
-    { interactionId: int6.id },
-    ago(46 * HOUR),
+    "Cash on pickup order placed",
+    {},
+    ago(1 * DAY),
   );
 
-  // Historical 7: CANCEL_REQUEST — ACCEPTED (matches Cancel B)
-  await db.orderInteraction.create({
+  // Thread for COP order
+  const thread3 = await db.messageThread.create({
     data: {
-      orderId: canB.id,
-      type: "CANCEL_REQUEST",
-      status: "ACCEPTED",
-      initiatedById: james.id,
-      initiatorRole: "BUYER",
-      reason: "Bought from another seller",
-      responseById: mike.id,
-      responseNote: "No worries, happy to cancel",
-      respondedAt: ago(5 * DAY),
-      resolvedAt: ago(5 * DAY),
-      resolution: "CANCELLED",
-      expiresAt: ago(3 * DAY),
-      autoAction: "AUTO_APPROVE",
-      createdAt: ago(6 * DAY),
+      participant1Id: buyer1.id,
+      participant2Id: seller4.id,
+      listingId: listingCopFurniture.id,
+      lastMessageAt: ago(20 * HOUR),
+    },
+  });
+  await db.message.create({
+    data: {
+      threadId: thread3.id,
+      senderId: buyer1.id,
+      body: "Hi! I am interested in the dining table. When can I come to view and pick it up?",
+      createdAt: ago(22 * HOUR),
+    },
+  });
+  await db.message.create({
+    data: {
+      threadId: thread3.id,
+      senderId: seller4.id,
+      body: "Hi Sarah! Happy to show you the table. I am available this weekend — Saturday or Sunday morning works well. Cash only please.",
+      createdAt: ago(20 * HOUR),
+      read: false,
     },
   });
 
-  // Historical 8: RETURN_REQUEST — REJECTED by seller, 3 days ago
-  await db.orderInteraction.create({
+  // pickup4: Completed pickup order (for history)
+  const pickup4 = await db.order.create({
     data: {
-      orderId: comp1.id,
-      type: "RETURN_REQUEST",
-      status: "REJECTED",
-      initiatedById: sarah.id,
-      initiatorRole: "BUYER",
-      reason: "Mixer is louder than expected",
-      responseById: rachel.id,
-      responseNote:
-        "Sorry, noise level is normal for this model. The listing accurately described the product.",
-      respondedAt: ago(3 * DAY),
-      resolvedAt: ago(3 * DAY),
-      resolution: "REJECTED",
-      expiresAt: ago(1 * DAY),
-      autoAction: "AUTO_ESCALATE",
-      createdAt: ago(5 * DAY),
+      buyerId: buyer3.id,
+      sellerId: seller4.id,
+      listingId: listingPickupBike.id,
+      itemNzd: 185000,
+      shippingNzd: 0,
+      totalNzd: 185000,
+      status: "COMPLETED",
+      fulfillmentType: "ONLINE_PAYMENT_PICKUP",
+      stripePaymentIntentId: "pi_test_pickup4",
+      pickupStatus: "COMPLETED",
+      pickupScheduledAt: ago(5 * DAY),
+      pickupWindowExpiresAt: ago(4 * DAY + 30 * HOUR),
+      pickupConfirmedAt: ago(5 * DAY - 10 * MIN),
+      rescheduleCount: 0,
+      completedAt: ago(5 * DAY - 10 * MIN),
+      shippingName: "Emma Thompson",
+      shippingLine1: "8 Riccarton Road",
+      shippingCity: "Christchurch",
+      shippingRegion: "Canterbury",
+      shippingPostcode: "8011",
+      createdAt: ago(7 * DAY),
     },
   });
+  await makeSnapshot(pickup4.id, listingPickupBike, "Sports & Outdoors");
+  await makeEvent(
+    pickup4.id,
+    "ORDER_CREATED",
+    buyer3.id,
+    "BUYER",
+    "Pickup order placed",
+    {},
+    ago(7 * DAY),
+  );
+  await makeEvent(
+    pickup4.id,
+    "PAYMENT_HELD",
+    null,
+    "SYSTEM",
+    "Payment authorised",
+    {},
+    ago(7 * DAY),
+  );
+  await makeEvent(
+    pickup4.id,
+    "PICKUP_OTP_INITIATED",
+    seller4.id,
+    "SELLER",
+    "OTP initiated at pickup",
+    {},
+    ago(5 * DAY),
+  );
+  await makeEvent(
+    pickup4.id,
+    "PICKUP_OTP_CONFIRMED",
+    buyer3.id,
+    "BUYER",
+    "OTP confirmed — item collected",
+    {},
+    ago(5 * DAY - 10 * MIN),
+  );
+  await makeEvent(
+    pickup4.id,
+    "COMPLETED",
+    null,
+    "SYSTEM",
+    "Pickup completed, payment captured and payout initiated",
+    {},
+    ago(5 * DAY - 10 * MIN),
+  );
 
-  console.log("✅ 8 order interactions created (6 active, 2 historical)");
+  console.log("✅ Orders created");
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TRUST METRICS
-  // ══════════════════════════════════════════════════════════════════════════
+  return {
+    comp1,
+    comp2,
+    comp3,
+    disp1,
+    disp2,
+    ph1,
+    ph2,
+    dispA,
+    dispB,
+    disputeA,
+    disputeB,
+    refA,
+    refB,
+    canA,
+    canB,
+    pickup1,
+    pickup2,
+    pickup3,
+    pickup4,
+  };
+}
 
-  console.log("\n🛡️  Creating trust metrics...");
+// ─── Trust Metrics ───────────────────────────────────────────────────────────
 
-  const trustData = [
+async function seedTrustMetrics(users: Awaited<ReturnType<typeof seedUsers>>) {
+  console.log("🛡️  Creating trust metrics...");
+  const { buyer1, buyer2, buyer3, seller1, seller2, seller3, seller4 } = users;
+
+  const metrics = [
     {
-      userId: sarah.id,
+      userId: buyer1.id,
       totalOrders: 8,
       completedOrders: 6,
       disputeCount: 1,
       disputeRate: 12.5,
       disputesLast30Days: 0,
       averageResponseHours: 2,
-      averageRating: 4.6,
-      dispatchPhotoRate: 0,
-      accountAgeDays: 60,
-      isFlaggedForFraud: false,
-    },
-    {
-      userId: james.id,
-      totalOrders: 4,
-      completedOrders: 2,
-      disputeCount: 0,
-      disputeRate: 0,
-      disputesLast30Days: 0,
-      averageResponseHours: null,
-      averageRating: null,
+      averageRating: null as number | null,
       dispatchPhotoRate: 0,
       accountAgeDays: 30,
-      isFlaggedForFraud: false,
     },
     {
-      userId: emma.id,
-      totalOrders: 6,
-      completedOrders: 4,
-      disputeCount: 1,
-      disputeRate: 16.7,
-      disputesLast30Days: 1,
-      averageResponseHours: null,
-      averageRating: null,
+      userId: buyer2.id,
+      totalOrders: 5,
+      completedOrders: 2,
+      disputeCount: 2,
+      disputeRate: 40.0,
+      disputesLast30Days: 2,
+      averageResponseHours: null as number | null,
+      averageRating: null as number | null,
       dispatchPhotoRate: 0,
-      accountAgeDays: 45,
-      isFlaggedForFraud: false,
+      accountAgeDays: 20,
     },
     {
-      userId: mike.id,
-      totalOrders: 15,
-      completedOrders: 12,
-      disputeCount: 1,
-      disputeRate: 6.7,
-      disputesLast30Days: 0,
-      averageResponseHours: 4,
-      averageRating: 4.5,
-      dispatchPhotoRate: 80,
-      accountAgeDays: 90,
-      isFlaggedForFraud: false,
-    },
-    {
-      userId: rachel.id,
-      totalOrders: 10,
-      completedOrders: 8,
+      userId: buyer3.id,
+      totalOrders: 4,
+      completedOrders: 3,
       disputeCount: 0,
       disputeRate: 0,
       disputesLast30Days: 0,
-      averageResponseHours: 8,
-      averageRating: 4.2,
-      dispatchPhotoRate: 60,
-      accountAgeDays: 75,
-      isFlaggedForFraud: false,
+      averageResponseHours: null as number | null,
+      averageRating: null as number | null,
+      dispatchPhotoRate: 0,
+      accountAgeDays: 15,
     },
     {
-      userId: tom.id,
-      totalOrders: 8,
-      completedOrders: 5,
+      userId: seller1.id,
+      totalOrders: 55,
+      completedOrders: 52,
       disputeCount: 2,
-      disputeRate: 25,
-      disputesLast30Days: 1,
-      averageResponseHours: 12,
-      averageRating: 3.8,
-      dispatchPhotoRate: 40,
+      disputeRate: 3.6,
+      disputesLast30Days: 0,
+      averageResponseHours: 3,
+      averageRating: 4.7,
+      dispatchPhotoRate: 90,
+      accountAgeDays: 90,
+    },
+    {
+      userId: seller2.id,
+      totalOrders: 0,
+      completedOrders: 0,
+      disputeCount: 0,
+      disputeRate: 0,
+      disputesLast30Days: 0,
+      averageResponseHours: null as number | null,
+      averageRating: null as number | null,
+      dispatchPhotoRate: 0,
+      accountAgeDays: 10,
+    },
+    {
+      userId: seller3.id,
+      totalOrders: 12,
+      completedOrders: 7,
+      disputeCount: 4,
+      disputeRate: 33.3,
+      disputesLast30Days: 2,
+      averageResponseHours: 48,
+      averageRating: 3.2,
+      dispatchPhotoRate: 30,
       accountAgeDays: 60,
       isFlaggedForFraud: false,
     },
     {
-      userId: aroha.id,
-      totalOrders: 5,
-      completedOrders: 4,
+      userId: seller4.id,
+      totalOrders: 18,
+      completedOrders: 17,
       disputeCount: 0,
       disputeRate: 0,
       disputesLast30Days: 0,
       averageResponseHours: 2,
-      averageRating: 4.7,
+      averageRating: 4.9,
       dispatchPhotoRate: 100,
       accountAgeDays: 45,
-      isFlaggedForFraud: false,
     },
   ];
 
-  for (const tm of trustData) {
-    await db.trustMetrics.create({
-      data: { ...tm, lastComputedAt: new Date() },
-    });
+  for (const m of metrics) {
+    await db.trustMetrics.create({ data: m });
   }
 
-  console.log("✅ 7 trust metrics records created");
+  console.log(`✅ ${metrics.length} trust metric records created`);
+}
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // REVIEWS
-  // ══════════════════════════════════════════════════════════════════════════
+// ─── Reviews ─────────────────────────────────────────────────────────────────
 
-  console.log("\n⭐ Creating reviews...");
+async function seedReviews(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  orders: Awaited<ReturnType<typeof seedOrders>>,
+) {
+  console.log("⭐ Creating reviews...");
+  const { buyer1, buyer2, seller1 } = users;
+  const { comp1, comp2, comp3 } = orders;
 
-  // Review 1: Sarah → Rachel (comp1, mixer)
   const rev1 = await db.review.create({
     data: {
       orderId: comp1.id,
-      sellerId: rachel.id,
-      authorId: sarah.id,
-      rating: 45,
+      sellerId: seller1.id,
+      authorId: buyer1.id,
+      rating: 50,
       comment:
-        "The mixer arrived beautifully packaged and works perfectly. Rachel was super responsive and even included a handwritten thank-you card. Love supporting local sellers!",
+        "Excellent seller! Headphones were exactly as described, well packaged and arrived quickly. Mike responded promptly to my questions before purchase. Would definitely buy from again.",
       sellerReply:
-        "Thank you Sarah! So glad you're enjoying the mixer. Happy baking! 🎂",
-      sellerRepliedAt: ago(12 * DAY),
-      createdAt: ago(13 * DAY),
+        "Thank you Sarah! Really glad the headphones arrived safely and you're happy with them. Enjoy!",
+      sellerRepliedAt: ago(13 * DAY),
+      approved: true,
+      createdAt: ago(14 * DAY),
     },
   });
   await db.reviewTag.createMany({
     data: [
+      { reviewId: rev1.id, tag: "FAST_SHIPPING" },
+      { reviewId: rev1.id, tag: "ACCURATE_DESCRIPTION" },
       { reviewId: rev1.id, tag: "GREAT_PACKAGING" },
-      { reviewId: rev1.id, tag: "QUICK_COMMUNICATION" },
       { reviewId: rev1.id, tag: "AS_DESCRIBED" },
     ],
   });
 
-  // Review 2: Emma → Mike (comp2, headphones)
   const rev2 = await db.review.create({
     data: {
       orderId: comp2.id,
-      sellerId: mike.id,
-      authorId: emma.id,
-      rating: 50,
+      sellerId: seller1.id,
+      authorId: buyer1.id,
+      rating: 45,
       comment:
-        "Five stars! These headphones are incredible. Mike shipped them the same day and they arrived in perfect condition. Noise cancellation is amazing for my office.",
-      createdAt: ago(14 * DAY),
-    },
-  });
-  await db.reviewTag.createMany({
-    data: [
-      { reviewId: rev2.id, tag: "FAST_SHIPPING" },
-      { reviewId: rev2.id, tag: "ACCURATE_DESCRIPTION" },
-      { reviewId: rev2.id, tag: "AS_DESCRIBED" },
-    ],
-  });
-
-  // Review 3: James → Aroha (comp3, jacket)
-  const rev3 = await db.review.create({
-    data: {
-      orderId: comp3.id,
-      sellerId: aroha.id,
-      authorId: james.id,
-      rating: 40,
-      comment:
-        "Good jacket, keeps me warm in Wellington wind. Slightly smaller than expected but wearable. Shipping was fast.",
-      sellerReply:
-        "Thanks James! Sorry about the sizing — Kathmandu does run a bit small. Glad it still works for you.",
-      sellerRepliedAt: ago(10 * DAY),
+        "Great camera, well described. Took a couple of extra days to dispatch but Mike kept me updated. Camera is in the condition described and works perfectly.",
+      approved: true,
       createdAt: ago(11 * DAY),
     },
   });
   await db.reviewTag.createMany({
-    data: [{ reviewId: rev3.id, tag: "FAST_SHIPPING" }],
+    data: [
+      { reviewId: rev2.id, tag: "ACCURATE_DESCRIPTION" },
+      { reviewId: rev2.id, tag: "QUICK_COMMUNICATION" },
+    ],
   });
 
-  // Review 4: Sarah → Mike (comp4, watch)
-  const rev4 = await db.review.create({
+  const rev3 = await db.review.create({
     data: {
-      orderId: comp4.id,
-      sellerId: mike.id,
-      authorId: sarah.id,
-      rating: 45,
+      orderId: comp3.id,
+      sellerId: seller1.id,
+      authorId: buyer2.id,
+      rating: 50,
       comment:
-        "Apple Watch arrived quickly and in great condition. Battery health is excellent. Mike even factory reset it before sending which saved me time.",
-      createdAt: ago(8 * DAY),
+        "Perfect transaction. Watch arrived in immaculate condition as described. Fast shipping and great packaging.",
+      sellerReply: "Thank you James! Happy to help anytime.",
+      sellerRepliedAt: ago(5 * DAY),
+      approved: true,
+      createdAt: ago(6 * DAY),
     },
   });
   await db.reviewTag.createMany({
     data: [
-      { reviewId: rev4.id, tag: "FAST_SHIPPING" },
-      { reviewId: rev4.id, tag: "ACCURATE_DESCRIPTION" },
-      { reviewId: rev4.id, tag: "QUICK_COMMUNICATION" },
+      { reviewId: rev3.id, tag: "FAST_SHIPPING" },
+      { reviewId: rev3.id, tag: "GREAT_PACKAGING" },
+      { reviewId: rev3.id, tag: "AS_DESCRIBED" },
     ],
   });
 
-  // Review 5: Emma → Tom (comp5, bike — auto-completed)
-  const rev5 = await db.review.create({
-    data: {
-      orderId: comp5.id,
-      sellerId: tom.id,
-      authorId: emma.id,
-      rating: 35,
-      comment:
-        "Bike is decent but had some issues with the rear derailleur that weren't mentioned. Had to take it for a $150 tune-up. Otherwise rides well on Christchurch trails.",
-      createdAt: ago(7 * DAY),
-    },
-  });
-  await db.reviewTag.createMany({
-    data: [{ reviewId: rev5.id, tag: "FAIR_PRICING" }],
-  });
+  console.log("✅ 3 reviews created");
+}
 
-  // Review 6: James → Mike (comp6, camera)
-  const rev6 = await db.review.create({
-    data: {
-      orderId: comp6.id,
-      sellerId: mike.id,
-      authorId: james.id,
-      rating: 45,
-      comment:
-        "Camera is fantastic. Low shutter count as described. The outer shipping box was dented but the camera inside was perfectly protected. Mike packed it really well.",
-      sellerReply:
-        "Glad the camera arrived safely despite the courier handling! Enjoy shooting with the R6 II.",
-      sellerRepliedAt: ago(11 * DAY),
-      createdAt: ago(12 * DAY),
-    },
-  });
-  await db.reviewTag.createMany({
-    data: [
-      { reviewId: rev6.id, tag: "GREAT_PACKAGING" },
-      { reviewId: rev6.id, tag: "ACCURATE_DESCRIPTION" },
-      { reviewId: rev6.id, tag: "AS_DESCRIBED" },
-    ],
-  });
+// ─── Payouts ─────────────────────────────────────────────────────────────────
 
-  // Reviews for order event: REVIEW_SUBMITTED
-  await E(
-    comp1.id,
-    "REVIEW_SUBMITTED",
-    sarah.id,
-    "BUYER",
-    "Buyer left a 4.5-star review",
-    { rating: 45 },
-    ago(13 * DAY),
-  );
-  await E(
-    comp2.id,
-    "REVIEW_SUBMITTED",
-    emma.id,
-    "BUYER",
-    "Buyer left a 5-star review",
-    { rating: 50 },
-    ago(14 * DAY),
-  );
-  await E(
-    comp3.id,
-    "REVIEW_SUBMITTED",
-    james.id,
-    "BUYER",
-    "Buyer left a 4-star review",
-    { rating: 40 },
-    ago(11 * DAY),
-  );
-  await E(
-    comp4.id,
-    "REVIEW_SUBMITTED",
-    sarah.id,
-    "BUYER",
-    "Buyer left a 4.5-star review",
-    { rating: 45 },
-    ago(8 * DAY),
-  );
-  await E(
-    comp5.id,
-    "REVIEW_SUBMITTED",
-    emma.id,
-    "BUYER",
-    "Buyer left a 3.5-star review",
-    { rating: 35 },
-    ago(7 * DAY),
-  );
-  await E(
-    comp6.id,
-    "REVIEW_SUBMITTED",
-    james.id,
-    "BUYER",
-    "Buyer left a 4.5-star review",
-    { rating: 45 },
-    ago(12 * DAY),
-  );
+async function seedPayouts(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  orders: Awaited<ReturnType<typeof seedOrders>>,
+) {
+  console.log("💸 Creating payouts...");
+  const { seller1, seller3, seller4 } = users;
+  const { comp1, comp2, comp3, ph1, disp2, pickup4 } = orders;
 
-  console.log("✅ 6 reviews created with tags and events");
+  const platformFee = (total: number) => Math.floor(total * 0.1);
+  const stripeFee = (total: number) => Math.floor(total * 0.029 + 30);
+  const net = (total: number) => total - platformFee(total) - stripeFee(total);
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // OFFERS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n💰 Creating offers...");
-
-  // Pending offers
-  await db.offer.create({
-    data: {
-      listingId: macbook,
-      buyerId: sarah.id,
-      sellerId: mike.id,
-      amountNzd: 250000,
-      note: "Would you consider $2,500? I can pick up from Newmarket today.",
-      status: "PENDING",
-      expiresAt: future(2 * DAY),
-      createdAt: ago(1 * DAY),
-    },
-  });
-
-  await db.offer.create({
-    data: {
-      listingId: ebike,
-      buyerId: james.id,
-      sellerId: tom.id,
-      amountNzd: 350000,
-      note: "Keen on the e-bike. Would $3,500 work? Cash on pickup.",
-      status: "PENDING",
-      expiresAt: future(2 * DAY),
-      createdAt: ago(12 * HOUR),
-    },
-  });
-
-  // Accepted offers
-  await db.offer.create({
-    data: {
-      listingId: tent,
-      buyerId: emma.id,
-      sellerId: tom.id,
-      amountNzd: 42000,
-      note: "Would you take $420? I'm heading to Milford Track next week.",
-      status: "ACCEPTED",
-      respondedAt: ago(3 * DAY),
-      expiresAt: ago(1 * DAY),
-      paymentDeadline: future(1 * DAY),
-      createdAt: ago(4 * DAY),
-    },
-  });
-
-  await db.offer.create({
-    data: {
-      listingId: couch,
-      buyerId: sarah.id,
-      sellerId: rachel.id,
-      amountNzd: 120000,
-      note: "Happy to pick up this weekend. Would $1,200 work?",
-      status: "ACCEPTED",
-      respondedAt: ago(2 * DAY),
-      expiresAt: ago(0),
-      paymentDeadline: future(2 * DAY),
-      createdAt: ago(3 * DAY),
-    },
-  });
-
-  // Declined offers
-  await db.offer.create({
-    data: {
-      listingId: iphone,
-      buyerId: james.id,
-      sellerId: mike.id,
-      amountNzd: 150000,
-      note: "Would you take $1,500?",
-      status: "DECLINED",
-      respondedAt: ago(5 * DAY),
-      expiresAt: ago(3 * DAY),
-      declineNote:
-        "Sorry, lowest I can go is $1,800. It's basically brand new with AppleCare+.",
-      createdAt: ago(6 * DAY),
-    },
-  });
-
-  await db.offer.create({
-    data: {
-      listingId: kitchenaid,
-      buyerId: emma.id,
-      sellerId: rachel.id,
-      amountNzd: 45000,
-      note: "Is $450 fair? I see similar ones online for less.",
-      status: "DECLINED",
-      respondedAt: ago(4 * DAY),
-      expiresAt: ago(2 * DAY),
-      declineNote:
-        "This is the Artisan model which retails for $999. $599 is already a great price.",
-      createdAt: ago(5 * DAY),
-    },
-  });
-
-  // Expired offer
-  await db.offer.create({
-    data: {
-      listingId: kayak,
-      buyerId: sarah.id,
-      sellerId: tom.id,
-      amountNzd: 70000,
-      note: "Interested in the kayak. Would $700 work?",
-      status: "EXPIRED",
-      expiresAt: ago(1 * DAY),
-      createdAt: ago(4 * DAY),
-    },
-  });
-
-  // Countered offer
-  await db.offer.create({
-    data: {
-      listingId: painting,
-      buyerId: emma.id,
-      sellerId: rachel.id,
-      amountNzd: 35000,
-      note: "Beautiful painting! Would you consider $350?",
-      status: "DECLINED",
-      respondedAt: ago(3 * DAY),
-      expiresAt: ago(1 * DAY),
-      declineNote:
-        "I could do $400 — it's an original with certificate of authenticity.",
-      createdAt: ago(4 * DAY),
-    },
-  });
-
-  console.log("✅ 8 offers created");
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // MESSAGES
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n💬 Creating messages...");
-
-  async function thread(
-    p1Id: string,
-    p2Id: string,
-    listingId: string | null,
-    msgs: { senderId: string; body: string; hoursAgo: number; read: boolean }[],
-  ) {
-    const t = await db.messageThread.create({
-      data: {
-        participant1Id: p1Id,
-        participant2Id: p2Id,
-        listingId,
-        lastMessageAt: ago(msgs[msgs.length - 1]!.hoursAgo * HOUR),
-        createdAt: ago(msgs[0]!.hoursAgo * HOUR),
-      },
-    });
-    for (const m of msgs) {
-      await db.message.create({
-        data: {
-          threadId: t.id,
-          senderId: m.senderId,
-          body: m.body,
-          read: m.read,
-          readAt: m.read ? ago((m.hoursAgo - 0.5) * HOUR) : undefined,
-          createdAt: ago(m.hoursAgo * HOUR),
-        },
-      });
-    }
-  }
-
-  // Thread 1: Pre-purchase question about MacBook
-  await thread(sarah.id, mike.id, macbook, [
+  const payoutsData = [
     {
-      senderId: sarah.id,
-      body: "Hi! Is the MacBook still available? What's the battery health percentage?",
-      hoursAgo: 48,
-      read: true,
-    },
-    {
-      senderId: mike.id,
-      body: "Hey Sarah! Yes still available. Battery health is at 94% — only 96 cycles. Basically like new.",
-      hoursAgo: 46,
-      read: true,
-    },
-    {
-      senderId: sarah.id,
-      body: "That's great! Does it come with the original charger? And is the price negotiable at all?",
-      hoursAgo: 44,
-      read: true,
-    },
-    {
-      senderId: mike.id,
-      body: "Yep, original MagSafe charger and box included. I could do $2,800 for a quick sale. It's the M3 Pro which is the sweet spot for performance.",
-      hoursAgo: 42,
-      read: true,
-    },
-    {
-      senderId: sarah.id,
-      body: "Tempting! Let me think about it and I'll get back to you by tomorrow.",
-      hoursAgo: 40,
-      read: true,
-    },
-  ]);
-
-  // Thread 2: Shipping timeline on dispatched order
-  await thread(james.id, aroha.id, allbirds, [
-    {
-      senderId: james.id,
-      body: "Hi! I ordered the Allbirds — any idea when they'll arrive in Wellington?",
-      hoursAgo: 36,
-      read: true,
-    },
-    {
-      senderId: aroha.id,
-      body: "Hi James! I shipped them yesterday from Hamilton. NZ Post usually takes 2-3 business days to Wellington. Tracking: NZ800900102",
-      hoursAgo: 34,
-      read: true,
-    },
-    {
-      senderId: james.id,
-      body: "Perfect, thanks for the quick dispatch!",
-      hoursAgo: 32,
-      read: true,
-    },
-    {
-      senderId: aroha.id,
-      body: "No worries! Let me know when they arrive 😊",
-      hoursAgo: 30,
-      read: false,
-    },
-  ]);
-
-  // Thread 3: Buyer messaging about cancellation
-  await thread(james.id, mike.id, airpods, [
-    {
-      senderId: james.id,
-      body: "Hey Mike, I'm really sorry but I need to cancel my AirPods order. I found them cheaper locally.",
-      hoursAgo: 150,
-      read: true,
-    },
-    {
-      senderId: mike.id,
-      body: "No worries James! I'll approve the cancellation now. Hope you got a good deal!",
-      hoursAgo: 148,
-      read: true,
-    },
-    {
-      senderId: james.id,
-      body: "Thanks for being so understanding. I'll definitely buy from you in future.",
-      hoursAgo: 146,
-      read: true,
-    },
-    {
-      senderId: mike.id,
-      body: "Cheers mate. Happy to help anytime!",
-      hoursAgo: 144,
-      read: true,
-    },
-  ]);
-
-  // Thread 4: Buyer asking about return
-  await thread(emma.id, mike.id, soldHeadphones, [
-    {
-      senderId: emma.id,
-      body: "Hi Mike, I love the headphones but the colour is slightly different from the photos — more cream than silver. Is a return possible?",
-      hoursAgo: 8,
-      read: true,
-    },
-    {
-      senderId: mike.id,
-      body: "Hi Emma, sorry about that! The listing photos were taken under studio lighting which may have looked more silver. I can look into a return for you.",
-      hoursAgo: 6,
-      read: true,
-    },
-    {
-      senderId: emma.id,
-      body: "That would be great. I've submitted a return request through the system. They still work perfectly, just not the colour I expected.",
-      hoursAgo: 5,
-      read: true,
-    },
-    {
-      senderId: mike.id,
-      body: "No problem, I'll review the return request. If you send them back I'll process a full refund once they arrive.",
-      hoursAgo: 4,
-      read: false,
-    },
-  ]);
-
-  // Thread 5: Sizing question for fashion item
-  await thread(sarah.id, aroha.id, null, [
-    {
-      senderId: sarah.id,
-      body: "Hi! I'm interested in the Kowtow dress. I usually wear a size 10 NZ — do you think the M would fit?",
-      hoursAgo: 72,
-      read: true,
-    },
-    {
-      senderId: aroha.id,
-      body: "Hi Sarah! Kowtow runs true to NZ sizing. If you're usually a 10, the M should be perfect. It's a relaxed fit so there's some room.",
-      hoursAgo: 70,
-      read: true,
-    },
-    {
-      senderId: sarah.id,
-      body: "Great, thanks! What about the fabric — does it wrinkle easily?",
-      hoursAgo: 68,
-      read: true,
-    },
-    {
-      senderId: aroha.id,
-      body: "It's 100% organic cotton so it does crease a bit, but that's part of the charm! A quick steam and it looks perfect.",
-      hoursAgo: 66,
-      read: true,
-    },
-    {
-      senderId: sarah.id,
-      body: "Lovely, I'll have a think. The sage green colour is gorgeous.",
-      hoursAgo: 64,
-      read: true,
-    },
-  ]);
-
-  // Thread 6: Seller proactively messaging about shipping delay
-  await thread(rachel.id, emma.id, kitchenaid, [
-    {
-      senderId: rachel.id,
-      body: "Hi Emma! Just a heads up — I shipped your KitchenAid this morning but the courier pickup was delayed by a day. New ETA is Thursday instead of Wednesday.",
-      hoursAgo: 3,
-      read: true,
-    },
-    {
-      senderId: emma.id,
-      body: "Thanks for letting me know Rachel! No rush at all — I appreciate the heads up.",
-      hoursAgo: 2,
-      read: true,
-    },
-    {
-      senderId: rachel.id,
-      body: "No worries! I've double-boxed it with extra bubble wrap. That mixer weighs a lot so I wanted to make sure it arrives safely!",
-      hoursAgo: 1,
-      read: false,
-    },
-  ]);
-
-  // Thread 7: Post-purchase thank you
-  await thread(sarah.id, rachel.id, soldMixer, [
-    {
-      senderId: sarah.id,
-      body: "Rachel — the mixer arrived today and it's perfect! Thank you for the lovely packaging and the handwritten card. Really made my day!",
-      hoursAgo: 300,
-      read: true,
-    },
-    {
-      senderId: rachel.id,
-      body: "Oh I'm so glad! It was a joy to sell to you. If you ever need baking tips, I run a blog at kiwihomestyle.nz 😄",
-      hoursAgo: 298,
-      read: true,
-    },
-    {
-      senderId: sarah.id,
-      body: "I'll definitely check it out! Already left you a 5-star review 🌟",
-      hoursAgo: 296,
-      read: true,
-    },
-    {
-      senderId: rachel.id,
-      body: "You're too kind! Enjoy the mixer! 💛",
-      hoursAgo: 294,
-      read: true,
-    },
-  ]);
-
-  // Thread 8: Collectible authenticity question
-  await thread(james.id, rachel.id, painting, [
-    {
-      senderId: james.id,
-      body: "Hi, I'm interested in the Milford Sound painting. Can you tell me more about the artist? Is the certificate of authenticity from a gallery?",
-      hoursAgo: 96,
-      read: true,
-    },
-    {
-      senderId: rachel.id,
-      body: "Hi James! The artist is a Wellington-based painter who exhibits at local galleries. The certificate is from her studio — it includes her signature, the title, and date of creation.",
-      hoursAgo: 94,
-      read: true,
-    },
-    {
-      senderId: james.id,
-      body: "That's reassuring, thank you. The colours in the listing photos look amazing. Is it true to life?",
-      hoursAgo: 92,
-      read: true,
-    },
-    {
-      senderId: rachel.id,
-      body: "I tried to photograph it in natural light to be as accurate as possible. The blues and greens are very vibrant in person. It's a stunning piece!",
-      hoursAgo: 90,
-      read: true,
-    },
-    {
-      senderId: james.id,
-      body: "I think I'll make an offer. Thanks for all the details!",
-      hoursAgo: 88,
-      read: true,
-    },
-  ]);
-
-  const msgCount = await db.message.count();
-  console.log(`✅ 8 message threads, ${msgCount} messages created`);
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // NOTIFICATIONS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n🔔 Creating notifications...");
-
-  const notifications = [
-    // Buyer notifications
-    {
-      userId: sarah.id,
-      type: "ORDER_CREATED",
-      title: "Order confirmed!",
-      body: "Your order for Breville Bakery Boss Stand Mixer has been confirmed.",
       orderId: comp1.id,
-      link: `/orders/${comp1.id}`,
-      read: true,
-      createdAt: ago(20 * DAY),
+      userId: seller1.id,
+      total: 43500,
+      status: "PAID" as const,
+      paidAt: ago(12 * DAY),
+      stripeTransferId: "tr_test_comp1",
     },
     {
-      userId: sarah.id,
-      type: "ORDER_DISPATCHED",
-      title: "Your item has been shipped!",
-      body: "Great news! Kiwi Home & Style has dispatched your Breville Bakery Boss Stand Mixer.",
-      orderId: comp1.id,
-      link: `/orders/${comp1.id}`,
-      read: true,
-      createdAt: ago(18 * DAY),
-    },
-    {
-      userId: sarah.id,
-      type: "ORDER_COMPLETED",
-      title: "Order complete!",
-      body: "Your order for Breville Bakery Boss Stand Mixer is complete. Payment has been released to the seller.",
-      orderId: comp1.id,
-      link: `/orders/${comp1.id}`,
-      read: true,
-      createdAt: ago(13 * DAY),
-    },
-    {
-      userId: emma.id,
-      type: "ORDER_DISPATCHED",
-      title: "Your item is on its way!",
-      body: "TechHub NZ has dispatched your Bose QuietComfort Ultra Headphones.",
       orderId: comp2.id,
-      link: `/orders/${comp2.id}`,
-      read: true,
-      createdAt: ago(20 * DAY),
+      userId: seller1.id,
+      total: 290900,
+      status: "PAID" as const,
+      paidAt: ago(9 * DAY),
+      stripeTransferId: "tr_test_comp2",
     },
     {
-      userId: sarah.id,
-      type: "ORDER_DISPATCHED",
-      title: "Dispatched!",
-      body: "Peak Outdoors has dispatched your Arc'teryx jacket. Should arrive in a few days.",
-      orderId: disp1.id,
-      link: `/orders/${disp1.id}`,
-      read: true,
-      createdAt: ago(7 * DAY),
+      orderId: comp3.id,
+      userId: seller1.id,
+      total: 55400,
+      status: "PAID" as const,
+      paidAt: ago(4 * DAY),
+      stripeTransferId: "tr_test_comp3",
     },
     {
-      userId: sarah.id,
-      type: "DELIVERY_OVERDUE",
-      title: "Has your item arrived?",
-      body: "Your Arc'teryx jacket was expected to arrive 4 days ago. If you haven't received it, let us know.",
-      orderId: disp1.id,
-      link: `/orders/${disp1.id}`,
-      read: false,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: sarah.id,
-      type: "ORDER_DISPUTED",
-      title: "Dispute filed",
-      body: 'Your dispute for iPad Pro 12.9" M2 has been filed. TechHub NZ has 72 hours to respond.',
-      orderId: dispA.id,
-      link: `/orders/${dispA.id}`,
-      read: true,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: emma.id,
-      type: "ORDER_DISPUTED",
-      title: "Dispute filed",
-      body: "Your dispute for Sonos Move 2 has been filed. Peak Outdoors has 72 hours to respond.",
-      orderId: dispB.id,
-      link: `/orders/${dispB.id}`,
-      read: true,
-      createdAt: ago(4 * DAY),
-    },
-    {
-      userId: sarah.id,
-      type: "SYSTEM",
-      title: "Refund processed",
-      body: "Your refund of $144.00 for Vintage NZ Travel Poster has been processed.",
-      orderId: refA.id,
-      link: `/orders/${refA.id}`,
-      read: true,
-      createdAt: ago(12 * DAY),
-    },
-    {
-      userId: emma.id,
-      type: "SYSTEM",
-      title: "Refund processed",
-      body: "Your auto-refund of $929.00 for Perception Pescador 12 Kayak has been processed.",
-      orderId: refB.id,
-      link: `/orders/${refB.id}`,
-      read: true,
-      createdAt: ago(8 * DAY),
-    },
-    {
-      userId: james.id,
-      type: "OFFER_DECLINED",
-      title: "Offer declined",
-      body: "TechHub NZ declined your offer of $1,500.00 on iPhone 15 Pro Max.",
-      listingId: iphone,
-      link: `/listings/${iphone}`,
-      read: true,
-      createdAt: ago(5 * DAY),
-    },
-    {
-      userId: emma.id,
-      type: "ORDER_DISPATCHED",
-      title: "Your KitchenAid is on its way!",
-      body: "Kiwi Home & Style just dispatched your KitchenAid Artisan Stand Mixer.",
-      orderId: disp3.id,
-      link: `/orders/${disp3.id}`,
-      read: false,
-      createdAt: ago(2 * HOUR),
-    },
-    {
-      userId: sarah.id,
-      type: "SYSTEM",
-      title: "Cancellation request submitted",
-      body: "Your cancellation request for Pounamu Greenstone Koru Necklace has been submitted.",
       orderId: ph1.id,
-      link: `/orders/${ph1.id}`,
-      read: false,
-      createdAt: ago(46 * HOUR),
-    },
-    // Seller notifications
-    {
-      userId: rachel.id,
-      type: "ORDER_CREATED",
-      title: "New order!",
-      body: "Sarah Mitchell ordered your Breville Bakery Boss Stand Mixer — dispatch within 3 days.",
-      orderId: comp1.id,
-      link: `/orders/${comp1.id}`,
-      read: true,
-      createdAt: ago(20 * DAY),
-    },
-    {
-      userId: mike.id,
-      type: "ORDER_CREATED",
-      title: "New order!",
-      body: "Emma Wilson ordered your Bose QuietComfort Ultra Headphones — dispatch within 3 days.",
-      orderId: comp2.id,
-      link: `/orders/${comp2.id}`,
-      read: true,
-      createdAt: ago(22 * DAY),
-    },
-    {
-      userId: aroha.id,
-      type: "ORDER_CREATED",
-      title: "New order from Sarah!",
-      body: "Sarah Mitchell ordered your Pounamu Greenstone Koru Necklace — dispatch within 3 days.",
-      orderId: ph1.id,
-      link: `/orders/${ph1.id}`,
-      read: false,
-      createdAt: ago(3 * HOUR),
-    },
-    {
-      userId: rachel.id,
-      type: "ORDER_CREATED",
-      title: "New order!",
-      body: "James Cooper ordered your Original Oil Painting — Milford Sound. Dispatch within 3 days.",
-      orderId: ph2.id,
-      link: `/orders/${ph2.id}`,
-      read: true,
-      createdAt: ago(2 * DAY),
-    },
-    {
-      userId: rachel.id,
-      type: "DISPATCH_REMINDER",
-      title: "Ready to dispatch?",
-      body: "James is waiting for his Original Oil Painting! Please dispatch within 1 day.",
-      orderId: ph2.id,
-      link: `/orders/${ph2.id}`,
-      read: false,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: mike.id,
-      type: "ORDER_DISPUTED",
-      title: "Dispute opened",
-      body: 'Sarah Mitchell has opened a dispute on iPad Pro 12.9" M2: Item damaged. Respond within 72 hours.',
-      orderId: dispA.id,
-      link: `/orders/${dispA.id}`,
-      read: false,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: tom.id,
-      type: "ORDER_DISPUTED",
-      title: "Dispute opened",
-      body: "Emma Wilson has opened a dispute on Sonos Move 2: Item not received. Respond within 72 hours.",
-      orderId: dispB.id,
-      link: `/orders/${dispB.id}`,
-      read: true,
-      createdAt: ago(4 * DAY),
-    },
-    {
-      userId: rachel.id,
-      type: "REVIEW_RECEIVED",
-      title: "New 4.5-star review!",
-      body: "Sarah Mitchell left a 4.5-star review on your Breville Bakery Boss Stand Mixer.",
-      orderId: comp1.id,
-      link: `/orders/${comp1.id}`,
-      read: true,
-      createdAt: ago(13 * DAY),
-    },
-    {
-      userId: mike.id,
-      type: "REVIEW_RECEIVED",
-      title: "New 5-star review!",
-      body: "Emma Wilson left a 5-star review on your Bose QuietComfort Ultra Headphones.",
-      orderId: comp2.id,
-      link: `/orders/${comp2.id}`,
-      read: true,
-      createdAt: ago(14 * DAY),
-    },
-    {
-      userId: mike.id,
-      type: "OFFER_RECEIVED",
-      title: "New offer!",
-      body: 'Sarah Mitchell offered $2,500.00 on your MacBook Pro 14" M3 Pro.',
-      listingId: macbook,
-      link: `/listings/${macbook}`,
-      read: false,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: mike.id,
-      type: "SYSTEM",
-      title: "Cancellation request",
-      body: "James Cooper has requested cancellation on AirPods Pro 2nd Gen.",
-      orderId: canB.id,
-      link: `/orders/${canB.id}`,
-      read: true,
-      createdAt: ago(6 * DAY),
-    },
-    {
-      userId: mike.id,
-      type: "SYSTEM",
-      title: "10 sales milestone!",
-      body: "Congratulations! You've completed 10 sales on KiwiMart. Keep up the great work!",
-      read: true,
-      createdAt: ago(10 * DAY),
-    },
-    {
-      userId: rachel.id,
-      type: "SYSTEM",
-      title: "Cancellation request from James",
-      body: "James Cooper has requested cancellation on Original Oil Painting. Respond within 48 hours.",
-      orderId: ph2.id,
-      link: `/orders/${ph2.id}`,
-      read: false,
-      createdAt: ago(4 * HOUR),
-    },
-    // Admin notifications
-    {
-      userId: superAdmin.id,
-      type: "ADMIN_ALERT",
-      title: "New dispute requires attention",
-      body: 'iPad Pro 12.9" M2 — Item damaged (Sarah vs TechHub NZ)',
-      orderId: dispA.id,
-      link: `/admin/disputes/${dispA.id}`,
-      read: false,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: superAdmin.id,
-      type: "ADMIN_ALERT",
-      title: "Auto-resolution queued",
-      body: "Sonos Move 2 — refund in 24 hours (Emma vs Peak Outdoors)",
-      orderId: dispB.id,
-      link: `/admin/disputes/${dispB.id}`,
-      read: false,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: disputeAdmin.id,
-      type: "ADMIN_ALERT",
-      title: "Dispute needs decision",
-      body: "Handmade Ceramic Vase — both parties responded. Review needed.",
-      orderId: dispC.id,
-      link: `/admin/disputes/${dispC.id}`,
-      read: false,
-      createdAt: ago(3 * DAY),
-    },
-    {
-      userId: superAdmin.id,
-      type: "ADMIN_ALERT",
-      title: "High dispute rate alert",
-      body: "Peak Outdoors has a 25% dispute rate (2 of 8 orders). Monitor closely.",
-      read: true,
-      createdAt: ago(2 * DAY),
-    },
-  ];
-
-  for (const n of notifications) {
-    await db.notification.create({ data: n });
-  }
-
-  console.log(`✅ ${notifications.length} notifications created`);
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // WATCHLIST
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n👀 Creating watchlist items...");
-
-  const watchItems = [
-    { userId: emma.id, listingId: macbook, priceAtWatch: 289900 },
-    { userId: emma.id, listingId: iphone, priceAtWatch: 189900 },
-    { userId: emma.id, listingId: ebike, priceAtWatch: 399900 },
-    { userId: emma.id, listingId: necklace, priceAtWatch: 15900 },
-    { userId: emma.id, listingId: couch, priceAtWatch: 149900 },
-    { userId: sarah.id, listingId: tent, priceAtWatch: 49900 },
-    { userId: sarah.id, listingId: painting, priceAtWatch: 45000 },
-    { userId: sarah.id, listingId: samsung, priceAtWatch: 169900 },
-    { userId: james.id, listingId: kitchenaid, priceAtWatch: 59900 },
-    { userId: james.id, listingId: kayak, priceAtWatch: 89900 },
-  ];
-
-  for (const w of watchItems) {
-    await db.watchlistItem.create({
-      data: {
-        ...w,
-        priceAlertEnabled: true,
-        createdAt: ago(Math.random() * 10 * DAY),
-      },
-    });
-  }
-
-  console.log("✅ 10 watchlist items created");
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // PAYOUTS
-  // ══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n💸 Creating payouts...");
-
-  const payoutOrders = [
-    { order: comp1, sellerId: rachel.id, status: "PAID" as const, daysAgo: 10 },
-    { order: comp2, sellerId: mike.id, status: "PAID" as const, daysAgo: 12 },
-    { order: comp3, sellerId: aroha.id, status: "PAID" as const, daysAgo: 8 },
-    { order: comp4, sellerId: mike.id, status: "PAID" as const, daysAgo: 6 },
-    { order: comp5, sellerId: tom.id, status: "PAID" as const, daysAgo: 5 },
-    { order: comp6, sellerId: mike.id, status: "PAID" as const, daysAgo: 9 },
-    {
-      order: disp3,
-      sellerId: rachel.id,
+      userId: seller3.id,
+      total: 150700,
       status: "PENDING" as const,
-      daysAgo: 0,
+      paidAt: null as Date | null,
+      stripeTransferId: null as string | null,
     },
     {
-      order: disp2,
-      sellerId: aroha.id,
+      orderId: disp2.id,
+      userId: seller3.id,
+      total: 60900,
       status: "PENDING" as const,
-      daysAgo: 0,
+      paidAt: null as Date | null,
+      stripeTransferId: null as string | null,
+    },
+    {
+      orderId: pickup4.id,
+      userId: seller4.id,
+      total: 185000,
+      status: "PAID" as const,
+      paidAt: ago(4 * DAY),
+      stripeTransferId: "tr_test_pickup4",
     },
   ];
 
-  for (const p of payoutOrders) {
-    const amount = p.order.totalNzd;
-    const platformFee = Math.round(amount * 0.1);
-    const stripeFee = Math.round(amount * 0.029) + 30;
+  for (const p of payoutsData) {
     await db.payout.create({
       data: {
-        orderId: p.order.id,
-        userId: p.sellerId,
-        amountNzd: amount - platformFee,
-        platformFeeNzd: platformFee,
-        stripeFeeNzd: stripeFee,
+        orderId: p.orderId,
+        userId: p.userId,
+        amountNzd: net(p.total),
+        platformFeeNzd: platformFee(p.total),
+        stripeFeeNzd: stripeFee(p.total),
         status: p.status,
-        initiatedAt: p.status === "PAID" ? ago(p.daysAgo * DAY) : null,
-        paidAt: p.status === "PAID" ? ago((p.daysAgo - 1) * DAY) : null,
-        createdAt:
-          p.status === "PAID" ? ago((p.daysAgo + 2) * DAY) : ago(1 * DAY),
+        stripeTransferId: p.stripeTransferId,
+        initiatedAt: p.status === "PAID" ? ago(15 * DAY) : null,
+        paidAt: p.paidAt,
       },
     });
   }
 
-  console.log("✅ 8 payouts created (6 paid, 2 pending)");
+  console.log(`✅ ${payoutsData.length} payouts created`);
+}
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // AUDIT LOGS
-  // ══════════════════════════════════════════════════════════════════════════
+// ─── Offers ──────────────────────────────────────────────────────────────────
 
-  console.log("\n📝 Creating audit logs...");
+async function seedOffers(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  listings: Awaited<ReturnType<typeof seedListings>>,
+) {
+  console.log("🤝 Creating offers...");
+  const { buyer1, buyer2, buyer3, seller1, seller3 } = users;
+  const { listingMacbook, listingIphone, listingKayak, listingTent } = listings;
 
-  const auditLogs = [
-    {
-      userId: sarah.id,
-      action: "USER_LOGIN" as const,
-      entityType: "User",
-      entityId: sarah.id,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: mike.id,
-      action: "USER_LOGIN" as const,
-      entityType: "User",
-      entityId: mike.id,
-      createdAt: ago(2 * HOUR),
-    },
-    {
-      userId: mike.id,
-      action: "LISTING_CREATED" as const,
-      entityType: "Listing",
-      entityId: iphone,
-      createdAt: ago(7 * DAY),
-    },
-    {
-      userId: rachel.id,
-      action: "LISTING_CREATED" as const,
-      entityType: "Listing",
-      entityId: couch,
-      createdAt: ago(7 * DAY),
-    },
-    {
-      userId: sarah.id,
-      action: "ORDER_CREATED" as const,
-      entityType: "Order",
-      entityId: comp1.id,
-      createdAt: ago(20 * DAY),
-    },
-    {
-      userId: emma.id,
-      action: "ORDER_CREATED" as const,
-      entityType: "Order",
-      entityId: comp2.id,
-      createdAt: ago(22 * DAY),
-    },
-    {
-      userId: sarah.id,
-      action: "DISPUTE_OPENED" as const,
-      entityType: "Order",
-      entityId: dispA.id,
-      createdAt: ago(1 * DAY),
-    },
-    {
-      userId: emma.id,
-      action: "DISPUTE_OPENED" as const,
-      entityType: "Order",
-      entityId: dispB.id,
-      createdAt: ago(4 * DAY),
-    },
-    {
-      userId: disputeAdmin.id,
-      action: "DISPUTE_RESOLVED" as const,
-      entityType: "Order",
-      entityId: refA.id,
-      metadata: { favour: "buyer" },
-      createdAt: ago(12 * DAY),
-    },
-    {
-      userId: superAdmin.id,
-      action: "ADMIN_ACTION" as const,
-      entityType: "User",
-      entityId: mike.id,
-      metadata: { action: "approve_seller" },
-      createdAt: ago(10 * DAY),
-    },
-    {
-      userId: mike.id,
-      action: "SELLER_TERMS_ACCEPTED" as const,
-      entityType: "User",
-      entityId: mike.id,
-      createdAt: ago(90 * DAY),
-    },
-    {
-      userId: james.id,
-      action: "CART_CHECKOUT" as const,
-      entityType: "Order",
-      entityId: canB.id,
-      createdAt: ago(7 * DAY),
-    },
-    {
-      userId: rachel.id,
-      action: "DISPUTE_SELLER_RESPONDED" as const,
-      entityType: "Order",
-      entityId: dispC.id,
-      createdAt: ago(4 * DAY),
-    },
-    {
-      userId: superAdmin.id,
-      action: "ADMIN_ACTION" as const,
-      entityType: "Report",
-      entityId: "report_resolved",
-      metadata: { action: "resolve_report" },
-      createdAt: ago(6 * DAY),
-    },
-    {
-      userId: mike.id,
-      action: "LISTING_UPDATED" as const,
-      entityType: "Listing",
-      entityId: macbook,
-      createdAt: ago(3 * DAY),
-    },
-    {
-      userId: sarah.id,
-      action: "USER_REGISTER" as const,
-      entityType: "User",
-      entityId: sarah.id,
-      createdAt: ago(45 * DAY),
-    },
-    {
-      userId: emma.id,
-      action: "PAYMENT_COMPLETED" as const,
-      entityType: "Order",
-      entityId: comp2.id,
-      createdAt: ago(22 * DAY),
-    },
-  ];
+  await db.offer.createMany({
+    data: [
+      {
+        listingId: listingMacbook.id,
+        buyerId: buyer1.id,
+        sellerId: seller1.id,
+        amountNzd: 265000,
+        note: "Would you take $2,650? I can pay immediately.",
+        status: "PENDING",
+        expiresAt: future(2 * DAY),
+        createdAt: ago(3 * HOUR),
+      },
+      {
+        listingId: listingIphone.id,
+        buyerId: buyer2.id,
+        sellerId: seller1.id,
+        amountNzd: 175000,
+        note: "Happy to pay $1,750 — firm.",
+        status: "PENDING",
+        expiresAt: future(1 * DAY),
+        createdAt: ago(5 * HOUR),
+      },
+      {
+        listingId: listingKayak.id,
+        buyerId: buyer3.id,
+        sellerId: seller3.id,
+        amountNzd: 82000,
+        note: "Would you accept $820?",
+        status: "ACCEPTED",
+        expiresAt: future(2 * DAY),
+        paymentDeadline: future(1 * DAY),
+        respondedAt: ago(2 * HOUR),
+        createdAt: ago(1 * DAY),
+      },
+      {
+        listingId: listingTent.id,
+        buyerId: buyer1.id,
+        sellerId: seller3.id,
+        amountNzd: 38000,
+        note: "Can you do $380?",
+        status: "DECLINED",
+        expiresAt: future(1 * DAY),
+        respondedAt: ago(4 * HOUR),
+        declineNote:
+          "Sorry, lowest I can do is $450 — it's a great tent worth every cent.",
+        createdAt: ago(1 * DAY),
+      },
+      {
+        listingId: listingMacbook.id,
+        buyerId: buyer2.id,
+        sellerId: seller1.id,
+        amountNzd: 250000,
+        status: "EXPIRED",
+        expiresAt: ago(1 * HOUR),
+        createdAt: ago(3 * DAY),
+      },
+    ],
+  });
 
-  for (const log of auditLogs) {
-    await db.auditLog.create({ data: log });
-  }
+  console.log("✅ 5 offers created");
+}
 
-  console.log(`✅ ${auditLogs.length} audit log entries created`);
+// ─── Messages ────────────────────────────────────────────────────────────────
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // REPORTS
-  // ══════════════════════════════════════════════════════════════════════════
+async function seedMessages(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  listings: Awaited<ReturnType<typeof seedListings>>,
+) {
+  console.log("💬 Creating messages...");
+  const { buyer1, buyer2, seller1, seller3 } = users;
+  const { listingMacbook, listingKayak } = listings;
 
-  console.log("\n🚩 Creating reports...");
-
-  await db.report.create({
+  const t1 = await db.messageThread.create({
     data: {
-      reporterId: sarah.id,
-      listingId: iphone,
-      reason: "COUNTERFEIT",
-      description:
-        "This iPhone listing seems suspicious. The price is too good and the seller photos look stock. Please verify authenticity.",
-      status: "OPEN",
-      createdAt: ago(2 * DAY),
+      participant1Id: buyer1.id,
+      participant2Id: seller1.id,
+      listingId: listingMacbook.id,
+      lastMessageAt: ago(2 * HOUR),
+    },
+  });
+  await db.message.createMany({
+    data: [
+      {
+        threadId: t1.id,
+        senderId: buyer1.id,
+        body: "Hi! What is the battery health on the MacBook?",
+        createdAt: ago(5 * HOUR),
+      },
+      {
+        threadId: t1.id,
+        senderId: seller1.id,
+        body: "Hi Sarah! Battery health is 97% — barely used. It is a fantastic machine.",
+        read: true,
+        readAt: ago(4 * HOUR),
+        createdAt: ago(4 * HOUR),
+      },
+      {
+        threadId: t1.id,
+        senderId: buyer1.id,
+        body: "That is great. Would you take $2,700?",
+        createdAt: ago(3 * HOUR),
+      },
+      {
+        threadId: t1.id,
+        senderId: seller1.id,
+        body: "I could do $2,750 — that is my best price. It is worth it!",
+        read: false,
+        createdAt: ago(2 * HOUR),
+      },
+    ],
+  });
+
+  const t2 = await db.messageThread.create({
+    data: {
+      participant1Id: buyer2.id,
+      participant2Id: seller3.id,
+      listingId: listingKayak.id,
+      lastMessageAt: ago(1 * DAY),
+    },
+  });
+  await db.message.createMany({
+    data: [
+      {
+        threadId: t2.id,
+        senderId: buyer2.id,
+        body: "Hi! Does the kayak come with a paddle? And how old are the hatches?",
+        createdAt: ago(1 * DAY + 3 * HOUR),
+      },
+      {
+        threadId: t2.id,
+        senderId: seller3.id,
+        body: "Yes it comes with a Werner paddle worth $300. Hatches are original and seal well. Had it 3 years but it is stored inside.",
+        read: true,
+        readAt: ago(1 * DAY + 1 * HOUR),
+        createdAt: ago(1 * DAY + 2 * HOUR),
+      },
+      {
+        threadId: t2.id,
+        senderId: buyer2.id,
+        body: "Great, that sounds good. Can I come to view it this weekend?",
+        createdAt: ago(1 * DAY + 1 * HOUR),
+      },
+      {
+        threadId: t2.id,
+        senderId: seller3.id,
+        body: "Sure, Saturday morning works. I am in Queenstown. Let me know what time suits.",
+        read: false,
+        createdAt: ago(1 * DAY),
+      },
+    ],
+  });
+
+  console.log("✅ 2 message threads, 8 messages created");
+}
+
+// ─── Watchlist ────────────────────────────────────────────────────────────────
+
+async function seedWatchlist(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  listings: Awaited<ReturnType<typeof seedListings>>,
+) {
+  console.log("👀 Creating watchlist items...");
+  const { buyer1, buyer2, buyer3 } = users;
+  const {
+    listingMacbook,
+    listingIphone,
+    listingKayak,
+    listingTent,
+    listingSamsungTv,
+    listingPickupBike,
+  } = listings;
+
+  await db.watchlistItem.createMany({
+    data: [
+      {
+        userId: buyer1.id,
+        listingId: listingIphone.id,
+        priceAtWatch: 189900,
+        priceAlertEnabled: true,
+        createdAt: ago(2 * DAY),
+      },
+      {
+        userId: buyer1.id,
+        listingId: listingSamsungTv.id,
+        priceAtWatch: 159900,
+        priceAlertEnabled: true,
+        createdAt: ago(3 * DAY),
+      },
+      {
+        userId: buyer2.id,
+        listingId: listingMacbook.id,
+        priceAtWatch: 289900,
+        priceAlertEnabled: true,
+        createdAt: ago(1 * DAY),
+      },
+      {
+        userId: buyer2.id,
+        listingId: listingKayak.id,
+        priceAtWatch: 89900,
+        priceAlertEnabled: false,
+        createdAt: ago(4 * DAY),
+      },
+      {
+        userId: buyer3.id,
+        listingId: listingTent.id,
+        priceAtWatch: 49900,
+        priceAlertEnabled: true,
+        createdAt: ago(2 * DAY),
+      },
+      {
+        userId: buyer3.id,
+        listingId: listingPickupBike.id,
+        priceAtWatch: 185000,
+        priceAlertEnabled: true,
+        createdAt: ago(1 * DAY),
+      },
+    ],
+  });
+
+  console.log("✅ 6 watchlist items created");
+}
+
+// ─── Order Interactions ───────────────────────────────────────────────────────
+
+async function seedInteractions(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  orders: Awaited<ReturnType<typeof seedOrders>>,
+) {
+  console.log("🤝 Creating order interactions...");
+  const { buyer1, buyer2 } = users;
+  const { ph2, disp1 } = orders;
+
+  await db.orderInteraction.createMany({
+    data: [
+      {
+        orderId: ph2.id,
+        type: "CANCEL_REQUEST",
+        status: "PENDING",
+        initiatedById: buyer1.id,
+        initiatorRole: "BUYER",
+        reason:
+          "The seller has not dispatched after 2 days. I need this for work and have found another option.",
+        expiresAt: future(24 * HOUR),
+        autoAction: "AUTO_ESCALATE",
+        createdAt: ago(3 * HOUR),
+      },
+      {
+        orderId: disp1.id,
+        type: "RETURN_REQUEST",
+        status: "PENDING",
+        initiatedById: buyer2.id,
+        initiatorRole: "BUYER",
+        reason:
+          "Item has not arrived after 7 days. Estimated delivery was 4 days ago.",
+        expiresAt: future(48 * HOUR),
+        autoAction: "AUTO_ESCALATE",
+        createdAt: ago(1 * HOUR),
+      },
+    ],
+  });
+
+  console.log("✅ 2 order interactions created");
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+async function seedNotifications(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  orders: Awaited<ReturnType<typeof seedOrders>>,
+) {
+  console.log("🔔 Creating notifications...");
+  const {
+    buyer1,
+    buyer2,
+    buyer3,
+    seller1,
+    seller2,
+    seller3,
+    seller4,
+    superAdmin,
+    disputesAdmin,
+  } = users;
+  const { comp1, ph1, dispA, dispB, pickup1, pickup2, refA } = orders;
+
+  await db.notification.createMany({
+    data: [
+      // Buyer notifications
+      {
+        userId: buyer1.id,
+        type: "ORDER_COMPLETED",
+        title: "Order completed",
+        body: "Your order for Sony WH-1000XM5 Headphones has been completed.",
+        link: `/orders/${comp1.id}`,
+        orderId: comp1.id,
+        createdAt: ago(14 * DAY),
+      },
+      {
+        userId: buyer1.id,
+        type: "ORDER_DISPUTED",
+        title: "Dispute update",
+        body: "Your dispute for Sony WH-1000XM5 Headphones has been resolved in your favour. A full refund is being processed.",
+        link: `/orders/${refA.id}`,
+        orderId: refA.id,
+        createdAt: ago(15 * DAY),
+      },
+      {
+        userId: buyer2.id,
+        type: "ORDER_DISPUTED",
+        title: "Dispute opened",
+        body: "Your dispute has been received. The seller has 72 hours to respond.",
+        link: `/orders/${dispA.id}`,
+        orderId: dispA.id,
+        createdAt: ago(1 * DAY),
+      },
+      {
+        userId: buyer3.id,
+        type: "ORDER_PLACED",
+        title: "Pickup order placed",
+        body: "Your pickup order has been placed. Arrange a pickup time with the seller.",
+        link: `/orders/${pickup1.id}`,
+        orderId: pickup1.id,
+        read: false,
+        createdAt: ago(2 * DAY),
+      },
+      {
+        userId: buyer2.id,
+        type: "SYSTEM",
+        title: "Pickup OTP ready",
+        body: "Your seller has initiated pickup confirmation. Check your SMS for the 6-digit code.",
+        link: `/orders/${pickup2.id}`,
+        orderId: pickup2.id,
+        read: false,
+        createdAt: ago(5 * MIN),
+      },
+      // Seller notifications
+      {
+        userId: seller1.id,
+        type: "ORDER_PLACED",
+        title: "New order received",
+        body: "Sarah Mitchell has purchased your Sony WH-1000XM5 Headphones.",
+        link: `/orders/${comp1.id}`,
+        orderId: comp1.id,
+        read: true,
+        createdAt: ago(22 * DAY),
+      },
+      {
+        userId: seller3.id,
+        type: "ORDER_PLACED",
+        title: "New order received",
+        body: "Emma Thompson has purchased your iPad Pro 12.9-inch.",
+        link: `/orders/${ph1.id}`,
+        orderId: ph1.id,
+        read: false,
+        createdAt: ago(3 * HOUR),
+      },
+      {
+        userId: seller3.id,
+        type: "ORDER_DISPUTED",
+        title: "Dispute opened against you",
+        body: "James Chen has opened a dispute for your iPad Pro 12.9-inch order. Please respond within 72 hours.",
+        link: `/orders/${dispA.id}`,
+        orderId: dispA.id,
+        read: false,
+        createdAt: ago(1 * DAY),
+      },
+      {
+        userId: seller1.id,
+        type: "ORDER_DISPUTED",
+        title: "Dispute opened against you",
+        body: "Emma Thompson has opened a dispute for your Sonos Move 2 order.",
+        link: `/orders/${dispB.id}`,
+        orderId: dispB.id,
+        read: false,
+        createdAt: ago(5 * DAY),
+      },
+      {
+        userId: seller2.id,
+        type: "LISTING_NEEDS_CHANGES",
+        title: "Action required on your listing",
+        body: "Your listing 'Kids Bike 20 inch' needs changes before it can go live.",
+        read: false,
+        createdAt: ago(3 * HOUR),
+      },
+      {
+        userId: seller4.id,
+        type: "ORDER_PLACED",
+        title: "New pickup order",
+        body: "Emma Thompson has placed a pickup order for your Kathmandu Epiq Down Jacket.",
+        link: `/orders/${pickup1.id}`,
+        orderId: pickup1.id,
+        read: false,
+        createdAt: ago(2 * DAY),
+      },
+      // Admin notifications
+      {
+        userId: superAdmin.id,
+        type: "SYSTEM",
+        title: "New listing in moderation queue",
+        body: "A high-risk listing (score: 80) has been flagged for review.",
+        link: "/admin/listings",
+        read: false,
+        createdAt: ago(1 * HOUR),
+      },
+      {
+        userId: disputesAdmin.id,
+        type: "SYSTEM",
+        title: "New dispute requiring review",
+        body: "James Chen has opened a dispute for an iPad Pro order. Seller has not responded.",
+        read: false,
+        createdAt: ago(1 * DAY),
+      },
+      {
+        userId: superAdmin.id,
+        type: "SYSTEM",
+        title: "Seller high dispute rate alert",
+        body: "Tom Wilson (tom_outdoors) has a dispute rate of 33.3% — above the 15% downgrade threshold.",
+        link: "/admin/sellers",
+        read: false,
+        createdAt: ago(6 * HOUR),
+      },
+    ],
+  });
+
+  console.log("✅ 14 notifications created");
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+async function seedAuditLogs(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  orders: Awaited<ReturnType<typeof seedOrders>>,
+  listings: Awaited<ReturnType<typeof seedListings>>,
+) {
+  console.log("📝 Creating audit logs...");
+  const {
+    buyer1,
+    buyer2,
+    seller1,
+    seller2,
+    seller3,
+    superAdmin,
+    disputesAdmin,
+  } = users;
+
+  await db.auditLog.createMany({
+    data: [
+      {
+        userId: buyer1.id,
+        action: "USER_REGISTER",
+        entityType: "User",
+        entityId: buyer1.id,
+        createdAt: ago(30 * DAY),
+      },
+      {
+        userId: seller1.id,
+        action: "SELLER_TERMS_ACCEPTED",
+        entityType: "User",
+        entityId: seller1.id,
+        createdAt: ago(88 * DAY),
+      },
+      {
+        userId: superAdmin.id,
+        action: "SELLER_VERIFICATION_APPROVED",
+        entityType: "User",
+        entityId: seller1.id,
+        metadata: { action: "approve_id_verification" },
+        createdAt: ago(80 * DAY),
+      },
+      {
+        userId: buyer1.id,
+        action: "ORDER_CREATED",
+        entityType: "Order",
+        entityId: orders.comp1.id,
+        createdAt: ago(22 * DAY),
+      },
+      {
+        userId: buyer2.id,
+        action: "DISPUTE_OPENED",
+        entityType: "Order",
+        entityId: orders.dispA.id,
+        createdAt: ago(1 * DAY),
+      },
+      {
+        userId: disputesAdmin.id,
+        action: "DISPUTE_RESOLVED",
+        entityType: "Order",
+        entityId: orders.refA.id,
+        metadata: { favour: "buyer", refundAmount: 43500 },
+        createdAt: ago(15 * DAY),
+      },
+      {
+        userId: seller1.id,
+        action: "LISTING_CREATED",
+        entityType: "Listing",
+        entityId: listings.listingMacbook.id,
+        createdAt: ago(8 * DAY),
+      },
+      {
+        userId: seller2.id,
+        action: "LISTING_CREATED",
+        entityType: "Listing",
+        entityId: listings.listingPendingReview.id,
+        createdAt: ago(2 * HOUR),
+      },
+      {
+        userId: superAdmin.id,
+        action: "LISTING_NEEDS_CHANGES",
+        entityType: "Listing",
+        entityId: listings.listingNeedsChanges.id,
+        metadata: { reason: "Short description and insufficient photos" },
+        createdAt: ago(3 * HOUR),
+      },
+      {
+        userId: buyer1.id,
+        action: "USER_LOGIN",
+        entityType: "User",
+        entityId: buyer1.id,
+        createdAt: ago(1 * HOUR),
+      },
+      {
+        userId: seller3.id,
+        action: "USER_LOGIN",
+        entityType: "User",
+        entityId: seller3.id,
+        createdAt: ago(2 * HOUR),
+      },
+      {
+        userId: superAdmin.id,
+        action: "PLATFORM_CONFIG_UPDATED",
+        entityType: "PlatformConfig",
+        entityId: "seller.tier.gold.min_sales",
+        metadata: {
+          oldValue: "50",
+          newValue: "50",
+          label: "Gold tier — min sales",
+        },
+        createdAt: ago(5 * DAY),
+      },
+    ],
+  });
+
+  console.log("✅ 12 audit log entries created");
+}
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+
+async function seedReports(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+  listings: Awaited<ReturnType<typeof seedListings>>,
+) {
+  console.log("🚩 Creating reports...");
+  const { buyer1, buyer2, seller3, superAdmin } = users;
+  const { listingHighRisk, listingKayak } = listings;
+
+  await db.report.createMany({
+    data: [
+      {
+        reporterId: buyer1.id,
+        listingId: listingHighRisk.id,
+        reason: "COUNTERFEIT",
+        description:
+          "This Rolex listing looks suspicious. The price seems too low for a genuine Rolex Submariner and the photos appear to be stock images. Requesting verification.",
+        status: "OPEN",
+        createdAt: ago(1 * HOUR),
+      },
+      {
+        reporterId: buyer2.id,
+        targetUserId: seller3.id,
+        reason: "SCAM",
+        description:
+          "I had a very bad experience with this seller. My item was not as described and they have been unresponsive to my dispute. I believe they may be operating fraudulently based on their dispute history.",
+        status: "REVIEWING",
+        createdAt: ago(3 * DAY),
+      },
+      {
+        reporterId: buyer1.id,
+        listingId: listingKayak.id,
+        reason: "SPAM",
+        description: "This listing seems to have been reposted multiple times.",
+        status: "RESOLVED",
+        resolvedBy: superAdmin.id,
+        resolvedAt: ago(2 * DAY),
+        resolvedNote:
+          "Verified with seller — this is the first and only listing for this item. Report dismissed.",
+        createdAt: ago(4 * DAY),
+      },
+    ],
+  });
+
+  console.log("✅ 3 reports created");
+}
+
+// ─── Verification Applications ────────────────────────────────────────────────
+
+async function seedVerificationApplications(
+  users: Awaited<ReturnType<typeof seedUsers>>,
+) {
+  console.log("🔐 Creating verification applications...");
+  const { seller1, seller4, superAdmin } = users;
+
+  await db.verificationApplication.create({
+    data: {
+      sellerId: seller1.id,
+      status: "APPROVED",
+      appliedAt: ago(82 * DAY),
+      reviewedAt: ago(80 * DAY),
+      reviewedBy: superAdmin.id,
+      adminNotes:
+        "All documents verified. Passport matches face in selfie. Approved.",
+      documentType: "PASSPORT",
+      documentFrontKey: `verifications/${seller1.id}/passport-front.webp`,
+      selfieKey: `verifications/${seller1.id}/selfie.webp`,
     },
   });
 
-  await db.report.create({
+  await db.verificationApplication.create({
     data: {
-      reporterId: emma.id,
-      targetUserId: tom.id,
-      reason: "OTHER",
-      description:
-        "This seller has been very unresponsive and I suspect they may be selling items they don't actually have.",
-      status: "REVIEWING",
-      createdAt: ago(5 * DAY),
+      sellerId: seller4.id,
+      status: "APPROVED",
+      appliedAt: ago(42 * DAY),
+      reviewedAt: ago(40 * DAY),
+      reviewedBy: superAdmin.id,
+      adminNotes: "Drivers licence verified. Selfie matches. Approved.",
+      documentType: "DRIVERS_LICENSE",
+      documentFrontKey: `verifications/${seller4.id}/licence-front.webp`,
+      documentBackKey: `verifications/${seller4.id}/licence-back.webp`,
+      selfieKey: `verifications/${seller4.id}/selfie.webp`,
     },
   });
 
-  await db.report.create({
-    data: {
-      reporterId: james.id,
-      listingId: macbook,
-      reason: "SPAM",
-      description:
-        "This listing was reposted multiple times with different titles. Seems like spam.",
-      status: "RESOLVED",
-      resolvedBy: superAdmin.id,
-      resolvedAt: ago(6 * DAY),
-      resolvedNote:
-        "Listing appears legitimate. Seller was re-listing after price change. No action needed.",
-      createdAt: ago(8 * DAY),
-    },
-  });
+  console.log("✅ 2 verification applications created");
+}
 
-  console.log("✅ 3 reports created (1 open, 1 reviewing, 1 resolved)");
+// ─── Main ────────────────────────────────────────────────────────────────────
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // DONE
-  // ══════════════════════════════════════════════════════════════════════════
+async function main() {
+  await wipeDatabase();
+  await seedCategories();
+  const users = await seedUsers();
+  const listings = await seedListings(users);
+  const orders = await seedOrders(users, listings);
+  await seedTrustMetrics(users);
+  await seedReviews(users, orders);
+  await seedPayouts(users, orders);
+  await seedOffers(users, listings);
+  await seedMessages(users, listings);
+  await seedWatchlist(users, listings);
+  await seedInteractions(users, orders);
+  await seedNotifications(users, orders);
+  await seedAuditLogs(users, orders, listings);
+  await seedReports(users, listings);
+  await seedVerificationApplications(users);
 
-  console.log("\n════════════════════════════════════════════════════════════");
-  console.log("🥝 KiwiMart seed complete!");
-  console.log("════════════════════════════════════════════════════════════");
-
-  // Final counts
-  const counts = await Promise.all([
-    db.user.count(),
-    db.listing.count(),
-    db.order.count(),
-    db.orderEvent.count(),
-    db.orderInteraction.count(),
-    db.review.count(),
-    db.offer.count(),
-    db.messageThread.count(),
-    db.message.count(),
-    db.notification.count(),
-    db.watchlistItem.count(),
-    db.payout.count(),
-    db.auditLog.count(),
-    db.report.count(),
-    db.trustMetrics.count(),
-  ]);
-
-  console.log(`
-Users:              ${counts[0]}
-Listings:           ${counts[1]}
-Orders:             ${counts[2]}
-Order Events:       ${counts[3]}
-Order Interactions: ${counts[4]}
-Reviews:            ${counts[5]}
-Offers:             ${counts[6]}
-Message Threads:    ${counts[7]}
-Messages:           ${counts[8]}
-Notifications:      ${counts[9]}
-Watchlist Items:    ${counts[10]}
-Payouts:            ${counts[11]}
-Audit Logs:         ${counts[12]}
-Reports:            ${counts[13]}
-Trust Metrics:      ${counts[14]}
-`);
-
-  // Seed platform configuration defaults
+  // Platform config and dynamic lists
   const { seedPlatformConfig } =
     await import("../src/lib/platform-config/config-seed");
   await seedPlatformConfig(db as never);
 
-  // Seed dynamic lists defaults
   const { seedDynamicLists } =
     await import("../src/lib/dynamic-lists/dynamic-list-seed");
   await seedDynamicLists(db as never);
 
-  console.log("Credentials:");
-  console.log("  Buyers:  sarah@kiwimart.test / BuyerPass123!");
-  console.log("           james@kiwimart.test / BuyerPass123!");
-  console.log("           emma@kiwimart.test  / BuyerPass123!");
-  console.log("  Sellers: techhub@kiwimart.test  / SellerPass123!");
-  console.log("           kiwihome@kiwimart.test / SellerPass123!");
-  console.log("           peak@kiwimart.test     / SellerPass123!");
-  console.log("           stylenz@kiwimart.test  / SellerPass123!");
-  console.log("  Admins:  admin@kiwimart.test     / AdminPass123!");
-  console.log("           disputes@kiwimart.test  / AdminPass123!");
-  console.log("           content@kiwimart.test   / AdminPass123!");
-  console.log("           finance@kiwimart.test   / AdminPass123!");
+  // Final counts
+  const [
+    userCount,
+    listingCount,
+    orderCount,
+    disputeCount,
+    evidenceCount,
+    snapshotCount,
+    eventCount,
+    reviewCount,
+    offerCount,
+    messageCount,
+    payoutCount,
+    configCount,
+    listItemCount,
+  ] = await Promise.all([
+    db.user.count(),
+    db.listing.count(),
+    db.order.count(),
+    db.dispute.count(),
+    db.disputeEvidence.count(),
+    db.listingSnapshot.count(),
+    db.orderEvent.count(),
+    db.review.count(),
+    db.offer.count(),
+    db.message.count(),
+    db.payout.count(),
+    db.platformConfig.count(),
+    db.dynamicListItem.count(),
+  ]);
+
+  const pickupCount = await db.order.count({
+    where: { fulfillmentType: { not: "SHIPPED" } },
+  });
+  const disputedCount = await db.order.count({
+    where: { status: "DISPUTED" },
+  });
+  const pendingListings = await db.listing.count({
+    where: { status: "PENDING_REVIEW" },
+  });
+
+  console.log(`
+════════════════════════════════════════════════════════════
+🛒  Buyzi seed complete!
+════════════════════════════════════════════════════════════
+Users:                  ${userCount} (3 buyers, 4 sellers, 4 admins)
+Listings:               ${listingCount}
+  └─ Pending review:    ${pendingListings}
+Orders:                 ${orderCount}
+  └─ Pickup orders:     ${pickupCount}
+  └─ Disputed:          ${disputedCount}
+Disputes:               ${disputeCount}
+Dispute Evidence:       ${evidenceCount}
+Listing Snapshots:      ${snapshotCount}
+Order Events:           ${eventCount}
+Reviews:                ${reviewCount}
+Offers:                 ${offerCount}
+Messages:               ${messageCount}
+Payouts:                ${payoutCount}
+Platform Config:        ${configCount} keys
+Dynamic List Items:     ${listItemCount}
+════════════════════════════════════════════════════════════
+
+Test credentials:
+  Buyers:
+    sarah@buyzi.test   / BuyerPass123!   (active orders, dispute history)
+    james@buyzi.test   / BuyerPass123!   (open dispute, pickup OTP active)
+    emma@buyzi.test    / BuyerPass123!   (pickup orders, new order)
+
+  Sellers:
+    mike@buyzi.test    / SellerPass123!  (Gold tier, ID verified, 55 sales)
+    rachel@buyzi.test  / SellerPass123!  (New L1 seller, listings in queue)
+    tom@buyzi.test     / SellerPass123!  (High dispute rate 33%, 4 disputes)
+    aroha@buyzi.test   / SellerPass123!  (Pickup specialist, ID verified)
+
+  Admins:
+    admin@buyzi.test    / AdminPass123!  (Super admin — full access)
+    disputes@buyzi.test / AdminPass123!  (Disputes admin)
+    content@buyzi.test  / AdminPass123!  (Content/Trust & Safety admin)
+    finance@buyzi.test  / AdminPass123!  (Finance admin)
+
+  ℹ️  Active pickup OTP: james@buyzi.test order — code is 123456
+════════════════════════════════════════════════════════════
+  `);
 }
 
 main()
