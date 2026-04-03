@@ -100,10 +100,9 @@ export default function NavBar() {
     ? {
         displayName: session.user.name ?? session.user.email ?? "Account",
         email: session.user.email ?? "",
-        sellerEnabled:
-          (session.user as { sellerEnabled?: boolean }).sellerEnabled ?? false,
+        sellerEnabled: session.user.sellerEnabled,
         avatarUrl: session.user.image ?? null,
-        isAdmin: (session.user as { isAdmin?: boolean }).isAdmin ?? false,
+        isAdmin: session.user.isAdmin,
       }
     : null;
 
