@@ -15,6 +15,7 @@
 import { headers } from "next/headers";
 import crypto from "crypto";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { hashPassword } from "@/server/lib/password";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { verifyTurnstile } from "@/server/lib/turnstile";
@@ -78,11 +79,8 @@ export async function registerUser(
   }
 
   // 5b. Check email uniqueness
-  const existingEmail = await db.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true },
-  });
-  if (existingEmail) {
+  const emailTaken = await userRepository.existsByEmail(normalizedEmail);
+  if (emailTaken) {
     // Return the same error for email/username to prevent enumeration
     return {
       success: false,
@@ -93,11 +91,8 @@ export async function registerUser(
 
   // 5c. Check username uniqueness
   const username = generateUsername(data.firstName, data.lastName);
-  const existingUsername = await db.user.findUnique({
-    where: { username },
-    select: { id: true },
-  });
-  const finalUsername = existingUsername
+  const usernameTaken = await userRepository.existsByUsername(username);
+  const finalUsername = usernameTaken
     ? `${username}${Math.floor(Math.random() * 9000) + 1000}`
     : username;
 
@@ -109,18 +104,15 @@ export async function registerUser(
   const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   // 5f. Create user with verification token
-  const user = await db.user.create({
-    data: {
-      email: normalizedEmail,
-      username: finalUsername,
-      displayName: `${data.firstName} ${data.lastName}`,
-      passwordHash,
-      agreeMarketing: data.agreeMarketing,
-      agreedTermsAt: new Date(),
-      emailVerifyToken: verifyToken,
-      emailVerifyExpires: verifyExpires,
-    },
-    select: { id: true, email: true, displayName: true },
+  const user = await userRepository.create({
+    email: normalizedEmail,
+    username: finalUsername,
+    displayName: `${data.firstName} ${data.lastName}`,
+    passwordHash,
+    agreeMarketing: data.agreeMarketing,
+    agreedTermsAt: new Date(),
+    emailVerifyToken: verifyToken,
+    emailVerifyExpires: verifyExpires,
   });
 
   // 5g. Send verification email (non-blocking; welcome email sent after verification)
@@ -185,10 +177,7 @@ export async function requestPasswordReset(
   }
 
   // 5b. Look up user — NEVER reveal whether email exists (user enumeration)
-  const user = await db.user.findUnique({
-    where: { email },
-    select: { id: true, email: true, displayName: true },
-  });
+  const user = await userRepository.findByEmail(email);
 
   // Always return success to prevent user enumeration
   if (user) {
@@ -295,18 +284,19 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
 
   // 5c. Hash new password and update user
   const newHash = await hashPassword(password);
-  await db.$transaction([
-    db.user.update({
-      where: { id: resetRecord.userId },
-      data: { passwordHash: newHash },
-    }),
-    db.passwordResetToken.update({
+  await db.$transaction(async (tx) => {
+    await userRepository.update(
+      resetRecord.userId,
+      { passwordHash: newHash },
+      tx,
+    );
+    await tx.passwordResetToken.update({
       where: { id: resetRecord.id },
       data: { usedAt: new Date() },
-    }),
+    });
     // Invalidate all active sessions for security
-    db.session.deleteMany({ where: { userId: resetRecord.userId } }),
-  ]);
+    await userRepository.deleteAllSessions(resetRecord.userId, tx);
+  });
 
   // 6. Audit
   audit({
@@ -342,15 +332,7 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
     return { success: false, error: "Not logged in." };
   }
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      emailVerified: true,
-    },
-  });
+  const user = await userRepository.findForEmailVerification(session.user.id);
 
   if (!user) {
     return { success: false, error: "User not found." };
@@ -364,12 +346,9 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
   const token = crypto.randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  await db.user.update({
-    where: { id: user.id },
-    data: {
-      emailVerifyToken: token,
-      emailVerifyExpires: expires,
-    },
+  await userRepository.update(user.id, {
+    emailVerifyToken: token,
+    emailVerifyExpires: expires,
   });
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";

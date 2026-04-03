@@ -22,6 +22,7 @@ import {
 } from "@/modules/orders/order-event.service";
 import { stripe } from "@/infrastructure/stripe/client";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { getImageUrl } from "@/lib/image";
 import type { ActionResult } from "@/types";
@@ -346,10 +347,7 @@ export async function getCart(): Promise<ActionResult<CartData | null>> {
     }
 
     // Load seller info
-    const seller = await db.user.findUnique({
-      where: { id: cart.sellerId },
-      select: { displayName: true, username: true },
-    });
+    const seller = await userRepository.findDisplayInfo(cart.sellerId);
 
     const items: CartItemData[] = cart.items.map((item) => {
       const isAvailable =
@@ -543,15 +541,7 @@ export async function checkoutCart(
     }
 
     // Load seller Stripe info
-    const seller = await db.user.findUnique({
-      where: { id: cart.sellerId },
-      select: {
-        stripeAccountId: true,
-        stripeOnboarded: true,
-        displayName: true,
-        email: true,
-      },
-    });
+    const seller = await userRepository.findWithStripe(cart.sellerId);
 
     if (!seller?.stripeAccountId || !seller.stripeOnboarded) {
       return {

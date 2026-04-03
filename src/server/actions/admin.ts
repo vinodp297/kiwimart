@@ -5,7 +5,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminService } from "@/modules/admin/admin.service";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
@@ -275,24 +275,18 @@ export async function setSellerTierOverride(params: {
       };
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { id: true, sellerTierOverride: true, displayName: true },
-    });
+    const user = await userRepository.findForTierOverride(userId);
 
     if (!user) return { success: false, error: "User not found." };
 
     const previousOverride = user.sellerTierOverride;
 
     if (tier === null) {
-      await db.user.update({
-        where: { id: userId },
-        data: {
-          sellerTierOverride: null,
-          sellerTierOverrideReason: null,
-          sellerTierOverrideAt: null,
-          sellerTierOverrideBy: null,
-        },
+      await userRepository.update(userId, {
+        sellerTierOverride: null,
+        sellerTierOverrideReason: null,
+        sellerTierOverrideAt: null,
+        sellerTierOverrideBy: null,
       });
 
       audit({
@@ -311,14 +305,11 @@ export async function setSellerTierOverride(params: {
         link: "/dashboard/seller",
       }).catch(() => {});
     } else {
-      await db.user.update({
-        where: { id: userId },
-        data: {
-          sellerTierOverride: tier,
-          sellerTierOverrideReason: reason.trim(),
-          sellerTierOverrideAt: new Date(),
-          sellerTierOverrideBy: admin.id,
-        },
+      await userRepository.update(userId, {
+        sellerTierOverride: tier,
+        sellerTierOverrideReason: reason.trim(),
+        sellerTierOverrideAt: new Date(),
+        sellerTierOverrideBy: admin.id,
       });
 
       audit({

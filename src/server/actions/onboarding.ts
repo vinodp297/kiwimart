@@ -4,7 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // ─── Onboarding Server Actions ────────────────────────────────────────────────
 
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { getListValues } from "@/lib/dynamic-lists";
 import type { ActionResult } from "@/types";
 import {
@@ -34,13 +34,10 @@ export async function completeOnboarding(
 
     const validRegions = await getListValues("NZ_REGIONS");
 
-    await db.user.update({
-      where: { id: user.id },
-      data: {
-        onboardingCompleted: true,
-        onboardingIntent: intent,
-        ...(region && validRegions.includes(region) ? { region } : {}),
-      },
+    await userRepository.update(user.id, {
+      onboardingCompleted: true,
+      onboardingIntent: intent,
+      ...(region && validRegions.includes(region) ? { region } : {}),
     });
 
     return { success: true, data: undefined };
@@ -73,18 +70,7 @@ export async function getOnboardingStatus(): Promise<
   try {
     const authedUser = await requireUser();
 
-    const user = await db.user.findUnique({
-      where: { id: authedUser.id },
-      select: {
-        onboardingCompleted: true,
-        onboardingIntent: true,
-        region: true,
-        bio: true,
-        displayName: true,
-        emailVerified: true,
-        stripeOnboarded: true,
-      },
-    });
+    const user = await userRepository.findOnboardingStatus(authedUser.id);
 
     if (!user) {
       return { success: false, error: "User not found." };

@@ -15,6 +15,7 @@ import { requireUser } from "@/server/lib/requireUser";
 import { getClientIp } from "@/server/lib/rateLimit";
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
+import { userRepository } from "@/modules/users/user.repository";
 import { logger } from "@/shared/logger";
 import { hashPassword, verifyPassword } from "@/server/lib/password";
 import type { ActionResult } from "@/types";
@@ -54,10 +55,7 @@ export async function changePassword(
 
     const { currentPassword, newPassword } = parsed.data;
 
-    const user = await db.user.findUnique({
-      where: { id: authedUser.id },
-      select: { passwordHash: true },
-    });
+    const user = await userRepository.findPasswordHash(authedUser.id);
 
     if (!user?.passwordHash) {
       return {
@@ -79,15 +77,10 @@ export async function changePassword(
 
     const newHash = await hashPassword(newPassword);
 
-    await db.$transaction([
-      db.user.update({
-        where: { id: authedUser.id },
-        data: { passwordHash: newHash },
-      }),
-      db.session.deleteMany({
-        where: { userId: authedUser.id },
-      }),
-    ]);
+    await db.$transaction(async (tx) => {
+      await userRepository.update(authedUser.id, { passwordHash: newHash }, tx);
+      await userRepository.deleteAllSessions(authedUser.id, tx);
+    });
 
     audit({
       userId: authedUser.id,
@@ -136,13 +129,10 @@ export async function updateProfile(
 
     const { displayName, region, bio } = parsed.data;
 
-    await db.user.update({
-      where: { id: user.id },
-      data: {
-        displayName,
-        region: region || null,
-        bio: bio || null,
-      },
+    await userRepository.update(user.id, {
+      displayName,
+      region: region || null,
+      bio: bio || null,
     });
 
     revalidatePath("/account/settings");
@@ -187,9 +177,9 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
     await db.$transaction(async (tx) => {
       const anonymisedEmail = `deleted-${user.id}@kiwimart-deleted.invalid`;
 
-      await tx.user.update({
-        where: { id: user.id },
-        data: {
+      await userRepository.update(
+        user.id,
+        {
           email: anonymisedEmail,
           displayName: "Deleted User",
           username: `deleted-${user.id.slice(0, 8)}`,
@@ -201,12 +191,11 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
           emailVerified: null,
           passwordHash: null,
         },
-      });
+        tx,
+      );
 
       // Delete sessions
-      await tx.session.deleteMany({
-        where: { userId: user.id },
-      });
+      await userRepository.deleteAllSessions(user.id, tx);
 
       // Withdraw pending offers
       await tx.offer.updateMany({

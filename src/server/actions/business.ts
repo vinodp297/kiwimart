@@ -3,7 +3,7 @@
 // ─── Business Details (NZBN/GST) Server Action ──────────────────────────────
 
 import { headers } from "next/headers";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import { audit } from "@/server/lib/audit";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
@@ -60,11 +60,8 @@ export async function updateBusinessDetails(
 
       // Check NZBN uniqueness (another user may have it)
       if (nzbn) {
-        const existing = await db.user.findFirst({
-          where: { nzbn, id: { not: user.id } },
-          select: { id: true },
-        });
-        if (existing) {
+        const nzbnTaken = await userRepository.existsByNzbn(nzbn, user.id);
+        if (nzbnTaken) {
           return {
             success: false,
             error: "This NZBN is already registered to another account.",
@@ -72,23 +69,17 @@ export async function updateBusinessDetails(
         }
       }
 
-      await db.user.update({
-        where: { id: user.id },
-        data: {
-          nzbn,
-          gstRegistered,
-          gstNumber: gstRegistered && gstNumber ? gstNumber : null,
-        },
+      await userRepository.update(user.id, {
+        nzbn,
+        gstRegistered,
+        gstNumber: gstRegistered && gstNumber ? gstNumber : null,
       });
     } else {
       // Clear business fields
-      await db.user.update({
-        where: { id: user.id },
-        data: {
-          nzbn: null,
-          gstRegistered: false,
-          gstNumber: null,
-        },
+      await userRepository.update(user.id, {
+        nzbn: null,
+        gstRegistered: false,
+        gstNumber: null,
       });
     }
 

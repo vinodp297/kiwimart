@@ -6,6 +6,7 @@ import { safeActionError } from "@/shared/errors";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { audit } from "@/server/lib/audit";
 import { requireUser } from "@/server/lib/requireUser";
@@ -51,15 +52,9 @@ export async function createListing(
   }
 
   // 2. Authorise — check email verified, seller terms accepted, stripe onboarded
-  const userDetails = await db.user.findUnique({
-    where: { id: authedUser.id },
-    select: {
-      emailVerified: true,
-      sellerEnabled: true,
-      sellerTermsAcceptedAt: true,
-      displayName: true,
-    },
-  });
+  // Note: requireUser() already hits the DB but doesn't return these fields.
+  // A future optimisation would be to include them in the requireUser() select.
+  const userDetails = await userRepository.findForListingAuth(authedUser.id);
   if (!userDetails?.emailVerified) {
     return {
       success: false,
@@ -235,15 +230,7 @@ export async function createListing(
   try {
     // Fetch seller profile for auto-review
     const [sellerData, trustMetrics, activeListingCount] = await Promise.all([
-      db.user.findUnique({
-        where: { id: authedUser.id },
-        select: {
-          id: true,
-          isBanned: true,
-          phoneVerified: true,
-          idVerified: true,
-        },
-      }),
+      userRepository.findForAutoReview(authedUser.id),
       db.trustMetrics.findUnique({
         where: { userId: authedUser.id },
         select: { isFlaggedForFraud: true, disputeRate: true },
@@ -720,16 +707,7 @@ export async function updateListing(
   if (existing.status === "NEEDS_CHANGES") {
     try {
       const [sellerData, trustMetrics, activeListingCount] = await Promise.all([
-        db.user.findUnique({
-          where: { id: user.id },
-          select: {
-            id: true,
-            isBanned: true,
-            phoneVerified: true,
-            idVerified: true,
-            displayName: true,
-          },
-        }),
+        userRepository.findForAutoReview(user.id),
         db.trustMetrics.findUnique({
           where: { userId: user.id },
           select: { isFlaggedForFraud: true, disputeRate: true },
@@ -816,15 +794,8 @@ export async function updateListing(
       if (reviewResult.verdict === "queue") {
         const listingTitleForAdmin = data.title ?? existing.title;
         const sellerNameForAdmin = sellerData?.displayName ?? user.email;
-        db.user
-          .findMany({
-            where: {
-              isAdmin: true,
-              isBanned: false,
-              adminRole: { in: ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"] },
-            },
-            select: { id: true },
-          })
+        userRepository
+          .findAdmins(["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"])
           .then((admins) => {
             const notifications = admins.map((admin) =>
               createNotification({
@@ -868,23 +839,11 @@ export async function updateListing(
       // Notify admins if listing is edited while under active review
       if (existing.status === "PENDING_REVIEW" && !foundKeyword) {
         const sellerNameForAdmin =
-          (
-            await db.user.findUnique({
-              where: { id: user.id },
-              select: { displayName: true },
-            })
-          )?.displayName ?? user.email;
+          (await userRepository.findDisplayName(user.id)) ?? user.email;
         const listingTitleForAdmin = data.title ?? existing.title;
 
-        db.user
-          .findMany({
-            where: {
-              isAdmin: true,
-              isBanned: false,
-              adminRole: { in: ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"] },
-            },
-            select: { id: true },
-          })
+        userRepository
+          .findAdmins(["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"])
           .then((admins) =>
             Promise.allSettled(
               admins.map((admin) =>
@@ -921,10 +880,7 @@ export async function updateListing(
           data: { status: "REMOVED", moderationNote },
         });
 
-        const sellerInfo = await db.user.findUnique({
-          where: { id: user.id },
-          select: { email: true, displayName: true },
-        });
+        const sellerInfo = await userRepository.findEmailInfo(user.id);
 
         const listingTitle = data.title ?? existing.title;
         Promise.all([

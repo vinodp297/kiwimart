@@ -5,6 +5,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { requireSuperAdmin } from "@/shared/auth/requirePermission";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
 import { getRoleDisplayName } from "@/lib/permissions";
@@ -20,10 +21,7 @@ export async function inviteAdmin(
     const admin = await requireSuperAdmin();
 
     // Check email not already an admin
-    const existing = await db.user.findUnique({
-      where: { email },
-      select: { isAdmin: true },
-    });
+    const existing = await userRepository.findIsAdminByEmail(email);
     if (existing?.isAdmin) {
       return { success: false, error: "This user is already an admin" };
     }
@@ -94,10 +92,7 @@ export async function changeAdminRole(
       return { success: false, error: "Cannot change your own role" };
     }
 
-    await db.user.update({
-      where: { id: targetUserId },
-      data: { adminRole: newRole },
-    });
+    await userRepository.update(targetUserId, { adminRole: newRole });
 
     logger.info("admin.role.changed", {
       targetUserId,
@@ -126,9 +121,9 @@ export async function revokeAdminAccess(
       return { success: false, error: "Cannot revoke your own admin access" };
     }
 
-    await db.user.update({
-      where: { id: targetUserId },
-      data: { isAdmin: false, adminRole: null },
+    await userRepository.update(targetUserId, {
+      isAdmin: false,
+      adminRole: null,
     });
 
     logger.info("admin.access.revoked", { targetUserId, revokedBy: admin.id });

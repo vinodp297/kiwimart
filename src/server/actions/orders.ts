@@ -18,6 +18,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { headers } from "next/headers";
 import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { audit } from "@/server/lib/audit";
 import { requireUser } from "@/server/lib/requireUser";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
@@ -86,10 +87,9 @@ export async function createOrder(params: {
   }
 
   // 2b. Email verification check
-  const buyer = await db.user.findUnique({
-    where: { id: user.id },
-    select: { emailVerified: true },
-  });
+  // Note: requireUser() already hits the DB but doesn't return emailVerified.
+  // A future optimisation would be to include it in the requireUser() select.
+  const buyer = await userRepository.findEmailVerified(user.id);
   if (!buyer?.emailVerified) {
     return {
       success: false,
