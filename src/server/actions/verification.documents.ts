@@ -13,6 +13,7 @@ import { createNotification } from "@/modules/notifications/notification.service
 import { logger } from "@/shared/logger";
 import db from "@/lib/db";
 import { userRepository } from "@/modules/users/user.repository";
+import { notificationRepository } from "@/modules/notifications/notification.repository";
 import crypto from "crypto";
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -175,16 +176,14 @@ export async function submitIdVerification(
     await userRepository.update(user.id, { idSubmittedAt: new Date() });
 
     // Notify admins
-    const admins = await userRepository.findAdmins();
-    for (const admin of admins) {
-      createNotification({
-        userId: admin.id,
+    notificationRepository
+      .notifyAdmins({
         type: "SYSTEM",
         title: "New ID verification to review",
         body: `${user.email} submitted ${documentType.replace(/_/g, " ").toLowerCase()} for identity verification.`,
         link: `/admin/sellers/${user.id}/verify`,
-      }).catch(() => {});
-    }
+      })
+      .catch(() => {});
 
     audit({
       userId: user.id,

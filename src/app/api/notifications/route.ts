@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import db from "@/lib/db";
+import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -18,22 +18,10 @@ export async function GET() {
       return NextResponse.json({ notifications: [] });
     }
 
-    const notifications = await db.notification.findMany({
-      where: { userId: session.user.id },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      select: {
-        id: true,
-        type: true,
-        title: true,
-        body: true,
-        read: true,
-        link: true,
-        listingId: true,
-        orderId: true,
-        createdAt: true,
-      },
-    });
+    const notifications = await notificationRepository.findByUser(
+      session.user.id,
+      10,
+    );
 
     return NextResponse.json({ success: true, data: { notifications } });
   } catch (e) {
@@ -70,10 +58,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    await db.notification.updateMany({
-      where: { userId: session.user.id, read: false },
-      data: { read: true },
-    });
+    await notificationRepository.markAllRead(session.user.id);
 
     return NextResponse.json({ success: true, data: null });
   } catch (e) {

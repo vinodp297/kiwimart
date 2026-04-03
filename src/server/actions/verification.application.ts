@@ -5,6 +5,7 @@ import { safeActionError } from "@/shared/errors";
 
 import db from "@/lib/db";
 import { userRepository } from "@/modules/users/user.repository";
+import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { audit } from "@/server/lib/audit";
@@ -76,16 +77,14 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
     });
 
     // Notify admins
-    const admins = await userRepository.findAdmins();
-    for (const admin of admins) {
-      createNotification({
-        userId: admin.id,
+    notificationRepository
+      .notifyAdmins({
         type: "SYSTEM",
         title: "New verification application",
         body: `${user.email} has applied for seller verification.`,
         link: "/admin/sellers",
-      }).catch(() => {});
-    }
+      })
+      .catch(() => {});
 
     audit({
       userId: user.id,
