@@ -2,18 +2,18 @@
 // ─── Notifications Full Page ──────────────────────────────────────────────────
 // Server component — fetches all notifications, marks unread as read on load.
 
-import { redirect } from 'next/navigation';
-import Link from 'next/link';
-import { auth } from '@/lib/auth';
-import db from '@/lib/db';
-import NavBar from '@/components/NavBar';
-import Footer from '@/components/Footer';
-import { getNotifIcon } from '@/modules/notifications/notification.service';
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { auth } from "@/lib/auth";
+import { notificationRepository } from "@/modules/notifications/notification.repository";
+import NavBar from "@/components/NavBar";
+import Footer from "@/components/Footer";
+import { getNotifIcon } from "@/modules/notifications/notification.service";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: 'Notifications',
+  title: "Notifications",
 };
 
 function formatDate(date: Date): string {
@@ -21,45 +21,38 @@ function formatDate(date: Date): string {
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
 
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
 
   const diff = Math.floor((today.getTime() - date.getTime()) / 86_400_000);
-  if (diff < 7) return 'This week';
-  return date.toLocaleDateString('en-NZ', { month: 'long', year: 'numeric' });
+  if (diff < 7) return "This week";
+  return date.toLocaleDateString("en-NZ", { month: "long", year: "numeric" });
 }
 
 function relativeTime(date: Date): string {
   const diff = Date.now() - date.getTime();
-  const mins  = Math.floor(diff / 60_000);
+  const mins = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
-  const days  = Math.floor(diff / 86_400_000);
-  if (mins  <  1) return 'Just now';
-  if (mins  < 60) return `${mins}m ago`;
+  const days = Math.floor(diff / 86_400_000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
-  if (days  <  7) return `${days}d ago`;
-  return date.toLocaleDateString('en-NZ');
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString("en-NZ");
 }
 
 export default async function NotificationsPage() {
   const session = await auth();
   if (!session?.user?.id) {
-    redirect('/login?from=/notifications');
+    redirect("/login?from=/notifications");
   }
 
   const userId = session.user.id;
 
   const [notifications] = await Promise.all([
-    db.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    }),
-    // Mark all unread as read
-    db.notification.updateMany({
-      where: { userId, read: false },
-      data: { read: true },
-    }),
+    notificationRepository.findByUser(userId, 50),
+    // Mark all unread as read — side-effect runs in parallel with the fetch
+    notificationRepository.markAllRead(userId),
   ]);
 
   // Group by date label
@@ -86,7 +79,9 @@ export default async function NotificationsPage() {
             /* Empty state */
             <div className="text-center py-16">
               <div className="text-4xl mb-4">🥝</div>
-              <p className="text-[#73706A] text-[15px]">You&apos;re all caught up!</p>
+              <p className="text-[#73706A] text-[15px]">
+                You&apos;re all caught up!
+              </p>
               <p className="text-[#C9C5BC] text-[13px] mt-1">
                 New notifications will appear here
               </p>
@@ -102,10 +97,12 @@ export default async function NotificationsPage() {
                     {items.map((n) => (
                       <Link
                         key={n.id}
-                        href={n.link ?? '/dashboard/buyer'}
+                        href={n.link ?? "/dashboard/buyer"}
                         className="flex items-start gap-4 px-5 py-4 hover:bg-[#FAFAF8] transition-colors"
                       >
-                        <span className="text-xl shrink-0 mt-0.5">{getNotifIcon(n.type)}</span>
+                        <span className="text-xl shrink-0 mt-0.5">
+                          {getNotifIcon(n.type)}
+                        </span>
                         <div className="flex-1 min-w-0">
                           <p className="text-[14px] font-semibold text-[#141414] leading-snug">
                             {n.title}

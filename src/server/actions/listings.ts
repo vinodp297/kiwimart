@@ -12,6 +12,7 @@ import { audit } from "@/server/lib/audit";
 import { requireUser } from "@/server/lib/requireUser";
 import { listingService } from "@/modules/listings/listing.service";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { notificationRepository } from "@/modules/notifications/notification.repository";
 import {
   sendPriceDropEmail,
   sendListingApprovedEmail,
@@ -794,20 +795,16 @@ export async function updateListing(
       if (reviewResult.verdict === "queue") {
         const listingTitleForAdmin = data.title ?? existing.title;
         const sellerNameForAdmin = sellerData?.displayName ?? user.email;
-        userRepository
-          .findAdmins(["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"])
-          .then((admins) => {
-            const notifications = admins.map((admin) =>
-              createNotification({
-                userId: admin.id,
-                type: "SYSTEM",
-                title: "Listing resubmitted for review",
-                body: `${sellerNameForAdmin} has resubmitted "${listingTitleForAdmin}" after changes were requested.`,
-                link: "/admin/listings",
-              }),
-            );
-            return Promise.allSettled(notifications);
-          })
+        notificationRepository
+          .notifyAdmins(
+            {
+              type: "SYSTEM",
+              title: "Listing resubmitted for review",
+              body: `${sellerNameForAdmin} has resubmitted "${listingTitleForAdmin}" after changes were requested.`,
+              link: "/admin/listings",
+            },
+            ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"],
+          )
           .catch(() => {});
       }
     } catch (err) {
@@ -842,20 +839,15 @@ export async function updateListing(
           (await userRepository.findDisplayName(user.id)) ?? user.email;
         const listingTitleForAdmin = data.title ?? existing.title;
 
-        userRepository
-          .findAdmins(["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"])
-          .then((admins) =>
-            Promise.allSettled(
-              admins.map((admin) =>
-                createNotification({
-                  userId: admin.id,
-                  type: "SYSTEM",
-                  title: "Listing updated while under review",
-                  body: `${sellerNameForAdmin} edited their listing "${listingTitleForAdmin}" while it is pending review.`,
-                  link: "/admin/listings",
-                }),
-              ),
-            ),
+        notificationRepository
+          .notifyAdmins(
+            {
+              type: "SYSTEM",
+              title: "Listing updated while under review",
+              body: `${sellerNameForAdmin} edited their listing "${listingTitleForAdmin}" while it is pending review.`,
+              link: "/admin/listings",
+            },
+            ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"],
           )
           .catch(() => {});
 
