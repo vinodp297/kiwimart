@@ -18,6 +18,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : []),
+        "twilio",
+      ];
+    }
+    return config;
+  },
   async headers() {
     const allowedOrigins =
       process.env.ALLOWED_ORIGINS || "https://kiwimart.vercel.app";

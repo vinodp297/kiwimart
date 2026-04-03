@@ -34,7 +34,7 @@ function calculateTrustScore(data: TrustScoreData): number {
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 
-import { calculateSellerTier } from "@/lib/seller-tiers";
+import { calculateSellerTier } from "@/lib/seller-tiers.server";
 import type { PerformanceTier } from "@/lib/seller-tiers";
 export { calculateSellerTier };
 export type { PerformanceTier };

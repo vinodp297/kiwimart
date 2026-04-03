@@ -6,7 +6,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
-import { getSellerTier, getAllSellerTiers } from "@/lib/seller-tiers";
+import { getSellerTier, getAllSellerTiers } from "@/lib/seller-tiers.server";
 import SellerOnboardingClient from "./SellerOnboardingClient";
 import type { Metadata } from "next";
 

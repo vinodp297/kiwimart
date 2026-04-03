@@ -1,3 +1,4 @@
+import "server-only";
 // src/server/services/sms/sms.service.ts
 // ─── SMS Service ─────────────────────────────────────────────────────────────
 // Sends SMS messages via Twilio when credentials are configured.
