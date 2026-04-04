@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { messageService } from "@/modules/messaging/message.service";
 import { threadsQuerySchema } from "@/modules/messaging/message.schema";
+import { sendMessageSchema } from "@/server/validators";
 import {
   apiOk,
   apiError,
@@ -11,6 +12,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../_helpers/response";
+import { corsHeaders } from "../_helpers/cors";
 
 export async function GET(request: Request) {
   // Rate limit: reuse message limiter (20/min)
@@ -18,7 +20,7 @@ export async function GET(request: Request) {
   if (rateLimited) return rateLimited;
 
   try {
-    const user = await requireApiUser();
+    const user = await requireApiUser(request);
     const { searchParams } = new URL(request.url);
 
     let query: z.infer<typeof threadsQuerySchema>;
@@ -39,4 +41,36 @@ export async function GET(request: Request) {
   } catch (e) {
     return handleApiError(e);
   }
+}
+
+export async function POST(request: Request) {
+  const rateLimited = await checkApiRateLimit(request, "message");
+  if (rateLimited) return rateLimited;
+
+  try {
+    const user = await requireApiUser(request);
+
+    const body = await request.json().catch(() => null);
+    if (!body) {
+      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+    }
+
+    const parsed = sendMessageSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+    }
+
+    const result = await messageService.sendMessage(
+      parsed.data,
+      user.id,
+      user.email,
+    );
+    return apiOk(result, 201);
+  } catch (e) {
+    return handleApiError(e);
+  }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }

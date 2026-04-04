@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   if (rateLimited) return rateLimited;
 
   try {
-    const user = await requireApiUser();
+    const user = await requireApiUser(request);
     const { searchParams } = new URL(request.url);
 
     let query: z.infer<typeof ordersQuerySchema>;
