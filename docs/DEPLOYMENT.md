@@ -286,3 +286,178 @@ R2 requires CORS for direct browser uploads via presigned URLs. Configure in the
 2. Verify Cloudflare Turnstile is active (`NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `CLOUDFLARE_TURNSTILE_SECRET_KEY` are set).
 3. Check for bulk account creation in the admin panel.
 4. Consider temporarily tightening rate limits in `src/server/lib/rateLimit.ts`.
+
+## Staging Environment Setup
+
+### Neon Branch (Database)
+
+1. Create staging branch in Neon dashboard:
+   ```
+   neon branches create --name staging --parent main
+   ```
+2. Get staging connection string from Neon dashboard
+3. Add to Vercel as STAGING_DATABASE_URL
+
+### Vercel Preview Environment
+
+1. In Vercel dashboard → Settings → Environment Variables
+2. Add all env vars with Environment = "Preview"
+3. Use staging Neon branch connection string for DATABASE_URL in Preview
+4. Staging URL format: https://kiwimart-git-staging-[team].vercel.app
+
+### What Staging Is Used For
+
+- Testing database migrations before production apply
+- QA testing new features
+- Load testing without affecting production data
+- Verifying cron jobs work correctly
+
+## BullMQ Workers (Railway)
+
+### Why Workers Need Separate Hosting
+
+Vercel serverless functions have a 10-second timeout.
+BullMQ workers process: email sending, image processing,
+payout scheduling, pickup deadline management.
+These need a persistent long-running process.
+
+### Railway Deployment Steps
+
+1. Create account at railway.app
+2. New Project → Deploy from GitHub repo
+3. Add service → select kiwimart repo
+4. Set start command: `node dist/worker.js`
+5. Add all environment variables from .env.example
+   (same as production Vercel env vars)
+6. Set railway.toml in project root (see below)
+
+### railway.toml
+
+```toml
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build:worker"
+
+[deploy]
+startCommand = "node dist/worker.js"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+```
+
+### Worker Health Monitoring
+
+- Railway provides automatic restart on failure
+- Add WORKER_HEALTH_WEBHOOK to env vars
+- Worker pings webhook every 5 minutes
+- Sentry captures worker errors automatically
+
+### Estimated Cost
+
+- Railway Hobby: $5/month per worker instance
+- 4 workers (email, image, payout, pickup): ~$20/month
+
+## Cloudflare R2 + CDN Setup
+
+### Current State
+
+Images served directly from R2 — no CDN caching.
+Every image request hits R2 storage (slow, costs money at scale).
+
+### Enable Cloudflare CDN for R2
+
+1. In Cloudflare dashboard → R2 → your bucket
+2. Settings → Custom Domains → Add domain
+3. Add: images.kiwimart.co.nz (or your domain)
+4. This automatically enables Cloudflare CDN caching
+
+### Update getImageUrl() function
+
+When CDN is enabled, update the base URL constant from:
+
+```
+https://[account].r2.cloudflarestorage.com/[bucket]/
+```
+
+to:
+
+```
+https://images.kiwimart.co.nz/
+```
+
+(find in src/lib/utils.ts or wherever getImageUrl is defined)
+
+### Cache Configuration
+
+In Cloudflare dashboard → Caching → Cache Rules:
+
+- URL pattern: `images.kiwimart.co.nz/*`
+- Cache TTL: 1 year (images are immutable — keyed by hash)
+- Browser TTL: 1 year
+
+### Expected Improvement
+
+- Image load time: ~800ms → ~80ms (10x faster)
+- R2 read costs: eliminated for cached images
+- Vercel bandwidth: reduced (images served from Cloudflare edge)
+
+## Load Testing
+
+### Before Launch
+
+Run load test to verify 500 concurrent user capacity:
+
+Using k6 (free, open source):
+
+```bash
+k6 run --vus 100 --duration 30s loadtest/homepage.js
+```
+
+### Key Endpoints to Test
+
+- `GET /` (homepage)
+- `GET /listings/[id]` (listing detail)
+- `GET /api/v1/search` (search)
+- `POST /api/v1/auth/token` (auth)
+
+### Acceptance Criteria
+
+- p95 response time < 2000ms
+- Error rate < 1%
+- No database connection exhaustion
+
+### Create loadtest/ directory
+
+Create `loadtest/homepage.js` with a basic k6 script skeleton:
+
+```javascript
+// loadtest/homepage.js
+// Run: k6 run --vus 100 --duration 30s loadtest/homepage.js
+
+import http from "k6/http";
+import { check, sleep } from "k6";
+
+export const options = {
+  vus: 100,
+  duration: "30s",
+  thresholds: {
+    http_req_duration: ["p(95)<2000"],
+    http_req_failed: ["rate<0.01"],
+  },
+};
+
+const BASE_URL = __ENV.BASE_URL || "http://localhost:3000";
+
+export default function () {
+  // Homepage
+  let res = http.get(`${BASE_URL}/`);
+  check(res, { "homepage 200": (r) => r.status === 200 });
+
+  sleep(1);
+
+  // Search
+  res = http.get(`${BASE_URL}/api/v1/search?q=bike&pageSize=20`);
+  check(res, { "search 200": (r) => r.status === 200 });
+
+  sleep(1);
+}
+```

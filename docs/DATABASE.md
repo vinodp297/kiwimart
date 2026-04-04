@@ -143,29 +143,45 @@ If using `pg_partman`, new partitions are created automatically via the `run_mai
 
 ## Backup Strategy
 
-### Neon built-in
+### Automated Backups (Neon)
 
-Neon provides continuous WAL-based backups with point-in-time restore (PITR) to any second within the retention window (default: 7 days on paid plans).
+- Neon provides point-in-time recovery (PITR) on paid plans
+- Free tier: 1 day PITR
+- Launch tier: 7 days PITR
+- Scale tier: 30 days PITR
+- No configuration needed — automatic
 
-**Restore procedure:**
+### Pre-Migration Snapshots
 
-1. Open Neon console → Branches → Create branch from point-in-time
-2. Verify data on the restored branch
-3. Promote branch or export data as needed
+Before every production migration:
 
-### Application-level exports
+1. Create a Neon branch as snapshot:
+   ```
+   neon branches create --name pre-migration-YYYY-MM-DD --parent main
+   ```
+2. Run migration on main branch
+3. If migration fails: connection string swap to branch = instant rollback
+4. Delete snapshot branch after 7 days if migration stable
 
-For compliance and long-term retention beyond Neon's PITR window:
+### Manual Backup (Monthly)
 
 ```bash
-# Full logical dump (run from a read replica or off-peak)
-pg_dump $DATABASE_URL --format=custom --file=backup_$(date +%Y%m%d).pgdump
-
-# Upload to R2/S3
-rclone copy backup_$(date +%Y%m%d).pgdump r2:kiwi-backups/postgres/
+pg_dump "$(neon connection-string)" \
+  --format=custom \
+  --file=backup-$(date +%Y%m%d).dump
 ```
 
-**Recommended schedule:** Daily logical dump, retained for 90 days.
+Store in Cloudflare R2 bucket: kiwimart-backups/
+Retention: 90 days
+
+### Migration Rollback Procedure
+
+1. Identify the failed migration name
+2. Switch DATABASE_URL to pre-migration Neon branch
+3. Redeploy previous Vercel deployment (instant via dashboard)
+4. Fix migration locally
+5. Test on staging branch first
+6. Re-apply corrected migration to main
 
 ### High-growth table archival
 
