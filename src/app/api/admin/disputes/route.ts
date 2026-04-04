@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { requirePermission } from "@/shared/auth/requirePermission";
+import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 
@@ -9,7 +9,7 @@ export async function GET() {
   try {
     await requirePermission("VIEW_DISPUTES");
   } catch {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 403 });
+    return apiError("Unauthorised", 403);
   }
 
   try {
@@ -23,15 +23,12 @@ export async function GET() {
       orderBy: { updatedAt: "asc" },
     });
 
-    return NextResponse.json({ disputes });
+    return apiOk({ disputes });
   } catch (e) {
     logger.error("api.error", {
       path: "/api/admin/disputes",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      { error: "Failed to load disputes. Please refresh." },
-      { status: 500 },
-    );
+    return apiError("Failed to load disputes. Please refresh.", 500);
   }
 }

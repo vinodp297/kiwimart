@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { NextResponse } from "next/server";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminUsersQuerySchema } from "@/modules/admin/admin.schema";
+import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   try {
     await requirePermission("VIEW_USERS");
   } catch {
-    return NextResponse.json({ error: "Unauthorised" }, { status: 403 });
+    return apiError("Unauthorised", 403);
   }
 
   try {
@@ -22,10 +22,7 @@ export async function GET(request: Request) {
       query = adminUsersQuerySchema.parse(Object.fromEntries(url.searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return NextResponse.json(
-          { error: "Validation failed" },
-          { status: 400 },
-        );
+        return apiError("Validation failed", 400, "VALIDATION_ERROR");
       }
       throw err;
     }
@@ -62,15 +59,12 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json({ users });
+    return apiOk({ users });
   } catch (e) {
     logger.error("api.error", {
       path: "/api/admin/users",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      { error: "Failed to load user list. Please refresh." },
-      { status: 500 },
-    );
+    return apiError("Failed to load user list. Please refresh.", 500);
   }
 }
