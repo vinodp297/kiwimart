@@ -55,14 +55,39 @@ export async function processDeliveryReminders(): Promise<{
     },
   });
 
+  // ── Bulk-fetch all order events for these orders (eliminates N+1) ──
+  const orderIds = dispatchedOrders.map((o) => o.id);
+  const allEvents = await db.orderEvent.findMany({
+    where: {
+      orderId: { in: orderIds },
+      type: { in: ["DISPATCHED", "DELIVERY_REMINDER_SENT"] },
+    },
+    select: { id: true, orderId: true, type: true, metadata: true },
+  });
+
+  // Build lookup: orderId → events grouped by type
+  const eventsByOrder = new Map<
+    string,
+    {
+      dispatched: (typeof allEvents)[number][];
+      reminders: (typeof allEvents)[number][];
+    }
+  >();
+  for (const e of allEvents) {
+    if (!eventsByOrder.has(e.orderId)) {
+      eventsByOrder.set(e.orderId, { dispatched: [], reminders: [] });
+    }
+    const bucket = eventsByOrder.get(e.orderId)!;
+    if (e.type === "DISPATCHED") bucket.dispatched.push(e);
+    else bucket.reminders.push(e);
+  }
+
   for (const order of dispatchedOrders) {
     try {
-      // Get the DISPATCHED event to check estimatedDeliveryDate
-      const dispatchEvent = await db.orderEvent.findFirst({
-        where: { orderId: order.id, type: "DISPATCHED" },
-        select: { metadata: true },
-      });
+      const events = eventsByOrder.get(order.id);
 
+      // Get the DISPATCHED event to check estimatedDeliveryDate
+      const dispatchEvent = events?.dispatched[0];
       const meta = (dispatchEvent?.metadata ?? {}) as Record<string, unknown>;
       const estDateStr = meta.estimatedDeliveryDate as string | undefined;
 
@@ -75,10 +100,9 @@ export async function processDeliveryReminders(): Promise<{
         (now.getTime() - estimatedDelivery.getTime()) / (1000 * 60 * 60 * 24),
       );
 
-      // Check if reminder was already sent
-      const reminderSent = await db.orderEvent.findFirst({
-        where: { orderId: order.id, type: "DELIVERY_REMINDER_SENT" },
-      });
+      // Check if reminder was already sent (from bulk-fetched data)
+      const reminderCount = events?.reminders.length ?? 0;
+      const reminderSent = reminderCount > 0;
 
       // 1. Send reminder if 3+ days past estimated delivery and no reminder sent
       if (daysPastEstimate >= 3 && !reminderSent) {
@@ -107,10 +131,7 @@ export async function processDeliveryReminders(): Promise<{
 
       // Also send a second reminder at 10 days
       if (daysPastEstimate >= 10 && daysPastEstimate < 14 && reminderSent) {
-        const secondReminder = await db.orderEvent.count({
-          where: { orderId: order.id, type: "DELIVERY_REMINDER_SENT" },
-        });
-        if (secondReminder < 2) {
+        if (reminderCount < 2) {
           notifyBuyerDeliveryOverdue(
             order.buyerId,
             order.id,

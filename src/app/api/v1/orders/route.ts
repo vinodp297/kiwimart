@@ -10,6 +10,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../_helpers/response";
+import { corsHeaders, withCors } from "../_helpers/cors";
 import db from "@/lib/db";
 
 export async function GET(request: Request) {
@@ -53,8 +54,12 @@ export async function GET(request: Request) {
     const orders = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (orders.at(-1)?.id ?? null) : null;
 
-    return apiOk({ orders, nextCursor, hasMore });
+    return withCors(apiOk({ orders, nextCursor, hasMore }));
   } catch (e) {
     return handleApiError(e);
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }

@@ -9,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
+import { corsHeaders, withCors } from "../../_helpers/cors";
 import { cancelPickupSchema } from "@/modules/pickup/pickup.schema";
 import { cancelPickupOrder } from "@/server/services/pickup/pickup-scheduling.service";
 
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     if (body.reason.trim().length < 5) {
-      return apiError("Please provide a meaningful reason.", 400);
+      return withCors(apiError("Please provide a meaningful reason.", 400));
     }
 
     const result = await cancelPickupOrder({
@@ -40,11 +41,15 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
-      return apiError(result.error!, 400);
+      return withCors(apiError(result.error!, 400));
     }
 
-    return apiOk({ cancelled: true });
+    return withCors(apiOk({ cancelled: true }));
   } catch (e) {
     return handleApiError(e);
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }

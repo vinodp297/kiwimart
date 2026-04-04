@@ -9,6 +9,7 @@ import {
   handleApiError,
   checkApiRateLimit,
 } from "../_helpers/response";
+import { corsHeaders, withCors } from "../_helpers/cors";
 
 const SearchParamsSchema = z.object({
   q: z.string().max(200).optional(),
@@ -56,11 +57,13 @@ export async function GET(request: Request) {
 
     const nextCursor = results.hasNextPage ? page + 1 : null;
 
-    const response = apiOk({
-      items: results.listings,
-      nextCursor,
-      hasMore: results.hasNextPage,
-    });
+    const response = withCors(
+      apiOk({
+        items: results.listings,
+        nextCursor,
+        hasMore: results.hasNextPage,
+      }),
+    );
     response.headers.set(
       "Cache-Control",
       "public, s-maxage=30, stale-while-revalidate=120",
@@ -69,4 +72,8 @@ export async function GET(request: Request) {
   } catch (e) {
     return handleApiError(e);
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }

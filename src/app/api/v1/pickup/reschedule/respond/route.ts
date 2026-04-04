@@ -9,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../../_helpers/response";
+import { corsHeaders, withCors } from "../../../_helpers/cors";
 import { rescheduleRespondSchema } from "@/modules/pickup/pickup.schema";
 import { respondToReschedule } from "@/server/services/pickup/pickup-scheduling.service";
 
@@ -50,11 +51,15 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
-      return apiError(result.error!, 400);
+      return withCors(apiError(result.error!, 400));
     }
 
-    return apiOk({ responded: true });
+    return withCors(apiOk({ responded: true }));
   } catch (e) {
     return handleApiError(e);
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }

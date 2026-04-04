@@ -44,6 +44,29 @@ export async function processDisputeAutoResolution(): Promise<{
       select: { id: true, orderId: true, metadata: true, createdAt: true },
     });
 
+    // ── Bulk-fetch order statuses and counter-evidence (eliminates N+1) ──
+    const queuedOrderIds = [...new Set(queuedEvents.map((e) => e.orderId))];
+    const [queuedOrders, counterEvidenceEvents] = await Promise.all([
+      db.order.findMany({
+        where: { id: { in: queuedOrderIds } },
+        select: { id: true, status: true },
+      }),
+      db.orderEvent.findMany({
+        where: {
+          orderId: { in: queuedOrderIds },
+          type: "DISPUTE_RESPONDED",
+        },
+        select: { orderId: true, createdAt: true },
+      }),
+    ]);
+    const orderStatusMap = new Map(queuedOrders.map((o) => [o.id, o.status]));
+    const counterEvidenceByOrder = new Map<string, Date[]>();
+    for (const ce of counterEvidenceEvents) {
+      if (!counterEvidenceByOrder.has(ce.orderId))
+        counterEvidenceByOrder.set(ce.orderId, []);
+      counterEvidenceByOrder.get(ce.orderId)!.push(ce.createdAt);
+    }
+
     for (const event of queuedEvents) {
       try {
         const meta = (event.metadata ?? {}) as Record<string, unknown>;
@@ -57,12 +80,9 @@ export async function processDisputeAutoResolution(): Promise<{
         // Not past cooling period yet
         if (executeAt.getTime() > Date.now()) continue;
 
-        // Check if order is still disputed
-        const order = await db.order.findUnique({
-          where: { id: event.orderId },
-          select: { status: true },
-        });
-        if (!order || order.status !== "DISPUTED") {
+        // Check if order is still disputed (from bulk-fetched data)
+        const orderStatus = orderStatusMap.get(event.orderId);
+        if (!orderStatus || orderStatus !== "DISPUTED") {
           // Already resolved by other means — mark event as superseded
           await db.orderEvent.update({
             where: { id: event.id },
@@ -73,16 +93,13 @@ export async function processDisputeAutoResolution(): Promise<{
           continue;
         }
 
-        // Check for counter-evidence submitted during cooling
-        const counterEvidence = await db.orderEvent.findFirst({
-          where: {
-            orderId: event.orderId,
-            type: "DISPUTE_RESPONDED",
-            createdAt: { gt: event.createdAt },
-          },
-        });
+        // Check for counter-evidence submitted during cooling (from bulk-fetched data)
+        const counterDates = counterEvidenceByOrder.get(event.orderId) ?? [];
+        const hasCounterEvidence = counterDates.some(
+          (d) => d.getTime() > event.createdAt.getTime(),
+        );
 
-        if (counterEvidence) {
+        if (hasCounterEvidence) {
           // Re-evaluate with new evidence
           const reEval = await autoResolutionService.evaluateDispute(
             event.orderId,
@@ -173,25 +190,37 @@ export async function processDisputeAutoResolution(): Promise<{
       select: { id: true },
     });
 
-    for (const dispute of unresponsive) {
-      try {
-        // Check if already queued
-        const alreadyQueued = await db.orderEvent.findFirst({
-          where: {
-            orderId: dispute.id,
-            type: "AUTO_RESOLVED",
-            metadata: { path: ["status"], equals: "QUEUED" },
-          },
-        });
-        if (alreadyQueued) continue;
+    // ── Bulk-fetch already-queued events to avoid per-dispute DB calls ──
+    const unresponsiveIds = unresponsive.map((d) => d.id);
+    const alreadyQueuedEvents = await db.orderEvent.findMany({
+      where: {
+        orderId: { in: unresponsiveIds },
+        type: "AUTO_RESOLVED",
+        metadata: { path: ["status"], equals: "QUEUED" },
+      },
+      select: { orderId: true },
+    });
+    const alreadyQueuedSet = new Set(alreadyQueuedEvents.map((e) => e.orderId));
 
-        await autoResolutionService.queueAutoResolution(dispute.id);
+    const unresponsiveResults = await Promise.allSettled(
+      unresponsive
+        .filter((dispute) => !alreadyQueuedSet.has(dispute.id))
+        .map(async (dispute) => {
+          await autoResolutionService.queueAutoResolution(dispute.id);
+          return dispute.id;
+        }),
+    );
+
+    for (const result of unresponsiveResults) {
+      if (result.status === "fulfilled") {
         unresponsiveEvaluated++;
-      } catch (err) {
+      } else {
         errors++;
         logger.error("dispute.unresponsive.failed", {
-          orderId: dispute.id,
-          error: err instanceof Error ? err.message : String(err),
+          error:
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
         });
       }
     }
@@ -226,17 +255,24 @@ export async function processDisputeAutoResolution(): Promise<{
       },
     });
 
-    for (const interaction of expiredInteractions) {
-      try {
-        // Mark as ESCALATED
-        await db.orderInteraction.update({
-          where: { id: interaction.id },
-          data: {
-            status: "ESCALATED",
-            resolvedAt: now,
-          },
-        });
+    // ── Bulk-mark all expired interactions as ESCALATED ──
+    const interactionIds = expiredInteractions.map((i) => i.id);
+    if (interactionIds.length > 0) {
+      await db.orderInteraction.updateMany({
+        where: { id: { in: interactionIds } },
+        data: { status: "ESCALATED", resolvedAt: now },
+      });
+    }
 
+    const reasonMap: Record<string, string> = {
+      DELIVERY_ISSUE: "ITEM_DAMAGED",
+      RETURN_REQUEST: "ITEM_NOT_AS_DESCRIBED",
+      PARTIAL_REFUND_REQUEST: "OTHER",
+    };
+
+    const escalationResults = await Promise.allSettled(
+      expiredInteractions.map(async (interaction) => {
+        // Record event (fire-and-forget style, but we await for ordering)
         orderEventService.recordEvent({
           orderId: interaction.orderId,
           type: ORDER_EVENT_TYPES.INTERACTION_EXPIRED,
@@ -261,13 +297,6 @@ export async function processDisputeAutoResolution(): Promise<{
 
         if (shouldAutoDispute) {
           try {
-            // Create dispute from escalated interaction
-            const reasonMap: Record<string, string> = {
-              DELIVERY_ISSUE: "ITEM_DAMAGED",
-              RETURN_REQUEST: "ITEM_NOT_AS_DESCRIBED",
-              PARTIAL_REFUND_REQUEST: "OTHER",
-            };
-
             await orderService.openDispute(
               {
                 orderId: interaction.orderId,
@@ -282,12 +311,10 @@ export async function processDisputeAutoResolution(): Promise<{
               "system",
             );
 
-            // Queue auto-resolution on the new dispute
             await autoResolutionService.queueAutoResolution(
               interaction.orderId,
             );
           } catch (err) {
-            // May fail if order can't be disputed (e.g., already completed)
             logger.warn("dispute.escalation.open_failed", {
               orderId: interaction.orderId,
               error: err instanceof Error ? err.message : String(err),
@@ -295,7 +322,7 @@ export async function processDisputeAutoResolution(): Promise<{
           }
         }
 
-        // Notify both parties
+        // Notify both parties (fire-and-forget)
         createNotification({
           userId: interaction.order.buyerId,
           type: "ORDER_DISPUTED",
@@ -313,13 +340,19 @@ export async function processDisputeAutoResolution(): Promise<{
           orderId: interaction.orderId,
           link: `/orders/${interaction.orderId}`,
         }).catch(() => {});
+      }),
+    );
 
+    for (const result of escalationResults) {
+      if (result.status === "fulfilled") {
         interactionsEscalated++;
-      } catch (err) {
+      } else {
         errors++;
         logger.error("dispute.escalation.failed", {
-          interactionId: interaction.id,
-          error: err instanceof Error ? err.message : String(err),
+          error:
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason),
         });
       }
     }
