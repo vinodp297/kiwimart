@@ -752,11 +752,15 @@ export async function uploadOrderEvidence(
       };
     }
 
-    const uploadedKeys: string[] = [];
+    // Read all file buffers in parallel
+    const buffers = await Promise.all(
+      files.map((f) => f.arrayBuffer().then((ab) => Buffer.from(ab))),
+    );
 
-    for (const file of files) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-
+    // Validate all files before uploading
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
+      const buffer = buffers[i]!;
       const validation = validateImageFile({
         buffer,
         mimetype: file.type,
@@ -766,11 +770,14 @@ export async function uploadOrderEvidence(
       if (!validation.valid) {
         return { success: false, error: validation.error ?? "Invalid file." };
       }
-
       if (file.size > EVIDENCE_MAX_SIZE) {
         return { success: false, error: "Each photo must be under 5MB." };
       }
+    }
 
+    // Build upload descriptors
+    const uploads = files.map((file, i) => {
+      const buffer = buffers[i]!;
       const ext =
         file.type === "image/jpeg"
           ? "jpg"
@@ -778,18 +785,24 @@ export async function uploadOrderEvidence(
             ? "png"
             : "webp";
       const key = `${context}/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      return { key, buffer, contentType: file.type };
+    });
 
-      await r2.send(
-        new PutObjectCommand({
-          Bucket: R2_BUCKET,
-          Key: key,
-          Body: buffer,
-          ContentType: file.type,
-        }),
-      );
+    // Upload all files in parallel
+    await Promise.all(
+      uploads.map(({ key, buffer, contentType }) =>
+        r2.send(
+          new PutObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+          }),
+        ),
+      ),
+    );
 
-      uploadedKeys.push(key);
-    }
+    const uploadedKeys = uploads.map((u) => u.key);
 
     logger.info(`order.${context}_evidence.uploaded`, {
       userId: user.id,

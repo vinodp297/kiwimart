@@ -37,18 +37,15 @@ export async function checkPriceDrops(): Promise<{
     },
   });
 
-  let notified = 0;
+  // Filter to items where price has actually dropped
+  const droppedItems = watchItems.filter(
+    (item) => item.listing.priceNzd < item.priceAtWatch!,
+  );
 
-  for (const item of watchItems) {
-    const savedPrice = item.priceAtWatch!;
-    const currentPrice = item.listing.priceNzd;
-
-    if (currentPrice >= savedPrice) continue;
-
-    // Price dropped — notify watcher
-    const oldDollars = (savedPrice / 100).toFixed(2);
-    const newDollars = (currentPrice / 100).toFixed(2);
-
+  // Fire all notifications in parallel (fire-and-forget)
+  droppedItems.forEach((item) => {
+    const oldDollars = (item.priceAtWatch! / 100).toFixed(2);
+    const newDollars = (item.listing.priceNzd / 100).toFixed(2);
     createNotification({
       userId: item.userId,
       type: "SYSTEM",
@@ -57,15 +54,21 @@ export async function checkPriceDrops(): Promise<{
       listingId: item.listing.id,
       link: `/listings/${item.listing.id}`,
     }).catch(() => {});
+  });
 
-    // Update priceAtWatch to current price so same drop isn't notified twice
-    await db.watchlistItem.update({
-      where: { id: item.id },
-      data: { priceAtWatch: currentPrice },
-    });
-
-    notified++;
+  // Bulk update all priceAtWatch values in one transaction (each item has a different price)
+  if (droppedItems.length > 0) {
+    await db.$transaction(
+      droppedItems.map((item) =>
+        db.watchlistItem.update({
+          where: { id: item.id },
+          data: { priceAtWatch: item.listing.priceNzd },
+        }),
+      ),
+    );
   }
+
+  const notified = droppedItems.length;
 
   logger.info("price_drop_notifications.completed", {
     checked: watchItems.length,
