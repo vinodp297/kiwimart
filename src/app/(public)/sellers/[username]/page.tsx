@@ -78,7 +78,7 @@ async function getSellerByUsername(username: string) {
       reviews: {
         where: { approved: true },
         orderBy: { createdAt: "desc" },
-        take: 20,
+        take: 5,
         select: {
           id: true,
           rating: true,
@@ -142,28 +142,20 @@ export default async function SellerProfilePage({
 
   const currentUserId = session?.user?.id ?? null;
 
-  // Check if logged-in viewer has blocked this seller
-  let isBlocked = false;
-  if (currentUserId && currentUserId !== user.id) {
-    try {
-      const block = await db.blockedUser.findFirst({
-        where: { blockerId: currentUserId, blockedId: user.id },
-        select: { id: true },
-      });
-      isBlocked = !!block;
-    } catch {
-      // Fail-safe: block check failure → treat as not blocked, page still loads
-    }
-  }
-
-  // Fetch trust profile (trust score + tier + response metrics)
-  let trustProfile: Awaited<ReturnType<typeof getSellerTrustProfile>> | null =
-    null;
-  try {
-    trustProfile = await getSellerTrustProfile(user.id);
-  } catch {
-    // Non-critical — page still renders without trust data
-  }
+  // Fetch block status and trust profile in parallel (independent queries)
+  const [block, fetchedTrustProfile] = await Promise.all([
+    currentUserId && currentUserId !== user.id
+      ? db.blockedUser
+          .findFirst({
+            where: { blockerId: currentUserId, blockedId: user.id },
+            select: { id: true },
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
+    getSellerTrustProfile(user.id).catch(() => null),
+  ]);
+  const isBlocked = !!block;
+  const trustProfile = fetchedTrustProfile;
 
   // Compute avg rating from reviews
   const avgRating =

@@ -32,56 +32,58 @@ export async function runSellerDowngradeCheck(): Promise<{
   ]);
   const disputeRateThreshold = disputeRateThresholdPct / 100;
 
-  // Find sellers with trust metrics exceeding dispute rate threshold
-  const sellersAtRisk = await db.user.findMany({
-    where: {
-      sellerEnabled: true,
-      isBanned: false,
-      sellerTierOverride: null,
-      trustMetrics: {
-        disputeRate: { gt: disputeRateThreshold },
-      },
-    },
-    select: {
-      id: true,
-      trustMetrics: {
-        select: {
-          completedOrders: true,
-          totalOrders: true,
-          averageRating: true,
-          disputeRate: true,
+  // Fetch both seller risk groups in parallel (independent queries with different filters)
+  const [sellersAtRisk, sellersWithOpenDisputes] = await Promise.all([
+    // Sellers with trust metrics exceeding dispute rate threshold
+    db.user.findMany({
+      where: {
+        sellerEnabled: true,
+        isBanned: false,
+        sellerTierOverride: null,
+        trustMetrics: {
+          disputeRate: { gt: disputeRateThreshold },
         },
       },
-    },
-  });
-
-  // Also find sellers with too many simultaneously open disputes
-  const sellersWithOpenDisputes = await db.user.findMany({
-    where: {
-      sellerEnabled: true,
-      isBanned: false,
-      sellerTierOverride: null,
-      sellerOrders: {
-        some: { status: "DISPUTED" },
-      },
-    },
-    select: {
-      id: true,
-      trustMetrics: {
-        select: {
-          completedOrders: true,
-          totalOrders: true,
-          averageRating: true,
-          disputeRate: true,
+      select: {
+        id: true,
+        trustMetrics: {
+          select: {
+            completedOrders: true,
+            totalOrders: true,
+            averageRating: true,
+            disputeRate: true,
+          },
         },
       },
-      _count: {
-        select: {
-          sellerOrders: { where: { status: "DISPUTED" } },
+    }),
+    // Sellers with too many simultaneously open disputes
+    db.user.findMany({
+      where: {
+        sellerEnabled: true,
+        isBanned: false,
+        sellerTierOverride: null,
+        sellerOrders: {
+          some: { status: "DISPUTED" },
         },
       },
-    },
-  });
+      select: {
+        id: true,
+        trustMetrics: {
+          select: {
+            completedOrders: true,
+            totalOrders: true,
+            averageRating: true,
+            disputeRate: true,
+          },
+        },
+        _count: {
+          select: {
+            sellerOrders: { where: { status: "DISPUTED" } },
+          },
+        },
+      },
+    }),
+  ]);
 
   // Merge both sets into a unique map
   const candidateMap = new Map<
