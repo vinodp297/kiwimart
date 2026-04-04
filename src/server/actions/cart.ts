@@ -639,9 +639,11 @@ export async function checkoutCart(
       });
 
       // Freeze listing state at purchase time — immutable evidence for disputes
-      for (const item of cart.items) {
-        await captureListingSnapshot(created.id, item.listingId, tx);
-      }
+      await Promise.all(
+        cart.items.map((item) =>
+          captureListingSnapshot(created.id, item.listingId, tx),
+        ),
+      );
 
       return created;
     });

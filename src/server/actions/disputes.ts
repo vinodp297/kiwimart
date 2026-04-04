@@ -139,11 +139,15 @@ export async function uploadDisputeEvidence(
       return { success: false, error: `Maximum ${MAX_FILES} photos allowed.` };
     }
 
-    const uploadedKeys: string[] = [];
+    // Read all file buffers in parallel
+    const buffers = await Promise.all(
+      files.map((f) => f.arrayBuffer().then((ab) => Buffer.from(ab))),
+    );
 
-    for (const file of files) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-
+    // Validate all files before uploading
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
+      const buffer = buffers[i]!;
       // Server-side security validation — magic bytes + extension + size + MIME type
       const validation = validateImageFile({
         buffer,
@@ -154,11 +158,14 @@ export async function uploadDisputeEvidence(
       if (!validation.valid) {
         return { success: false, error: validation.error ?? "Invalid file." };
       }
-
       if (file.size > MAX_SIZE) {
         return { success: false, error: "Each photo must be under 5MB." };
       }
+    }
 
+    // Build upload descriptors
+    const uploads = files.map((file, i) => {
+      const buffer = buffers[i]!;
       const ext =
         file.type === "image/jpeg"
           ? "jpg"
@@ -166,19 +173,25 @@ export async function uploadDisputeEvidence(
             ? "png"
             : "webp";
       const key = `disputes/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      return { key, buffer, contentType: file.type };
+    });
 
-      await r2.send(
-        new PutObjectCommand({
-          Bucket: R2_BUCKET,
-          Key: key,
-          Body: buffer,
-          ContentType: file.type,
-        }),
-      );
+    // Upload all files in parallel
+    await Promise.all(
+      uploads.map(({ key, buffer, contentType }) =>
+        r2.send(
+          new PutObjectCommand({
+            Bucket: R2_BUCKET,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+          }),
+        ),
+      ),
+    );
 
-      // Store the R2 key (NOT a public URL) — signed URLs generated at serve time
-      uploadedKeys.push(key);
-    }
+    // Store the R2 keys (NOT public URLs) — signed URLs generated at serve time
+    const uploadedKeys = uploads.map((u) => u.key);
 
     logger.info("dispute.evidence.uploaded", {
       userId: user.id,
