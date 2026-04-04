@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+buildCommand = "npm run build:worker"
+
+[deploy]
+startCommand = "node dist/worker.js"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
