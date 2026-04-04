@@ -229,6 +229,80 @@ describe("ReviewService", () => {
     });
   });
 
+  // ── Review Tags ──────────────────────────────────────────────────────────
+
+  describe("review tags", () => {
+    const mockOrder = {
+      id: "order-1",
+      buyerId: "buyer-1",
+      sellerId: "seller-1",
+      status: "COMPLETED",
+      reviews: [],
+    };
+
+    it("saves tags correctly with review", async () => {
+      vi.mocked(db.order.findUnique).mockResolvedValue(mockOrder as never);
+      vi.mocked(db.review.create).mockResolvedValue({
+        id: "review-tag-1",
+      } as never);
+
+      await reviewService.createReview(
+        {
+          orderId: "order-1",
+          rating: 5,
+          comment: "Excellent seller!",
+          tags: ["FAST_SHIPPING", "GREAT_PACKAGING"],
+        },
+        "buyer-1",
+      );
+
+      expect(db.review.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tags: {
+              create: [{ tag: "FAST_SHIPPING" }, { tag: "GREAT_PACKAGING" }],
+            },
+          }),
+        }),
+      );
+    });
+
+    it("creates review without tags when none provided", async () => {
+      vi.mocked(db.order.findUnique).mockResolvedValue(mockOrder as never);
+      vi.mocked(db.review.create).mockResolvedValue({
+        id: "review-notag",
+      } as never);
+
+      await reviewService.createReview(
+        { orderId: "order-1", rating: 4, comment: "Good experience" },
+        "buyer-1",
+      );
+
+      // Should NOT include tags.create in the data
+      const createCall = vi.mocked(db.review.create).mock.calls[0]?.[0];
+      expect(
+        (createCall as { data: Record<string, unknown> }).data,
+      ).not.toHaveProperty("tags");
+    });
+
+    it("creates review without tags when empty array provided", async () => {
+      vi.mocked(db.order.findUnique).mockResolvedValue(mockOrder as never);
+      vi.mocked(db.review.create).mockResolvedValue({
+        id: "review-empty-tags",
+      } as never);
+
+      await reviewService.createReview(
+        { orderId: "order-1", rating: 4, comment: "Good experience", tags: [] },
+        "buyer-1",
+      );
+
+      const createCall = vi.mocked(db.review.create).mock.calls[0]?.[0];
+      expect(
+        (createCall as { data: Record<string, unknown> }).data,
+      ).not.toHaveProperty("tags");
+    });
+  });
+
   // ── fetchSellerReviews ────────────────────────────────────────────────────
 
   describe("fetchSellerReviews", () => {
