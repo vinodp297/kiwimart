@@ -771,6 +771,13 @@ model DisputeEvidence {
 // type and actorRole are plain Strings (not enums) so new event types
 // can be added without migrations.
 
+/// HIGH GROWTH TABLE — Partitioning Strategy:
+/// At ~1M rows (est. 12-18 months at 1K DAU), partition by month using
+/// PostgreSQL declarative partitioning on createdAt.
+/// Migration path: CREATE TABLE order_events_YYYY_MM PARTITION OF order_events
+/// FOR VALUES FROM ('YYYY-MM-01') TO ('YYYY-MM-01' + interval '1 month');
+/// Archive partitions older than 12 months to cold storage.
+/// Index: createdAt DESC already exists — will be inherited by partitions.
 model OrderEvent {
   id        String   @id @default(cuid())
   orderId   String
@@ -1036,6 +1043,10 @@ model Payout {
 // Audit Log — immutable, append-only
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// HIGH GROWTH TABLE — Partitioning Strategy:
+/// At ~5M rows (est. 6-12 months at 1K DAU), partition by month on createdAt.
+/// Same pattern as OrderEvent. Retain 24 months live, archive remainder.
+/// Consider pg_partman extension for automated partition management.
 model AuditLog {
   id     String      @id @default(cuid())
   userId String?     // null for system actions

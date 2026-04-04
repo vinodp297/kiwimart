@@ -134,7 +134,7 @@ export const cartRepository = {
           },
         },
       },
-      select: { items: { select: { id: true } } },
+      select: { id: true, items: { select: { id: true } } },
     });
   },
 
