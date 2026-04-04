@@ -86,7 +86,12 @@ export async function GET(request: Request) {
     const listings = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (listings.at(-1)?.id ?? null) : null;
 
-    return apiOk({ listings, nextCursor, hasMore });
+    const response = apiOk({ listings, nextCursor, hasMore });
+    response.headers.set(
+      "Cache-Control",
+      "public, s-maxage=60, stale-while-revalidate=300",
+    );
+    return response;
   } catch (e) {
     return handleApiError(e);
   }

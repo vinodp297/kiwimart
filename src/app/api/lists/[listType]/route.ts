@@ -35,5 +35,10 @@ export async function GET(
   }
 
   const items = await getList(listType as DynamicListType);
-  return apiOk(items);
+  const response = apiOk(items);
+  response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=3600, stale-while-revalidate=86400",
+  );
+  return response;
 }

@@ -42,7 +42,9 @@ export async function GET(request: Request) {
     const notifications = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (notifications.at(-1)?.id ?? null) : null;
 
-    return apiOk({ notifications, nextCursor, hasMore });
+    const response = apiOk({ notifications, nextCursor, hasMore });
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/notifications",

@@ -7,5 +7,10 @@ import { apiOk } from "@/app/api/v1/_helpers/response";
 
 export async function GET() {
   const regions = await getRegionsWithCoords();
-  return apiOk(regions);
+  const response = apiOk(regions);
+  response.headers.set(
+    "Cache-Control",
+    "public, s-maxage=86400, stale-while-revalidate=604800",
+  );
+  return response;
 }
