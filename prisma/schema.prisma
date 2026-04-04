@@ -583,6 +583,7 @@ model Listing {
   @@index([sellerId, createdAt(sort: Desc)])
   // Partial index for public browse queries (status=ACTIVE, deletedAt=null)
   @@index([createdAt(sort: Desc), categoryId, region, priceNzd], map: "Listing_active_partial_idx")
+  @@index([status, expiresAt], map: "Listing_status_expiresAt_idx")
 }
 
 model ListingImage {
@@ -606,6 +607,7 @@ model ListingImage {
 
   @@index([listingId])
   @@index([listingId, order])
+  @@index([r2Key], map: "ListingImage_r2Key_idx")
 }
 
 model ListingAttribute {
@@ -894,6 +896,7 @@ model Offer {
   @@index([expiresAt])
   @@index([listingId, status])
   @@index([buyerId, status])
+  @@index([status, paymentDeadline], map: "Offer_status_paymentDeadline_idx")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1094,6 +1097,7 @@ model Notification {
   @@index([userId, read])
   @@index([userId, createdAt])
   @@index([userId, createdAt(sort: Desc)], map: "Notification_userId_createdAt_desc_idx")
+  @@index([userId, orderId, type], map: "Notification_userId_orderId_type_idx")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
