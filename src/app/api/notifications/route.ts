@@ -11,11 +11,21 @@ import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
 
+function dep<T extends Response>(res: T): T {
+  res.headers.set("Deprecation", "true");
+  res.headers.set(
+    "Sunset",
+    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
+  );
+  res.headers.set("Link", '</api/v1/>; rel="successor-version"');
+  return res;
+}
+
 export async function GET() {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ notifications: [] });
+      return dep(NextResponse.json({ notifications: [] }));
     }
 
     const notifications = await notificationRepository.findByUser(
@@ -28,18 +38,21 @@ export async function GET() {
       data: { notifications },
     });
     response.headers.set("Cache-Control", "private, no-store");
+    dep(response);
     return response;
   } catch (e) {
     logger.error("api.error", {
       path: "/api/notifications",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      {
-        success: false,
-        error: "We couldn't load your notifications. Please try again.",
-      },
-      { status: 500 },
+    return dep(
+      NextResponse.json(
+        {
+          success: false,
+          error: "We couldn't load your notifications. Please try again.",
+        },
+        { status: 500 },
+      ),
     );
   }
 }
@@ -49,34 +62,40 @@ export async function PATCH(request: Request) {
     // Pusher auth uses form-data, but this endpoint expects JSON
     const contentType = request.headers.get("content-type");
     if (contentType && !contentType.includes("application/json")) {
-      return NextResponse.json(
-        { success: false, error: "Content-Type must be application/json" },
-        { status: 415 },
+      return dep(
+        NextResponse.json(
+          { success: false, error: "Content-Type must be application/json" },
+          { status: 415 },
+        ),
       );
     }
 
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorised" },
-        { status: 401 },
+      return dep(
+        NextResponse.json(
+          { success: false, error: "Unauthorised" },
+          { status: 401 },
+        ),
       );
     }
 
     await notificationRepository.markAllRead(session.user.id);
 
-    return NextResponse.json({ success: true, data: null });
+    return dep(NextResponse.json({ success: true, data: null }));
   } catch (e) {
     logger.error("api.error", {
       path: "/api/notifications",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      {
-        success: false,
-        error: "We couldn't update your notifications. Please try again.",
-      },
-      { status: 500 },
+    return dep(
+      NextResponse.json(
+        {
+          success: false,
+          error: "We couldn't update your notifications. Please try again.",
+        },
+        { status: 500 },
+      ),
     );
   }
 }

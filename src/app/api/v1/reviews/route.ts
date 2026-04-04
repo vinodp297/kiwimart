@@ -1,9 +1,13 @@
 // src/app/api/v1/reviews/route.ts
 // ─── Reviews API ─────────────────────────────────────────────────────────────
+// GET  /api/v1/reviews — list reviews (public, cursor pagination)
 // POST /api/v1/reviews — create a review for a completed order (buyer or seller)
 
+import { Prisma } from "@prisma/client";
+import db from "@/lib/db";
 import { createReviewSchema } from "@/server/validators";
 import { reviewService } from "@/modules/reviews/review.service";
+import { logger } from "@/shared/logger";
 import {
   apiOk,
   apiError,
@@ -11,6 +15,48 @@ import {
   requireApiUser,
 } from "../_helpers/response";
 import { corsHeaders } from "../_helpers/cors";
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const cursor = searchParams.get("cursor") ?? undefined;
+    const limit = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 50);
+    const sellerId = searchParams.get("sellerId") ?? undefined;
+    const buyerId = searchParams.get("buyerId") ?? undefined;
+
+    const where: Prisma.ReviewWhereInput = { approved: true };
+    if (sellerId) where.subjectId = sellerId;
+    if (buyerId) where.authorId = buyerId;
+
+    const raw = await db.review.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        reply: true,
+        reviewerRole: true,
+        createdAt: true,
+        author: { select: { displayName: true, username: true } },
+      },
+    });
+
+    const hasMore = raw.length > limit;
+    const reviews = hasMore ? raw.slice(0, limit) : raw;
+    const nextCursor = hasMore ? (reviews.at(-1)?.id ?? null) : null;
+
+    return apiOk({ reviews, nextCursor, hasMore });
+  } catch (e) {
+    logger.error("api.error", {
+      path: "/api/v1/reviews GET",
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return handleApiError(e);
+  }
+}
 
 export async function POST(request: Request) {
   try {

@@ -162,6 +162,184 @@ const openApiSpec = {
         },
       },
     },
+    "/api/v1/listings/{id}": {
+      delete: {
+        summary: "Delete a listing (soft delete)",
+        tags: ["Listings"],
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+          },
+        ],
+        responses: {
+          "200": { description: "Listing deleted successfully" },
+          "403": { description: "Not the owner" },
+          "404": { description: "Listing not found" },
+        },
+      },
+    },
+    "/api/v1/offers": {
+      get: {
+        summary: "List offers for the authenticated user",
+        tags: ["Offers"],
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "cursor", in: "query", schema: { type: "string" } },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", default: 20 },
+          },
+          {
+            name: "role",
+            in: "query",
+            schema: { type: "string", enum: ["buyer", "seller"] },
+            description:
+              "Filter to offers where user is buyer or seller. Omit for both.",
+          },
+        ],
+        responses: {
+          "200": { description: "Paginated offers" },
+          "401": { description: "Unauthorised" },
+        },
+      },
+      post: {
+        summary: "Create an offer on a listing",
+        tags: ["Offers"],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["listingId", "amountNzd"],
+                properties: {
+                  listingId: { type: "string" },
+                  amountNzd: {
+                    type: "integer",
+                    description: "Offer amount in NZD cents",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Offer created" },
+          "400": { description: "Validation error" },
+          "401": { description: "Unauthorised" },
+          "429": { description: "Rate limited" },
+        },
+      },
+    },
+    "/api/v1/disputes": {
+      post: {
+        summary: "Open a dispute on an order",
+        tags: ["Disputes"],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["orderId", "reason", "buyerStatement"],
+                properties: {
+                  orderId: { type: "string" },
+                  reason: {
+                    type: "string",
+                    enum: [
+                      "ITEM_NOT_RECEIVED",
+                      "ITEM_NOT_AS_DESCRIBED",
+                      "ITEM_DAMAGED",
+                      "WRONG_ITEM_SENT",
+                      "COUNTERFEIT_ITEM",
+                      "SELLER_UNRESPONSIVE",
+                      "SELLER_CANCELLED",
+                      "REFUND_NOT_PROCESSED",
+                      "OTHER",
+                    ],
+                  },
+                  buyerStatement: {
+                    type: "string",
+                    minLength: 10,
+                    maxLength: 2000,
+                    description: "Buyer's description of the issue",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Dispute opened" },
+          "400": { description: "Validation error" },
+          "401": { description: "Unauthorised" },
+        },
+      },
+    },
+    "/api/v1/reviews": {
+      get: {
+        summary: "List reviews (public)",
+        tags: ["Reviews"],
+        parameters: [
+          { name: "cursor", in: "query", schema: { type: "string" } },
+          {
+            name: "limit",
+            in: "query",
+            schema: { type: "integer", default: 20 },
+          },
+          {
+            name: "sellerId",
+            in: "query",
+            schema: { type: "string" },
+            description: "Filter by seller (subjectId)",
+          },
+          {
+            name: "buyerId",
+            in: "query",
+            schema: { type: "string" },
+            description: "Filter by buyer (authorId)",
+          },
+        ],
+        responses: {
+          "200": { description: "Paginated reviews" },
+        },
+      },
+      post: {
+        summary: "Create a review for a completed order",
+        tags: ["Reviews"],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["orderId", "rating"],
+                properties: {
+                  orderId: { type: "string" },
+                  rating: { type: "number", minimum: 1, maximum: 5 },
+                  comment: { type: "string" },
+                  reviewerRole: { type: "string", enum: ["BUYER", "SELLER"] },
+                  tags: { type: "array", items: { type: "string" } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "Review created" },
+          "400": { description: "Validation error" },
+          "401": { description: "Unauthorised" },
+        },
+      },
+    },
     "/api/v1/cart": {
       get: {
         summary: "Get cart item count",
@@ -179,6 +357,60 @@ const openApiSpec = {
               },
             },
           },
+        },
+      },
+      post: {
+        summary: "Add a listing to the cart",
+        tags: ["Cart"],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["listingId"],
+                properties: {
+                  listingId: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Item added, returns cartItemCount" },
+          "400": {
+            description: "Validation or cart error (e.g. SELLER_MISMATCH)",
+          },
+          "401": { description: "Unauthorised" },
+        },
+      },
+    },
+    "/api/v1/notifications/push": {
+      post: {
+        summary: "Register a device push token",
+        tags: ["Notifications"],
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["token", "platform", "deviceId"],
+                properties: {
+                  token: { type: "string", maxLength: 512 },
+                  platform: { type: "string", enum: ["ios", "android"] },
+                  deviceId: { type: "string", maxLength: 255 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Token registered" },
+          "400": { description: "Validation error" },
+          "401": { description: "Unauthorised" },
         },
       },
     },

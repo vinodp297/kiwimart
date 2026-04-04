@@ -10,6 +10,16 @@ import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
+function dep<T extends Response>(res: T): T {
+  res.headers.set("Deprecation", "true");
+  res.headers.set(
+    "Sunset",
+    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
+  );
+  res.headers.set("Link", '</api/v1/>; rel="successor-version"');
+  return res;
+}
+
 export async function GET() {
   try {
     // Admin only
@@ -94,12 +104,12 @@ export async function GET() {
 
     logger.info("metrics.requested", { requestedBy: user.id });
 
-    return apiOk(metrics);
+    return dep(apiOk(metrics));
   } catch (e) {
     logger.error("api.error", {
       path: "/api/metrics",
       error: e instanceof Error ? e.message : e,
     });
-    return apiError("Failed to load metrics. Please try again.", 500);
+    return dep(apiError("Failed to load metrics. Please try again.", 500));
   }
 }

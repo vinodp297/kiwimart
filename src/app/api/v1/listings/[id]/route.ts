@@ -1,6 +1,7 @@
 // src/app/api/v1/listings/[id]/route.ts
 // ─── Single Listing API ─────────────────────────────────────────────────────
-// PATCH /api/v1/listings/[id] — update a listing (owner only)
+// PATCH  /api/v1/listings/[id] — update a listing (owner only)
+// DELETE /api/v1/listings/[id] — soft-delete a listing (owner or admin)
 
 import db from "@/lib/db";
 import { createListingSchema } from "@/server/validators";
@@ -92,6 +93,37 @@ export async function PATCH(
     });
 
     return apiOk({ listing: updated });
+  } catch (e) {
+    return handleApiError(e);
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const user = await requireApiUser(request);
+    const { id } = await params;
+
+    const listing = await db.listing.findUnique({
+      where: { id, deletedAt: null },
+      select: { id: true, sellerId: true },
+    });
+
+    if (!listing) {
+      return apiError("Listing not found", 404, "NOT_FOUND");
+    }
+    if (listing.sellerId !== user.id && !user.isAdmin) {
+      return apiError("Not your listing", 403, "FORBIDDEN");
+    }
+
+    await db.listing.update({
+      where: { id },
+      data: { deletedAt: new Date(), status: "REMOVED" },
+    });
+
+    return apiOk({ message: "Listing deleted" });
   } catch (e) {
     return handleApiError(e);
   }
