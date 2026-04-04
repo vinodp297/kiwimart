@@ -1,6 +1,7 @@
 // src/app/api/v1/pickup/reschedule/respond/route.ts
 // POST /api/v1/pickup/reschedule/respond — Respond to a reschedule request
 
+import { z } from "zod";
 import {
   apiOk,
   apiError,
@@ -8,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../../_helpers/response";
+import { rescheduleRespondSchema } from "@/modules/pickup/pickup.schema";
 import { respondToReschedule } from "@/server/services/pickup/pickup-scheduling.service";
 
 export async function POST(request: Request) {
@@ -16,27 +18,15 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireApiUser();
-    const body = (await request.json()) as {
-      orderId?: string;
-      rescheduleRequestId?: string;
-      response?: "ACCEPT" | "REJECT" | "PROPOSE_ALTERNATIVE";
-      alternativeTime?: string;
-      responseNote?: string;
-    };
 
-    if (!body.orderId || !body.rescheduleRequestId || !body.response) {
-      return apiError(
-        "orderId, rescheduleRequestId, and response are required.",
-        400,
-      );
-    }
-
-    const validResponses = ["ACCEPT", "REJECT", "PROPOSE_ALTERNATIVE"];
-    if (!validResponses.includes(body.response)) {
-      return apiError(
-        "response must be ACCEPT, REJECT, or PROPOSE_ALTERNATIVE.",
-        400,
-      );
+    let body: z.infer<typeof rescheduleRespondSchema>;
+    try {
+      body = rescheduleRespondSchema.parse(await request.json());
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      }
+      throw err;
     }
 
     let alternativeTime: Date | undefined;
@@ -48,9 +38,6 @@ export async function POST(request: Request) {
         );
       }
       alternativeTime = new Date(body.alternativeTime);
-      if (isNaN(alternativeTime.getTime())) {
-        return apiError("Invalid alternativeTime format.", 400);
-      }
     }
 
     const result = await respondToReschedule({

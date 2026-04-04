@@ -1,6 +1,7 @@
 // src/app/api/v1/pickup/propose/route.ts
 // POST /api/v1/pickup/propose — Propose a pickup time
 
+import { z } from "zod";
 import {
   apiOk,
   apiError,
@@ -8,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
+import { proposePickupSchema } from "@/modules/pickup/pickup.schema";
 import { proposePickupTime } from "@/server/services/pickup/pickup-scheduling.service";
 import db from "@/lib/db";
 
@@ -17,19 +19,18 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireApiUser();
-    const body = (await request.json()) as {
-      orderId?: string;
-      proposedTime?: string;
-    };
 
-    if (!body.orderId || !body.proposedTime) {
-      return apiError("orderId and proposedTime are required.", 400);
+    let body: z.infer<typeof proposePickupSchema>;
+    try {
+      body = proposePickupSchema.parse(await request.json());
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      }
+      throw err;
     }
 
     const proposedTime = new Date(body.proposedTime);
-    if (isNaN(proposedTime.getTime())) {
-      return apiError("Invalid proposedTime format.", 400);
-    }
 
     // Determine role
     const order = await db.order.findUnique({

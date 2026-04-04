@@ -1,5 +1,7 @@
+import { z } from "zod";
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/shared/auth/requirePermission";
+import { adminUsersQuerySchema } from "@/modules/admin/admin.schema";
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 
@@ -14,8 +16,21 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1"));
-    const q = url.searchParams.get("q") ?? "";
+
+    let query: z.infer<typeof adminUsersQuerySchema>;
+    try {
+      query = adminUsersQuerySchema.parse(Object.fromEntries(url.searchParams));
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return NextResponse.json(
+          { error: "Validation failed" },
+          { status: 400 },
+        );
+      }
+      throw err;
+    }
+
+    const { page, q } = query;
 
     const where = q
       ? {

@@ -1,6 +1,7 @@
 // src/app/api/v1/pickup/cancel/route.ts
 // POST /api/v1/pickup/cancel — Cancel a pickup order
 
+import { z } from "zod";
 import {
   apiOk,
   apiError,
@@ -8,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
+import { cancelPickupSchema } from "@/modules/pickup/pickup.schema";
 import { cancelPickupOrder } from "@/server/services/pickup/pickup-scheduling.service";
 
 export async function POST(request: Request) {
@@ -16,13 +18,15 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireApiUser();
-    const body = (await request.json()) as {
-      orderId?: string;
-      reason?: string;
-    };
 
-    if (!body.orderId || !body.reason) {
-      return apiError("orderId and reason are required.", 400);
+    let body: z.infer<typeof cancelPickupSchema>;
+    try {
+      body = cancelPickupSchema.parse(await request.json());
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      }
+      throw err;
     }
 
     if (body.reason.trim().length < 5) {

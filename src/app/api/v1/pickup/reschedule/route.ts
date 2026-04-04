@@ -1,6 +1,7 @@
 // src/app/api/v1/pickup/reschedule/route.ts
 // POST /api/v1/pickup/reschedule — Request a pickup reschedule
 
+import { z } from "zod";
 import {
   apiOk,
   apiError,
@@ -8,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
+import { reschedulePickupSchema } from "@/modules/pickup/pickup.schema";
 import { requestReschedule } from "@/server/services/pickup/pickup-scheduling.service";
 import db from "@/lib/db";
 import type {
@@ -21,22 +23,18 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireApiUser();
-    const body = (await request.json()) as {
-      orderId?: string;
-      sellerReason?: SellerRescheduleReason;
-      buyerReason?: BuyerRescheduleReason;
-      reasonNote?: string;
-      proposedTime?: string;
-    };
 
-    if (!body.orderId || !body.proposedTime) {
-      return apiError("orderId and proposedTime are required.", 400);
+    let body: z.infer<typeof reschedulePickupSchema>;
+    try {
+      body = reschedulePickupSchema.parse(await request.json());
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      }
+      throw err;
     }
 
     const proposedTime = new Date(body.proposedTime);
-    if (isNaN(proposedTime.getTime())) {
-      return apiError("Invalid proposedTime format.", 400);
-    }
 
     // Determine role
     const order = await db.order.findUnique({
@@ -55,8 +53,8 @@ export async function POST(request: Request) {
       orderId: body.orderId,
       requestedById: user.id,
       requestedByRole: role,
-      sellerReason: body.sellerReason,
-      buyerReason: body.buyerReason,
+      sellerReason: body.sellerReason as SellerRescheduleReason | undefined,
+      buyerReason: body.buyerReason as BuyerRescheduleReason | undefined,
       reasonNote: body.reasonNote,
       proposedTime,
     });
