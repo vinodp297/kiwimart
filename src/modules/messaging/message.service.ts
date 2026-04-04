@@ -118,6 +118,22 @@ export class MessageService {
     userId: string,
     options?: { cursor?: string; limit?: number },
   ) {
+    // When called without pagination options, return a plain array for backwards compatibility
+    if (!options?.cursor && !options?.limit) {
+      const threads = await messageRepository.findThreadsByUser(
+        userId,
+        20,
+        undefined,
+      );
+      return threads;
+    }
+    return this.getMyThreadsPaginated(userId, options);
+  }
+
+  async getMyThreadsPaginated(
+    userId: string,
+    options?: { cursor?: string; limit?: number },
+  ) {
     const limit = options?.limit ?? 20;
     const threads = await messageRepository.findThreadsByUser(
       userId,

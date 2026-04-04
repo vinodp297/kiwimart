@@ -268,8 +268,21 @@ export class SearchService {
       thumbnailUrl: getThumbUrl(row.images[0] ?? null),
       sellerName: row.seller.displayName,
       sellerUsername: row.seller.username,
-      sellerRating:
-        Math.round((sellerRatingMap.get(row.seller.id) ?? 0) * 10) / 10,
+      sellerRating: (() => {
+        const fromGroupBy = sellerRatingMap.get(row.seller.id);
+        if (fromGroupBy != null) return Math.round(fromGroupBy * 10) / 10;
+        // Fallback: compute from inline reviewsAbout when available
+        const inlineReviews = (
+          row.seller as { reviewsAbout?: { rating: number }[] }
+        ).reviewsAbout;
+        if (inlineReviews?.length) {
+          const avg =
+            inlineReviews.reduce((s, r) => s + r.rating, 0) /
+            inlineReviews.length;
+          return Math.round(avg * 10) / 10;
+        }
+        return 0;
+      })(),
       sellerVerified: row.seller.idVerified,
       viewCount: row.viewCount,
       watcherCount: row.watcherCount,

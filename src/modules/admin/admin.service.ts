@@ -298,14 +298,15 @@ export class AdminService {
     logger.info("admin.dispute.resolved", { orderId, favour, adminUserId });
 
     // In-app notifications for both parties
+    const listingTitle = order.listing?.title ?? "your order";
     const buyerMsg =
       favour === "buyer"
-        ? `Your dispute for "${order.listing.title}" was resolved in your favour — a refund has been issued.`
-        : `Your dispute for "${order.listing.title}" was resolved in favour of the seller.`;
+        ? `Your dispute for "${listingTitle}" was resolved in your favour — a refund has been issued.`
+        : `Your dispute for "${listingTitle}" was resolved in favour of the seller.`;
     const sellerMsg =
       favour === "seller"
-        ? `The dispute for "${order.listing.title}" was resolved in your favour — payment will be released.`
-        : `The dispute for "${order.listing.title}" was resolved in favour of the buyer.`;
+        ? `The dispute for "${listingTitle}" was resolved in your favour — payment will be released.`
+        : `The dispute for "${listingTitle}" was resolved in favour of the buyer.`;
     createNotification({
       userId: order.buyerId,
       type: "SYSTEM",
