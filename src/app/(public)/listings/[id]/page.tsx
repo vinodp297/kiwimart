@@ -133,41 +133,43 @@ export default async function ListingDetailPage({
     recordListingView(listing.id).catch(() => {});
   }
 
-  // Fetch seller business status for badge display
-  const sellerBusinessInfo = await db.user
-    .findUnique({
-      where: { id: listing.seller.id },
-      select: { nzbn: true, gstRegistered: true },
-    })
-    .catch(() => null);
-
-  const [responseTimeLabel, trustProfile, rawSocialProof, priceHistory] =
-    await Promise.all([
-      getSellerResponseTime(listing.seller.id).then(
-        (r) => r ?? "Response time unknown",
-      ),
-      getSellerTrustProfile(listing.seller.id).catch(() => null),
-      getListingSocialProof(listing.id).catch(() => ({
-        viewCount: 0,
-        watcherCount: 0,
-        pendingOfferCount: 0,
-      })),
-      getListingPriceHistory(listing.id).catch(() => []),
-    ]);
-
-  // Check if current viewer is watching this listing
-  let isWatching: { id: string } | null = null;
-  let adjustedWatcherCount = rawSocialProof.watcherCount;
-  if (session?.user?.id) {
-    isWatching = await db.watchlistItem
-      .findFirst({
-        where: { userId: session.user.id, listingId: listing.id },
-        select: { id: true },
+  // Fetch all independent data in a single parallel batch
+  const [
+    sellerBusinessInfo,
+    responseTimeLabel,
+    trustProfile,
+    rawSocialProof,
+    priceHistory,
+    isWatching,
+  ] = await Promise.all([
+    db.user
+      .findUnique({
+        where: { id: listing.seller.id },
+        select: { nzbn: true, gstRegistered: true },
       })
-      .catch(() => null);
-    if (isWatching)
-      adjustedWatcherCount = Math.max(0, adjustedWatcherCount - 1);
-  }
+      .catch(() => null),
+    getSellerResponseTime(listing.seller.id).then(
+      (r) => r ?? "Response time unknown",
+    ),
+    getSellerTrustProfile(listing.seller.id).catch(() => null),
+    getListingSocialProof(listing.id).catch(() => ({
+      viewCount: 0,
+      watcherCount: 0,
+      pendingOfferCount: 0,
+    })),
+    getListingPriceHistory(listing.id).catch(() => []),
+    session?.user?.id
+      ? db.watchlistItem
+          .findFirst({
+            where: { userId: session.user.id, listingId: listing.id },
+            select: { id: true },
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  let adjustedWatcherCount = rawSocialProof.watcherCount;
+  if (isWatching) adjustedWatcherCount = Math.max(0, adjustedWatcherCount - 1);
   const socialProof = { ...rawSocialProof, watcherCount: adjustedWatcherCount };
 
   const seller: SellerPublic = {

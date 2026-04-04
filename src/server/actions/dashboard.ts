@@ -220,8 +220,8 @@ export async function fetchBuyerDashboard(): Promise<
           participant2Id: true,
           lastMessageAt: true,
           messages: {
-            orderBy: { createdAt: "asc" },
-            take: 50,
+            orderBy: { createdAt: "desc" },
+            take: 1,
             select: {
               id: true,
               body: true,
