@@ -11,6 +11,9 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { pickupQueue } from "@/lib/queue";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { pickupRepository } from "@/modules/pickup/pickup.repository";
+import { messageRepository } from "@/modules/messaging/message.repository";
 import {
   getPickupConfig,
   findOrCreateThread,
@@ -33,19 +36,7 @@ export async function proposePickupTime(params: {
 }): Promise<PickupResult> {
   const { orderId, proposedById, proposedByRole, proposedTime } = params;
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      fulfillmentType: true,
-      pickupStatus: true,
-      listingId: true,
-      listing: { select: { title: true, pickupAddress: true } },
-    },
-  });
+  const order = await orderRepository.findWithPickupContext(orderId);
 
   if (!order) return { success: false, error: "Order not found." };
 
@@ -106,10 +97,11 @@ export async function proposePickupTime(params: {
 
   await db.$transaction(async (tx) => {
     // Update pickup status to SCHEDULING
-    await tx.order.update({
-      where: { id: orderId },
-      data: { pickupStatus: "SCHEDULING" },
-    });
+    await orderRepository.updatePickupFields(
+      orderId,
+      { pickupStatus: "SCHEDULING" },
+      tx,
+    );
 
     // Create pickup proposal message in thread
     const threadId = await findOrCreateThread(
@@ -174,19 +166,7 @@ export async function acceptPickupTime(params: {
   const { orderId, acceptedById, rescheduleRequestId } = params;
   const pickupCfg = await getPickupConfig();
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      fulfillmentType: true,
-      pickupStatus: true,
-      listingId: true,
-      listing: { select: { title: true, pickupAddress: true } },
-    },
-  });
+  const order = await orderRepository.findWithPickupContext(orderId);
 
   if (!order) return { success: false, error: "Order not found." };
 
@@ -206,16 +186,8 @@ export async function acceptPickupTime(params: {
 
   if (rescheduleRequestId) {
     // Accept a specific reschedule request
-    const request = await db.pickupRescheduleRequest.findUnique({
-      where: { id: rescheduleRequestId },
-      select: {
-        id: true,
-        orderId: true,
-        requestedById: true,
-        proposedTime: true,
-        status: true,
-      },
-    });
+    const request =
+      await pickupRepository.findRescheduleRequest(rescheduleRequestId);
 
     if (!request)
       return { success: false, error: "Reschedule request not found." };
@@ -235,31 +207,26 @@ export async function acceptPickupTime(params: {
 
     confirmedTime = request.proposedTime;
 
-    await db.pickupRescheduleRequest.update({
-      where: { id: rescheduleRequestId },
-      data: { status: "ACCEPTED", respondedAt: new Date() },
+    await pickupRepository.updateRescheduleRequest(rescheduleRequestId, {
+      status: "ACCEPTED",
+      respondedAt: new Date(),
     });
   } else {
     // Accept the most recent proposal from the message thread
     // Find the latest PICKUP_PROPOSAL message
     const [p1, p2] = [order.buyerId, order.sellerId].sort();
-    const thread = await db.messageThread.findFirst({
-      where: {
-        participant1Id: p1,
-        participant2Id: p2,
-        listingId: order.listingId,
-      },
-      select: { id: true },
-    });
+    const thread = await messageRepository.findThread(
+      p1!,
+      p2!,
+      order.listingId,
+    );
 
     if (!thread) return { success: false, error: "No pickup proposal found." };
 
-    const recentMessages = await db.message.findMany({
-      where: { threadId: thread.id },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      select: { body: true, senderId: true },
-    });
+    const recentMessages = await messageRepository.findRecentThreadMessages(
+      thread.id,
+      10,
+    );
 
     let proposalCard: PickupProposalCard | null = null;
     for (const msg of recentMessages) {
@@ -289,16 +256,17 @@ export async function acceptPickupTime(params: {
     order.listing.pickupAddress ?? "Pickup location (see listing)";
 
   await db.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
+    await orderRepository.updatePickupFields(
+      orderId,
+      {
         pickupStatus: "SCHEDULED",
         pickupScheduledAt: confirmedTime,
         pickupWindowExpiresAt: new Date(
           confirmedTime.getTime() + pickupCfg.PICKUP_WINDOW_MS,
         ),
       },
-    });
+      tx,
+    );
 
     // Create confirmation message in thread
     const threadId = await findOrCreateThread(
@@ -329,12 +297,7 @@ export async function acceptPickupTime(params: {
       { delay: Math.max(windowDelay, 0), jobId: windowJobId },
     )
     .then(() => {
-      db.order
-        .update({
-          where: { id: orderId },
-          data: { pickupWindowJobId: windowJobId },
-        })
-        .catch(() => {});
+      orderRepository.setPickupWindowJobId(orderId, windowJobId);
     })
     .catch((err) => {
       logger.warn("pickup.window_job.schedule_failed", {

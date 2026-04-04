@@ -3,6 +3,7 @@
 
 import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import type { ListingStatus } from "@prisma/client";
 
 type DbClient = Prisma.TransactionClient | typeof db;
 
@@ -255,6 +256,30 @@ export const listingRepository = {
     return client.listing.updateMany({
       where: { id, status: "RESERVED" },
       data: { status: "ACTIVE" },
+    });
+  },
+
+  /** Set listing status directly (admin remove, offer accept → RESERVED, dispute → ACTIVE).
+   * @source src/modules/admin/admin.service.ts, src/modules/offers/offer.service.ts */
+  async setStatus(id: string, status: ListingStatus, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.listing.update({ where: { id }, data: { status } });
+  },
+
+  /** Fetch active listing data needed for offer creation.
+   * @source src/modules/offers/offer.service.ts — createOffer */
+  async findForOffer(id: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.listing.findUnique({
+      where: { id, status: "ACTIVE", deletedAt: null },
+      select: {
+        id: true,
+        sellerId: true,
+        title: true,
+        priceNzd: true,
+        offersEnabled: true,
+        seller: { select: { email: true, displayName: true } },
+      },
     });
   },
 

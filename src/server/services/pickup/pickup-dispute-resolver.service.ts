@@ -19,6 +19,9 @@ import {
   getDisputeByOrderId,
   resolveDispute as resolveDisputeRecord,
 } from "@/server/services/dispute/dispute.service";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { adminRepository } from "@/modules/admin/admin.repository";
 
 export type PickupDisputeDecision =
   | "AUTO_REFUND"
@@ -39,18 +42,7 @@ export async function resolvePickupDispute(params: {
 }): Promise<PickupDisputeResult> {
   const { orderId, reason, reasonNote } = params;
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      totalNzd: true,
-      stripePaymentIntentId: true,
-      listingId: true,
-      listing: { select: { title: true } },
-    },
-  });
+  const order = await orderRepository.findWithDisputeContext(orderId);
 
   if (!order) {
     return { decision: "MANUAL_REVIEW", reason: "Order not found" };
@@ -131,6 +123,8 @@ async function executeAutoRefund(
     stripePaymentIntentId: string | null;
     listingId: string;
     listing: { title: string };
+    buyer: { email: string; displayName: string | null } | null;
+    seller: { email: string; displayName: string | null } | null;
   },
   reason: string,
   decisionReason: string,
@@ -154,10 +148,11 @@ async function executeAutoRefund(
   // 2. Update order status + resolve dispute record
   const dispute = await getDisputeByOrderId(order.id);
   await db.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: order.id },
-      data: { status: "REFUNDED" },
-    });
+    await orderRepository.updatePickupFields(
+      order.id,
+      { status: "REFUNDED" },
+      tx,
+    );
     if (dispute) {
       await resolveDisputeRecord({
         disputeId: dispute.id,
@@ -169,37 +164,14 @@ async function executeAutoRefund(
   });
 
   // 3. Restore listing
-  await db.listing
-    .updateMany({
-      where: { id: order.listingId, status: "RESERVED" },
-      data: { status: "ACTIVE" },
-    })
-    .catch(() => {});
+  await listingRepository.reactivate(order.listingId).catch(() => {});
 
   // 4. Update trust metrics for seller
-  await db.trustMetrics
-    .upsert({
-      where: { userId: order.sellerId },
-      create: {
-        userId: order.sellerId,
-        totalOrders: 0,
-        completedOrders: 0,
-        disputeCount: 1,
-        disputeRate: 0,
-        disputesLast30Days: 1,
-        averageResponseHours: null,
-        averageRating: null,
-        dispatchPhotoRate: 0,
-        accountAgeDays: 0,
-        isFlaggedForFraud: reason === "ITEM_NOT_PRESENT",
-        lastComputedAt: new Date(),
-      },
-      update: {
-        disputeCount: { increment: 1 },
-        disputesLast30Days: { increment: 1 },
-        ...(reason === "ITEM_NOT_PRESENT" ? { isFlaggedForFraud: true } : {}),
-      },
-    })
+  await adminRepository
+    .recordSellerDisputeFromPickup(
+      order.sellerId,
+      reason === "ITEM_NOT_PRESENT",
+    )
     .catch(() => {});
 
   // 5. Record event
@@ -236,40 +208,30 @@ async function executeAutoRefund(
   }).catch(() => {});
 
   // 7. Emails
-  db.user
-    .findMany({
-      where: { id: { in: [order.buyerId, order.sellerId] } },
-      select: { id: true, email: true, displayName: true },
-    })
-    .then((users) => {
-      const buyer = users.find((u) => u.id === order.buyerId);
-      const seller = users.find((u) => u.id === order.sellerId);
-      if (buyer) {
-        sendDisputeResolvedEmail({
-          to: buyer.email,
-          recipientName: buyer.displayName ?? "there",
-          recipientRole: "buyer",
-          orderId: order.id,
-          listingTitle: order.listing.title,
-          resolution: "BUYER_WON",
-          refundAmount: order.totalNzd,
-          adminNote: null,
-        }).catch(() => {});
-      }
-      if (seller) {
-        sendDisputeResolvedEmail({
-          to: seller.email,
-          recipientName: seller.displayName ?? "there",
-          recipientRole: "seller",
-          orderId: order.id,
-          listingTitle: order.listing.title,
-          resolution: "BUYER_WON",
-          refundAmount: null,
-          adminNote: null,
-        }).catch(() => {});
-      }
-    })
-    .catch(() => {});
+  if (order.buyer) {
+    sendDisputeResolvedEmail({
+      to: order.buyer.email,
+      recipientName: order.buyer.displayName ?? "there",
+      recipientRole: "buyer",
+      orderId: order.id,
+      listingTitle: order.listing.title,
+      resolution: "BUYER_WON",
+      refundAmount: order.totalNzd,
+      adminNote: null,
+    }).catch(() => {});
+  }
+  if (order.seller) {
+    sendDisputeResolvedEmail({
+      to: order.seller.email,
+      recipientName: order.seller.displayName ?? "there",
+      recipientRole: "seller",
+      orderId: order.id,
+      listingTitle: order.listing.title,
+      resolution: "BUYER_WON",
+      refundAmount: null,
+      adminNote: null,
+    }).catch(() => {});
+  }
 
   // 8. Audit
   audit({
@@ -299,14 +261,7 @@ async function escalateToAdmin(
   reasonNote?: string,
 ): Promise<void> {
   // Notify admin users
-  const admins = await db.user.findMany({
-    where: {
-      isAdmin: true,
-      adminRole: { in: ["DISPUTES_ADMIN", "SUPER_ADMIN"] },
-      isBanned: false,
-    },
-    select: { id: true },
-  });
+  const admins = await adminRepository.findDisputeAdmins();
 
   for (const admin of admins) {
     createNotification({

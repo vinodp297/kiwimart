@@ -218,6 +218,73 @@ export const adminRepository = {
     });
   },
 
+  /** Find non-banned dispute admin user IDs for escalation notifications.
+   * @source src/server/services/pickup/pickup-dispute-resolver.service.ts */
+  async findDisputeAdmins(): Promise<{ id: string }[]> {
+    return db.user.findMany({
+      where: {
+        isAdmin: true,
+        adminRole: { in: ["DISPUTES_ADMIN", "SUPER_ADMIN"] },
+        isBanned: false,
+      },
+      select: { id: true },
+    });
+  },
+
+  /** Record a seller dispute (pickup-auto-refund path) via trust metrics upsert.
+   * Increments disputeCount + disputesLast30Days and optionally flags for fraud.
+   * @source src/server/services/pickup/pickup-dispute-resolver.service.ts */
+  async recordSellerDisputeFromPickup(
+    sellerId: string,
+    isFraudSignal: boolean,
+  ): Promise<void> {
+    await db.trustMetrics.upsert({
+      where: { userId: sellerId },
+      create: {
+        userId: sellerId,
+        totalOrders: 0,
+        completedOrders: 0,
+        disputeCount: 1,
+        disputeRate: 0,
+        disputesLast30Days: 1,
+        averageResponseHours: null,
+        averageRating: null,
+        dispatchPhotoRate: 0,
+        accountAgeDays: 0,
+        isFlaggedForFraud: isFraudSignal,
+        lastComputedAt: new Date(),
+      },
+      update: {
+        disputeCount: { increment: 1 },
+        disputesLast30Days: { increment: 1 },
+        ...(isFraudSignal ? { isFlaggedForFraud: true } : {}),
+      },
+    });
+  },
+
+  /** Flag a user for fraud (upsert trust metrics with isFlaggedForFraud=true).
+   * @source src/modules/admin/admin.service.ts — flagUserForFraud */
+  async flagUserForFraud(userId: string): Promise<void> {
+    await db.trustMetrics.upsert({
+      where: { userId },
+      create: {
+        userId,
+        totalOrders: 0,
+        completedOrders: 0,
+        disputeCount: 0,
+        disputeRate: 0,
+        disputesLast30Days: 0,
+        averageResponseHours: null,
+        averageRating: null,
+        dispatchPhotoRate: 0,
+        accountAgeDays: 0,
+        isFlaggedForFraud: true,
+        lastComputedAt: new Date(),
+      },
+      update: { isFlaggedForFraud: true },
+    });
+  },
+
   // -------------------------------------------------------------------------
   // Payout management
   // -------------------------------------------------------------------------
@@ -236,6 +303,24 @@ export const adminRepository = {
   // -------------------------------------------------------------------------
   // Order events (auto-resolution)
   // -------------------------------------------------------------------------
+
+  /** Find the most recent AUTO_RESOLVED event that carries a decision in its metadata.
+   * @source src/modules/admin/admin.service.ts — overrideAutoResolution */
+  async findLatestAutoResolvedEvent(
+    orderId: string,
+  ): Promise<Prisma.OrderEventGetPayload<{
+    select: { metadata: true };
+  }> | null> {
+    return db.orderEvent.findFirst({
+      where: {
+        orderId,
+        type: "AUTO_RESOLVED",
+        metadata: { path: ["decision"], not: { equals: null } },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { metadata: true },
+    });
+  },
 
   /** Find an order event (used by auto-resolution checks).
    * @source src/modules/admin/admin.service.ts */

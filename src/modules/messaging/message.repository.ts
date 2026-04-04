@@ -204,6 +204,21 @@ export const messageRepository = {
     });
   },
 
+  /** Fetch the most recent N messages in a thread (desc order, body + sender only).
+   * @source src/server/services/pickup/pickup-proposal.service.ts — acceptPickupTime */
+  async findRecentThreadMessages(
+    threadId: string,
+    take: number,
+    client: DbClient = db,
+  ) {
+    return client.message.findMany({
+      where: { threadId },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: { body: true, senderId: true },
+    });
+  },
+
   /** Fetch paginated messages for a thread. */
   async findMessagesByThread(
     threadId: string,

@@ -51,22 +51,26 @@ export const reviewRepository = {
     });
   },
 
-  /** Create a review with tags.
-   * @source src/modules/reviews/review.service.ts */
-  async create(data: Prisma.ReviewCreateInput): Promise<ReviewWithTags> {
+  /** Create a review (with optional nested tags).
+   * Returns only the created id.
+   * @source src/modules/reviews/review.service.ts — createReview */
+  async create(
+    data: Prisma.ReviewUncheckedCreateInput,
+  ): Promise<{ id: string }> {
     return db.review.create({
       data,
-      include: {
-        tags: true,
-        author: {
-          select: {
-            id: true,
-            displayName: true,
-            username: true,
-            avatarKey: true,
-          },
-        },
-      },
+      select: { id: true },
+    });
+  },
+
+  /** Find a review by id with minimal fields needed for reply authorisation.
+   * @source src/modules/reviews/review.service.ts — replyToReview */
+  async findByIdForReply(
+    id: string,
+  ): Promise<{ id: string; subjectId: string; reply: string | null } | null> {
+    return db.review.findUnique({
+      where: { id },
+      select: { id: true, subjectId: true, reply: true },
     });
   },
 
@@ -76,6 +80,46 @@ export const reviewRepository = {
     await db.review.update({
       where: { id },
       data: { reply, repliedAt },
+    });
+  },
+
+  /** Public seller-page review list (BUYER reviews about a seller).
+   * Includes author display name, listing title, and tags. Approved only.
+   * @source src/modules/reviews/review.service.ts — fetchSellerReviews */
+  async findPublicSellerReviews(sellerId: string, take = 50) {
+    return db.review.findMany({
+      where: { subjectId: sellerId, reviewerRole: "BUYER", approved: true },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        reply: true,
+        createdAt: true,
+        author: { select: { displayName: true } },
+        order: { select: { listing: { select: { title: true } } } },
+        tags: { select: { tag: true } },
+      },
+    });
+  },
+
+  /** Public buyer-profile review list (SELLER reviews about a buyer).
+   * @source src/modules/reviews/review.service.ts — fetchBuyerReviews */
+  async findPublicBuyerReviews(buyerId: string, take = 50) {
+    return db.review.findMany({
+      where: { subjectId: buyerId, reviewerRole: "SELLER", approved: true },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        reply: true,
+        createdAt: true,
+        author: { select: { displayName: true } },
+        order: { select: { listing: { select: { title: true } } } },
+      },
     });
   },
 
