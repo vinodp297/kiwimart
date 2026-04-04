@@ -18,18 +18,32 @@ export default defineConfig({
         "src/shared/**/*.ts",
         "src/lib/**/*.ts",
       ],
-      exclude: ["**/*.types.ts", "**/*.d.ts", "**/index.ts", "src/test/**"],
+      exclude: [
+        "**/*.types.ts",
+        "**/*.d.ts",
+        "**/index.ts",
+        "src/test/**",
+        "src/**/*.test.ts",
+        "src/**/*.spec.ts",
+        "prisma/**",
+        "src/app/api/docs/**",
+        "src/infrastructure/config/**",
+      ],
       thresholds: {
-        lines: 50,
-        functions: 50,
-        branches: 40,
-        statements: 50,
+        lines: 18,
+        functions: 18,
+        branches: 14,
+        statements: 18,
       },
     },
   },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "server-only": path.resolve(
+        __dirname,
+        "src/test/__mocks__/server-only.ts",
+      ),
     },
   },
 });

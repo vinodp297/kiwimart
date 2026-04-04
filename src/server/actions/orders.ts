@@ -77,7 +77,6 @@ export async function createOrder(params: {
     return {
       success: false,
       error: result.error,
-      reason: result.reason,
     };
   }
 

@@ -55,6 +55,17 @@ export async function openDispute(
     );
   }
 
+  // Fast check: if the order already has a disputeOpenedAt timestamp it was disputed
+  // (legacy field — kept for backwards compat with older order records)
+  const orderRecord = order as unknown as { disputeOpenedAt?: Date | null };
+  if (orderRecord.disputeOpenedAt) {
+    throw new AppError(
+      "ORDER_WRONG_STATE",
+      "A dispute has already been opened for this order.",
+      400,
+    );
+  }
+
   // Check for existing dispute via Dispute model
   const existingDispute = await getDisputeByOrderId(input.orderId);
   if (existingDispute) {
@@ -87,7 +98,7 @@ export async function openDispute(
     await transitionOrder(
       input.orderId,
       "DISPUTED",
-      {},
+      { disputeReason: input.reason },
       { tx, fromStatus: order.status },
     );
 
