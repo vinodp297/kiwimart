@@ -1,0 +1,44 @@
+// src/app/api/v1/auth/refresh/route.ts
+// ─── Mobile Token Refresh ────────────────────────────────────────────────────
+// POST /api/v1/auth/refresh — verify existing Bearer token, issue a fresh one.
+
+import { verifyMobileToken, signMobileToken } from "@/lib/mobile-auth";
+import { logger } from "@/shared/logger";
+import { apiOk, apiError } from "../../_helpers/response";
+import { corsHeaders } from "../../_helpers/cors";
+
+export async function POST(request: Request) {
+  try {
+    const authHeader = request.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return apiError("Missing Bearer token", 401, "MISSING_TOKEN");
+    }
+
+    const token = authHeader.slice(7);
+    const payload = await verifyMobileToken(token);
+
+    if (!payload?.sub || !payload.email) {
+      return apiError("Invalid or expired token", 401, "INVALID_TOKEN");
+    }
+
+    const { token: newToken, expiresAt } = await signMobileToken({
+      id: payload.sub,
+      email: payload.email as string,
+      role: (payload.role as string) ?? "user",
+    });
+
+    logger.info("mobile.token.refreshed", { userId: payload.sub });
+
+    return apiOk({ token: newToken, expiresAt });
+  } catch (e) {
+    logger.error("api.error", {
+      path: "/api/v1/auth/refresh",
+      error: e instanceof Error ? e.message : e,
+    });
+    return apiError("Token refresh failed. Please sign in again.", 500);
+  }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
+}

@@ -4,6 +4,7 @@
 import { AppError } from "@/shared/errors";
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
+import { verifyMobileToken } from "@/lib/mobile-auth";
 import {
   rateLimit,
   getClientIp,
@@ -47,7 +48,37 @@ export function handleApiError(e: unknown): Response {
   );
 }
 
-export async function requireApiUser() {
+const USER_SELECT = {
+  id: true,
+  email: true,
+  isAdmin: true,
+  isBanned: true,
+  sellerEnabled: true,
+  stripeOnboarded: true,
+} as const;
+
+export async function requireApiUser(request?: Request) {
+  // 1. Try Authorization header first (mobile clients)
+  if (request) {
+    const authHeader = request.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      const payload = await verifyMobileToken(token);
+      if (!payload?.sub) {
+        throw AppError.unauthenticated();
+      }
+
+      const user = await db.user.findUnique({
+        where: { id: payload.sub, deletedAt: null },
+        select: USER_SELECT,
+      });
+      if (!user) throw AppError.unauthenticated();
+      if (user.isBanned) throw AppError.banned();
+      return user;
+    }
+  }
+
+  // 2. Fall back to session cookie (web clients)
   const session = await auth();
   if (!session?.user?.id) {
     throw AppError.unauthenticated();
@@ -60,14 +91,7 @@ export async function requireApiUser() {
       id: session.user.id,
       deletedAt: null, // Reject soft-deleted accounts
     },
-    select: {
-      id: true,
-      email: true,
-      isAdmin: true,
-      isBanned: true,
-      sellerEnabled: true,
-      stripeOnboarded: true,
-    },
+    select: USER_SELECT,
   });
 
   if (!user) {
