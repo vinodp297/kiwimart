@@ -20,6 +20,10 @@ import { userRepository } from "@/modules/users/user.repository";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { getImageUrl } from "@/lib/image";
 import { cartRepository } from "./cart.repository";
+import { getRedisClient } from "@/infrastructure/redis/client";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const CART_REDIS_TTL = 60 * 60 * 24 * 7; // 7 days in seconds
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +98,10 @@ export class CartService {
         new Date(Date.now() + CART_EXPIRY_MS),
       );
 
+      await getRedisClient().set(`cart:active:${userId}`, existingCart.id, {
+        ex: CART_REDIS_TTL,
+      });
+
       return {
         ok: true,
         data: { cartItemCount: existingCart.items.length + 1 },
@@ -107,6 +115,10 @@ export class CartService {
       listingId,
       priceNzd: listing.priceNzd,
       shippingNzd,
+    });
+
+    await getRedisClient().set(`cart:active:${userId}`, newCart.id, {
+      ex: CART_REDIS_TTL,
     });
 
     return { ok: true, data: { cartItemCount: newCart.items.length } };
@@ -142,6 +154,10 @@ export class CartService {
       new Date(Date.now() + CART_EXPIRY_MS),
     );
 
+    await getRedisClient().set(`cart:active:${userId}`, cart.id, {
+      ex: CART_REDIS_TTL,
+    });
+
     return { ok: true, data: { cartItemCount: cart.items.length - 1 } };
   }
 
@@ -149,6 +165,7 @@ export class CartService {
 
   async clearCart(userId: string): Promise<void> {
     await cartRepository.deleteCartByUser(userId);
+    await getRedisClient().del(`cart:active:${userId}`);
   }
 
   // ── getCart ────────────────────────────────────────────────────────────
@@ -255,6 +272,7 @@ export class CartService {
 
     if (new Date(cart.expiresAt) < new Date()) {
       await cartRepository.deleteCart(cart.id);
+      await getRedisClient().del(`cart:active:${userId}`);
       return {
         ok: false,
         error: "Your cart has expired. Please add items again.",
@@ -453,6 +471,8 @@ export class CartService {
           }).catch(() => {});
         })
         .catch(() => {});
+
+      await getRedisClient().del(`cart:active:${userId}`);
 
       logger.info("cart.checkout.success", {
         userId,
