@@ -3,10 +3,10 @@
 // Admin-only endpoint returning business health metrics for the internal
 // dashboard. Requires an active admin session.
 
-import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
+import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function GET() {
     const user = session?.user as { id: string; isAdmin?: boolean } | undefined;
 
     if (!user?.isAdmin) {
-      return NextResponse.json({ error: "Unauthorised" }, { status: 403 });
+      return apiError("Unauthorised", 403);
     }
 
     const todayStart = new Date();
@@ -94,19 +94,12 @@ export async function GET() {
 
     logger.info("metrics.requested", { requestedBy: user.id });
 
-    return NextResponse.json({
-      success: true,
-      data: metrics,
-      timestamp: new Date().toISOString(),
-    });
+    return apiOk(metrics);
   } catch (e) {
     logger.error("api.error", {
       path: "/api/metrics",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      { error: "Failed to load metrics. Please try again." },
-      { status: 500 },
-    );
+    return apiError("Failed to load metrics. Please try again.", 500);
   }
 }

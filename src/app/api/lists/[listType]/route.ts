@@ -3,9 +3,9 @@
 // Client components fetch lists via this route instead of importing the
 // server-only dynamic list service directly.
 
-import { NextResponse } from "next/server";
 import type { DynamicListType } from "@prisma/client";
 import { getList } from "@/lib/dynamic-lists";
+import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 
 const VALID_TYPES = new Set<string>([
   "BANNED_KEYWORDS",
@@ -31,9 +31,9 @@ export async function GET(
   const { listType } = await params;
 
   if (!VALID_TYPES.has(listType)) {
-    return NextResponse.json({ error: "Invalid list type" }, { status: 400 });
+    return apiError("Invalid list type", 400);
   }
 
   const items = await getList(listType as DynamicListType);
-  return NextResponse.json(items);
+  return apiOk(items);
 }

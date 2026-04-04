@@ -3,10 +3,10 @@
 // Quick endpoint checked by the /sell page to determine whether to show
 // the sell wizard or the Stripe setup gate.
 
-import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
+import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +15,10 @@ export async function GET() {
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          authenticated: false,
-          stripeOnboarded: false,
-          sellerEnabled: false,
-        },
+      return apiOk({
+        authenticated: false,
+        stripeOnboarded: false,
+        sellerEnabled: false,
       });
     }
 
@@ -34,26 +31,20 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        authenticated: true,
-        stripeOnboarded: user?.stripeOnboarded ?? false,
-        hasStripeAccount: !!user?.stripeAccountId,
-        sellerEnabled: user?.sellerEnabled ?? false,
-      },
+    return apiOk({
+      authenticated: true,
+      stripeOnboarded: user?.stripeOnboarded ?? false,
+      hasStripeAccount: !!user?.stripeAccountId,
+      sellerEnabled: user?.sellerEnabled ?? false,
     });
   } catch (e) {
     logger.error("api.error", {
       path: "/api/seller/status",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      {
-        success: false,
-        error: "We couldn't check your seller status. Please try again.",
-      },
-      { status: 500 },
+    return apiError(
+      "We couldn't check your seller status. Please try again.",
+      500,
     );
   }
 }
