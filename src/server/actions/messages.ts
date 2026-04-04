@@ -16,7 +16,7 @@ export async function sendMessage(
 ): Promise<ActionResult<{ messageId: string; threadId: string }>> {
   try {
     const reqHeaders = await headers();
-    const ip = getClientIp(reqHeaders);
+    const _ip = getClientIp(reqHeaders);
     const user = await requireUser();
 
     const parsed = sendMessageSchema.safeParse(raw);

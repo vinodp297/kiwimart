@@ -54,7 +54,7 @@ function formatTimeRemaining(targetDate: Date): string | null {
   return `${mins} minute${mins !== 1 ? "s" : ""}`;
 }
 
-function daysBetween(a: string | Date, b: Date = new Date()): number {
+function _daysBetween(a: string | Date, b: Date = new Date()): number {
   const dateA = typeof a === "string" ? new Date(a) : a;
   return Math.floor((b.getTime() - dateA.getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -67,8 +67,8 @@ export function getOrderStatusInfo(
   courier?: string | null,
 ): OrderStatusInfo {
   const { isBuyer } = order;
-  const seller = isBuyer ? order.otherPartyName : "you";
-  const buyer = isBuyer ? "you" : order.otherPartyName;
+  const _seller = isBuyer ? order.otherPartyName : "you";
+  const _buyer = isBuyer ? "you" : order.otherPartyName;
   const item = order.listingTitle;
   const price = formatPrice(order.total);
 
@@ -223,7 +223,7 @@ export function getOrderStatusInfo(
 
     // ── DISPUTED ──────────────────────────────────────────────────
     case "disputed": {
-      const hoursOpen = order.disputeOpenedAt
+      const _hoursOpen = order.disputeOpenedAt
         ? Math.floor(
             (Date.now() - new Date(order.disputeOpenedAt).getTime()) /
               (1000 * 60 * 60),

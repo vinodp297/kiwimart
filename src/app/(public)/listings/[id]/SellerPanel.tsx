@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
 import type { SellerPublic, SellerBadge } from "@/types";
 import { Avatar, StarRating, Button } from "@/components/ui/primitives";
-import { relativeTime } from "@/lib/utils";
 import EmailVerificationModal from "@/components/EmailVerificationModal";
 
 const BADGE_CONFIG: Record<

@@ -4,10 +4,10 @@
 // GET  /api/notifications   — latest 10 for NavBar dropdown
 // PATCH /api/notifications  — mark all as read
 
-import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { logger } from "@/shared/logger";
+import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export async function GET() {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return dep(NextResponse.json({ notifications: [] }));
+      return dep(apiOk({ notifications: [] }));
     }
 
     const notifications = await notificationRepository.findByUser(
@@ -33,10 +33,7 @@ export async function GET() {
       10,
     );
 
-    const response = NextResponse.json({
-      success: true,
-      data: { notifications },
-    });
+    const response = apiOk({ notifications });
     response.headers.set("Cache-Control", "private, no-store");
     dep(response);
     return response;
@@ -46,13 +43,7 @@ export async function GET() {
       error: e instanceof Error ? e.message : e,
     });
     return dep(
-      NextResponse.json(
-        {
-          success: false,
-          error: "We couldn't load your notifications. Please try again.",
-        },
-        { status: 500 },
-      ),
+      apiError("We couldn't load your notifications. Please try again.", 500),
     );
   }
 }
@@ -62,40 +53,24 @@ export async function PATCH(request: Request) {
     // Pusher auth uses form-data, but this endpoint expects JSON
     const contentType = request.headers.get("content-type");
     if (contentType && !contentType.includes("application/json")) {
-      return dep(
-        NextResponse.json(
-          { success: false, error: "Content-Type must be application/json" },
-          { status: 415 },
-        ),
-      );
+      return dep(apiError("Content-Type must be application/json", 415));
     }
 
     const session = await auth();
     if (!session?.user?.id) {
-      return dep(
-        NextResponse.json(
-          { success: false, error: "Unauthorised" },
-          { status: 401 },
-        ),
-      );
+      return dep(apiError("Unauthorised", 401));
     }
 
     await notificationRepository.markAllRead(session.user.id);
 
-    return dep(NextResponse.json({ success: true, data: null }));
+    return dep(apiOk(null));
   } catch (e) {
     logger.error("api.error", {
       path: "/api/notifications",
       error: e instanceof Error ? e.message : e,
     });
     return dep(
-      NextResponse.json(
-        {
-          success: false,
-          error: "We couldn't update your notifications. Please try again.",
-        },
-        { status: 500 },
-      ),
+      apiError("We couldn't update your notifications. Please try again.", 500),
     );
   }
 }

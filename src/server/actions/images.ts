@@ -1,8 +1,6 @@
 "use server";
 import { safeActionError } from "@/shared/errors";
 // src/server/actions/images.ts  (Sprint 4 + Sprint 6 — real Cloudflare R2)
-// TODO POST-LAUNCH: Centralize listing lifecycle (reserve/release/markSold)
-// into listingLifecycleService. See architectural review 27-Mar-2026.
 // ─── Image Upload Server Actions ─────────────────────────────────────────────
 // Two-phase upload flow:
 //   Phase 1: Client requests a presigned upload URL (this action)
@@ -97,7 +95,7 @@ export async function requestImageUpload(params: {
       // listingId is null for uploads not yet associated with a listing.
       // Clean up stale orphans first: delete unprocessed images older than 1 hour
       // that were never associated with a listing (leftover from failed uploads).
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const _oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       await db.listingImage.deleteMany({
         where: {
           listingId: null,

@@ -147,8 +147,6 @@ export default function BuyerDashboardPage() {
       t ? { ...t, messages: [...t.messages, optimisticMsg] } : null,
     );
 
-    // Get the other party's real ID
-    const otherPartyId = activeThread.otherPartyUsername;
     // Actually send via server action — find the real recipientId from the thread
     try {
       await sendMessageAction({

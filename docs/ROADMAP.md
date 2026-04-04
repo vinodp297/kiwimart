@@ -36,3 +36,9 @@
 - Additional payment methods
 - Seller analytics dashboard v2
 - Third-party API marketplace
+
+## Post-Launch Technical Improvements
+
+- Move finance dashboard aggregates to dedicated metrics service with caching (see architectural review 27-Mar-2026)
+- Centralize listing lifecycle operations (reserve/release/markSold) into a dedicated `listingLifecycleService` (see architectural review 27-Mar-2026)
+- Add `PushToken` model to Prisma schema to persist device push tokens; replace in-memory logger stub in `/api/v1/notifications/push` with `db.pushToken.upsert()`

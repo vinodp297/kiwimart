@@ -83,7 +83,10 @@ const ROLE_LABELS: Record<string, string> = {
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export default function OrderTimeline({ events, currentStatus }: Props) {
+export default function OrderTimeline({
+  events,
+  currentStatus: _currentStatus,
+}: Props) {
   if (events.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6 mb-6">

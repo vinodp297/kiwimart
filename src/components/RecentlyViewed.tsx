@@ -7,7 +7,6 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
 import { getRecentlyViewed } from "@/lib/recently-viewed";
-import type { RecentlyViewedItem } from "@/lib/recently-viewed";
 import { getRecentlyViewedFromDB } from "@/server/actions/recentlyViewed";
 import { formatPrice, CONDITION_LABELS } from "@/lib/utils";
 import type { Condition } from "@/types";
