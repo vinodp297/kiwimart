@@ -8,6 +8,7 @@ import { notificationRepository } from "@/modules/notifications/notification.rep
 import { notificationsQuerySchema } from "@/modules/notifications/notification.schema";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "../_helpers/response";
+import { corsHeaders, withCors } from "../_helpers/cors";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,9 @@ export async function GET(request: Request) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return apiOk({ notifications: [], nextCursor: null, hasMore: false });
+      return withCors(
+        apiOk({ notifications: [], nextCursor: null, hasMore: false }),
+      );
     }
 
     const { searchParams } = new URL(request.url);
@@ -25,7 +28,7 @@ export async function GET(request: Request) {
       query = notificationsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
       }
       throw err;
     }
@@ -42,7 +45,7 @@ export async function GET(request: Request) {
     const notifications = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (notifications.at(-1)?.id ?? null) : null;
 
-    const response = apiOk({ notifications, nextCursor, hasMore });
+    const response = withCors(apiOk({ notifications, nextCursor, hasMore }));
     response.headers.set("Cache-Control", "private, no-store");
     return response;
   } catch (e) {
@@ -50,9 +53,8 @@ export async function GET(request: Request) {
       path: "/api/v1/notifications",
       error: e instanceof Error ? e.message : e,
     });
-    return apiError(
-      "We couldn't load your notifications. Please try again.",
-      500,
+    return withCors(
+      apiError("We couldn't load your notifications. Please try again.", 500),
     );
   }
 }
@@ -61,25 +63,28 @@ export async function PATCH(request: Request) {
   try {
     const contentType = request.headers.get("content-type");
     if (contentType && !contentType.includes("application/json")) {
-      return apiError("Content-Type must be application/json", 415);
+      return withCors(apiError("Content-Type must be application/json", 415));
     }
 
     const session = await auth();
     if (!session?.user?.id) {
-      return apiError("Unauthorised", 401);
+      return withCors(apiError("Unauthorised", 401));
     }
 
     await notificationRepository.markAllRead(session.user.id);
 
-    return apiOk(null);
+    return withCors(apiOk(null));
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/notifications",
       error: e instanceof Error ? e.message : e,
     });
-    return apiError(
-      "We couldn't update your notifications. Please try again.",
-      500,
+    return withCors(
+      apiError("We couldn't update your notifications. Please try again.", 500),
     );
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }

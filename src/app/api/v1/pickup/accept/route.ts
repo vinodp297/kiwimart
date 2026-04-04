@@ -9,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
+import { corsHeaders, withCors } from "../../_helpers/cors";
 import { acceptPickupSchema } from "@/modules/pickup/pickup.schema";
 import { acceptPickupTime } from "@/server/services/pickup/pickup-scheduling.service";
 
@@ -36,11 +37,15 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
-      return apiError(result.error!, 400);
+      return withCors(apiError(result.error!, 400));
     }
 
-    return apiOk({ accepted: true });
+    return withCors(apiOk({ accepted: true }));
   } catch (e) {
     return handleApiError(e);
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }

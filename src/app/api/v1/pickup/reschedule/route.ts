@@ -9,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
+import { corsHeaders, withCors } from "../../_helpers/cors";
 import { reschedulePickupSchema } from "@/modules/pickup/pickup.schema";
 import { requestReschedule } from "@/server/services/pickup/pickup-scheduling.service";
 import db from "@/lib/db";
@@ -42,12 +43,12 @@ export async function POST(request: Request) {
       select: { buyerId: true, sellerId: true },
     });
 
-    if (!order) return apiError("Order not found.", 404);
+    if (!order) return withCors(apiError("Order not found.", 404));
 
     let role: "BUYER" | "SELLER";
     if (user.id === order.buyerId) role = "BUYER";
     else if (user.id === order.sellerId) role = "SELLER";
-    else return apiError("You are not a party to this order.", 403);
+    else return withCors(apiError("You are not a party to this order.", 403));
 
     const result = await requestReschedule({
       orderId: body.orderId,
@@ -60,14 +61,20 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
-      return apiError(result.error!, 400);
+      return withCors(apiError(result.error!, 400));
     }
 
-    return apiOk({
-      rescheduled: true,
-      forceCancelAvailable: result.forceCancelAvailable ?? false,
-    });
+    return withCors(
+      apiOk({
+        rescheduled: true,
+        forceCancelAvailable: result.forceCancelAvailable ?? false,
+      }),
+    );
   } catch (e) {
     return handleApiError(e);
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
 }
