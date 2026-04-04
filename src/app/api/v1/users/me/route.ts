@@ -1,12 +1,17 @@
 // src/app/api/v1/users/me/route.ts
 // ─── Current User API ───────────────────────────────────────────────────────
 
-import { apiOk, handleApiError, requireApiUser } from '../../_helpers/response'
-import db from '@/lib/db'
+import {
+  apiOk,
+  apiError,
+  handleApiError,
+  requireApiUser,
+} from "../../_helpers/response";
+import db from "@/lib/db";
 
 export async function GET() {
   try {
-    const sessionUser = await requireApiUser()
+    const sessionUser = await requireApiUser();
 
     const user = await db.user.findUnique({
       where: { id: sessionUser.id },
@@ -24,14 +29,14 @@ export async function GET() {
         phoneVerified: true,
         createdAt: true,
       },
-    })
+    });
 
     if (!user) {
-      return Response.json({ success: false, error: 'User not found' }, { status: 404 })
+      return apiError("User not found", 404, "NOT_FOUND");
     }
 
-    return apiOk(user)
+    return apiOk(user);
   } catch (e) {
-    return handleApiError(e)
+    return handleApiError(e);
   }
 }

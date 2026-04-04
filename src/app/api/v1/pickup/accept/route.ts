@@ -1,6 +1,7 @@
 // src/app/api/v1/pickup/accept/route.ts
 // POST /api/v1/pickup/accept — Accept a proposed pickup time
 
+import { z } from "zod";
 import {
   apiOk,
   apiError,
@@ -8,6 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
+import { acceptPickupSchema } from "@/modules/pickup/pickup.schema";
 import { acceptPickupTime } from "@/server/services/pickup/pickup-scheduling.service";
 
 export async function POST(request: Request) {
@@ -16,13 +18,15 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireApiUser();
-    const body = (await request.json()) as {
-      orderId?: string;
-      rescheduleRequestId?: string;
-    };
 
-    if (!body.orderId) {
-      return apiError("orderId is required.", 400);
+    let body: z.infer<typeof acceptPickupSchema>;
+    try {
+      body = acceptPickupSchema.parse(await request.json());
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      }
+      throw err;
     }
 
     const result = await acceptPickupTime({
