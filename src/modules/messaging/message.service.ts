@@ -140,8 +140,12 @@ export class MessageService {
     return { messageId: message.id, threadId: thread.id };
   }
 
-  async getMyThreads(userId: string) {
-    return db.messageThread.findMany({
+  async getMyThreads(
+    userId: string,
+    options?: { cursor?: string; limit?: number },
+  ) {
+    const limit = options?.limit ?? 20;
+    const threads = await db.messageThread.findMany({
       where: {
         OR: [{ participant1Id: userId }, { participant2Id: userId }],
       },
@@ -159,8 +163,14 @@ export class MessageService {
         },
       },
       orderBy: { lastMessageAt: "desc" },
-      take: 50,
+      take: limit + 1,
+      ...(options?.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
     });
+
+    const hasMore = threads.length > limit;
+    const page = hasMore ? threads.slice(0, limit) : threads;
+    const nextCursor = hasMore ? (page.at(-1)?.id ?? null) : null;
+    return { threads: page, nextCursor, hasMore };
   }
 
   async getThreadMessages(
