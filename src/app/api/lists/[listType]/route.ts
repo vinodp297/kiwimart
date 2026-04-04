@@ -40,5 +40,11 @@ export async function GET(
     "Cache-Control",
     "public, s-maxage=3600, stale-while-revalidate=86400",
   );
+  response.headers.set("Deprecation", "true");
+  response.headers.set(
+    "Sunset",
+    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
+  );
+  response.headers.set("Link", '</api/v1/>; rel="successor-version"');
   return response;
 }

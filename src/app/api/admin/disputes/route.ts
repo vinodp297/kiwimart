@@ -1,3 +1,4 @@
+// @deprecated — use /api/v1/ admin endpoints going forward
 import { z } from "zod";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminCursorQuerySchema } from "@/modules/admin/admin.schema";
@@ -7,11 +8,21 @@ import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
 
+function dep<T extends Response>(res: T): T {
+  res.headers.set("Deprecation", "true");
+  res.headers.set(
+    "Sunset",
+    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
+  );
+  res.headers.set("Link", '</api/v1/>; rel="successor-version"');
+  return res;
+}
+
 export async function GET(request: Request) {
   try {
     await requirePermission("VIEW_DISPUTES");
   } catch {
-    return apiError("Unauthorised", 403);
+    return dep(apiError("Unauthorised", 403));
   }
 
   try {
@@ -22,7 +33,7 @@ export async function GET(request: Request) {
       query = adminCursorQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+        return dep(apiError("Validation failed", 400, "VALIDATION_ERROR"));
       }
       throw err;
     }
@@ -45,12 +56,12 @@ export async function GET(request: Request) {
     const disputes = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (disputes.at(-1)?.id ?? null) : null;
 
-    return apiOk({ disputes, nextCursor, hasMore });
+    return dep(apiOk({ disputes, nextCursor, hasMore }));
   } catch (e) {
     logger.error("api.error", {
       path: "/api/admin/disputes",
       error: e instanceof Error ? e.message : e,
     });
-    return apiError("Failed to load disputes. Please refresh.", 500);
+    return dep(apiError("Failed to load disputes. Please refresh.", 500));
   }
 }

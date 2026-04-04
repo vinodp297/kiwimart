@@ -1,7 +1,9 @@
 // src/app/api/v1/offers/route.ts
 // ─── Offers API ──────────────────────────────────────────────────────────────
+// GET  /api/v1/offers — list offers for the authenticated user (cursor pagination)
 // POST /api/v1/offers — create a new offer on a listing
 
+import db from "@/lib/db";
 import { createOfferSchema } from "@/server/validators";
 import { offerService } from "@/modules/offers/offer.service";
 import { getClientIp } from "@/server/lib/rateLimit";
@@ -13,6 +15,42 @@ import {
   checkApiRateLimit,
 } from "../_helpers/response";
 import { corsHeaders } from "../_helpers/cors";
+
+export async function GET(request: Request) {
+  try {
+    const user = await requireApiUser(request);
+
+    const { searchParams } = new URL(request.url);
+    const cursor = searchParams.get("cursor") ?? undefined;
+    const limit = Math.min(parseInt(searchParams.get("limit") ?? "20", 10), 50);
+    const role = searchParams.get("role"); // "buyer" | "seller" | null (both)
+
+    const where =
+      role === "buyer"
+        ? { buyerId: user.id }
+        : role === "seller"
+          ? { sellerId: user.id }
+          : { OR: [{ buyerId: user.id }, { sellerId: user.id }] };
+
+    const raw = await db.offer.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      include: {
+        listing: { select: { id: true, title: true, priceNzd: true } },
+      },
+    });
+
+    const hasMore = raw.length > limit;
+    const offers = hasMore ? raw.slice(0, limit) : raw;
+    const nextCursor = hasMore ? (offers.at(-1)?.id ?? null) : null;
+
+    return apiOk({ offers, nextCursor, hasMore });
+  } catch (e) {
+    return handleApiError(e);
+  }
+}
 
 export async function POST(request: Request) {
   const rateLimited = await checkApiRateLimit(request, "offer");
