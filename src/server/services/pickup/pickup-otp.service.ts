@@ -21,7 +21,13 @@ export async function generateAndSendOTP(params: {
   listingTitle: string;
   tx: PrismaTransactionClient;
 }): Promise<{ success: boolean; error?: string }> {
-  const { orderId, buyerPhone, buyerName, listingTitle, tx } = params;
+  const {
+    orderId,
+    buyerPhone,
+    buyerName: _buyerName,
+    listingTitle: _listingTitle,
+    tx,
+  } = params;
 
   // 1. Generate cryptographically random 6-digit code
   const code = crypto.randomInt(100000, 999999).toString();

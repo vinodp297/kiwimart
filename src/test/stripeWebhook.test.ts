@@ -28,7 +28,7 @@ describe("Stripe webhook idempotency", () => {
     } as never);
 
     // Simulate the webhook handler's idempotency check
-    let shouldProcess = false;
+    let shouldProcess: boolean;
     try {
       await db.stripeEvent.create({
         data: { id: "evt_new_123", type: "payment_intent.succeeded" },
@@ -53,7 +53,7 @@ describe("Stripe webhook idempotency", () => {
   it("skips duplicate event gracefully (P2002 caught)", async () => {
     vi.mocked(db.stripeEvent.create).mockRejectedValue(makePrismaP2002());
 
-    let shouldProcess = false;
+    let shouldProcess: boolean;
     let wasDuplicate = false;
 
     try {

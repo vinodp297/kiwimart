@@ -5,8 +5,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
-import db from "@/lib/db";
-import { userRepository } from "@/modules/users/user.repository";
 
 // Mock the notification repository so createNotification tests hit the mock
 vi.mock("@/modules/notifications/notification.repository", () => ({

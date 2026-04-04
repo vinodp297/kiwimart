@@ -4,7 +4,6 @@
 // Handles payment form, shipping address, and order creation.
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
 import { loadStripe } from "@stripe/stripe-js";
@@ -430,7 +429,6 @@ function PaymentStep({
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
 

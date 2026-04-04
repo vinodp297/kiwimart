@@ -6,11 +6,6 @@
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
-import {
-  orderEventService,
-  ORDER_EVENT_TYPES,
-  ACTOR_ROLES,
-} from "./order-event.service";
 import type { Prisma } from "@prisma/client";
 
 // ── Constants ───────────────────────────────────────────────────────────────

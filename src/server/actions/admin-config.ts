@@ -35,7 +35,7 @@ export async function getAllConfigs(): Promise<
   ActionResult<Record<string, ConfigRecord[]>>
 > {
   try {
-    const admin = await requirePermission("VIEW_PLATFORM_CONFIG");
+    await requirePermission("VIEW_PLATFORM_CONFIG");
 
     const records = await db.platformConfig.findMany({
       orderBy: [{ category: "asc" }, { key: "asc" }],

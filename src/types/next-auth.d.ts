@@ -4,7 +4,7 @@
 // With database sessions, session.user is populated from the DB User row
 // in the session() callback — these types reflect that.
 
-import type { DefaultSession, DefaultUser } from "next-auth";
+import type { DefaultUser } from "next-auth";
 import type { JWT as DefaultJWT } from "next-auth/jwt";
 
 declare module "next-auth/jwt" {

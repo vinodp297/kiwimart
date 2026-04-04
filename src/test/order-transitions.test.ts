@@ -121,7 +121,7 @@ describe("Order State Machine", () => {
 
     it("all transitions reference valid states", () => {
       const allStates = Object.keys(VALID_ORDER_TRANSITIONS);
-      for (const [from, tos] of Object.entries(VALID_ORDER_TRANSITIONS)) {
+      for (const [_from, tos] of Object.entries(VALID_ORDER_TRANSITIONS)) {
         for (const to of tos) {
           expect(allStates).toContain(to);
         }

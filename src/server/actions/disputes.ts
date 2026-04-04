@@ -27,11 +27,7 @@ import {
   addSellerResponse,
 } from "@/server/services/dispute/dispute.service";
 import type { ActionResult } from "@/types";
-import {
-  openDisputeSchema,
-  respondToDisputeSchema,
-  type OpenDisputeInput,
-} from "@/server/validators";
+import { openDisputeSchema, respondToDisputeSchema } from "@/server/validators";
 
 export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
   try {

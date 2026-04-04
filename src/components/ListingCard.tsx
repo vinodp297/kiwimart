@@ -8,7 +8,7 @@
 //   • offersEnabled chip
 //   • Graceful fallback for listings without sellerUsername
 
-import { useState, useCallback, memo, useMemo } from "react";
+import { useState, useCallback, memo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";

@@ -11,7 +11,7 @@ const COMPANY_LEGAL_NAME_CFG =
   process.env.COMPANY_LEGAL_NAME ?? "Buyzi Limited";
 const COMPANY_ADDRESS_CFG =
   process.env.COMPANY_ADDRESS ?? "Auckland, New Zealand";
-const SUPPORT_EMAIL_CFG =
+const _SUPPORT_EMAIL_CFG =
   process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz";
 const BUYER_PROTECTION_DISPLAY =
   process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000";

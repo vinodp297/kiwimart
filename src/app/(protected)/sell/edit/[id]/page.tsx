@@ -5,7 +5,7 @@
 // on submit. Only the listing owner can access.
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -90,7 +90,6 @@ function dbShippingToForm(dbVal: string): ShippingOption {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function EditListingPage() {
   const params = useParams();
-  const router = useRouter();
   const listingId = params.id as string;
 
   const [loading, setLoading] = useState(true);

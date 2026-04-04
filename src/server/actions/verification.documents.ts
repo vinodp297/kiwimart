@@ -9,7 +9,6 @@ import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { audit } from "@/server/lib/audit";
-import { createNotification } from "@/modules/notifications/notification.service";
 import { logger } from "@/shared/logger";
 import db from "@/lib/db";
 import { userRepository } from "@/modules/users/user.repository";
@@ -45,7 +44,7 @@ export async function requestVerificationUpload(
       };
     }
 
-    const { fileName, contentType, sizeBytes } = parsed.data;
+    const { fileName: _fileName, contentType, sizeBytes } = parsed.data;
 
     if (!ALLOWED_MIME_TYPES.includes(contentType)) {
       return {

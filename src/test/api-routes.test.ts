@@ -377,8 +377,7 @@ describe("API Routes", () => {
       mockRequireApiUser.mockResolvedValue(mockUser);
 
       // findForListingAuth
-      const { userRepository } =
-        await import("@/modules/users/user.repository");
+      await import("@/modules/users/user.repository");
 
       const req = makeRequest("http://localhost/api/v1/listings", {
         method: "POST",
@@ -470,7 +469,7 @@ describe("API Routes", () => {
       });
 
       const res = await reviewsPOST(req);
-      const body = await parseJson(res);
+      await parseJson(res);
 
       expect(res.status).toBe(400);
     });
@@ -612,7 +611,7 @@ describe("API Routes", () => {
       });
 
       const res = await tokenPOST(req);
-      const body = await parseJson(res);
+      await parseJson(res);
 
       expect(res.status).toBe(401);
       // verifyPassword was called (timing-safe)

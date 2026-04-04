@@ -16,11 +16,6 @@ import {
   INTERACTION_TYPES,
   AUTO_ACTIONS,
 } from "@/modules/orders/order-interaction.service";
-import {
-  orderEventService,
-  ORDER_EVENT_TYPES,
-  ACTOR_ROLES,
-} from "@/modules/orders/order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
 import type { ActionResult } from "@/types";

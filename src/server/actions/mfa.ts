@@ -25,7 +25,7 @@ export async function initMfaSetup(): Promise<
   try {
     const user = await requireUser();
 
-    const ip = getClientIp(await headers());
+    const _ip = getClientIp(await headers());
     const limit = await rateLimit("auth", `mfa-setup:${user.id}`);
     if (!limit.success) {
       return {

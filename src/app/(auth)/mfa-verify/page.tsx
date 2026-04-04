@@ -5,11 +5,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { verifyMfaLoginAction } from "@/server/actions/mfaLogin";
 
 export default function MfaVerifyPage() {
-  const router = useRouter();
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);

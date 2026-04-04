@@ -191,7 +191,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // 2. Check session version — reject tokens issued before the last sign-out.
     // 3. Assign a jti if the token doesn't have one yet (first issue).
     // 4. On initial sign-in: embed session version + custom DB fields.
-    async jwt({ token, user, trigger }) {
+    async jwt({ token, user, trigger: _trigger }) {
       // ── Blocklist + session version checks (every request) ─────────────────
       // For admin tokens, fail CLOSED if Redis is unavailable — a Redis outage
       // must NOT grant admin access with a stolen/revoked JWT.

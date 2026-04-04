@@ -3,7 +3,6 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
-import db from "@/lib/db";
 
 // ── Mock requireUser ─────────────────────────────────────────────────────────
 const mockRequireUser = vi.fn();

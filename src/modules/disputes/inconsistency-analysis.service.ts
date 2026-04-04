@@ -56,7 +56,7 @@ export async function analyzeInconsistencies(
   const [
     deliveryOkEvent,
     dispatchEvent,
-    buyerMetrics,
+    _buyerMetrics,
     sellerMetrics,
     recentBuyerDisputes,
   ] = await Promise.all([

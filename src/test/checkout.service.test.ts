@@ -87,10 +87,9 @@ vi.mock("@/modules/users/user.repository", () => ({
 // ── Lazy imports (after mocks are set up) ───────────────────────────────────
 
 const { createOrder } = await import("@/modules/orders/order-create.service");
-const { confirmDelivery, markDispatched } =
+const { confirmDelivery } =
   await import("@/modules/orders/order-dispatch.service");
-const { cancelOrder, getCancellationStatus } =
-  await import("@/modules/orders/order-cancel.service");
+const { cancelOrder } = await import("@/modules/orders/order-cancel.service");
 const { transitionOrder, assertOrderTransition, VALID_ORDER_TRANSITIONS } =
   await import("@/modules/orders/order.transitions");
 const { captureListingSnapshot } =

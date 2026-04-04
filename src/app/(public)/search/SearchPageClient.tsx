@@ -7,12 +7,7 @@ import CATEGORIES from "@/data/categories";
 import ListingCard from "@/components/ListingCard";
 import EmptyState from "@/components/EmptyState";
 import QuickFilterChips from "@/components/QuickFilterChips";
-import type {
-  Condition,
-  NZRegion,
-  SortOption,
-  ListingCard as ListingCardType,
-} from "@/types";
+import type { Condition, NZRegion, SortOption } from "@/types";
 import { CONDITION_LABELS } from "@/lib/utils";
 import Link from "next/link";
 import type { SearchResult } from "@/server/actions/search";
