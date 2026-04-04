@@ -4,7 +4,7 @@
 // All callers must wrap this in fire-and-forget (non-blocking):
 //   createNotification({...}).catch(() => {})
 
-import db from "@/lib/db";
+import { notificationRepository } from "./notification.repository";
 import { logger } from "@/shared/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -68,17 +68,15 @@ export async function createNotification(
   input: CreateNotificationInput,
 ): Promise<void> {
   try {
-    await db.notification.create({
-      data: {
-        userId: input.userId,
-        type: input.type,
-        title: input.title,
-        body: input.body,
-        listingId: input.listingId ?? null,
-        orderId: input.orderId ?? null,
-        link: input.link ?? null,
-        read: false,
-      },
+    await notificationRepository.create({
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      listingId: input.listingId ?? null,
+      orderId: input.orderId ?? null,
+      link: input.link ?? null,
+      read: false,
     });
   } catch (err) {
     // Non-blocking — never fail main operation due to notification error

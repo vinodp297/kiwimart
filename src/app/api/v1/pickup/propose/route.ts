@@ -11,7 +11,7 @@ import {
 } from "../../_helpers/response";
 import { corsHeaders, withCors } from "../../_helpers/cors";
 import { proposePickupSchema } from "@/modules/pickup/pickup.schema";
-import { proposePickupTime } from "@/server/services/pickup/pickup-scheduling.service";
+import { proposePickupTime } from "@/server/services/pickup/pickup-proposal.service";
 import db from "@/lib/db";
 
 export async function POST(request: Request) {

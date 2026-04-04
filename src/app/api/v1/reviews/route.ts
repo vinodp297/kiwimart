@@ -1,6 +1,6 @@
 // src/app/api/v1/reviews/route.ts
 // ─── Reviews API ─────────────────────────────────────────────────────────────
-// POST /api/v1/reviews — create a review for a completed order
+// POST /api/v1/reviews — create a review for a completed order (buyer or seller)
 
 import { createReviewSchema } from "@/server/validators";
 import { reviewService } from "@/modules/reviews/review.service";

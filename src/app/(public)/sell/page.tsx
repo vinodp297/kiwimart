@@ -10,19 +10,10 @@
 //  - User must be authenticated (proxy redirects to /login?from=/sell)
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import Link from "next/link";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
-import EmailVerificationInline from "@/components/EmailVerificationInline";
-import {
-  Button,
-  Input,
-  Textarea,
-  Select,
-  Alert,
-} from "@/components/ui/primitives";
-import CATEGORIES from "@/data/categories";
+import { Button } from "@/components/ui/primitives";
 import {
   requestImageUpload,
   confirmImageUpload,
@@ -30,72 +21,26 @@ import {
 } from "@/server/actions/images";
 import { createListing, saveDraft } from "@/server/actions/listings";
 import ListingPreviewModal from "./ListingPreviewModal";
-import type { Condition, ShippingOption, NZRegion } from "@/types";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const CONDITIONS: { value: Condition; label: string; hint: string }[] = [
-  { value: "new", label: "Brand New", hint: "Unused, in original packaging." },
-  {
-    value: "like-new",
-    label: "Like New",
-    hint: "Used briefly, no visible wear.",
-  },
-  { value: "good", label: "Good", hint: "Used, minor wear, fully functional." },
-  { value: "fair", label: "Fair", hint: "Visible wear, works as described." },
-  {
-    value: "parts",
-    label: "Parts Only",
-    hint: "Non-functional, sold for parts.",
-  },
-];
-
-const NZ_REGIONS_DEFAULT: NZRegion[] = [
-  "Auckland",
-  "Wellington",
-  "Canterbury",
-  "Waikato",
-  "Bay of Plenty",
-  "Otago",
-  "Hawke's Bay",
-  "Manawatū-Whanganui",
-  "Northland",
-  "Tasman",
-  "Nelson",
-  "Marlborough",
-  "Southland",
-  "Taranaki",
-  "Gisborne",
-  "West Coast",
-];
-const NZ_REGIONS = NZ_REGIONS_DEFAULT;
-
-const STEPS = [
-  { number: 1, label: "Photos" },
-  { number: 2, label: "Details" },
-  { number: 3, label: "Pricing" },
-  { number: 4, label: "Shipping" },
-];
-
-// Must stay in sync with ALLOWED_MIME_TYPES in src/server/actions/images.ts
-const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-
-// ── Image preview type ────────────────────────────────────────────────────────
-interface ImagePreview {
-  id: string;
-  url: string;
-  file: File;
-  r2Key: string | null;
-  imageId: string | null;
-  uploading: boolean;
-  processing: boolean;
-  progress: number;
-  error: string | null;
-  uploaded: boolean;
-  safe: boolean; // true only after server confirms scanned + safe
-  compressedSize: number | null;
-  originalSize: number | null;
-  dimensions: { width: number; height: number } | null;
-}
+import type {
+  ImagePreview,
+  Condition,
+  ShippingOption,
+  NZRegion,
+} from "./components/sell-types";
+import { ACCEPTED_IMAGE_TYPES } from "./components/sell-types";
+import {
+  SubmittedScreen,
+  LoadingScreen,
+  StripeGateScreen,
+  EmailGateScreen,
+} from "./components/SellGateScreens";
+import SellWizardProgress from "./components/SellWizardProgress";
+import SellStep1Photos from "./components/SellStep1Photos";
+import SellStep2Details from "./components/SellStep2Details";
+import SellStep3Pricing from "./components/SellStep3Pricing";
+import SellStep4Shipping from "./components/SellStep4Shipping";
+import SellFooterNav from "./components/SellFooterNav";
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SellPage() {
@@ -190,9 +135,6 @@ export default function SellPage() {
 
   // Validation errors per step
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // ── Active category ──────────────────────────────────────────────────────
-  const activeCat = CATEGORIES.find((c) => c.id === categoryId);
 
   // ── Upload a single file to R2 via presigned URL ───────────────────────
   async function uploadFileToR2(img: ImagePreview): Promise<void> {
@@ -432,12 +374,10 @@ export default function SellPage() {
       const failed = images.filter((i) => i.error);
       if (failed.length > 0)
         errs.images = `${failed.length} photo${failed.length > 1 ? "s" : ""} failed. Remove or retry them before continuing.`;
-      // Check that all uploaded images passed safety/processing
       const unsafe = images.filter((i) => i.uploaded && !i.safe && !i.error);
       if (unsafe.length > 0)
         errs.images =
           "Some photos haven't been verified yet. Please wait or re-upload them.";
-      // Check no uploaded images are explicitly marked unsafe
       const flagged = images.filter((i) => i.uploaded && !i.safe && i.error);
       if (flagged.length > 0)
         errs.images = "Please remove flagged photos before continuing.";
@@ -530,8 +470,6 @@ export default function SellPage() {
     setSubmitting(false);
 
     if (!result.success) {
-      // If we got field-level errors from Zod, show them per-field and
-      // navigate to the first step that has an error.
       const fe = result.fieldErrors;
       if (fe && Object.keys(fe).length > 0) {
         const fieldToStep: Record<string, number> = {
@@ -558,7 +496,6 @@ export default function SellPage() {
         for (const [field, msgs] of Object.entries(fe)) {
           const msg = (msgs as string[])?.[0];
           if (msg) {
-            // Map Zod field names to our local error keys
             const key =
               field === "imageKeys"
                 ? "images"
@@ -585,7 +522,6 @@ export default function SellPage() {
     }
 
     setSubmitted(true);
-    // Clear localStorage after successful publish
     try {
       localStorage.removeItem("kiwi-sell-draft");
     } catch {
@@ -631,13 +567,11 @@ export default function SellPage() {
 
     setDraftId(result.data.draftId);
     setDraftSaved(true);
-    // Clear localStorage after saving to server
     try {
       localStorage.removeItem("kiwi-sell-draft");
     } catch {
       /* localStorage unavailable */
     }
-    // Reset toast after 3s
     setTimeout(() => setDraftSaved(false), 3000);
   }
 
@@ -700,7 +634,6 @@ export default function SellPage() {
       const saved = localStorage.getItem("kiwi-sell-draft");
       if (!saved) return;
       const data = JSON.parse(saved);
-      // Only show prompt if draft is less than 24h old and has meaningful data
       const age = Date.now() - (data.savedAt ?? 0);
       if (age > 24 * 60 * 60 * 1000) {
         localStorage.removeItem("kiwi-sell-draft");
@@ -750,189 +683,52 @@ export default function SellPage() {
     setShowResumePrompt(false);
   }
 
-  // ── Submitted success state ───────────────────────────────────────────────
+  // ── "List another" reset ─────────────────────────────────────────────────
+  function handleListAnother() {
+    setSubmitted(false);
+    setStep(1);
+    setImages([]);
+    setTitle("");
+    setDescription("");
+    setCategoryId("");
+    setSubcategory("");
+    setCondition("");
+    setPrice("");
+    setOffersEnabled(true);
+    setGstIncluded(false);
+    setIsUrgent(false);
+    setIsNegotiable(false);
+    setShipsNationwide(false);
+    setShippingOption("");
+    setShippingPrice("");
+    setRegion("");
+    setSuburb("");
+    setDraftId(null);
+    try {
+      localStorage.removeItem("kiwi-sell-draft");
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
+
+  // ── Gate screens ─────────────────────────────────────────────────────────
   if (submitted) {
-    return (
-      <>
-        <NavBar />
-        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center px-4 py-20">
-          <div className="max-w-md w-full text-center">
-            <div
-              className="w-20 h-20 rounded-full bg-emerald-50 flex items-center
-              justify-center mx-auto mb-6"
-            >
-              <svg
-                width="36"
-                height="36"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#16a34a"
-                strokeWidth="2"
-              >
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
-            </div>
-            <h1
-              className="font-[family-name:var(--font-playfair)] text-[1.75rem]
-              font-semibold text-[#141414] mb-3"
-            >
-              Your listing is live! 🥝
-            </h1>
-            <p className="text-[14px] text-[#73706A] mb-8 leading-relaxed">
-              <strong className="text-[#141414]">{title}</strong> is now visible
-              to NZ buyers. You&apos;ll be notified when someone watches or
-              makes an offer.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link href="/dashboard/seller">
-                <Button variant="primary" size="md">
-                  Manage my listings
-                </Button>
-              </Link>
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={() => {
-                  setSubmitted(false);
-                  setStep(1);
-                  setImages([]);
-                  setTitle("");
-                  setDescription("");
-                  setCategoryId("");
-                  setSubcategory("");
-                  setCondition("");
-                  setPrice("");
-                  setOffersEnabled(true);
-                  setGstIncluded(false);
-                  setIsUrgent(false);
-                  setIsNegotiable(false);
-                  setShipsNationwide(false);
-                  setShippingOption("");
-                  setShippingPrice("");
-                  setRegion("");
-                  setSuburb("");
-                  setDraftId(null);
-                  try {
-                    localStorage.removeItem("kiwi-sell-draft");
-                  } catch {
-                    /* localStorage unavailable */
-                  }
-                }}
-              >
-                List another item
-              </Button>
-            </div>
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
+    return <SubmittedScreen title={title} onListAnother={handleListAnother} />;
   }
 
-  // ── Seller status loading state ────────────────────────────────────────────
   if (sellerStatus.loading) {
-    return (
-      <>
-        <NavBar />
-        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-[#D4A843] border-t-transparent rounded-full animate-spin" />
-        </main>
-        <Footer />
-      </>
-    );
+    return <LoadingScreen />;
   }
 
-  // ── Stripe not configured gate ─────────────────────────────────────────────
   if (sellerStatus.authenticated && !sellerStatus.stripeOnboarded) {
-    return (
-      <>
-        <NavBar />
-        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center px-4 py-12">
-          <div className="max-w-md w-full">
-            <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-sm p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-[#F5ECD4] flex items-center justify-center mx-auto mb-6">
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#D4A843"
-                  strokeWidth="2"
-                >
-                  <line x1="12" y1="1" x2="12" y2="23" />
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                </svg>
-              </div>
-              <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] mb-3">
-                Set up payments first
-              </h1>
-              <p className="text-[14px] text-[#73706A] leading-relaxed mb-6">
-                Before listing items you need to connect your bank account so
-                buyers can pay you. It only takes 2 minutes and is completely
-                free.
-              </p>
-              <div className="text-left space-y-3 mb-8">
-                {[
-                  "Get paid directly to your NZ bank account",
-                  "Funds held safely in escrow until delivery",
-                  "Automatic payout within 3 business days",
-                  "Bank-grade security powered by Stripe",
-                ].map((benefit) => (
-                  <div key={benefit} className="flex items-start gap-2.5">
-                    <span className="text-[#D4A843] shrink-0 mt-0.5 font-bold">
-                      ✓
-                    </span>
-                    <span className="text-[13.5px] text-[#73706A]">
-                      {benefit}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <a
-                href="/account/stripe"
-                className="block w-full py-3.5 px-6 bg-[#D4A843] hover:bg-[#B8912E]
-                  text-[#141414] font-semibold text-[15px] rounded-full
-                  transition-colors text-center"
-              >
-                Set up payments →
-              </a>
-              <p className="mt-4 text-[11.5px] text-[#C9C5BC]">
-                Secured by Stripe · No monthly fees · Cancel anytime
-              </p>
-            </div>
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
+    return <StripeGateScreen />;
   }
 
-  // ── Email not verified gate ────────────────────────────────────────────────
   if (!emailVerified) {
-    return (
-      <>
-        <NavBar />
-        <main className="bg-[#FAFAF8] min-h-screen flex items-center justify-center px-4 py-12">
-          <div className="max-w-md w-full space-y-6">
-            <div className="text-center mb-2">
-              <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] mb-2">
-                List an item
-              </h1>
-              <p className="text-[13.5px] text-[#73706A]">
-                Verify your email to start selling on KiwiMart.
-              </p>
-            </div>
-            <EmailVerificationInline
-              onVerified={() => setEmailVerified(true)}
-            />
-          </div>
-        </main>
-        <Footer />
-      </>
-    );
+    return <EmailGateScreen onVerified={() => setEmailVerified(true)} />;
   }
 
+  // ── Main wizard ──────────────────────────────────────────────────────────
   return (
     <>
       <NavBar />
@@ -984,873 +780,126 @@ export default function SellPage() {
             </p>
           </div>
 
-          {/* Step indicator */}
-          <div
-            className="flex items-center gap-0 mb-8"
-            role="list"
-            aria-label="Listing steps"
-          >
-            {STEPS.map((s, i) => (
-              <div
-                key={s.number}
-                className="flex items-center flex-1"
-                role="listitem"
-              >
-                <div className="flex flex-col items-center gap-1.5 flex-1">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center
-                      text-[12px] font-bold transition-all duration-200
-                      ${
-                        step === s.number
-                          ? "bg-[#141414] text-white shadow-md"
-                          : step > s.number
-                            ? "bg-[#D4A843] text-white"
-                            : "bg-[#EFEDE8] text-[#9E9A91]"
-                      }`}
-                    aria-current={step === s.number ? "step" : undefined}
-                  >
-                    {step > s.number ? (
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                      >
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    ) : (
-                      s.number
-                    )}
-                  </div>
-                  <span
-                    className={`text-[11px] font-medium hidden sm:block ${step === s.number ? "text-[#141414]" : "text-[#9E9A91]"}`}
-                  >
-                    {s.label}
-                  </span>
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div
-                    className={`h-0.5 flex-1 mx-1 transition-colors duration-300 ${step > s.number ? "bg-[#D4A843]" : "bg-[#E3E0D9]"}`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+          <SellWizardProgress step={step} />
 
           {/* ── Step panels ─────────────────────────────────────────────── */}
           <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-sm overflow-hidden">
-            {/* ── STEP 1: Photos ────────────────────────────────────────── */}
             {step === 1 && (
-              <div className="p-6 space-y-5">
-                <div>
-                  <h2
-                    className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                    font-semibold text-[#141414] mb-1"
-                  >
-                    Add photos
-                  </h2>
-                  <p className="text-[12.5px] text-[#73706A]">
-                    Up to 10 photos. First photo is your cover image. Good
-                    photos get more views.
-                  </p>
-                </div>
-
-                {errors.images && (
-                  <Alert variant="error">{errors.images}</Alert>
-                )}
-
-                {/* Drop zone */}
-                <div
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={() => setDragActive(false)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragActive(false);
-                    addFiles(e.dataTransfer.files);
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                  role="button"
-                  tabIndex={0}
-                  aria-label="Upload photos"
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && fileInputRef.current?.click()
-                  }
-                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer
-                    transition-all duration-150 select-none
-                    ${
-                      dragActive
-                        ? "border-[#D4A843] bg-[#F5ECD4]/50"
-                        : "border-[#C9C5BC] hover:border-[#D4A843] hover:bg-[#F8F7F4]"
-                    }`}
-                >
-                  <svg
-                    aria-hidden
-                    className="mx-auto mb-3 text-[#C9C5BC]"
-                    width="32"
-                    height="32"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21 15 16 10 5 21" />
-                  </svg>
-                  <p className="text-[13.5px] font-semibold text-[#141414]">
-                    Click to upload or drag photos here
-                  </p>
-                  <p className="text-[12px] text-[#9E9A91] mt-1">
-                    JPG, PNG, WebP — max 10MB each
-                  </p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="image/jpeg,image/png,image/webp,image/heic"
-                    className="sr-only"
-                    onChange={(e) => addFiles(e.target.files)}
-                  />
-                </div>
-
-                {/* Preview grid */}
-                {images.length > 0 && (
-                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5">
-                    {images.map((img, i) => (
-                      <div
-                        key={img.id}
-                        className="relative group aspect-square rounded-xl overflow-hidden
-                        border-2 border-[#E3E0D9]"
-                      >
-                        <img
-                          src={img.url}
-                          alt={`Photo ${i + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-
-                        {/* Upload progress overlay */}
-                        {img.uploading && (
-                          <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
-                            <div className="w-3/4 h-1.5 bg-white/30 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-[#D4A843] rounded-full transition-all duration-300"
-                                style={{ width: `${img.progress}%` }}
-                              />
-                            </div>
-                            <span className="text-white text-[10px] font-medium">
-                              {img.progress}%
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Processing overlay (compression + WebP conversion) */}
-                        {img.processing && (
-                          <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
-                            <svg
-                              className="animate-spin h-5 w-5 text-[#D4A843]"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              />
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                              />
-                            </svg>
-                            <span className="text-white text-[10px] font-medium">
-                              Verifying photo...
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Upload success indicator — green for safe, amber for unverified */}
-                        {img.uploaded &&
-                          !img.uploading &&
-                          !img.processing &&
-                          !img.error && (
-                            <>
-                              <div
-                                className={`absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center ${
-                                  img.safe ? "bg-emerald-500" : "bg-amber-500"
-                                }`}
-                              >
-                                {img.safe ? (
-                                  <svg
-                                    width="10"
-                                    height="10"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="white"
-                                    strokeWidth="3"
-                                  >
-                                    <polyline points="20 6 9 17 4 12" />
-                                  </svg>
-                                ) : (
-                                  <span className="text-white text-[9px] font-bold">
-                                    !
-                                  </span>
-                                )}
-                              </div>
-                              {!img.safe && (
-                                <div className="absolute bottom-1 left-1 right-1 bg-amber-600/90 text-white text-[8px] px-1.5 py-0.5 rounded text-center font-medium">
-                                  Not verified
-                                </div>
-                              )}
-                              {img.safe && img.compressedSize && (
-                                <div
-                                  className="absolute bottom-1 right-1 bg-black/70 text-white
-                                text-[8px] px-1.5 py-0.5 rounded-full font-medium"
-                                >
-                                  {(img.compressedSize / 1024).toFixed(0)}KB
-                                  {img.dimensions &&
-                                    ` · ${img.dimensions.width}×${img.dimensions.height}`}
-                                </div>
-                              )}
-                            </>
-                          )}
-
-                        {/* Upload error */}
-                        {img.error && (
-                          <div className="absolute inset-0 bg-red-500/20 flex flex-col items-center justify-center gap-1 p-1">
-                            <span className="text-red-700 text-[9px] font-semibold bg-white/90 px-1.5 py-0.5 rounded text-center leading-tight max-w-full truncate">
-                              {img.error}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                retryUpload(img.id);
-                              }}
-                              className="text-[9px] text-white bg-red-600 px-2 py-0.5 rounded-full font-medium
-                                hover:bg-red-700 transition-colors"
-                            >
-                              Retry
-                            </button>
-                          </div>
-                        )}
-
-                        {i === 0 && !img.uploading && !img.error && (
-                          <div
-                            className="absolute bottom-1 left-1 bg-[#D4A843] text-[#141414]
-                            text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                          >
-                            COVER
-                          </div>
-                        )}
-
-                        {/* Remove */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeImage(img.id);
-                          }}
-                          aria-label={`Remove photo ${i + 1}`}
-                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60
-                            text-white flex items-center justify-center opacity-0
-                            group-hover:opacity-100 transition-opacity text-[10px]"
-                        >
-                          ×
-                        </button>
-
-                        {/* Move left */}
-                        {i > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              reorderImage(i, i - 1);
-                            }}
-                            aria-label="Move photo left"
-                            className="absolute left-1 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full
-                              bg-black/60 text-white flex items-center justify-center
-                              opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <svg
-                              width="9"
-                              height="9"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="3"
-                            >
-                              <path d="m15 18-6-6 6-6" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Add more */}
-                    {images.length < 10 && (
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="aspect-square rounded-xl border-2 border-dashed border-[#C9C5BC]
-                          flex items-center justify-center text-[#9E9A91]
-                          hover:border-[#D4A843] hover:text-[#D4A843] transition-colors"
-                        aria-label="Add more photos"
-                      >
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                        >
-                          <path d="M12 5v14M5 12h14" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+              <SellStep1Photos
+                images={images}
+                dragActive={dragActive}
+                errors={errors}
+                fileInputRef={fileInputRef}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragActive(false);
+                  addFiles(e.dataTransfer.files);
+                }}
+                onClickZone={() => fileInputRef.current?.click()}
+                onFileChange={(e) => addFiles(e.target.files)}
+                onRemove={removeImage}
+                onRetry={retryUpload}
+                onReorder={reorderImage}
+              />
             )}
 
-            {/* ── STEP 2: Details ───────────────────────────────────────── */}
             {step === 2 && (
-              <div className="p-6 space-y-5">
-                <h2
-                  className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                  font-semibold text-[#141414]"
-                >
-                  Item details
-                </h2>
-
-                <Input
-                  label="Title"
-                  value={title}
-                  onChange={(e) => {
-                    setTitle(e.target.value);
-                    setErrors((p) => ({ ...p, title: "" }));
-                  }}
-                  placeholder="e.g. Sony WH-1000XM5 Noise-Cancelling Headphones"
-                  maxLength={100}
-                  required
-                  error={errors.title}
-                  hint={`${title.length}/100 · Be specific — include brand, model and key specs`}
-                />
-
-                <Textarea
-                  label="Description"
-                  value={description}
-                  onChange={(e) => {
-                    setDescription(e.target.value);
-                    setErrors((p) => ({ ...p, description: "" }));
-                  }}
-                  placeholder="Describe the item's condition, what's included, any issues, reason for selling..."
-                  required
-                  error={errors.description}
-                  charCount={{ current: description.length, max: 3000 }}
-                  className="min-h-[140px]"
-                />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Select
-                    label="Category"
-                    value={categoryId}
-                    onChange={(e) => {
-                      setCategoryId(e.target.value);
-                      setSubcategory("");
-                      setErrors((p) => ({ ...p, category: "" }));
-                    }}
-                    placeholder="Select category"
-                    required
-                    error={errors.category}
-                  >
-                    {CATEGORIES.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.icon} {c.name}
-                      </option>
-                    ))}
-                  </Select>
-
-                  {activeCat && (
-                    <Select
-                      label="Subcategory"
-                      value={subcategory}
-                      onChange={(e) => setSubcategory(e.target.value)}
-                      placeholder="Select subcategory"
-                    >
-                      {activeCat.subcategories.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                </div>
-
-                {/* Condition selector */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[12.5px] font-semibold text-[#141414]">
-                    Condition <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {CONDITIONS.map((c) => (
-                      <button
-                        key={c.value}
-                        type="button"
-                        onClick={() => {
-                          setCondition(c.value);
-                          setErrors((p) => ({ ...p, condition: "" }));
-                        }}
-                        className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2
-                          text-center transition-all duration-150
-                          ${
-                            condition === c.value
-                              ? "border-[#141414] bg-[#141414] text-white"
-                              : "border-[#E3E0D9] hover:border-[#C9C5BC] text-[#73706A]"
-                          }`}
-                      >
-                        <span className="text-[11.5px] font-semibold">
-                          {c.label}
-                        </span>
-                        <span
-                          className={`text-[10px] leading-tight ${condition === c.value ? "text-white/70" : "text-[#9E9A91]"}`}
-                        >
-                          {c.hint}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  {errors.condition && (
-                    <p className="text-[11.5px] text-red-500 font-medium">
-                      {errors.condition}
-                    </p>
-                  )}
-                </div>
-              </div>
+              <SellStep2Details
+                title={title}
+                description={description}
+                categoryId={categoryId}
+                subcategory={subcategory}
+                condition={condition}
+                errors={errors}
+                onTitleChange={(e) => {
+                  setTitle(e.target.value);
+                  setErrors((p) => ({ ...p, title: "" }));
+                }}
+                onDescriptionChange={(e) => {
+                  setDescription(e.target.value);
+                  setErrors((p) => ({ ...p, description: "" }));
+                }}
+                onCategoryChange={(e) => {
+                  setCategoryId(e.target.value);
+                  setSubcategory("");
+                  setErrors((p) => ({ ...p, category: "" }));
+                }}
+                onSubcategoryChange={(e) => setSubcategory(e.target.value)}
+                onConditionChange={(v) => {
+                  setCondition(v);
+                  setErrors((p) => ({ ...p, condition: "" }));
+                }}
+              />
             )}
 
-            {/* ── STEP 3: Pricing ───────────────────────────────────────── */}
             {step === 3 && (
-              <div className="p-6 space-y-5">
-                <h2
-                  className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                  font-semibold text-[#141414]"
-                >
-                  Set your price
-                </h2>
-
-                <Input
-                  label="Asking price (NZD)"
-                  type="number"
-                  value={price}
-                  onChange={(e) => {
-                    setPrice(e.target.value);
-                    setErrors((p) => ({ ...p, price: "" }));
-                  }}
-                  placeholder="0.00"
-                  min={0.01}
-                  max={100000}
-                  step={0.01}
-                  required
-                  error={errors.price}
-                  leftAddon={<span className="text-[13px] font-medium">$</span>}
-                  hint="Enter the price you want to receive. KiwiMart charges 0% listing fees."
-                />
-
-                {/* Fee breakdown */}
-                {price && !isNaN(Number(price)) && Number(price) > 0 && (
-                  <div className="rounded-xl border border-[#E3E0D9] divide-y divide-[#F0EDE8]">
-                    {[
-                      {
-                        label: "Listing price",
-                        value: `$${Number(price).toFixed(2)}`,
-                      },
-                      {
-                        label: "KiwiMart listing fee",
-                        value: "$0.00",
-                        highlight: true,
-                      },
-                      {
-                        label: "Payment processing (est.)",
-                        value: `$${(Number(price) * 0.019 + 0.3).toFixed(2)}`,
-                      },
-                      {
-                        label: "You receive",
-                        value: `$${(Number(price) - (Number(price) * 0.019 + 0.3)).toFixed(2)}`,
-                        bold: true,
-                      },
-                    ].map(({ label, value, highlight, bold }) => (
-                      <div
-                        key={label}
-                        className="flex justify-between px-4 py-2.5 text-[12.5px]"
-                      >
-                        <span className="text-[#73706A]">{label}</span>
-                        <span
-                          className={`font-medium ${highlight ? "text-emerald-600" : bold ? "text-[#141414] font-bold" : "text-[#141414]"}`}
-                        >
-                          {value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Options */}
-                <div className="space-y-3">
-                  <label
-                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={offersEnabled}
-                      onChange={(e) => setOffersEnabled(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-[#D4A843] cursor-pointer"
-                    />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">
-                        Accept offers
-                      </p>
-                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Buyers can make lower offers. You choose to accept or
-                        decline.
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={gstIncluded}
-                      onChange={(e) => setGstIncluded(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-[#D4A843] cursor-pointer"
-                    />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">
-                        GST included in price
-                      </p>
-                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Only if you&apos;re a GST-registered NZ business (IRD
-                        number required).
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-red-300 transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isUrgent}
-                      onChange={(e) => setIsUrgent(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-red-500 cursor-pointer"
-                    />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">
-                        🔥 Urgent sale
-                      </p>
-                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Highlights your listing to buyers looking for quick
-                        deals.
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-blue-300 transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isNegotiable}
-                      onChange={(e) => setIsNegotiable(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-blue-500 cursor-pointer"
-                    />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">
-                        💬 Price is negotiable
-                      </p>
-                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Signals to buyers that you&apos;re open to a lower price
-                        discussion.
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className="flex items-start gap-3 cursor-pointer select-none p-3.5
-                    rounded-xl border border-[#E3E0D9] hover:border-emerald-300 transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={shipsNationwide}
-                      onChange={(e) => setShipsNationwide(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 accent-emerald-500 cursor-pointer"
-                    />
-                    <div>
-                      <p className="text-[13px] font-semibold text-[#141414]">
-                        📦 Ships anywhere in NZ
-                      </p>
-                      <p className="text-[12px] text-[#9E9A91] mt-0.5">
-                        Your listing will appear in the &quot;Ships NZ
-                        wide&quot; filter.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              </div>
+              <SellStep3Pricing
+                price={price}
+                offersEnabled={offersEnabled}
+                gstIncluded={gstIncluded}
+                isUrgent={isUrgent}
+                isNegotiable={isNegotiable}
+                shipsNationwide={shipsNationwide}
+                errors={errors}
+                onPriceChange={(e) => {
+                  setPrice(e.target.value);
+                  setErrors((p) => ({ ...p, price: "" }));
+                }}
+                onOffersEnabledChange={setOffersEnabled}
+                onGstIncludedChange={setGstIncluded}
+                onIsUrgentChange={setIsUrgent}
+                onIsNegotiableChange={setIsNegotiable}
+                onShipsNationwideChange={setShipsNationwide}
+              />
             )}
 
-            {/* ── STEP 4: Shipping & Location ───────────────────────────── */}
             {step === 4 && (
-              <div className="p-6 space-y-5">
-                <h2
-                  className="font-[family-name:var(--font-playfair)] text-[1.15rem]
-                  font-semibold text-[#141414]"
-                >
-                  Shipping & location
-                </h2>
-
-                {submitError && <Alert variant="error">{submitError}</Alert>}
-
-                {/* Shipping option */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[12.5px] font-semibold text-[#141414]">
-                    How will you deliver?{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {(
-                      [
-                        {
-                          value: "courier",
-                          label: "📦 Courier",
-                          hint: "Ship nationwide",
-                        },
-                        {
-                          value: "pickup",
-                          label: "🤝 Pickup only",
-                          hint: "Buyer collects",
-                        },
-                        {
-                          value: "both",
-                          label: "✅ Both options",
-                          hint: "Flexible",
-                        },
-                      ] as {
-                        value: ShippingOption;
-                        label: string;
-                        hint: string;
-                      }[]
-                    ).map((o) => (
-                      <button
-                        key={o.value}
-                        type="button"
-                        onClick={() => {
-                          setShippingOption(o.value);
-                          setErrors((p) => ({ ...p, shippingOption: "" }));
-                        }}
-                        className={`flex flex-col gap-1 p-4 rounded-xl border-2 text-left
-                          transition-all duration-150
-                          ${
-                            shippingOption === o.value
-                              ? "border-[#141414] bg-[#141414] text-white"
-                              : "border-[#E3E0D9] hover:border-[#C9C5BC] text-[#141414]"
-                          }`}
-                      >
-                        <span className="text-[13px] font-semibold">
-                          {o.label}
-                        </span>
-                        <span
-                          className={`text-[11.5px] ${shippingOption === o.value ? "text-white/70" : "text-[#9E9A91]"}`}
-                        >
-                          {o.hint}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  {errors.shippingOption && (
-                    <p className="text-[11.5px] text-red-500 font-medium">
-                      {errors.shippingOption}
-                    </p>
-                  )}
-                </div>
-
-                {/* Courier price */}
-                {(shippingOption === "courier" ||
-                  shippingOption === "both") && (
-                  <Input
-                    label="Courier price (NZD)"
-                    type="number"
-                    value={shippingPrice}
-                    onChange={(e) => {
-                      setShippingPrice(e.target.value);
-                      setErrors((p) => ({ ...p, shippingPrice: "" }));
-                    }}
-                    placeholder="0 for free shipping"
-                    min={0}
-                    error={errors.shippingPrice}
-                    leftAddon={
-                      <span className="text-[13px] font-medium">$</span>
-                    }
-                    hint="Enter 0 to offer free shipping — this can improve your listing visibility."
-                  />
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Select
-                    label="Region"
-                    value={region}
-                    onChange={(e) => {
-                      setRegion(e.target.value as NZRegion);
-                      setErrors((p) => ({ ...p, region: "" }));
-                    }}
-                    placeholder="Select region"
-                    required
-                    error={errors.region}
-                  >
-                    {NZ_REGIONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </Select>
-
-                  <Input
-                    label="Suburb / town"
-                    value={suburb}
-                    onChange={(e) => {
-                      setSuburb(e.target.value);
-                      setErrors((p) => ({ ...p, suburb: "" }));
-                    }}
-                    placeholder="e.g. Ponsonby"
-                    required
-                    error={errors.suburb}
-                    hint="Only your suburb is shown publicly — not your full address."
-                  />
-                </div>
-
-                {/* Listing summary */}
-                <div className="rounded-xl bg-[#F8F7F4] border border-[#EFEDE8] p-4 space-y-2">
-                  <p className="text-[12px] font-semibold text-[#9E9A91] uppercase tracking-wide">
-                    Listing summary
-                  </p>
-                  <p className="text-[14px] font-semibold text-[#141414] line-clamp-1">
-                    {title || "Your item"}
-                  </p>
-                  <p className="text-[13px] text-[#73706A]">
-                    {price ? `$${price}` : "Price not set"}
-                    {condition
-                      ? ` · ${CONDITIONS.find((c) => c.value === condition)?.label}`
-                      : ""}
-                    {categoryId
-                      ? ` · ${CATEGORIES.find((c) => c.id === categoryId)?.name}`
-                      : ""}
-                  </p>
-                  <p className="text-[12px] text-[#9E9A91]">
-                    {images.filter((i) => i.uploaded).length} photo
-                    {images.filter((i) => i.uploaded).length !== 1
-                      ? "s"
-                      : ""}{" "}
-                    uploaded
-                  </p>
-                </div>
-              </div>
+              <SellStep4Shipping
+                shippingOption={shippingOption}
+                shippingPrice={shippingPrice}
+                region={region}
+                suburb={suburb}
+                errors={errors}
+                submitError={submitError}
+                title={title}
+                price={price}
+                condition={condition}
+                categoryId={categoryId}
+                images={images}
+                onShippingOptionChange={(v) => {
+                  setShippingOption(v);
+                  setErrors((p) => ({ ...p, shippingOption: "" }));
+                }}
+                onShippingPriceChange={(e) => {
+                  setShippingPrice(e.target.value);
+                  setErrors((p) => ({ ...p, shippingPrice: "" }));
+                }}
+                onRegionChange={(e) => {
+                  setRegion(e.target.value as NZRegion);
+                  setErrors((p) => ({ ...p, region: "" }));
+                }}
+                onSuburbChange={(e) => {
+                  setSuburb(e.target.value);
+                  setErrors((p) => ({ ...p, suburb: "" }));
+                }}
+              />
             )}
 
-            {/* ── Footer nav ────────────────────────────────────────────── */}
-            <div
-              className="px-6 py-4 bg-[#F8F7F4] border-t border-[#E3E0D9]
-              flex items-center justify-between gap-3"
-            >
-              {step > 1 ? (
-                <Button variant="ghost" size="md" onClick={goBack}>
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                  >
-                    <path d="m15 18-6-6 6-6" />
-                  </svg>
-                  Back
-                </Button>
-              ) : (
-                <Link href="/">
-                  <Button variant="ghost" size="md">
-                    Cancel
-                  </Button>
-                </Link>
-              )}
-
-              <div className="flex items-center gap-2">
-                {step === 4 && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="md"
-                      onClick={() => setShowPreview(true)}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                      Preview
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="md"
-                      loading={savingDraft}
-                      onClick={handleSaveDraft}
-                    >
-                      Save as Draft
-                    </Button>
-                  </>
-                )}
-                {step < 4 ? (
-                  <Button variant="primary" size="md" onClick={goNext}>
-                    Continue
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                    >
-                      <path d="m9 18 6-6-6-6" />
-                    </svg>
-                  </Button>
-                ) : (
-                  <Button
-                    variant="gold"
-                    size="md"
-                    loading={submitting}
-                    onClick={handleSubmit}
-                  >
-                    Publish listing
-                  </Button>
-                )}
-              </div>
-            </div>
+            <SellFooterNav
+              step={step}
+              submitting={submitting}
+              savingDraft={savingDraft}
+              onBack={goBack}
+              onNext={goNext}
+              onSubmit={handleSubmit}
+              onPreview={() => setShowPreview(true)}
+              onSaveDraft={handleSaveDraft}
+            />
           </div>
         </div>
       </main>

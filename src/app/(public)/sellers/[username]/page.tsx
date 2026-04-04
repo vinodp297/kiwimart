@@ -23,10 +23,7 @@ import { getTagConfig } from "@/lib/review-tags";
 import type { ReviewTagType } from "@/lib/review-tags";
 import { BlockButton } from "@/components/seller/BlockButton";
 import { getSellerTrustProfile } from "@/modules/sellers/trust-score.service";
-import {
-  getResponseLabel,
-  getResponseColour,
-} from "@/modules/sellers/response-metrics.service";
+import { getResponseLabel } from "@/modules/sellers/response-metrics.service";
 
 const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
   top_seller: {
@@ -72,11 +69,11 @@ async function getSellerByUsername(username: string) {
         select: {
           sellerOrders: { where: { status: "COMPLETED" } },
           listings: { where: { status: "ACTIVE", deletedAt: null } },
-          reviews: { where: { approved: true } },
+          reviewsAbout: { where: { approved: true, reviewerRole: "BUYER" } },
         },
       },
-      reviews: {
-        where: { approved: true },
+      reviewsAbout: {
+        where: { approved: true, reviewerRole: "BUYER" },
         orderBy: { createdAt: "desc" },
         take: 5,
         select: {
@@ -84,7 +81,7 @@ async function getSellerByUsername(username: string) {
           rating: true,
           comment: true,
           createdAt: true,
-          sellerReply: true,
+          reply: true,
           author: {
             select: { displayName: true, username: true, avatarKey: true },
           },
@@ -109,7 +106,7 @@ export async function generateMetadata({
     if (!user) return { title: "Seller not found" };
     return {
       title: `${user.displayName} — Seller Profile`,
-      description: `${user.displayName} is a ${user.idVerified ? "verified" : ""} NZ seller on KiwiMart with ${user._count.reviews} reviews.`,
+      description: `${user.displayName} is a ${user.idVerified ? "verified" : ""} NZ seller on KiwiMart with ${user._count.reviewsAbout} reviews.`,
     };
   } catch (err) {
     console.error("[SellerProfile] generateMetadata error:", err);
@@ -159,14 +156,14 @@ export default async function SellerProfilePage({
 
   // Compute avg rating from reviews
   const avgRating =
-    user.reviews.length > 0
-      ? user.reviews.reduce((sum, r) => sum + r.rating, 0) /
-        user.reviews.length /
+    user.reviewsAbout.length > 0
+      ? user.reviewsAbout.reduce((sum, r) => sum + r.rating, 0) /
+        user.reviewsAbout.length /
         10
       : 0;
 
   // Map DB reviews to Review type — guard against orphaned author FKs
-  const reviews: Review[] = user.reviews
+  const reviews: Review[] = user.reviewsAbout
     .filter((r) => r.author != null) // skip reviews whose author was hard-deleted
     .map((r) => ({
       id: r.id,
@@ -179,7 +176,7 @@ export default async function SellerProfilePage({
       comment: r.comment ?? "",
       listingTitle: r.order?.listing?.title ?? "Unknown listing",
       createdAt: r.createdAt.toISOString(),
-      sellerReply: r.sellerReply,
+      sellerReply: r.reply,
       tags: r.tags.map((t) => t.tag),
     }));
 
@@ -196,7 +193,7 @@ export default async function SellerProfilePage({
     region: (user.region ?? "Auckland") as NZRegion,
     suburb: user.suburb ?? "",
     rating: avgRating,
-    reviewCount: user._count.reviews,
+    reviewCount: user._count.reviewsAbout,
     verified: false,
     memberSince: user.createdAt.toISOString(),
     activeListingCount: user._count.listings,

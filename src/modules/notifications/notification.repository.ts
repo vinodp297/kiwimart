@@ -6,6 +6,8 @@ import { userRepository } from "@/modules/users/user.repository";
 // Notification repository — data access only, no business logic.
 // ---------------------------------------------------------------------------
 
+type DbClient = Prisma.TransactionClient | typeof db;
+
 // ── Select shape ────────────────────────────────────────────────────────────
 
 const notificationSelect = {
@@ -38,8 +40,12 @@ export interface NotifyAdminsPayload {
 export const notificationRepository = {
   /** Create a single notification.
    * @source src/modules/notifications/notification.service.ts */
-  async create(data: Prisma.NotificationCreateInput): Promise<NotificationRow> {
-    return db.notification.create({ data, select: notificationSelect });
+  async create(
+    data: Prisma.NotificationUncheckedCreateInput,
+    tx?: DbClient,
+  ): Promise<NotificationRow> {
+    const client = tx ?? db;
+    return client.notification.create({ data, select: notificationSelect });
   },
 
   /** Fetch notifications for a user (newest-first, cursor-paginated).
@@ -48,8 +54,10 @@ export const notificationRepository = {
     userId: string,
     take: number,
     cursor?: string,
+    tx?: DbClient,
   ): Promise<NotificationRow[]> {
-    return db.notification.findMany({
+    const client = tx ?? db;
+    return client.notification.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
       take,
@@ -60,8 +68,13 @@ export const notificationRepository = {
 
   /** Mark specific notifications as read (scoped to userId for safety).
    * @source src/app/api/notifications/route.ts */
-  async markRead(notificationIds: string[], userId: string): Promise<void> {
-    await db.notification.updateMany({
+  async markRead(
+    notificationIds: string[],
+    userId: string,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.notification.updateMany({
       where: { id: { in: notificationIds }, userId },
       data: { read: true },
     });
@@ -69,8 +82,9 @@ export const notificationRepository = {
 
   /** Mark all unread notifications as read for a user.
    * @source src/app/(protected)/notifications/page.tsx, src/app/api/notifications/route.ts */
-  async markAllRead(userId: string): Promise<void> {
-    await db.notification.updateMany({
+  async markAllRead(userId: string, tx?: DbClient): Promise<void> {
+    const client = tx ?? db;
+    await client.notification.updateMany({
       where: { userId, read: false },
       data: { read: true },
     });
@@ -78,8 +92,9 @@ export const notificationRepository = {
 
   /** Count unread notifications for a user.
    * @source src/components/NavBar.tsx */
-  async countUnread(userId: string): Promise<number> {
-    return db.notification.count({
+  async countUnread(userId: string, tx?: DbClient): Promise<number> {
+    const client = tx ?? db;
+    return client.notification.count({
       where: { userId, read: false },
     });
   },
@@ -92,8 +107,10 @@ export const notificationRepository = {
     orderId: string,
     type: string,
     since: Date,
+    tx?: DbClient,
   ): Promise<Prisma.NotificationGetPayload<{ select: { id: true } }> | null> {
-    return db.notification.findFirst({
+    const client = tx ?? db;
+    return client.notification.findFirst({
       where: { userId, orderId, type, createdAt: { gte: since } },
       select: { id: true },
     });

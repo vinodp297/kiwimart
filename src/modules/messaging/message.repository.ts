@@ -1,12 +1,13 @@
-import { db } from "@/lib/db";
+import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
 // Message repository — data access only, no business logic.
-// All stubs will be filled in Phase 2 by migrating calls from:
-//   - src/modules/messaging/message.service.ts
-//   - src/server/actions/messages.ts
+// Phase 2A: methods used by message.service.ts (implemented below).
+// Phase 2B stubs: reserved for src/server/actions/messages.ts migration.
 // ---------------------------------------------------------------------------
+
+type DbClient = Prisma.TransactionClient | typeof db;
 
 export type ThreadWithLastMessage = Prisma.MessageThreadGetPayload<{
   include: {
@@ -45,80 +46,184 @@ export type MessageRow = Prisma.MessageGetPayload<{
 }>;
 
 export const messageRepository = {
-  /** Find threads for a user (paginated, ordered by lastMessageAt desc).
-   * @source src/modules/messaging/message.service.ts */
+  // ─── Phase 2A: User lookups (used by sendMessage) ──────────────────────────
+
+  /** Find a non-banned, non-deleted user by ID (recipient check). */
+  async findActiveUserById(userId: string, client: DbClient = db) {
+    return client.user.findUnique({
+      where: { id: userId, isBanned: false, deletedAt: null },
+      select: { id: true, email: true, displayName: true },
+    });
+  },
+
+  /** Find a user by ID (sender display name lookup). */
+  async findUserDisplayName(userId: string, client: DbClient = db) {
+    return client.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    });
+  },
+
+  // ─── Phase 2A: Block check ─────────────────────────────────────────────────
+
+  /** Check if a block exists between two users (in either direction). */
+  async findBlock(userA: string, userB: string, client: DbClient = db) {
+    return client.blockedUser.findFirst({
+      where: {
+        OR: [
+          { blockerId: userA, blockedId: userB },
+          { blockerId: userB, blockedId: userA },
+        ],
+      },
+      select: { id: true },
+    });
+  },
+
+  // ─── Phase 2A: Thread operations ───────────────────────────────────────────
+
+  /** Find a thread by ID (participant-only select for access check). */
+  async findThreadById(id: string, client: DbClient = db) {
+    return client.messageThread.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        participant1Id: true,
+        participant2Id: true,
+        listingId: true,
+      },
+    });
+  },
+
+  /** Find a thread by its unique ID (full row, used by sendMessage thread lookup). */
+  async findThreadByIdFull(id: string, client: DbClient = db) {
+    return client.messageThread.findUnique({ where: { id } });
+  },
+
+  /** Find an existing thread between two sorted participants for a listing. */
+  async findThread(
+    participant1Id: string,
+    participant2Id: string,
+    listingId: string | null,
+    client: DbClient = db,
+  ) {
+    return client.messageThread.findFirst({
+      where: {
+        participant1Id,
+        participant2Id,
+        listingId,
+      },
+    });
+  },
+
+  /** Create a new thread. */
+  async createThread(
+    data: {
+      participant1Id: string;
+      participant2Id: string;
+      listingId: string | null;
+    },
+    client: DbClient = db,
+  ) {
+    return client.messageThread.create({ data });
+  },
+
+  /** Update thread lastMessageAt timestamp. */
+  async touchThread(
+    threadId: string,
+    lastMessageAt: Date,
+    client: DbClient = db,
+  ): Promise<void> {
+    await client.messageThread.update({
+      where: { id: threadId },
+      data: { lastMessageAt },
+    });
+  },
+
+  /** Find threads for a user (paginated, ordered by lastMessageAt desc). */
   async findThreadsByUser(
     userId: string,
     take: number,
     cursor?: string,
-  ): Promise<ThreadWithLastMessage[]> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
+    client: DbClient = db,
+  ) {
+    return client.messageThread.findMany({
+      where: {
+        OR: [{ participant1Id: userId }, { participant2Id: userId }],
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: "desc" as const },
+          take: 1,
+          select: {
+            id: true,
+            body: true,
+            senderId: true,
+            createdAt: true,
+            read: true,
+          },
+        },
+      },
+      orderBy: { lastMessageAt: "desc" as const },
+      take,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
   },
 
-  /** Find an existing thread between two participants for a listing.
-   * @source src/modules/messaging/message.service.ts */
-  async findThread(
-    participant1Id: string,
-    participant2Id: string,
-    listingId: string,
-  ): Promise<Prisma.MessageThreadGetPayload<{ select: { id: true } }> | null> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
+  // ─── Phase 2A: Message operations ──────────────────────────────────────────
+
+  /** Create a message in a thread. */
+  async createMessage(
+    data: {
+      threadId: string;
+      senderId: string;
+      body: string;
+      flagged: boolean;
+      flagReason: string | null;
+    },
+    client: DbClient = db,
+  ) {
+    return client.message.create({
+      data,
+      select: { id: true, createdAt: true },
+    });
   },
 
-  /** Find a thread by ID.
-   * @source src/modules/messaging/message.service.ts */
-  async findThreadById(id: string): Promise<Prisma.MessageThreadGetPayload<{
-    select: {
-      id: true;
-      participant1Id: true;
-      participant2Id: true;
-      listingId: true;
-    };
-  }> | null> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
+  /** Mark all unread messages in a thread as read (by the non-sender). */
+  async markThreadRead(
+    threadId: string,
+    readerId: string,
+    client: DbClient = db,
+  ): Promise<void> {
+    await client.message.updateMany({
+      where: {
+        threadId,
+        senderId: { not: readerId },
+        read: false,
+      },
+      data: { read: true, readAt: new Date() },
+    });
   },
 
-  /** Create a new thread.
-   * @source src/modules/messaging/message.service.ts */
-  async createThread(
-    data: Prisma.MessageThreadCreateInput,
-  ): Promise<Prisma.MessageThreadGetPayload<{ select: { id: true } }>> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Update thread lastMessageAt timestamp.
-   * @source src/modules/messaging/message.service.ts */
-  async touchThread(threadId: string, lastMessageAt: Date): Promise<void> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Create a message in a thread.
-   * @source src/modules/messaging/message.service.ts */
-  async createMessage(data: Prisma.MessageCreateInput): Promise<MessageRow> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Fetch paginated messages for a thread.
-   * @source src/modules/messaging/message.service.ts */
+  /** Fetch paginated messages for a thread. */
   async findMessagesByThread(
     threadId: string,
     take: number,
     cursor?: string,
-  ): Promise<MessageRow[]> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Mark all unread messages in a thread as read (by the non-sender).
-   * @source src/modules/messaging/message.service.ts */
-  async markThreadRead(threadId: string, readerId: string): Promise<void> {
-    // TODO: move from src/modules/messaging/message.service.ts
-    throw new Error("Not implemented");
+    client: DbClient = db,
+  ) {
+    return client.message.findMany({
+      where: { threadId },
+      take,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "asc" as const },
+      select: {
+        id: true,
+        body: true,
+        senderId: true,
+        createdAt: true,
+        read: true,
+        sender: { select: { displayName: true } },
+      },
+    });
   },
 };

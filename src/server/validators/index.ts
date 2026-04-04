@@ -336,6 +336,8 @@ const reviewTagEnum = z.enum([
   "AS_DESCRIBED",
 ]);
 
+const reviewerRoleEnum = z.enum(["BUYER", "SELLER"]);
+
 export const createReviewSchema = z.object({
   orderId: z.string().min(1),
   rating: z.number().int().min(1).max(5),
@@ -345,6 +347,7 @@ export const createReviewSchema = z.object({
     .max(1000)
     .trim(),
   tags: z.array(reviewTagEnum).max(6).default([]),
+  reviewerRole: reviewerRoleEnum.default("BUYER"),
 });
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;
 

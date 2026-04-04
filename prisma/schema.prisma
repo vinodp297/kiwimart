@@ -371,7 +371,7 @@ model User {
   sellerOrders   Order[]    @relation("SellerOrders")
   offers         Offer[]    @relation("BuyerOffers")
   receivedOffers Offer[]    @relation("SellerOffers")
-  reviews        Review[]   @relation("ReviewedSeller")
+  reviewsAbout   Review[]   @relation("ReviewSubject")
   writtenReviews Review[]   @relation("ReviewAuthor")
   sentMessages   Message[]  @relation("MessageSender")
   watchlist      WatchlistItem[]
@@ -690,7 +690,7 @@ model Order {
   buyer   User    @relation("BuyerOrders", fields: [buyerId], references: [id])
   seller  User    @relation("SellerOrders", fields: [sellerId], references: [id])
   listing Listing @relation(fields: [listingId], references: [id])
-  review  Review?
+  reviews Review[]
   payout  Payout?
   snapshot     ListingSnapshot?
   items        OrderItem[]
@@ -893,33 +893,40 @@ model Offer {
 // Reviews
 // ─────────────────────────────────────────────────────────────────────────────
 
+enum ReviewerRole {
+  BUYER   // Buyer reviews the seller
+  SELLER  // Seller reviews the buyer
+}
+
 model Review {
-  id         String @id @default(cuid())
-  orderId    String @unique  // One review per order
-  sellerId   String
-  authorId   String
-  
+  id           String       @id @default(cuid())
+  orderId      String
+  reviewerRole ReviewerRole @default(BUYER)
+  subjectId    String       // The user being reviewed
+  authorId     String       // The user writing the review
+
   // Rating stored as integer 1–50 (represents 1.0–5.0 in 0.1 increments)
   rating     Int
   comment    String @db.Text
-  
-  sellerReply   String?   @db.Text
-  sellerRepliedAt DateTime?
-  
+
+  reply      String?   @db.Text   // Subject's reply to the review
+  repliedAt  DateTime?
+
   // Moderation
   approved    Boolean  @default(true)
   flagged     Boolean  @default(false)
   flagReason  String?
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order  Order @relation(fields: [orderId], references: [id])
-  seller User  @relation("ReviewedSeller", fields: [sellerId], references: [id])
-  author User  @relation("ReviewAuthor", fields: [authorId], references: [id])
-  tags   ReviewTag[]
+  order   Order @relation(fields: [orderId], references: [id])
+  subject User  @relation("ReviewSubject", fields: [subjectId], references: [id])
+  author  User  @relation("ReviewAuthor", fields: [authorId], references: [id])
+  tags    ReviewTag[]
 
-  @@index([sellerId])
+  @@unique([orderId, reviewerRole])
+  @@index([subjectId])
   @@index([authorId])
   @@index([createdAt])
 }

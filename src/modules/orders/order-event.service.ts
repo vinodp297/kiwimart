@@ -4,9 +4,9 @@
 // Every event write is fire-and-forget — a failed write never blocks
 // or breaks an order state transition.
 
-import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 import type { Prisma } from "@prisma/client";
+import { orderRepository } from "./order.repository";
 
 // ── Event type constants ────────────────────────────────────────────────────
 // Plain strings (not a Prisma enum) so new types can be added without migrations.
@@ -75,18 +75,16 @@ export class OrderEventService {
    * event write never blocks an order state transition.
    */
   recordEvent(input: RecordEventInput): void {
-    db.orderEvent
-      .create({
-        data: {
-          orderId: input.orderId,
-          type: input.type,
-          actorId: input.actorId ?? null,
-          actorRole: input.actorRole,
-          summary: input.summary,
-          metadata: (input.metadata ?? undefined) as
-            | Prisma.InputJsonValue
-            | undefined,
-        },
+    orderRepository
+      .createEvent({
+        orderId: input.orderId,
+        type: input.type,
+        actorId: input.actorId ?? null,
+        actorRole: input.actorRole,
+        summary: input.summary,
+        metadata: (input.metadata ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
       })
       .catch((err) => {
         logger.error("order-event.write.failed", {
@@ -109,25 +107,7 @@ export class OrderEventService {
    * Returns events ordered by createdAt ascending with actor details.
    */
   async getOrderTimeline(orderId: string) {
-    return db.orderEvent.findMany({
-      where: { orderId },
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        type: true,
-        actorRole: true,
-        summary: true,
-        metadata: true,
-        createdAt: true,
-        actor: {
-          select: {
-            id: true,
-            displayName: true,
-            username: true,
-          },
-        },
-      },
-    });
+    return orderRepository.findEventsByOrderId(orderId);
   }
 }
 

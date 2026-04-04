@@ -1,6 +1,6 @@
 // src/modules/reviews/review.service.ts
 // ─── Review Service ──────────────────────────────────────────────────────────
-// Review and reply operations. Framework-free.
+// Two-way review and reply operations. Framework-free.
 
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
@@ -17,7 +17,9 @@ export class ReviewService {
   async createReview(
     input: CreateReviewInput,
     userId: string,
-  ): Promise<{ reviewId: string; sellerId: string }> {
+  ): Promise<{ reviewId: string; subjectId: string }> {
+    const role = input.reviewerRole ?? "BUYER";
+
     const order = await db.order.findUnique({
       where: { id: input.orderId },
       select: {
@@ -25,14 +27,25 @@ export class ReviewService {
         buyerId: true,
         sellerId: true,
         status: true,
-        review: { select: { id: true } },
+        reviews: {
+          where: { reviewerRole: role },
+          select: { id: true },
+        },
       },
     });
 
     if (!order) throw AppError.notFound("Order");
-    if (order.buyerId !== userId) {
+
+    // Verify the caller matches the reviewer role
+    if (role === "BUYER" && order.buyerId !== userId) {
       throw AppError.unauthorised("You can only review orders you purchased.");
     }
+    if (role === "SELLER" && order.sellerId !== userId) {
+      throw AppError.unauthorised(
+        "You can only review buyers on your own orders.",
+      );
+    }
+
     if (order.status !== "COMPLETED") {
       throw new AppError(
         "ORDER_WRONG_STATE",
@@ -40,7 +53,8 @@ export class ReviewService {
         400,
       );
     }
-    if (order.review) {
+
+    if (order.reviews.length > 0) {
       throw new AppError(
         "ORDER_WRONG_STATE",
         "You have already reviewed this order.",
@@ -48,10 +62,14 @@ export class ReviewService {
       );
     }
 
+    // For BUYER reviews: subject = seller. For SELLER reviews: subject = buyer.
+    const subjectId = role === "BUYER" ? order.sellerId : order.buyerId;
+
     const review = await db.review.create({
       data: {
         orderId: input.orderId,
-        sellerId: order.sellerId,
+        reviewerRole: role,
+        subjectId,
         authorId: userId,
         rating: input.rating * 10, // 5 → 50, 4.5 → 45
         comment: input.comment,
@@ -71,25 +89,37 @@ export class ReviewService {
       action: "ORDER_STATUS_CHANGED",
       entityType: "Review",
       entityId: review.id,
-      metadata: { orderId: input.orderId, rating: input.rating },
+      metadata: {
+        orderId: input.orderId,
+        rating: input.rating,
+        reviewerRole: role,
+      },
     });
+
+    const actorRole = role === "BUYER" ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER;
+    const label = role === "BUYER" ? "Buyer" : "Seller";
 
     orderEventService.recordEvent({
       orderId: input.orderId,
       type: ORDER_EVENT_TYPES.REVIEW_SUBMITTED,
       actorId: userId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary: `Buyer left a ${input.rating}-star review`,
-      metadata: { reviewId: review.id, rating: input.rating },
+      actorRole,
+      summary: `${label} left a ${input.rating}-star review`,
+      metadata: {
+        reviewId: review.id,
+        rating: input.rating,
+        reviewerRole: role,
+      },
     });
 
     logger.info("review.created", {
       reviewId: review.id,
       orderId: input.orderId,
       userId,
+      reviewerRole: role,
     });
 
-    return { reviewId: review.id, sellerId: order.sellerId };
+    return { reviewId: review.id, subjectId };
   }
 
   async replyToReview(
@@ -98,16 +128,14 @@ export class ReviewService {
   ): Promise<void> {
     const review = await db.review.findUnique({
       where: { id: input.reviewId },
-      select: { id: true, sellerId: true, sellerReply: true },
+      select: { id: true, subjectId: true, reply: true },
     });
 
     if (!review) throw AppError.notFound("Review");
-    if (review.sellerId !== userId) {
-      throw AppError.unauthorised(
-        "You can only reply to reviews of your own listings.",
-      );
+    if (review.subjectId !== userId) {
+      throw AppError.unauthorised("You can only reply to reviews about you.");
     }
-    if (review.sellerReply) {
+    if (review.reply) {
       throw new AppError(
         "ORDER_WRONG_STATE",
         "You have already replied to this review.",
@@ -117,7 +145,7 @@ export class ReviewService {
 
     await db.review.update({
       where: { id: input.reviewId },
-      data: { sellerReply: input.reply, sellerRepliedAt: new Date() },
+      data: { reply: input.reply, repliedAt: new Date() },
     });
 
     logger.info("review.reply.added", { reviewId: input.reviewId, userId });
@@ -125,14 +153,14 @@ export class ReviewService {
 
   async fetchSellerReviews(sellerId: string) {
     const reviews = await db.review.findMany({
-      where: { sellerId, approved: true },
+      where: { subjectId: sellerId, reviewerRole: "BUYER", approved: true },
       orderBy: { createdAt: "desc" },
       take: 50,
       select: {
         id: true,
         rating: true,
         comment: true,
-        sellerReply: true,
+        reply: true,
         createdAt: true,
         author: { select: { displayName: true } },
         order: { select: { listing: { select: { title: true } } } },
@@ -147,8 +175,35 @@ export class ReviewService {
       comment: r.comment,
       listingTitle: r.order.listing.title,
       createdAt: r.createdAt.toISOString(),
-      sellerReply: r.sellerReply,
+      sellerReply: r.reply,
       tags: r.tags.map((t) => t.tag),
+    }));
+  }
+
+  async fetchBuyerReviews(buyerId: string) {
+    const reviews = await db.review.findMany({
+      where: { subjectId: buyerId, reviewerRole: "SELLER", approved: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        reply: true,
+        createdAt: true,
+        author: { select: { displayName: true } },
+        order: { select: { listing: { select: { title: true } } } },
+      },
+    });
+
+    return reviews.map((r) => ({
+      id: r.id,
+      sellerName: r.author.displayName,
+      rating: Math.round(r.rating / 10),
+      comment: r.comment,
+      listingTitle: r.order.listing.title,
+      createdAt: r.createdAt.toISOString(),
+      buyerReply: r.reply,
     }));
   }
 }
