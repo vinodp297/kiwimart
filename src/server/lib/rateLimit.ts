@@ -9,8 +9,8 @@
 // Limits are keyed by IP address extracted from Next.js request headers.
 // In Sprint 4 — authenticated endpoints will additionally key by userId.
 
-import { Ratelimit } from '@upstash/ratelimit';
-import { getRedisClient } from '@/infrastructure/redis/client';
+import { Ratelimit } from "@upstash/ratelimit";
+import { getRedisClient } from "@/infrastructure/redis/client";
 
 // ── Rate limit configurations ─────────────────────────────────────────────────
 
@@ -18,8 +18,8 @@ import { getRedisClient } from '@/infrastructure/redis/client';
 const authLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(5, '15 m'),
-    prefix: 'km:rl:auth',
+    limiter: Ratelimit.slidingWindow(5, "15 m"),
+    prefix: "km:rl:auth",
     analytics: true,
   });
 
@@ -27,8 +27,8 @@ const authLimiter = () =>
 const registerLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(3, '1 h'),
-    prefix: 'km:rl:register',
+    limiter: Ratelimit.slidingWindow(3, "1 h"),
+    prefix: "km:rl:register",
     analytics: true,
   });
 
@@ -36,8 +36,8 @@ const registerLimiter = () =>
 const messageLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(20, '1 m'),
-    prefix: 'km:rl:message',
+    limiter: Ratelimit.slidingWindow(20, "1 m"),
+    prefix: "km:rl:message",
     analytics: true,
   });
 
@@ -45,8 +45,8 @@ const messageLimiter = () =>
 const listingLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(10, '1 h'),
-    prefix: 'km:rl:listing',
+    limiter: Ratelimit.slidingWindow(10, "1 h"),
+    prefix: "km:rl:listing",
     analytics: true,
   });
 
@@ -54,8 +54,8 @@ const listingLimiter = () =>
 const offerLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(5, '10 m'),
-    prefix: 'km:rl:offer',
+    limiter: Ratelimit.slidingWindow(5, "10 m"),
+    prefix: "km:rl:offer",
     analytics: true,
   });
 
@@ -63,8 +63,8 @@ const offerLimiter = () =>
 const orderLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(5, '1 h'),
-    prefix: 'km:rl:order',
+    limiter: Ratelimit.slidingWindow(5, "1 h"),
+    prefix: "km:rl:order",
     analytics: true,
   });
 
@@ -72,8 +72,8 @@ const orderLimiter = () =>
 const disputeLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(3, '1 d'),
-    prefix: 'km:rl:disputes',
+    limiter: Ratelimit.slidingWindow(3, "1 d"),
+    prefix: "km:rl:disputes",
     analytics: true,
   });
 
@@ -81,14 +81,72 @@ const disputeLimiter = () =>
 const cartLimiter = () =>
   new Ratelimit({
     redis: getRedisClient(),
-    limiter: Ratelimit.slidingWindow(20, '1 m'),
-    prefix: 'km:rl:cart',
+    limiter: Ratelimit.slidingWindow(20, "1 m"),
+    prefix: "km:rl:cart",
+    analytics: true,
+  });
+
+/** 10 reviews per hour per user — prevent review spam */
+const reviewLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(10, "1 h"),
+    prefix: "km:rl:review",
+    analytics: true,
+  });
+
+/** 60 watchlist toggles per hour per user — generous for browsing, prevents bot abuse */
+const watchLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(60, "1 h"),
+    prefix: "km:rl:watch",
+    analytics: true,
+  });
+
+/** 10 offer responses per hour per user — accept/decline actions */
+const offerRespondLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(10, "1 h"),
+    prefix: "km:rl:offer-respond",
+    analytics: true,
+  });
+
+/** 10 profile updates per hour per user */
+const accountUpdateLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(10, "1 h"),
+    prefix: "km:rl:account-update",
+    analytics: true,
+  });
+
+/** 5 push token registrations per hour per user — device registration */
+const pushTokenLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(5, "1 h"),
+    prefix: "km:rl:push-token",
     analytics: true,
   });
 
 // ── Rate limit types ──────────────────────────────────────────────────────────
 
-export type RateLimitKey = 'auth' | 'register' | 'message' | 'listing' | 'offer' | 'order' | 'disputes' | 'cart';
+export type RateLimitKey =
+  | "auth"
+  | "register"
+  | "message"
+  | "listing"
+  | "offer"
+  | "order"
+  | "disputes"
+  | "cart"
+  | "review"
+  | "watch"
+  | "offerRespond"
+  | "accountUpdate"
+  | "pushToken";
 
 export interface RateLimitResult {
   success: boolean;
@@ -112,25 +170,36 @@ export interface RateLimitResult {
  */
 export async function rateLimit(
   type: RateLimitKey,
-  identifier: string
+  identifier: string,
 ): Promise<RateLimitResult> {
   // In development / test — skip rate limiting when Redis isn't configured.
   // Also skip when URL is a placeholder (same pattern as PostHog guard).
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? '';
-  const redisConfigured = redisUrl.length > 0 && !redisUrl.includes('placeholder');
-  if (process.env.NODE_ENV === 'development' && !redisConfigured) {
-    return { success: true, remaining: 999, reset: Date.now() + 60_000, retryAfter: 0 };
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? "";
+  const redisConfigured =
+    redisUrl.length > 0 && !redisUrl.includes("placeholder");
+  if (process.env.NODE_ENV === "development" && !redisConfigured) {
+    return {
+      success: true,
+      remaining: 999,
+      reset: Date.now() + 60_000,
+      retryAfter: 0,
+    };
   }
 
   const limiterFactories: Record<RateLimitKey, () => Ratelimit> = {
-    auth:     authLimiter,
+    auth: authLimiter,
     register: registerLimiter,
-    message:  messageLimiter,
-    listing:  listingLimiter,
-    offer:    offerLimiter,
-    order:    orderLimiter,
+    message: messageLimiter,
+    listing: listingLimiter,
+    offer: offerLimiter,
+    order: orderLimiter,
     disputes: disputeLimiter,
-    cart:     cartLimiter,
+    cart: cartLimiter,
+    review: reviewLimiter,
+    watch: watchLimiter,
+    offerRespond: offerRespondLimiter,
+    accountUpdate: accountUpdateLimiter,
+    pushToken: pushTokenLimiter,
   };
 
   const limiter = limiterFactories[type]();
@@ -158,10 +227,9 @@ export async function rateLimit(
  */
 export function getClientIp(headers: Headers): string {
   return (
-    headers.get('x-real-ip') ??               // Vercel (most trusted — set by infra)
-    headers.get('cf-connecting-ip') ??        // Cloudflare (set by edge, not spoofable)
-    headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() ?? // Vercel forwarded
-    'unknown'
+    headers.get("x-real-ip") ?? // Vercel (most trusted — set by infra)
+    headers.get("cf-connecting-ip") ?? // Cloudflare (set by edge, not spoofable)
+    headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ?? // Vercel forwarded
+    "unknown"
   );
 }
-

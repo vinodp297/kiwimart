@@ -88,9 +88,26 @@ const openApiSpec = {
                           type: "array",
                           items: { $ref: "#/components/schemas/ListingCard" },
                         },
-                        total: { type: "integer" },
-                        page: { type: "integer" },
-                        pageSize: { type: "integer" },
+                        page: {
+                          type: "integer",
+                          description: "Current page number (1-based)",
+                        },
+                        pageSize: {
+                          type: "integer",
+                          description: "Items per page",
+                        },
+                        hasMore: {
+                          type: "boolean",
+                          description: "Whether a next page exists",
+                        },
+                        total: {
+                          type: "integer",
+                          description: "Total matching listings",
+                        },
+                        totalPages: {
+                          type: "integer",
+                          description: "Total number of pages",
+                        },
                       },
                     },
                   },

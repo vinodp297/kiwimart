@@ -10,6 +10,7 @@ import {
   getClientIp,
   type RateLimitKey,
 } from "@/server/lib/rateLimit";
+import { withCors } from "./cors";
 
 export function apiOk<T>(data: T, status = 200): Response {
   return Response.json(
@@ -40,11 +41,13 @@ export function apiError(
 
 export function handleApiError(e: unknown): Response {
   if (e instanceof AppError) {
-    return apiError(e.message, e.statusCode, e.code);
+    return withCors(apiError(e.message, e.statusCode, e.code));
   }
-  return apiError(
-    "An unexpected error occurred. Please try again or contact support.",
-    500,
+  return withCors(
+    apiError(
+      "An unexpected error occurred. Please try again or contact support.",
+      500,
+    ),
   );
 }
 

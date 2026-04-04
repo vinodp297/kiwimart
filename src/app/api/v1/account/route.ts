@@ -10,20 +10,34 @@ import {
   handleApiError,
   requireApiUser,
 } from "../_helpers/response";
-import { corsHeaders } from "../_helpers/cors";
+import { corsHeaders, withCors } from "../_helpers/cors";
+import { rateLimit } from "@/server/lib/rateLimit";
 
 export async function PATCH(request: Request) {
   try {
     const user = await requireApiUser(request);
 
+    const rl = await rateLimit("accountUpdate", user.id);
+    if (!rl.success) {
+      return withCors(
+        apiError(
+          `Too many profile updates. Try again in ${rl.retryAfter} seconds.`,
+          429,
+          "RATE_LIMITED",
+        ),
+      );
+    }
+
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = updateProfileSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
 
     await userRepository.update(user.id, {
@@ -32,9 +46,9 @@ export async function PATCH(request: Request) {
       bio: parsed.data.bio || null,
     });
 
-    return apiOk({ user: { id: user.id, ...parsed.data } });
+    return withCors(apiOk({ user: { id: user.id, ...parsed.data } }));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

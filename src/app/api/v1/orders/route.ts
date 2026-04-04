@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       query = ordersQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
       }
       throw err;
     }
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
 
     return withCors(apiOk({ orders, nextCursor, hasMore }));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

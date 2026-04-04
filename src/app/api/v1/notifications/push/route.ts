@@ -24,7 +24,8 @@ import {
   handleApiError,
   requireApiUser,
 } from "../../_helpers/response";
-import { corsHeaders } from "../../_helpers/cors";
+import { corsHeaders, withCors } from "../../_helpers/cors";
+import { rateLimit } from "@/server/lib/rateLimit";
 
 const pushTokenSchema = z.object({
   token: z.string().min(1).max(512),
@@ -36,14 +37,27 @@ export async function POST(request: Request) {
   try {
     const user = await requireApiUser(request);
 
+    const rl = await rateLimit("pushToken", user.id);
+    if (!rl.success) {
+      return withCors(
+        apiError(
+          `Too many device registrations. Try again in ${rl.retryAfter} seconds.`,
+          429,
+          "RATE_LIMITED",
+        ),
+      );
+    }
+
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = pushTokenSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
 
     const { token, platform, deviceId } = parsed.data;
@@ -56,9 +70,9 @@ export async function POST(request: Request) {
       tokenPrefix: token.slice(0, 8),
     });
 
-    return apiOk({ registered: true });
+    return withCors(apiOk({ registered: true }));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

@@ -5,10 +5,12 @@
 import { listingService } from "@/modules/listings/listing.service";
 import {
   apiOk,
+  apiError,
   handleApiError,
   requireApiUser,
 } from "../../../_helpers/response";
-import { corsHeaders } from "../../../_helpers/cors";
+import { corsHeaders, withCors } from "../../../_helpers/cors";
+import { rateLimit } from "@/server/lib/rateLimit";
 
 export async function POST(
   request: Request,
@@ -16,12 +18,24 @@ export async function POST(
 ) {
   try {
     const user = await requireApiUser(request);
+
+    const rl = await rateLimit("watch", user.id);
+    if (!rl.success) {
+      return withCors(
+        apiError(
+          `Too many watchlist actions. Try again in ${rl.retryAfter} seconds.`,
+          429,
+          "RATE_LIMITED",
+        ),
+      );
+    }
+
     const { id } = await params;
 
     const result = await listingService.toggleWatch(id, user.id);
-    return apiOk(result);
+    return withCors(apiOk(result));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

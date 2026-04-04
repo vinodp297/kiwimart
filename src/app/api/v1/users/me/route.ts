@@ -33,12 +33,12 @@ export async function GET() {
     });
 
     if (!user) {
-      return apiError("User not found", 404, "NOT_FOUND");
+      return withCors(apiError("User not found", 404, "NOT_FOUND"));
     }
 
     return withCors(apiOk(user));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 
