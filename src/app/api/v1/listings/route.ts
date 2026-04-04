@@ -16,7 +16,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../_helpers/response";
-import { corsHeaders } from "../_helpers/cors";
+import { corsHeaders, withCors } from "../_helpers/cors";
 import { listingsQuerySchema } from "@/modules/listings/listing.schema";
 
 export async function GET(request: Request) {
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       query = listingsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
       }
       throw err;
     }
@@ -86,14 +86,14 @@ export async function GET(request: Request) {
     const listings = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (listings.at(-1)?.id ?? null) : null;
 
-    const response = apiOk({ listings, nextCursor, hasMore });
+    const response = withCors(apiOk({ listings, nextCursor, hasMore }));
     response.headers.set(
       "Cache-Control",
       "public, s-maxage=60, stale-while-revalidate=300",
     );
     return response;
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 
@@ -107,45 +107,55 @@ export async function POST(request: Request) {
     // Check seller prerequisites
     const userDetails = await userRepository.findForListingAuth(user.id);
     if (!userDetails?.emailVerified) {
-      return apiError(
-        "Please verify your email address before creating a listing.",
-        403,
-        "EMAIL_NOT_VERIFIED",
+      return withCors(
+        apiError(
+          "Please verify your email address before creating a listing.",
+          403,
+          "EMAIL_NOT_VERIFIED",
+        ),
       );
     }
     if (!userDetails.sellerTermsAcceptedAt) {
-      return apiError(
-        "Please accept seller terms before listing items.",
-        403,
-        "TERMS_NOT_ACCEPTED",
+      return withCors(
+        apiError(
+          "Please accept seller terms before listing items.",
+          403,
+          "TERMS_NOT_ACCEPTED",
+        ),
       );
     }
     if (!user.stripeOnboarded) {
-      return apiError(
-        "Please set up your payment account before listing items.",
-        403,
-        "STRIPE_NOT_ONBOARDED",
+      return withCors(
+        apiError(
+          "Please set up your payment account before listing items.",
+          403,
+          "STRIPE_NOT_ONBOARDED",
+        ),
       );
     }
 
     // Parse body
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = createListingSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
     const data = parsed.data;
 
     // User-based rate limit (10/hr)
     const limit = await rateLimit("listing", user.id);
     if (!limit.success) {
-      return apiError(
-        `Too many listings created. Try again in ${limit.retryAfter} seconds.`,
-        429,
+      return withCors(
+        apiError(
+          `Too many listings created. Try again in ${limit.retryAfter} seconds.`,
+          429,
+        ),
       );
     }
 
@@ -155,7 +165,7 @@ export async function POST(request: Request) {
       select: { id: true },
     });
     if (!category) {
-      return apiError("Invalid category", 400, "INVALID_CATEGORY");
+      return withCors(apiError("Invalid category", 400, "INVALID_CATEGORY"));
     }
 
     // Validate images
@@ -168,10 +178,12 @@ export async function POST(request: Request) {
     );
     const unsafeImages = images.filter((img) => !img.scanned || !img.safe);
     if (missingKeys.length > 0 || unsafeImages.length > 0) {
-      return apiError(
-        "One or more photos could not be verified. Please re-upload.",
-        400,
-        "IMAGE_VALIDATION_FAILED",
+      return withCors(
+        apiError(
+          "One or more photos could not be verified. Please re-upload.",
+          400,
+          "IMAGE_VALIDATION_FAILED",
+        ),
       );
     }
 
@@ -252,9 +264,9 @@ export async function POST(request: Request) {
       userId: user.id,
     });
 
-    return apiOk({ listing }, 201);
+    return withCors(apiOk({ listing }, 201));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

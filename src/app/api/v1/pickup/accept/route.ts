@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       body = acceptPickupSchema.parse(await request.json());
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return apiError("Validation failed", 400, "VALIDATION_ERROR");
+        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
       }
       throw err;
     }
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
     return withCors(apiOk({ accepted: true }));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

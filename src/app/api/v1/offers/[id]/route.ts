@@ -4,14 +4,14 @@
 
 import { z } from "zod";
 import { offerService } from "@/modules/offers/offer.service";
-import { getClientIp } from "@/server/lib/rateLimit";
+import { getClientIp, rateLimit } from "@/server/lib/rateLimit";
 import {
   apiOk,
   apiError,
   handleApiError,
   requireApiUser,
 } from "../../_helpers/response";
-import { corsHeaders } from "../../_helpers/cors";
+import { corsHeaders, withCors } from "../../_helpers/cors";
 
 const respondBodySchema = z.object({
   action: z.enum(["ACCEPT", "DECLINE"]),
@@ -24,16 +24,30 @@ export async function PATCH(
 ) {
   try {
     const user = await requireApiUser(request);
+
+    const rl = await rateLimit("offerRespond", user.id);
+    if (!rl.success) {
+      return withCors(
+        apiError(
+          `Too many offer responses. Try again in ${rl.retryAfter} seconds.`,
+          429,
+          "RATE_LIMITED",
+        ),
+      );
+    }
+
     const { id } = await params;
 
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = respondBodySchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
 
     const ip = getClientIp(new Headers(request.headers)) || "unknown";
@@ -44,9 +58,9 @@ export async function PATCH(
       ip,
     );
 
-    return apiOk(null);
+    return withCors(apiOk(null));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

@@ -4,14 +4,14 @@
 
 import { z } from "zod";
 import { orderService } from "@/modules/orders/order.service";
-import { getClientIp } from "@/server/lib/rateLimit";
+import { getClientIp, rateLimit } from "@/server/lib/rateLimit";
 import {
   apiOk,
   apiError,
   handleApiError,
   requireApiUser,
 } from "../_helpers/response";
-import { corsHeaders } from "../_helpers/cors";
+import { corsHeaders, withCors } from "../_helpers/cors";
 
 const openDisputeSchema = z.object({
   orderId: z.string().min(1),
@@ -33,14 +33,27 @@ export async function POST(request: Request) {
   try {
     const user = await requireApiUser(request);
 
+    const rl = await rateLimit("disputes", user.id);
+    if (!rl.success) {
+      return withCors(
+        apiError(
+          `Too many disputes opened. Try again in ${rl.retryAfter} seconds.`,
+          429,
+          "RATE_LIMITED",
+        ),
+      );
+    }
+
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = openDisputeSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
 
     const { orderId, reason, buyerStatement } = parsed.data;
@@ -52,9 +65,9 @@ export async function POST(request: Request) {
       ip,
     );
 
-    return apiOk({ opened: true, orderId }, 201);
+    return withCors(apiOk({ opened: true, orderId }, 201));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

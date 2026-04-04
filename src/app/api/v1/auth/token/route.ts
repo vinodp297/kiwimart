@@ -10,7 +10,7 @@ import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "../../_helpers/response";
-import { corsHeaders } from "../../_helpers/cors";
+import { corsHeaders, withCors } from "../../_helpers/cors";
 
 // Dummy hash for timing-safe comparison when user not found
 const DUMMY_HASH =
@@ -22,24 +22,26 @@ export async function POST(request: Request) {
     const ip = getClientIp(new Headers(request.headers));
     const limitResult = await rateLimit("auth", ip || "unknown");
     if (!limitResult.success) {
-      return apiError(
-        `Too many login attempts. Try again in ${limitResult.retryAfter} seconds.`,
-        429,
+      return withCors(
+        apiError(
+          `Too many login attempts. Try again in ${limitResult.retryAfter} seconds.`,
+          429,
+        ),
       );
     }
 
     // 2. Parse body
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = tokenRequestSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError(
-        "Invalid email or password format",
-        400,
-        "VALIDATION_ERROR",
+      return withCors(
+        apiError("Invalid email or password format", 400, "VALIDATION_ERROR"),
       );
     }
 
@@ -71,7 +73,9 @@ export async function POST(request: Request) {
           channel: "mobile",
         },
       });
-      return apiError("Invalid credentials", 401, "INVALID_CREDENTIALS");
+      return withCors(
+        apiError("Invalid credentials", 401, "INVALID_CREDENTIALS"),
+      );
     }
 
     // 4. Check bans
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
         action: "USER_LOGIN",
         metadata: { success: false, reason: "banned", channel: "mobile" },
       });
-      return apiError("Account is suspended", 403, "ACCOUNT_BANNED");
+      return withCors(apiError("Account is suspended", 403, "ACCOUNT_BANNED"));
     }
 
     // 5. Issue token
@@ -100,17 +104,19 @@ export async function POST(request: Request) {
 
     logger.info("mobile.token.issued", { userId: user.id });
 
-    return apiOk({
-      token,
-      expiresAt,
-      user: { id: user.id, email: user.email, role },
-    });
+    return withCors(
+      apiOk({
+        token,
+        expiresAt,
+        user: { id: user.id, email: user.email, role },
+      }),
+    );
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/auth/token",
       error: e instanceof Error ? e.message : e,
     });
-    return apiError("Authentication failed. Please try again.", 500);
+    return withCors(apiError("Authentication failed. Please try again.", 500));
   }
 }
 

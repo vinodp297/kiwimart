@@ -11,7 +11,7 @@ import {
   handleApiError,
   requireApiUser,
 } from "../../_helpers/response";
-import { corsHeaders } from "../../_helpers/cors";
+import { corsHeaders, withCors } from "../../_helpers/cors";
 
 const updateBodySchema = createListingSchema.partial();
 
@@ -30,21 +30,23 @@ export async function PATCH(
     });
 
     if (!listing) {
-      return apiError("Listing not found", 404, "NOT_FOUND");
+      return withCors(apiError("Listing not found", 404, "NOT_FOUND"));
     }
     if (listing.sellerId !== user.id) {
-      return apiError("Not your listing", 403, "FORBIDDEN");
+      return withCors(apiError("Not your listing", 403, "FORBIDDEN"));
     }
 
     // Parse body
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = updateBodySchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
 
     const data = parsed.data;
@@ -77,7 +79,7 @@ export async function PATCH(
       update.pickupAddress = data.pickupAddress;
 
     if (Object.keys(update).length === 0) {
-      return apiError("No fields to update", 400, "VALIDATION_ERROR");
+      return withCors(apiError("No fields to update", 400, "VALIDATION_ERROR"));
     }
 
     const updated = await db.listing.update({
@@ -92,9 +94,9 @@ export async function PATCH(
       },
     });
 
-    return apiOk({ listing: updated });
+    return withCors(apiOk({ listing: updated }));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 
@@ -112,10 +114,10 @@ export async function DELETE(
     });
 
     if (!listing) {
-      return apiError("Listing not found", 404, "NOT_FOUND");
+      return withCors(apiError("Listing not found", 404, "NOT_FOUND"));
     }
     if (listing.sellerId !== user.id && !user.isAdmin) {
-      return apiError("Not your listing", 403, "FORBIDDEN");
+      return withCors(apiError("Not your listing", 403, "FORBIDDEN"));
     }
 
     await db.listing.update({
@@ -123,9 +125,9 @@ export async function DELETE(
       data: { deletedAt: new Date(), status: "REMOVED" },
     });
 
-    return apiOk({ message: "Listing deleted" });
+    return withCors(apiOk({ message: "Listing deleted" }));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

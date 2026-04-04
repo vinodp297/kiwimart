@@ -14,7 +14,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../_helpers/response";
-import { corsHeaders } from "../_helpers/cors";
+import { corsHeaders, withCors } from "../_helpers/cors";
 
 export async function GET(request: Request) {
   try {
@@ -46,9 +46,9 @@ export async function GET(request: Request) {
     const offers = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (offers.at(-1)?.id ?? null) : null;
 
-    return apiOk({ offers, nextCursor, hasMore });
+    return withCors(apiOk({ offers, nextCursor, hasMore }));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 
@@ -61,19 +61,21 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = createOfferSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
 
     const ip = getClientIp(new Headers(request.headers)) || "unknown";
     const result = await offerService.createOffer(parsed.data, user.id, ip);
-    return apiOk(result, 201);
+    return withCors(apiOk(result, 201));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 

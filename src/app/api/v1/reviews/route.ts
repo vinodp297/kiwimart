@@ -14,7 +14,8 @@ import {
   handleApiError,
   requireApiUser,
 } from "../_helpers/response";
-import { corsHeaders } from "../_helpers/cors";
+import { corsHeaders, withCors } from "../_helpers/cors";
+import { rateLimit } from "@/server/lib/rateLimit";
 
 export async function GET(request: Request) {
   try {
@@ -48,13 +49,13 @@ export async function GET(request: Request) {
     const reviews = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (reviews.at(-1)?.id ?? null) : null;
 
-    return apiOk({ reviews, nextCursor, hasMore });
+    return withCors(apiOk({ reviews, nextCursor, hasMore }));
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/reviews GET",
       error: e instanceof Error ? e.message : String(e),
     });
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 
@@ -62,20 +63,33 @@ export async function POST(request: Request) {
   try {
     const user = await requireApiUser(request);
 
+    const rl = await rateLimit("review", user.id);
+    if (!rl.success) {
+      return withCors(
+        apiError(
+          `Too many reviews submitted. Try again in ${rl.retryAfter} seconds.`,
+          429,
+          "RATE_LIMITED",
+        ),
+      );
+    }
+
     const body = await request.json().catch(() => null);
     if (!body) {
-      return apiError("Invalid request body", 400, "VALIDATION_ERROR");
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+      );
     }
 
     const parsed = createReviewSchema.safeParse(body);
     if (!parsed.success) {
-      return apiError("Validation failed", 400, "VALIDATION_ERROR");
+      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
     }
 
     const result = await reviewService.createReview(parsed.data, user.id);
-    return apiOk(result, 201);
+    return withCors(apiOk(result, 201));
   } catch (e) {
-    return handleApiError(e);
+    return withCors(handleApiError(e));
   }
 }
 
