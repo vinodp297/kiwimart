@@ -56,11 +56,16 @@ export async function GET(request: Request) {
 
     const nextCursor = results.hasNextPage ? page + 1 : null;
 
-    return apiOk({
+    const response = apiOk({
       items: results.listings,
       nextCursor,
       hasMore: results.hasNextPage,
     });
+    response.headers.set(
+      "Cache-Control",
+      "public, s-maxage=30, stale-while-revalidate=120",
+    );
+    return response;
   } catch (e) {
     return handleApiError(e);
   }

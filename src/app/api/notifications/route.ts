@@ -23,7 +23,12 @@ export async function GET() {
       10,
     );
 
-    return NextResponse.json({ success: true, data: { notifications } });
+    const response = NextResponse.json({
+      success: true,
+      data: { notifications },
+    });
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (e) {
     logger.error("api.error", {
       path: "/api/notifications",

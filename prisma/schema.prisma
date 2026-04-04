@@ -581,6 +581,8 @@ model Listing {
   @@index([searchVector], type: Gin)
   @@index([locationLat, locationLng])
   @@index([sellerId, createdAt(sort: Desc)])
+  // Partial index for public browse queries (status=ACTIVE, deletedAt=null)
+  @@index([createdAt(sort: Desc), categoryId, region, priceNzd], map: "Listing_active_partial_idx")
 }
 
 model ListingImage {
@@ -702,6 +704,7 @@ model Order {
   @@index([status])
   @@index([createdAt])
   @@index([status, dispatchedAt])
+  @@index([status, createdAt(sort: Desc)])
   @@index([buyerId, status])
   @@index([sellerId, status])
   @@index([sellerId, completedAt])
@@ -842,6 +845,7 @@ model TrustMetrics {
 
   @@index([userId])
   @@index([isFlaggedForFraud])
+  @@index([disputeRate])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -986,6 +990,7 @@ model WatchlistItem {
   @@unique([userId, listingId])
   @@index([userId])
   @@index([listingId])
+  @@index([listingId, priceAlertEnabled])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1070,6 +1075,7 @@ model Notification {
 
   @@index([userId, read])
   @@index([userId, createdAt])
+  @@index([userId, createdAt(sort: Desc)], map: "Notification_userId_createdAt_desc_idx")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
