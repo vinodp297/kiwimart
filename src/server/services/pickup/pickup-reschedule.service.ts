@@ -11,6 +11,8 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { pickupQueue } from "@/lib/queue";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { pickupRepository } from "@/modules/pickup/pickup.repository";
 import type {
   SellerRescheduleReason,
   BuyerRescheduleReason,
@@ -49,21 +51,7 @@ export async function requestReschedule(params: {
   } = params;
   const pickupCfg = await getPickupConfig();
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      fulfillmentType: true,
-      pickupStatus: true,
-      pickupScheduledAt: true,
-      rescheduleCount: true,
-      listingId: true,
-      listing: { select: { title: true, pickupAddress: true } },
-    },
-  });
+  const order = await orderRepository.findWithPickupContext(orderId);
 
   if (!order) return { success: false, error: "Order not found." };
 
@@ -136,18 +124,19 @@ export async function requestReschedule(params: {
 
   await db.$transaction(async (tx) => {
     // Increment reschedule count and set status to RESCHEDULING
-    await tx.order.update({
-      where: { id: orderId },
-      data: {
+    await orderRepository.updatePickupFields(
+      orderId,
+      {
         pickupStatus: "RESCHEDULING",
         rescheduleCount: newRescheduleCount,
         pickupWindowJobId: null,
       },
-    });
+      tx,
+    );
 
     // Create PickupRescheduleRequest
-    const request = await tx.pickupRescheduleRequest.create({
-      data: {
+    const request = await pickupRepository.createRescheduleRequest(
+      {
         orderId,
         requestedById,
         requestedByRole,
@@ -157,8 +146,8 @@ export async function requestReschedule(params: {
         proposedTime,
         expiresAt: new Date(Date.now() + pickupCfg.RESCHEDULE_EXPIRY_MS),
       },
-      select: { id: true },
-    });
+      tx,
+    );
 
     requestId = request.id;
 
@@ -201,12 +190,7 @@ export async function requestReschedule(params: {
       { delay: pickupCfg.RESCHEDULE_EXPIRY_MS, jobId: rescheduleJobId },
     )
     .then(() => {
-      db.pickupRescheduleRequest
-        .update({
-          where: { id: requestId! },
-          data: { rescheduleJobId },
-        })
-        .catch(() => {});
+      pickupRepository.setRescheduleJobId(requestId!, rescheduleJobId);
     })
     .catch((err) => {
       logger.warn("pickup.reschedule_job.schedule_failed", {

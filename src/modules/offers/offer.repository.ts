@@ -57,15 +57,10 @@ export const offerRepository = {
 
   /** Create a new offer.
    * @source src/modules/offers/offer.service.ts */
-  async create(data: Prisma.OfferCreateInput): Promise<
-    Prisma.OfferGetPayload<{
-      select: { id: true; amountNzd: true; status: true; expiresAt: true };
-    }>
-  > {
-    return db.offer.create({
-      data,
-      select: { id: true, amountNzd: true, status: true, expiresAt: true },
-    });
+  async create(
+    data: Prisma.OfferUncheckedCreateInput,
+  ): Promise<{ id: string }> {
+    return db.offer.create({ data, select: { id: true } });
   },
 
   /** Accept an offer and set payment deadline (inside a transaction).

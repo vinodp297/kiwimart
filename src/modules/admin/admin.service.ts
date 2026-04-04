@@ -2,7 +2,6 @@
 // ─── Admin Service ───────────────────────────────────────────────────────────
 // Admin-only operations. Framework-free. Takes adminUserId as parameter.
 
-import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { paymentService } from "@/modules/payments/payment.service";
 import { transitionOrder } from "@/modules/orders/order.transitions";
@@ -20,6 +19,11 @@ import {
   getDisputeByOrderId,
   resolveDispute as resolveDisputeRecord,
 } from "@/server/services/dispute/dispute.service";
+import { userRepository } from "@/modules/users/user.repository";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { adminRepository } from "./admin.repository";
+import db from "@/lib/db";
 import type { ReportAction, DisputeFavour } from "./admin.types";
 
 export class AdminService {
@@ -28,17 +32,10 @@ export class AdminService {
     reason: string,
     adminUserId: string,
   ): Promise<void> {
-    await db.$transaction([
-      db.user.update({
-        where: { id: userId },
-        data: {
-          isBanned: true,
-          bannedAt: new Date(),
-          bannedReason: reason,
-        },
-      }),
-      db.session.deleteMany({ where: { userId } }),
-    ]);
+    await db.$transaction(async (tx) => {
+      await userRepository.setBanState(userId, true, reason, tx);
+      await userRepository.deleteAllSessions(userId, tx);
+    });
 
     audit({
       userId: adminUserId,
@@ -52,10 +49,7 @@ export class AdminService {
   }
 
   async unbanUser(userId: string, adminUserId: string): Promise<void> {
-    await db.user.update({
-      where: { id: userId },
-      data: { isBanned: false, bannedAt: null, bannedReason: null },
-    });
+    await userRepository.setBanState(userId, false, null);
 
     audit({
       userId: adminUserId,
@@ -72,16 +66,10 @@ export class AdminService {
     userId: string,
     adminUserId: string,
   ): Promise<void> {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { sellerEnabled: true },
-    });
+    const user = await userRepository.findSellerEnabled(userId);
     if (!user) throw AppError.notFound("User");
 
-    await db.user.update({
-      where: { id: userId },
-      data: { sellerEnabled: !user.sellerEnabled },
-    });
+    await userRepository.setSellerEnabled(userId, !user.sellerEnabled);
 
     audit({
       userId: adminUserId,
@@ -97,45 +85,30 @@ export class AdminService {
     action: ReportAction,
     adminUserId: string,
   ): Promise<void> {
-    const report = await db.report.findUnique({
-      where: { id: reportId },
-      select: { id: true, listingId: true, targetUserId: true, status: true },
-    });
+    const report = await adminRepository.findReportById(reportId);
     if (!report) throw AppError.notFound("Report");
 
     // Wrap all DB mutations in a transaction for atomicity
     await db.$transaction(async (tx) => {
-      await tx.report.update({
-        where: { id: reportId },
-        data: {
-          status: "RESOLVED",
-          resolvedAt: new Date(),
-          resolvedBy: adminUserId,
-        },
-      });
+      await adminRepository.resolveReport(reportId, adminUserId, tx);
 
       if (action === "remove" && report.listingId) {
-        await tx.listing.update({
-          where: { id: report.listingId },
-          data: { status: "REMOVED" },
-        });
+        await listingRepository.setStatus(report.listingId, "REMOVED", tx);
       }
 
       if (action === "ban" && report.targetUserId) {
-        await tx.user.update({
-          where: { id: report.targetUserId },
-          data: {
-            isBanned: true,
-            bannedAt: new Date(),
-            bannedReason: "Banned following report review.",
-          },
-        });
+        await userRepository.setBanState(
+          report.targetUserId,
+          true,
+          "Banned following report review.",
+          tx,
+        );
       }
     });
 
     // Delete sessions outside transaction — can't rollback session deletion anyway
     if (action === "ban" && report.targetUserId) {
-      await db.session.deleteMany({ where: { userId: report.targetUserId } });
+      await userRepository.deleteAllSessions(report.targetUserId);
     }
 
     audit({
@@ -154,18 +127,7 @@ export class AdminService {
     favour: DisputeFavour,
     adminUserId: string,
   ): Promise<void> {
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        status: true,
-        stripePaymentIntentId: true,
-        buyerId: true,
-        sellerId: true,
-        listingId: true,
-        listing: { select: { title: true } },
-      },
-    });
+    const order = await orderRepository.findWithDisputeContext(orderId);
 
     if (!order) throw AppError.notFound("Order");
     if (order.status !== "DISPUTED") {
@@ -194,10 +156,7 @@ export class AdminService {
             );
             // Restore listing to ACTIVE so seller can re-list
             if (order.listingId) {
-              await tx.listing.update({
-                where: { id: order.listingId },
-                data: { status: "ACTIVE" },
-              });
+              await listingRepository.setStatus(order.listingId, "ACTIVE", tx);
             }
             if (dispute) {
               await resolveDisputeRecord({
@@ -242,10 +201,11 @@ export class AdminService {
               },
               { tx, fromStatus: order.status },
             );
-            await tx.payout.updateMany({
-              where: { orderId },
-              data: { status: "PROCESSING", initiatedAt: new Date() },
-            });
+            await adminRepository.updateOrderPayouts(
+              orderId,
+              { status: "PROCESSING", initiatedAt: new Date() },
+              tx,
+            );
             if (dispute) {
               await resolveDisputeRecord({
                 disputeId: dispute.id,
@@ -325,16 +285,8 @@ export class AdminService {
     }).catch(() => {});
 
     // Fire-and-forget dispute resolved emails to both parties
-    db.order
-      .findUnique({
-        where: { id: orderId },
-        select: {
-          totalNzd: true,
-          buyer: { select: { email: true, displayName: true } },
-          seller: { select: { email: true, displayName: true } },
-          listing: { select: { title: true } },
-        },
-      })
+    orderRepository
+      .findByIdForCancellationEmail(orderId)
       .then((o) => {
         if (!o) return;
         const resolution =
@@ -373,18 +325,7 @@ export class AdminService {
     reason: string,
     adminUserId: string,
   ): Promise<void> {
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        status: true,
-        totalNzd: true,
-        buyerId: true,
-        sellerId: true,
-        stripePaymentIntentId: true,
-        listing: { select: { title: true } },
-      },
-    });
+    const order = await orderRepository.findWithDisputeContext(orderId);
 
     if (!order) throw AppError.notFound("Order");
     if (order.status !== "DISPUTED") {
@@ -504,11 +445,8 @@ export class AdminService {
     });
 
     // Fire-and-forget partial refund emails to both parties
-    db.user
-      .findMany({
-        where: { id: { in: [order.buyerId, order.sellerId] } },
-        select: { id: true, email: true, displayName: true },
-      })
+    userRepository
+      .findManyEmailContactsByIds([order.buyerId, order.sellerId])
       .then((users) => {
         const buyer = users.find((u) => u.id === order.buyerId);
         const seller = users.find((u) => u.id === order.sellerId);
@@ -551,18 +489,8 @@ export class AdminService {
     partialAmountCents?: number,
   ): Promise<void> {
     // Find the auto-resolution event to record the override
-    const autoResEvent = await db.orderEvent.findFirst({
-      where: {
-        orderId,
-        type: "AUTO_RESOLVED",
-        metadata: {
-          path: ["decision"],
-          not: { equals: null },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { metadata: true },
-    });
+    const autoResEvent =
+      await adminRepository.findLatestAutoResolvedEvent(orderId);
 
     const originalDecision = autoResEvent
       ? String(
@@ -630,15 +558,7 @@ export class AdminService {
     message: string,
     adminUserId: string,
   ): Promise<void> {
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        listing: { select: { title: true } },
-      },
-    });
+    const order = await orderRepository.findWithDisputeContext(orderId);
 
     if (!order) throw AppError.notFound("Order");
 
@@ -697,24 +617,7 @@ export class AdminService {
     reason: string,
     adminUserId: string,
   ): Promise<void> {
-    await db.trustMetrics.upsert({
-      where: { userId },
-      create: {
-        userId,
-        totalOrders: 0,
-        completedOrders: 0,
-        disputeCount: 0,
-        disputeRate: 0,
-        disputesLast30Days: 0,
-        averageResponseHours: null,
-        averageRating: null,
-        dispatchPhotoRate: 0,
-        accountAgeDays: 0,
-        isFlaggedForFraud: true,
-        lastComputedAt: new Date(),
-      },
-      update: { isFlaggedForFraud: true },
-    });
+    await adminRepository.flagUserForFraud(userId);
 
     orderEventService.recordEvent({
       orderId,

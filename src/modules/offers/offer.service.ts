@@ -2,7 +2,6 @@
 // ─── Offer Service ───────────────────────────────────────────────────────────
 // Offer lifecycle operations. Framework-free.
 
-import db from "@/lib/db";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { audit } from "@/server/lib/audit";
 import { withLock } from "@/server/lib/distributedLock";
@@ -10,6 +9,10 @@ import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendOfferReceivedEmail, sendOfferResponseEmail } from "@/server/email";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { userRepository } from "@/modules/users/user.repository";
+import { offerRepository } from "./offer.repository";
+import db from "@/lib/db";
 import type { CreateOfferInput, RespondOfferInput } from "./offer.types";
 
 export class OfferService {
@@ -18,17 +21,7 @@ export class OfferService {
     userId: string,
     ip: string,
   ): Promise<{ offerId: string }> {
-    const listing = await db.listing.findUnique({
-      where: { id: input.listingId, status: "ACTIVE", deletedAt: null },
-      select: {
-        id: true,
-        sellerId: true,
-        title: true,
-        priceNzd: true,
-        offersEnabled: true,
-        seller: { select: { email: true, displayName: true } },
-      },
-    });
+    const listing = await listingRepository.findForOffer(input.listingId);
 
     if (!listing) throw AppError.notFound("Listing");
     if (!listing.offersEnabled) {
@@ -53,9 +46,10 @@ export class OfferService {
       );
     }
 
-    const existingOffer = await db.offer.findFirst({
-      where: { listingId: input.listingId, buyerId: userId, status: "PENDING" },
-    });
+    const existingOffer = await offerRepository.findPendingByBuyerAndListing(
+      userId,
+      input.listingId,
+    );
     if (existingOffer) {
       throw AppError.validation(
         "You already have a pending offer on this listing. Withdraw it to make a new one.",
@@ -63,28 +57,22 @@ export class OfferService {
     }
 
     const offerExpiryHours = await getConfigInt(CONFIG_KEYS.OFFER_EXPIRY_HOURS);
-    const offer = await db.offer.create({
-      data: {
-        listingId: input.listingId,
-        buyerId: userId,
-        sellerId: listing.sellerId,
-        amountNzd: amountCents,
-        note: input.note ?? null,
-        expiresAt: new Date(Date.now() + offerExpiryHours * 60 * 60 * 1000),
-      },
-      select: { id: true },
+    const offer = await offerRepository.create({
+      listingId: input.listingId,
+      buyerId: userId,
+      sellerId: listing.sellerId,
+      amountNzd: amountCents,
+      note: input.note ?? null,
+      expiresAt: new Date(Date.now() + offerExpiryHours * 60 * 60 * 1000),
     });
 
     // Notify seller directly — BullMQ worker does not run on Vercel serverless
-    const buyer = await db.user.findUnique({
-      where: { id: userId },
-      select: { displayName: true },
-    });
+    const buyerDisplayName = await userRepository.findDisplayName(userId);
     try {
       await sendOfferReceivedEmail({
         to: listing.seller.email,
         sellerName: listing.seller.displayName,
-        buyerName: buyer?.displayName ?? "A buyer",
+        buyerName: buyerDisplayName ?? "A buyer",
         listingTitle: listing.title,
         offerAmount: input.amount,
         listingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/listings/${input.listingId}`,
@@ -110,7 +98,7 @@ export class OfferService {
       userId: listing.sellerId,
       type: "OFFER_RECEIVED",
       title: "New offer received 💬",
-      body: `${buyer?.displayName ?? "A buyer"} offered $${input.amount.toFixed(2)} for "${listing.title}"`,
+      body: `${buyerDisplayName ?? "A buyer"} offered $${input.amount.toFixed(2)} for "${listing.title}"`,
       listingId: input.listingId,
       link: `/listings/${input.listingId}`,
     }).catch((err: unknown) => {
@@ -135,13 +123,7 @@ export class OfferService {
     userId: string,
     ip: string,
   ): Promise<void> {
-    const offer = await db.offer.findUnique({
-      where: { id: input.offerId },
-      include: {
-        buyer: { select: { email: true, displayName: true } },
-        listing: { select: { id: true, title: true } },
-      },
-    });
+    const offer = await offerRepository.findByIdWithRelations(input.offerId);
 
     if (!offer) throw AppError.notFound("Offer");
     if (offer.sellerId !== userId) {
@@ -160,8 +142,6 @@ export class OfferService {
       throw new AppError("ORDER_WRONG_STATE", "This offer has expired.", 400);
     }
 
-    const newStatus = input.action === "ACCEPT" ? "ACCEPTED" : "DECLINED";
-
     if (input.action === "ACCEPT") {
       // Lock on listingId — prevents two concurrent ACCEPT calls reserving the same listing
       // (e.g. seller double-clicks, or two admins accept simultaneously)
@@ -169,28 +149,17 @@ export class OfferService {
         await withLock(`listing:purchase:${offer.listingId}`, async () => {
           // Atomic: accept offer + reserve listing + decline competing offers
           await db.$transaction(async (tx) => {
-            await tx.offer.update({
-              where: { id: input.offerId },
-              data: {
-                status: "ACCEPTED",
-                respondedAt: new Date(),
-                paymentDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
-              },
-            });
-
-            await tx.listing.update({
-              where: { id: offer.listingId },
-              data: { status: "RESERVED" },
-            });
-
-            await tx.offer.updateMany({
-              where: {
-                listingId: offer.listingId,
-                id: { not: input.offerId },
-                status: "PENDING",
-              },
-              data: { status: "DECLINED", respondedAt: new Date() },
-            });
+            await offerRepository.accept(
+              input.offerId,
+              new Date(Date.now() + 24 * 60 * 60 * 1000),
+              tx,
+            );
+            await listingRepository.setStatus(offer.listingId, "RESERVED", tx);
+            await offerRepository.declineCompetitors(
+              offer.listingId,
+              input.offerId,
+              tx,
+            );
           });
         });
       } catch (lockErr) {
@@ -208,14 +177,7 @@ export class OfferService {
         throw lockErr;
       }
     } else {
-      await db.offer.update({
-        where: { id: input.offerId },
-        data: {
-          status: newStatus,
-          respondedAt: new Date(),
-          declineNote: input.declineNote ?? null,
-        },
-      });
+      await offerRepository.decline(input.offerId, input.declineNote);
     }
 
     // Notify buyer directly — BullMQ worker does not run on Vercel serverless

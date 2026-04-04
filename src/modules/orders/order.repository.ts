@@ -438,4 +438,96 @@ export const orderRepository = {
       data: { scheduleDeadlineJobId: jobId },
     });
   },
+
+  // ── Consolidated context finders (Phase 2, sprint — Phase A) ────────────
+
+  /** Fetch order context needed for any dispute-related admin flow
+   * (resolve dispute, partial refund, dispute emails, request-info, pickup dispute).
+   * Returns union of fields used across admin.service.ts dispute handlers.
+   * @source src/modules/admin/admin.service.ts, src/server/services/pickup/pickup-dispute-resolver.service.ts */
+  async findWithDisputeContext(id: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.order.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        totalNzd: true,
+        buyerId: true,
+        sellerId: true,
+        listingId: true,
+        stripePaymentIntentId: true,
+        buyer: { select: { email: true, displayName: true } },
+        seller: { select: { email: true, displayName: true } },
+        listing: { select: { title: true } },
+      },
+    });
+  },
+
+  /** Fetch order context needed by all pickup-flow services
+   * (propose, accept, cancel, reschedule, reschedule-respond).
+   * Union of fields read across src/server/services/pickup/*.service.ts. */
+  async findWithPickupContext(id: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.order.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        buyerId: true,
+        sellerId: true,
+        status: true,
+        fulfillmentType: true,
+        pickupStatus: true,
+        pickupScheduledAt: true,
+        rescheduleCount: true,
+        stripePaymentIntentId: true,
+        totalNzd: true,
+        listingId: true,
+        listing: { select: { title: true, pickupAddress: true } },
+      },
+    });
+  },
+
+  /** Update pickup-related fields on an order (scheduling, cancellation).
+   * @source src/server/services/pickup/*.service.ts */
+  async updatePickupFields(
+    id: string,
+    data: Prisma.OrderUncheckedUpdateInput,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.order.update({ where: { id }, data });
+  },
+
+  /** Fire-and-forget setter for the BullMQ pickup window job id.
+   * @source src/server/services/pickup/pickup-proposal.service.ts */
+  setPickupWindowJobId(id: string, jobId: string): void {
+    db.order
+      .update({ where: { id }, data: { pickupWindowJobId: jobId } })
+      .catch(() => {});
+  },
+
+  /** Fetch order context needed when a user creates or views a review.
+   * Returns parties + status + existing review ids for the given reviewerRole.
+   * @source src/modules/reviews/review.service.ts — createReview */
+  async findWithReviewContext(
+    id: string,
+    reviewerRole: "BUYER" | "SELLER",
+    tx?: DbClient,
+  ) {
+    const client = tx ?? db;
+    return client.order.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        buyerId: true,
+        sellerId: true,
+        status: true,
+        reviews: {
+          where: { reviewerRole },
+          select: { id: true },
+        },
+      },
+    });
+  },
 };

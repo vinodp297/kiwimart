@@ -2,7 +2,6 @@
 // ─── Review Service ──────────────────────────────────────────────────────────
 // Two-way review and reply operations. Framework-free.
 
-import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
@@ -11,6 +10,8 @@ import {
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { reviewRepository } from "./review.repository";
 import type { CreateReviewInput, ReplyToReviewInput } from "./review.types";
 
 export class ReviewService {
@@ -20,19 +21,10 @@ export class ReviewService {
   ): Promise<{ reviewId: string; subjectId: string }> {
     const role = input.reviewerRole ?? "BUYER";
 
-    const order = await db.order.findUnique({
-      where: { id: input.orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        reviews: {
-          where: { reviewerRole: role },
-          select: { id: true },
-        },
-      },
-    });
+    const order = await orderRepository.findWithReviewContext(
+      input.orderId,
+      role,
+    );
 
     if (!order) throw AppError.notFound("Order");
 
@@ -65,23 +57,20 @@ export class ReviewService {
     // For BUYER reviews: subject = seller. For SELLER reviews: subject = buyer.
     const subjectId = role === "BUYER" ? order.sellerId : order.buyerId;
 
-    const review = await db.review.create({
-      data: {
-        orderId: input.orderId,
-        reviewerRole: role,
-        subjectId,
-        authorId: userId,
-        rating: input.rating * 10, // 5 → 50, 4.5 → 45
-        comment: input.comment,
-        ...(input.tags && input.tags.length > 0
-          ? {
-              tags: {
-                create: input.tags.map((tag) => ({ tag: tag as never })),
-              },
-            }
-          : {}),
-      },
-      select: { id: true },
+    const review = await reviewRepository.create({
+      orderId: input.orderId,
+      reviewerRole: role,
+      subjectId,
+      authorId: userId,
+      rating: input.rating * 10, // 5 → 50, 4.5 → 45
+      comment: input.comment,
+      ...(input.tags && input.tags.length > 0
+        ? {
+            tags: {
+              create: input.tags.map((tag) => ({ tag: tag as never })),
+            },
+          }
+        : {}),
     });
 
     audit({
@@ -126,10 +115,7 @@ export class ReviewService {
     input: ReplyToReviewInput,
     userId: string,
   ): Promise<void> {
-    const review = await db.review.findUnique({
-      where: { id: input.reviewId },
-      select: { id: true, subjectId: true, reply: true },
-    });
+    const review = await reviewRepository.findByIdForReply(input.reviewId);
 
     if (!review) throw AppError.notFound("Review");
     if (review.subjectId !== userId) {
@@ -143,30 +129,13 @@ export class ReviewService {
       );
     }
 
-    await db.review.update({
-      where: { id: input.reviewId },
-      data: { reply: input.reply, repliedAt: new Date() },
-    });
+    await reviewRepository.addReply(input.reviewId, input.reply, new Date());
 
     logger.info("review.reply.added", { reviewId: input.reviewId, userId });
   }
 
   async fetchSellerReviews(sellerId: string) {
-    const reviews = await db.review.findMany({
-      where: { subjectId: sellerId, reviewerRole: "BUYER", approved: true },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      select: {
-        id: true,
-        rating: true,
-        comment: true,
-        reply: true,
-        createdAt: true,
-        author: { select: { displayName: true } },
-        order: { select: { listing: { select: { title: true } } } },
-        tags: { select: { tag: true } },
-      },
-    });
+    const reviews = await reviewRepository.findPublicSellerReviews(sellerId);
 
     return reviews.map((r) => ({
       id: r.id,
@@ -181,20 +150,7 @@ export class ReviewService {
   }
 
   async fetchBuyerReviews(buyerId: string) {
-    const reviews = await db.review.findMany({
-      where: { subjectId: buyerId, reviewerRole: "SELLER", approved: true },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      select: {
-        id: true,
-        rating: true,
-        comment: true,
-        reply: true,
-        createdAt: true,
-        author: { select: { displayName: true } },
-        order: { select: { listing: { select: { title: true } } } },
-      },
-    });
+    const reviews = await reviewRepository.findPublicBuyerReviews(buyerId);
 
     return reviews.map((r) => ({
       id: r.id,

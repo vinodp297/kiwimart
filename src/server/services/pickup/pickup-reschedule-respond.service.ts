@@ -10,6 +10,8 @@ import {
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { pickupRepository } from "@/modules/pickup/pickup.repository";
 import {
   getPickupConfig,
   findOrCreateThread,
@@ -42,19 +44,7 @@ export async function respondToReschedule(params: {
   } = params;
   const pickupCfg = await getPickupConfig();
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      pickupStatus: true,
-      pickupScheduledAt: true,
-      listingId: true,
-      listing: { select: { title: true, pickupAddress: true } },
-    },
-  });
+  const order = await orderRepository.findWithPickupContext(orderId);
 
   if (!order) return { success: false, error: "Order not found." };
 
@@ -63,18 +53,8 @@ export async function respondToReschedule(params: {
     return { success: false, error: "You are not a party to this order." };
   }
 
-  const request = await db.pickupRescheduleRequest.findUnique({
-    where: { id: rescheduleRequestId },
-    select: {
-      id: true,
-      orderId: true,
-      requestedById: true,
-      requestedByRole: true,
-      proposedTime: true,
-      status: true,
-      expiresAt: true,
-    },
-  });
+  const request =
+    await pickupRepository.findRescheduleRequest(rescheduleRequestId);
 
   if (!request)
     return { success: false, error: "Reschedule request not found." };
@@ -105,13 +85,10 @@ export async function respondToReschedule(params: {
 
   if (response === "ACCEPT") {
     // Accept the reschedule — delegate to acceptPickupTime
-    await db.pickupRescheduleRequest.update({
-      where: { id: rescheduleRequestId },
-      data: {
-        status: "ACCEPTED",
-        respondedAt: new Date(),
-        responseNote: responseNote ?? null,
-      },
+    await pickupRepository.updateRescheduleRequest(rescheduleRequestId, {
+      status: "ACCEPTED",
+      respondedAt: new Date(),
+      responseNote: responseNote ?? null,
     });
 
     // Create response card in thread
@@ -134,16 +111,17 @@ export async function respondToReschedule(params: {
       await createPickupMessage(threadId, respondedById, card, tx);
 
       // Update order to SCHEDULED with new time
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
+      await orderRepository.updatePickupFields(
+        orderId,
+        {
           pickupStatus: "SCHEDULED",
           pickupScheduledAt: request.proposedTime,
           pickupWindowExpiresAt: new Date(
             request.proposedTime.getTime() + pickupCfg.PICKUP_WINDOW_MS,
           ),
         },
-      });
+        tx,
+      );
     });
 
     const timeLabel = formatPickupTime(request.proposedTime);
@@ -186,20 +164,22 @@ export async function respondToReschedule(params: {
 
   if (response === "REJECT") {
     await db.$transaction(async (tx) => {
-      await tx.pickupRescheduleRequest.update({
-        where: { id: rescheduleRequestId },
-        data: {
+      await pickupRepository.updateRescheduleRequest(
+        rescheduleRequestId,
+        {
           status: "REJECTED",
           respondedAt: new Date(),
           responseNote: responseNote ?? null,
         },
-      });
+        tx,
+      );
 
       // Revert to SCHEDULED — original pickupScheduledAt is unchanged
-      await tx.order.update({
-        where: { id: orderId },
-        data: { pickupStatus: "SCHEDULED" },
-      });
+      await orderRepository.updatePickupFields(
+        orderId,
+        { pickupStatus: "SCHEDULED" },
+        tx,
+      );
 
       const threadId = await findOrCreateThread(
         order.buyerId,
@@ -263,13 +243,10 @@ export async function respondToReschedule(params: {
     }
 
     // Reject the original request
-    await db.pickupRescheduleRequest.update({
-      where: { id: rescheduleRequestId },
-      data: {
-        status: "REJECTED",
-        respondedAt: new Date(),
-        responseNote: responseNote ?? null,
-      },
+    await pickupRepository.updateRescheduleRequest(rescheduleRequestId, {
+      status: "REJECTED",
+      respondedAt: new Date(),
+      responseNote: responseNote ?? null,
     });
 
     // Counter-proposals do NOT increment rescheduleCount — call proposePickupTime

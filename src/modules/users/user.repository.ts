@@ -314,6 +314,18 @@ export const userRepository = {
     });
   },
 
+  /** Find email contacts for many users (bulk email recipients).
+   * @source src/modules/admin/admin.service.ts — resolveDisputePartialRefund */
+  async findManyEmailContactsByIds(
+    ids: string[],
+  ): Promise<{ id: string; email: string; displayName: string }[]> {
+    if (ids.length === 0) return [];
+    return db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, email: true, displayName: true },
+    });
+  },
+
   /** Find many users by IDs (thread participant lookup, email batches).
    * @source src/server/actions/dashboard.ts — fetchBuyerDashboard */
   async findManyByIds(ids: string[]): Promise<
@@ -371,6 +383,52 @@ export const userRepository = {
   ): Promise<void> {
     const client = tx ?? db;
     await client.session.deleteMany({ where: { userId } });
+  },
+
+  /** Set ban state for a user (single method for ban + unban).
+   * When isBanned=true, sets bannedAt=now and bannedReason=reason.
+   * When isBanned=false, clears bannedAt + bannedReason.
+   * @source src/modules/admin/admin.service.ts — banUser, unbanUser, resolveReport */
+  async setBanState(
+    id: string,
+    isBanned: boolean,
+    reason: string | null,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.user.update({
+      where: { id },
+      data: isBanned
+        ? { isBanned: true, bannedAt: new Date(), bannedReason: reason }
+        : { isBanned: false, bannedAt: null, bannedReason: null },
+    });
+  },
+
+  /** Fetch the current sellerEnabled flag.
+   * @source src/modules/admin/admin.service.ts — toggleSellerEnabled */
+  async findSellerEnabled(
+    id: string,
+    tx?: DbClient,
+  ): Promise<{ sellerEnabled: boolean } | null> {
+    const client = tx ?? db;
+    return client.user.findUnique({
+      where: { id },
+      select: { sellerEnabled: true },
+    });
+  },
+
+  /** Set the sellerEnabled flag.
+   * @source src/modules/admin/admin.service.ts — toggleSellerEnabled */
+  async setSellerEnabled(
+    id: string,
+    value: boolean,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.user.update({
+      where: { id },
+      data: { sellerEnabled: value },
+    });
   },
 
   // -------------------------------------------------------------------------

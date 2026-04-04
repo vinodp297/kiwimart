@@ -13,6 +13,9 @@ import {
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { pickupRepository } from "@/modules/pickup/pickup.repository";
 import { getPickupConfig } from "./pickup-scheduling.helpers";
 import type { PickupResult } from "./pickup-scheduling.types";
 
@@ -26,23 +29,7 @@ export async function cancelPickupOrder(params: {
   const { orderId, cancelledById, reason } = params;
   const pickupCfg = await getPickupConfig();
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      fulfillmentType: true,
-      pickupStatus: true,
-      pickupScheduledAt: true,
-      rescheduleCount: true,
-      stripePaymentIntentId: true,
-      totalNzd: true,
-      listingId: true,
-      listing: { select: { title: true } },
-    },
-  });
+  const order = await orderRepository.findWithPickupContext(orderId);
 
   if (!order) return { success: false, error: "Order not found." };
 
@@ -104,17 +91,11 @@ export async function cancelPickupOrder(params: {
 
     // Reactivate listing
     if (order.listingId) {
-      await tx.listing.updateMany({
-        where: { id: order.listingId, status: "RESERVED" },
-        data: { status: "ACTIVE" },
-      });
+      await listingRepository.reactivate(order.listingId, tx);
     }
 
     // Cancel any pending reschedule requests
-    await tx.pickupRescheduleRequest.updateMany({
-      where: { orderId, status: "PENDING" },
-      data: { status: "CANCELLED" },
-    });
+    await pickupRepository.cancelPendingRescheduleRequests(orderId, tx);
   });
 
   // Refund buyer if online payment pickup
