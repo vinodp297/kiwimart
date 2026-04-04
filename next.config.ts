@@ -43,7 +43,27 @@ const nextConfig: NextConfig = {
       { key: "Access-Control-Allow-Credentials", value: "true" },
       { key: "Access-Control-Max-Age", value: "86400" },
     ];
+    const securityHeaders = [
+      {
+        key: "Content-Security-Policy",
+        value:
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://js.stripe.com https://app.posthog.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://*.cloudflare.com; font-src 'self'; frame-src https://challenges.cloudflare.com https://js.stripe.com; connect-src 'self' https://*.pusher.com wss://*.pusher.com https://app.posthog.com https://*.sentry.io; object-src 'none'; base-uri 'self'; form-action 'self';",
+      },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        key: "Permissions-Policy",
+        value: "camera=(), microphone=(), geolocation=(), payment=(self)",
+      },
+      {
+        key: "Strict-Transport-Security",
+        value: "max-age=63072000; includeSubDomains; preload",
+      },
+    ];
     return [
+      // Security headers for all routes
+      { source: "/(.*)", headers: securityHeaders },
       // CORS for versioned public API — safe for external consumers
       { source: "/api/v1/:path*", headers: corsHeaders },
       // CORS for non-auth API routes (health, cart, notifications, etc.)

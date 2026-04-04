@@ -16,7 +16,7 @@ import { headers } from "next/headers";
 import crypto from "crypto";
 import db from "@/lib/db";
 import { userRepository } from "@/modules/users/user.repository";
-import { hashPassword } from "@/server/lib/password";
+import { hashPassword, checkPwnedPassword } from "@/server/lib/password";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { audit } from "@/server/lib/audit";
@@ -78,7 +78,22 @@ export async function registerUser(
     }
   }
 
-  // 5b. Check email uniqueness
+  // 5b. Check password against HaveIBeenPwned (k-anonymity — never sends full password)
+  const isCompromised = await checkPwnedPassword(data.password);
+  if (isCompromised) {
+    return {
+      success: false,
+      error:
+        "This password has appeared in a data breach. Please choose a different password.",
+      fieldErrors: {
+        password: [
+          "This password is known to be compromised. Please choose a different one.",
+        ],
+      },
+    };
+  }
+
+  // 5c. Check email uniqueness
   const emailTaken = await userRepository.existsByEmail(normalizedEmail);
   if (emailTaken) {
     // Return the same error for email/username to prevent enumeration
@@ -89,21 +104,21 @@ export async function registerUser(
     };
   }
 
-  // 5c. Check username uniqueness
+  // 5d. Check username uniqueness
   const username = generateUsername(data.firstName, data.lastName);
   const usernameTaken = await userRepository.existsByUsername(username);
   const finalUsername = usernameTaken
     ? `${username}${Math.floor(Math.random() * 9000) + 1000}`
     : username;
 
-  // 5d. Hash password with Argon2id
+  // 5e. Hash password with Argon2id
   const passwordHash = await hashPassword(data.password);
 
-  // 5e. Generate email verification token (24-hour expiry)
+  // 5f. Generate email verification token (24-hour expiry)
   const verifyToken = crypto.randomBytes(32).toString("hex");
   const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  // 5f. Create user with verification token
+  // 5g. Create user with verification token
   const user = await userRepository.create({
     email: normalizedEmail,
     username: finalUsername,
