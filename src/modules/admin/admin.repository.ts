@@ -29,8 +29,7 @@ export type AdminUserRow = Prisma.UserGetPayload<{
 export type ReportWithRelations = Prisma.ReportGetPayload<{
   include: {
     reporter: { select: { id: true; displayName: true } };
-    listing: { select: { id: true; title: true } };
-    reportedUser: { select: { id: true; displayName: true } };
+    targetUser: { select: { id: true; displayName: true } };
   };
 }>;
 
@@ -46,15 +45,36 @@ export const adminRepository = {
     take: number,
     cursor?: string,
   ): Promise<AdminUserRow[]> {
-    // TODO: move from src/app/api/admin/users/route.ts
-    throw new Error("Not implemented");
+    const where: Prisma.UserWhereInput = query
+      ? {
+          OR: [
+            { email: { contains: query, mode: "insensitive" } },
+            { username: { contains: query, mode: "insensitive" } },
+          ],
+        }
+      : {};
+    return db.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        username: true,
+        isBanned: true,
+        sellerEnabled: true,
+        isAdmin: true,
+        createdAt: true,
+      },
+    });
   },
 
   /** Count total users (for admin stats).
    * @source src/app/(protected)/admin/page.tsx */
   async countUsers(where?: Prisma.UserWhereInput): Promise<number> {
-    // TODO: move from src/app/(protected)/admin/page.tsx
-    throw new Error("Not implemented");
+    return db.user.count({ where });
   },
 
   // -------------------------------------------------------------------------
@@ -67,15 +87,28 @@ export const adminRepository = {
     take: number,
     cursor?: string,
   ): Promise<ReportWithRelations[]> {
-    // TODO: move from src/app/api/admin/reports/route.ts
-    throw new Error("Not implemented");
+    return db.report.findMany({
+      where: { status: "OPEN" },
+      take,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      include: {
+        reporter: { select: { id: true, displayName: true } },
+        targetUser: { select: { id: true, displayName: true } },
+      },
+    });
   },
 
   /** Find a report by ID.
    * @source src/modules/admin/admin.service.ts */
   async findReportById(id: string): Promise<ReportWithRelations | null> {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+    return db.report.findUnique({
+      where: { id },
+      include: {
+        reporter: { select: { id: true, displayName: true } },
+        targetUser: { select: { id: true, displayName: true } },
+      },
+    });
   },
 
   /** Resolve a report (inside a transaction).
@@ -85,8 +118,14 @@ export const adminRepository = {
     resolvedBy: string,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+    await tx.report.update({
+      where: { id },
+      data: {
+        status: "RESOLVED",
+        resolvedAt: new Date(),
+        resolvedBy,
+      },
+    });
   },
 
   // -------------------------------------------------------------------------
@@ -98,16 +137,20 @@ export const adminRepository = {
   async aggregateRevenue(
     from: Date,
     to: Date,
-  ): Promise<{ _sum: { platformFeeNzd: number | null } }> {
-    // TODO: move from src/app/(protected)/admin/finance/page.tsx
-    throw new Error("Not implemented");
+  ): Promise<{ _sum: { totalNzd: number | null } }> {
+    return db.order.aggregate({
+      _sum: { totalNzd: true },
+      where: {
+        status: "COMPLETED",
+        completedAt: { gte: from, lte: to },
+      },
+    });
   },
 
   /** Count orders by status for a period.
    * @source src/app/(protected)/admin/page.tsx, finance/page.tsx */
   async countOrders(where: Prisma.OrderWhereInput): Promise<number> {
-    // TODO: move from src/app/(protected)/admin/page.tsx
-    throw new Error("Not implemented");
+    return db.order.count({ where });
   },
 
   /** Audit log entries (paginated + filtered).
@@ -127,15 +170,25 @@ export const adminRepository = {
       };
     }>[]
   > {
-    // TODO: move from src/app/(protected)/admin/audit/page.tsx
-    throw new Error("Not implemented");
+    return db.auditLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        action: true,
+        userId: true,
+        createdAt: true,
+        metadata: true,
+      },
+    });
   },
 
   /** Count audit log entries.
    * @source src/app/(protected)/admin/audit/page.tsx */
   async countAuditLogs(where: Prisma.AuditLogWhereInput): Promise<number> {
-    // TODO: move from src/app/(protected)/admin/audit/page.tsx
-    throw new Error("Not implemented");
+    return db.auditLog.count({ where });
   },
 
   // -------------------------------------------------------------------------
@@ -148,8 +201,21 @@ export const adminRepository = {
     userId: string,
     data: Prisma.TrustMetricsUpdateInput,
   ): Promise<void> {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+    await db.trustMetrics.upsert({
+      where: { userId },
+      create: {
+        userId,
+        totalOrders: 0,
+        completedOrders: 0,
+        disputeCount: 0,
+        disputeRate: 0,
+        disputesLast30Days: 0,
+        dispatchPhotoRate: 0,
+        accountAgeDays: 0,
+        lastComputedAt: new Date(),
+      },
+      update: data,
+    });
   },
 
   // -------------------------------------------------------------------------
@@ -163,8 +229,8 @@ export const adminRepository = {
     data: Prisma.PayoutUpdateManyMutationInput,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    // TODO: move from src/modules/admin/admin-disputes.service.ts
-    throw new Error("Not implemented");
+    const client = tx ?? db;
+    await client.payout.updateMany({ where: { orderId }, data });
   },
 
   // -------------------------------------------------------------------------
@@ -179,7 +245,10 @@ export const adminRepository = {
   ): Promise<Prisma.OrderEventGetPayload<{
     select: { id: true; metadata: true; createdAt: true };
   }> | null> {
-    // TODO: move from src/modules/admin/admin.service.ts
-    throw new Error("Not implemented");
+    return db.orderEvent.findFirst({
+      where: { orderId, type },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, metadata: true, createdAt: true },
+    });
   },
 };

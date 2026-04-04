@@ -25,8 +25,20 @@ export const offerRepository = {
   /** Find an offer by ID with buyer, seller, and listing.
    * @source src/modules/offers/offer.service.ts */
   async findByIdWithRelations(id: string): Promise<OfferWithRelations | null> {
-    // TODO: move from src/modules/offers/offer.service.ts
-    throw new Error("Not implemented");
+    return db.offer.findUnique({
+      where: { id },
+      include: {
+        buyer: {
+          select: { id: true, displayName: true, username: true, email: true },
+        },
+        seller: {
+          select: { id: true, displayName: true, username: true, email: true },
+        },
+        listing: {
+          select: { id: true, title: true, priceNzd: true, status: true },
+        },
+      },
+    });
   },
 
   /** Find an existing pending offer from a buyer on a listing.
@@ -37,8 +49,10 @@ export const offerRepository = {
   ): Promise<Prisma.OfferGetPayload<{
     select: { id: true; status: true };
   }> | null> {
-    // TODO: move from src/modules/offers/offer.service.ts
-    throw new Error("Not implemented");
+    return db.offer.findFirst({
+      where: { listingId, buyerId, status: "PENDING" },
+      select: { id: true, status: true },
+    });
   },
 
   /** Create a new offer.
@@ -48,8 +62,10 @@ export const offerRepository = {
       select: { id: true; amountNzd: true; status: true; expiresAt: true };
     }>
   > {
-    // TODO: move from src/modules/offers/offer.service.ts
-    throw new Error("Not implemented");
+    return db.offer.create({
+      data,
+      select: { id: true, amountNzd: true, status: true, expiresAt: true },
+    });
   },
 
   /** Accept an offer and set payment deadline (inside a transaction).
@@ -59,15 +75,27 @@ export const offerRepository = {
     paymentDeadline: Date,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    // TODO: move from src/modules/offers/offer.service.ts
-    throw new Error("Not implemented");
+    await tx.offer.update({
+      where: { id },
+      data: {
+        status: "ACCEPTED",
+        respondedAt: new Date(),
+        paymentDeadline,
+      },
+    });
   },
 
   /** Decline an offer.
    * @source src/modules/offers/offer.service.ts */
   async decline(id: string, declineNote?: string): Promise<void> {
-    // TODO: move from src/modules/offers/offer.service.ts
-    throw new Error("Not implemented");
+    await db.offer.update({
+      where: { id },
+      data: {
+        status: "DECLINED",
+        respondedAt: new Date(),
+        declineNote: declineNote ?? null,
+      },
+    });
   },
 
   /** Decline all competing offers on the same listing (inside a transaction).
@@ -77,7 +105,13 @@ export const offerRepository = {
     acceptedOfferId: string,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
-    // TODO: move from src/modules/offers/offer.service.ts
-    throw new Error("Not implemented");
+    await tx.offer.updateMany({
+      where: {
+        listingId,
+        id: { not: acceptedOfferId },
+        status: "PENDING",
+      },
+      data: { status: "DECLINED", respondedAt: new Date() },
+    });
   },
 };
