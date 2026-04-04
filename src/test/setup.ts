@@ -14,13 +14,11 @@ const mockStripeCreate = vi
   .fn()
   .mockResolvedValue({ id: "pi_mock", client_secret: "cs_mock" });
 const mockStripeRefund = vi.fn().mockResolvedValue({ id: "re_mock" });
-const mockStripeRetrieve = vi
-  .fn()
-  .mockResolvedValue({
-    id: "pi_mock",
-    client_secret: "cs_mock",
-    status: "succeeded",
-  });
+const mockStripeRetrieve = vi.fn().mockResolvedValue({
+  id: "pi_mock",
+  client_secret: "cs_mock",
+  status: "succeeded",
+});
 
 vi.mock("stripe", () => {
   class MockStripe {
@@ -165,6 +163,11 @@ vi.mock("@/lib/db", () => ({
       upsert: vi.fn(),
       deleteMany: vi.fn(),
     },
+    verificationApplication: {
+      findMany: vi.fn().mockResolvedValue([]),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      create: vi.fn().mockResolvedValue({ id: "va-1" }),
+    },
     passwordResetToken: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -275,14 +278,12 @@ vi.mock("@/lib/queue", () => ({
 
 // ── Mock rate limiter ────────────────────────────────────────────────────────
 vi.mock("@/server/lib/rateLimit", () => ({
-  rateLimit: vi
-    .fn()
-    .mockResolvedValue({
-      success: true,
-      remaining: 999,
-      reset: Date.now() + 60_000,
-      retryAfter: 0,
-    }),
+  rateLimit: vi.fn().mockResolvedValue({
+    success: true,
+    remaining: 999,
+    reset: Date.now() + 60_000,
+    retryAfter: 0,
+  }),
   getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
 }));
 
