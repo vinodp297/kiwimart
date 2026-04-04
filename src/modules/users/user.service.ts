@@ -2,7 +2,7 @@
 // ─── User Service ────────────────────────────────────────────────────────────
 // Profile, password, and verification operations. Framework-free.
 
-import db from "@/lib/db";
+import { userRepository } from "./user.repository";
 import { audit } from "@/server/lib/audit";
 import { hashPassword, verifyPassword } from "@/server/lib/password";
 import { encrypt, decrypt, isEncryptionConfigured } from "@/lib/encryption";
@@ -32,13 +32,10 @@ export class UserService {
     userId: string,
     input: UpdateProfileInput,
   ): Promise<void> {
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        displayName: input.displayName,
-        region: input.region || null,
-        bio: input.bio || null,
-      },
+    await userRepository.update(userId, {
+      displayName: input.displayName,
+      region: input.region || null,
+      bio: input.bio || null,
     });
     logger.info("user.profile.updated", { userId });
   }
@@ -48,10 +45,7 @@ export class UserService {
     input: ChangePasswordInput,
     ip: string,
   ): Promise<void> {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { passwordHash: true },
-    });
+    const user = await userRepository.findPasswordHash(userId);
 
     if (!user?.passwordHash) {
       throw AppError.validation(
@@ -75,13 +69,10 @@ export class UserService {
 
     const newHash = await hashPassword(input.newPassword);
 
-    await db.$transaction([
-      db.user.update({
-        where: { id: userId },
-        data: { passwordHash: newHash },
-      }),
-      db.session.deleteMany({ where: { userId } }),
-    ]);
+    await userRepository.transaction(async (tx) => {
+      await userRepository.update(userId, { passwordHash: newHash }, tx);
+      await userRepository.deleteAllSessions(userId, tx);
+    });
 
     audit({
       userId,
@@ -113,10 +104,13 @@ export class UserService {
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await db.phoneVerificationToken.deleteMany({ where: { userId } });
+    await userRepository.deletePhoneTokens(userId);
 
-    await db.phoneVerificationToken.create({
-      data: { userId, codeHash, phone: phoneClean, expiresAt },
+    await userRepository.createPhoneToken({
+      userId,
+      codeHash,
+      phone: phoneClean,
+      expiresAt,
     });
 
     const { sendSms, formatNzPhoneE164 } =
@@ -129,9 +123,8 @@ export class UserService {
         `Valid for 10 minutes. Do not share this code.`,
     });
 
-    await db.user.update({
-      where: { id: userId },
-      data: { phone: encryptPhone(phoneClean) },
+    await userRepository.update(userId, {
+      phone: encryptPhone(phoneClean),
     });
 
     audit({
@@ -153,14 +146,7 @@ export class UserService {
       throw AppError.validation("Please enter a 6-digit code.");
     }
 
-    const token = await db.phoneVerificationToken.findFirst({
-      where: {
-        userId,
-        usedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const token = await userRepository.findActivePhoneToken(userId);
 
     if (!token) {
       throw AppError.validation(
@@ -174,30 +160,25 @@ export class UserService {
       );
     }
 
-    await db.phoneVerificationToken.update({
-      where: { id: token.id },
-      data: { attempts: { increment: 1 } },
-    });
+    await userRepository.incrementPhoneTokenAttempts(token.id);
 
     const inputHash = crypto.createHash("sha256").update(code).digest("hex");
     if (inputHash !== token.codeHash) {
       throw AppError.validation("Invalid verification code. Please try again.");
     }
 
-    await db.$transaction([
-      db.phoneVerificationToken.update({
-        where: { id: token.id },
-        data: { usedAt: new Date() },
-      }),
-      db.user.update({
-        where: { id: userId },
-        data: {
+    await userRepository.transaction(async (tx) => {
+      await userRepository.markPhoneTokenUsed(token.id, tx);
+      await userRepository.update(
+        userId,
+        {
           phoneVerified: true,
           phoneVerifiedAt: new Date(),
           phone: encryptPhone(token.phone),
         },
-      }),
-    ]);
+        tx,
+      );
+    });
 
     audit({
       userId,
@@ -213,10 +194,7 @@ export class UserService {
 
   /** Retrieve and decrypt a user's phone number. */
   async getDecryptedPhone(userId: string): Promise<string | null> {
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { phone: true },
-    });
+    const user = await userRepository.findPhone(userId);
     if (!user?.phone) return null;
     return decryptPhone(user.phone);
   }

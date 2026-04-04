@@ -1,5 +1,5 @@
-import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import type { ReviewerRole } from "./review.types";
 
 // ---------------------------------------------------------------------------
 // Review repository — data access only, no business logic.
@@ -21,15 +21,16 @@ export type ReviewWithTags = Prisma.ReviewGetPayload<{
 export const reviewRepository = {
   /** Find a review by ID with author and tags.
    * @source src/modules/reviews/review.service.ts */
-  async findByIdWithRelations(id: string): Promise<ReviewWithTags | null> {
+  async findByIdWithRelations(_id: string): Promise<ReviewWithTags | null> {
     // TODO: move from src/modules/reviews/review.service.ts
     throw new Error("Not implemented");
   },
 
-  /** Find a review by order ID (to check if already reviewed).
+  /** Find a review by order ID and reviewer role.
    * @source src/modules/reviews/review.service.ts */
-  async findByOrderId(
-    orderId: string,
+  async findByOrderIdAndRole(
+    _orderId: string,
+    _reviewerRole: ReviewerRole,
   ): Promise<Prisma.ReviewGetPayload<{ select: { id: true } }> | null> {
     // TODO: move from src/modules/reviews/review.service.ts
     throw new Error("Not implemented");
@@ -37,43 +38,46 @@ export const reviewRepository = {
 
   /** Create a review with tags.
    * @source src/modules/reviews/review.service.ts */
-  async create(data: Prisma.ReviewCreateInput): Promise<ReviewWithTags> {
+  async create(_data: Prisma.ReviewCreateInput): Promise<ReviewWithTags> {
     // TODO: move from src/modules/reviews/review.service.ts
     throw new Error("Not implemented");
   },
 
-  /** Add a seller reply to a review.
+  /** Add a reply from the review subject.
    * @source src/modules/reviews/review.service.ts */
-  async addSellerReply(
-    id: string,
-    reply: string,
-    repliedAt: Date,
-  ): Promise<void> {
+  async addReply(_id: string, _reply: string, _repliedAt: Date): Promise<void> {
     // TODO: move from src/modules/reviews/review.service.ts
     throw new Error("Not implemented");
   },
 
-  /** Fetch approved reviews for a seller (paginated).
+  /** Fetch approved reviews about a user (paginated).
    * @source src/modules/reviews/review.service.ts */
-  async findApprovedBySeller(
-    sellerId: string,
-    take: number,
-    cursor?: string,
+  async findApprovedBySubject(
+    _subjectId: string,
+    _reviewerRole: ReviewerRole,
+    _take: number,
+    _cursor?: string,
   ): Promise<ReviewWithTags[]> {
     // TODO: move from src/modules/reviews/review.service.ts
     throw new Error("Not implemented");
   },
 
-  /** Count approved reviews for a seller.
+  /** Count approved reviews about a user.
    * @source src/app/(public)/sellers/[username]/page.tsx */
-  async countApprovedBySeller(sellerId: string): Promise<number> {
+  async countApprovedBySubject(
+    _subjectId: string,
+    _reviewerRole: ReviewerRole,
+  ): Promise<number> {
     // TODO: move from src/app/(public)/sellers/[username]/page.tsx
     throw new Error("Not implemented");
   },
 
-  /** Calculate average rating for a seller.
+  /** Calculate average rating for a user in a given role.
    * @source src/modules/sellers/trust-score.service.ts */
-  async getAverageRating(sellerId: string): Promise<number | null> {
+  async getAverageRating(
+    _subjectId: string,
+    _reviewerRole: ReviewerRole,
+  ): Promise<number | null> {
     // TODO: move from src/modules/sellers/trust-score.service.ts
     throw new Error("Not implemented");
   },

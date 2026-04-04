@@ -42,11 +42,11 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
 
     // Check avg rating >= 4.0 (ratings are stored as 1-50 in DB)
     const reviewAgg = await db.review.aggregate({
-      where: { sellerId: user.id, approved: true },
+      where: { subjectId: user.id, reviewerRole: "BUYER", approved: true },
       _avg: { rating: true },
     });
     const avgRating = reviewAgg._avg.rating ? reviewAgg._avg.rating / 10 : 0;
-    if (avgRating < 4.0 && dbUser._count.reviews > 0) {
+    if (avgRating < 4.0 && dbUser._count.reviewsAbout > 0) {
       return {
         success: false,
         error: "You need a rating of 4.0 or above to apply.",

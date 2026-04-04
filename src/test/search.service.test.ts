@@ -36,8 +36,8 @@ describe("SearchService", () => {
             username: "seller1",
             displayName: "Seller One",
             idVerified: true,
-            _count: { reviews: 5 },
-            reviews: [{ rating: 45 }, { rating: 40 }],
+            _count: { reviewsAbout: 5 },
+            reviewsAbout: [{ rating: 45 }, { rating: 40 }],
           },
         },
       ] as never);
@@ -114,8 +114,8 @@ describe("SearchService", () => {
             username: "s",
             displayName: "S",
             idVerified: false,
-            _count: { reviews: 0 },
-            reviews: [],
+            _count: { reviewsAbout: 0 },
+            reviewsAbout: [],
           },
         }) as never,
       );
@@ -169,8 +169,8 @@ describe("SearchService", () => {
             username: "seller1",
             displayName: "Seller",
             idVerified: true,
-            _count: { reviews: 2 },
-            reviews: [{ rating: 50 }, { rating: 40 }],
+            _count: { reviewsAbout: 2 },
+            reviewsAbout: [{ rating: 50 }, { rating: 40 }],
           },
         },
       ] as never);

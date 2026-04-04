@@ -2521,14 +2521,15 @@ async function seedReviews(
   const rev1 = await db.review.create({
     data: {
       orderId: comp1.id,
-      sellerId: seller1.id,
+      subjectId: seller1.id,
       authorId: buyer1.id,
+      reviewerRole: "BUYER",
       rating: 50,
       comment:
         "Excellent seller! Headphones were exactly as described, well packaged and arrived quickly. Mike responded promptly to my questions before purchase. Would definitely buy from again.",
-      sellerReply:
+      reply:
         "Thank you Sarah! Really glad the headphones arrived safely and you're happy with them. Enjoy!",
-      sellerRepliedAt: ago(13 * DAY),
+      repliedAt: ago(13 * DAY),
       approved: true,
       createdAt: ago(14 * DAY),
     },
@@ -2545,8 +2546,9 @@ async function seedReviews(
   const rev2 = await db.review.create({
     data: {
       orderId: comp2.id,
-      sellerId: seller1.id,
+      subjectId: seller1.id,
       authorId: buyer1.id,
+      reviewerRole: "BUYER",
       rating: 45,
       comment:
         "Great camera, well described. Took a couple of extra days to dispatch but Mike kept me updated. Camera is in the condition described and works perfectly.",
@@ -2564,13 +2566,14 @@ async function seedReviews(
   const rev3 = await db.review.create({
     data: {
       orderId: comp3.id,
-      sellerId: seller1.id,
+      subjectId: seller1.id,
       authorId: buyer2.id,
+      reviewerRole: "BUYER",
       rating: 50,
       comment:
         "Perfect transaction. Watch arrived in immaculate condition as described. Fast shipping and great packaging.",
-      sellerReply: "Thank you James! Happy to help anytime.",
-      sellerRepliedAt: ago(5 * DAY),
+      reply: "Thank you James! Happy to help anytime.",
+      repliedAt: ago(5 * DAY),
       approved: true,
       createdAt: ago(6 * DAY),
     },

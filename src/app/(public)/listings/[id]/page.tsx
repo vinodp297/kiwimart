@@ -7,7 +7,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import ListingCard from "@/components/ListingCard";
 import { Breadcrumb } from "@/components/ui/primitives";
-import { formatPrice, CONDITION_LABELS, relativeTime } from "@/lib/utils";
+import { formatPrice, CONDITION_LABELS } from "@/lib/utils";
 import ListingGallery from "./ListingGallery";
 import ListingActions from "./ListingActions";
 import { getConfigInt, CONFIG_KEYS } from "@/lib/platform-config";
@@ -183,15 +183,15 @@ export default async function ListingDetailPage({
     region: (listing.seller.region ?? listing.region) as NZRegion,
     suburb: listing.seller.suburb ?? listing.suburb,
     rating:
-      listing.seller.reviews.length > 0
-        ? listing.seller.reviews.reduce(
+      listing.seller.reviewsAbout.length > 0
+        ? listing.seller.reviewsAbout.reduce(
             (sum: number, r: { rating: number }) => sum + r.rating,
             0,
           ) /
-          listing.seller.reviews.length /
+          listing.seller.reviewsAbout.length /
           10
         : 0,
-    reviewCount: listing.seller._count.reviews,
+    reviewCount: listing.seller._count.reviewsAbout,
     verified: false,
     memberSince: listing.seller.createdAt.toISOString(),
     activeListingCount: listing.seller._count.listings,

@@ -11,7 +11,7 @@ import {
 } from "../../_helpers/response";
 import { corsHeaders, withCors } from "../../_helpers/cors";
 import { reschedulePickupSchema } from "@/modules/pickup/pickup.schema";
-import { requestReschedule } from "@/server/services/pickup/pickup-scheduling.service";
+import { requestReschedule } from "@/server/services/pickup/pickup-reschedule.service";
 import db from "@/lib/db";
 import type {
   SellerRescheduleReason,

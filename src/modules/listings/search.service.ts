@@ -6,7 +6,6 @@
 import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { logger } from "@/shared/logger";
 import { getThumbUrl } from "@/lib/image";
 import { haversineKm } from "@/lib/geocoding";
 import type { ListingCard } from "@/types";
@@ -244,13 +243,17 @@ export class SearchService {
     const sellerIds = [...new Set(rows.map((r) => r.seller.id))];
     const sellerRatings = sellerIds.length
       ? await db.review.groupBy({
-          by: ["sellerId"],
-          where: { sellerId: { in: sellerIds }, approved: true },
+          by: ["subjectId"],
+          where: {
+            subjectId: { in: sellerIds },
+            reviewerRole: "BUYER",
+            approved: true,
+          },
           _avg: { rating: true },
         })
       : [];
     const sellerRatingMap = new Map(
-      sellerRatings.map((r) => [r.sellerId, r._avg.rating ?? 0]),
+      sellerRatings.map((r) => [r.subjectId, r._avg.rating ?? 0]),
     );
 
     const listings: ListingCard[] = rows.map((row) => ({

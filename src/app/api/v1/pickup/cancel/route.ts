@@ -11,7 +11,7 @@ import {
 } from "../../_helpers/response";
 import { corsHeaders, withCors } from "../../_helpers/cors";
 import { cancelPickupSchema } from "@/modules/pickup/pickup.schema";
-import { cancelPickupOrder } from "@/server/services/pickup/pickup-scheduling.service";
+import { cancelPickupOrder } from "@/server/services/pickup/pickup-cancel.service";
 
 export async function POST(request: Request) {
   const rateLimited = await checkApiRateLimit(request, "order");

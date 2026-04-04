@@ -1,6 +1,8 @@
 import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
+type DbClient = Prisma.TransactionClient | typeof db;
+
 // ---------------------------------------------------------------------------
 // User repository — data access only, no business logic.
 // Every db.user.* call from the 7 server action files is migrated here.
@@ -445,9 +447,7 @@ export const userRepository = {
 
   /** Fetch profile image keys for cleanup on upload.
    * @source src/server/actions/profile-images.ts — confirmProfileImageUpload */
-  async findImageKeys(
-    id: string,
-  ): Promise<{
+  async findImageKeys(id: string): Promise<{
     avatarKey: string | null;
     coverImageKey: string | null;
   } | null> {
@@ -539,7 +539,7 @@ export const userRepository = {
         _count: {
           select: {
             sellerOrders: { where: { status: "COMPLETED" } },
-            reviews: { where: { approved: true } },
+            reviewsAbout: { where: { reviewerRole: "BUYER", approved: true } },
           },
         },
       },
@@ -568,5 +568,93 @@ export const userRepository = {
       where: { id },
       select: { id: true, sellerTierOverride: true, displayName: true },
     });
+  },
+
+  // -------------------------------------------------------------------------
+  // User service helpers (phone verification + transactions)
+  // -------------------------------------------------------------------------
+
+  /** Fetch phone field only.
+   * @source src/modules/users/user.service.ts — getDecryptedPhone */
+  async findPhone(id: string): Promise<{ phone: string | null } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { phone: true },
+    });
+  },
+
+  /** Delete all phone verification tokens for a user.
+   * @source src/modules/users/user.service.ts — requestPhoneVerification */
+  async deletePhoneTokens(userId: string, tx?: DbClient): Promise<void> {
+    const client = tx ?? db;
+    await client.phoneVerificationToken.deleteMany({ where: { userId } });
+  },
+
+  /** Create a phone verification token.
+   * @source src/modules/users/user.service.ts — requestPhoneVerification */
+  async createPhoneToken(
+    data: {
+      userId: string;
+      codeHash: string;
+      phone: string;
+      expiresAt: Date;
+    },
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.phoneVerificationToken.create({ data });
+  },
+
+  /** Find the latest valid (unused, non-expired) phone verification token.
+   * @source src/modules/users/user.service.ts — verifyPhoneCode */
+  async findActivePhoneToken(
+    userId: string,
+    tx?: DbClient,
+  ): Promise<{
+    id: string;
+    codeHash: string;
+    phone: string;
+    attempts: number;
+  } | null> {
+    const client = tx ?? db;
+    return client.phoneVerificationToken.findFirst({
+      where: {
+        userId,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /** Increment the attempt counter on a phone verification token.
+   * @source src/modules/users/user.service.ts — verifyPhoneCode */
+  async incrementPhoneTokenAttempts(
+    tokenId: string,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.phoneVerificationToken.update({
+      where: { id: tokenId },
+      data: { attempts: { increment: 1 } },
+    });
+  },
+
+  /** Mark a phone verification token as used.
+   * @source src/modules/users/user.service.ts — verifyPhoneCode */
+  async markPhoneTokenUsed(tokenId: string, tx?: DbClient): Promise<void> {
+    const client = tx ?? db;
+    await client.phoneVerificationToken.update({
+      where: { id: tokenId },
+      data: { usedAt: new Date() },
+    });
+  },
+
+  /** Run an array of operations inside a transaction.
+   * @source src/modules/users/user.service.ts — changePassword, verifyPhoneCode */
+  async transaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return db.$transaction(fn);
   },
 };

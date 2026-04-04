@@ -1,14 +1,16 @@
-import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import db from "@/lib/db";
+import type {
+  Dispute,
+  DisputeStatus,
+  EvidenceUploadedBy,
+  Prisma,
+} from "@prisma/client";
 
 // ---------------------------------------------------------------------------
 // Dispute repository — data access only, no business logic.
-// All stubs will be filled in Phase 2 by migrating calls from:
-//   - src/server/actions/disputes.ts
-//   - src/server/services/dispute/dispute.service.ts
-//   - src/modules/disputes/auto-resolution.service.ts
-//   - src/modules/admin/admin-disputes.service.ts
 // ---------------------------------------------------------------------------
+
+type DbClient = Prisma.TransactionClient | typeof db;
 
 export type DisputeWithRelations = Prisma.DisputeGetPayload<{
   include: {
@@ -23,81 +25,189 @@ export type DisputeWithRelations = Prisma.DisputeGetPayload<{
   };
 }>;
 
+export type DisputeWithEvidence = Dispute & {
+  evidence: Prisma.DisputeEvidenceGetPayload<Record<string, unknown>>[];
+};
+
 export const disputeRepository = {
-  /** Find a dispute by ID with full relations.
-   * @source src/server/services/dispute/dispute.service.ts */
+  // ── findUnique by orderId (minimal) ─────────────────────────────────────
+  async findByOrderId(orderId: string, tx?: DbClient): Promise<Dispute | null> {
+    const client = tx ?? db;
+    return client.dispute.findUnique({ where: { orderId } });
+  },
+
+  // ── findUnique by orderId with evidence ─────────────────────────────────
+  async findByOrderIdWithEvidence(
+    orderId: string,
+    tx?: DbClient,
+  ): Promise<DisputeWithEvidence | null> {
+    const client = tx ?? db;
+    return client.dispute.findUnique({
+      where: { orderId },
+      include: { evidence: { orderBy: { createdAt: "asc" } } },
+    });
+  },
+
+  // ── findUnique by id with evidence ──────────────────────────────────────
+  async findByIdWithEvidence(
+    disputeId: string,
+    tx?: DbClient,
+  ): Promise<DisputeWithEvidence | null> {
+    const client = tx ?? db;
+    return client.dispute.findUnique({
+      where: { id: disputeId },
+      include: { evidence: { orderBy: { createdAt: "asc" } } },
+    });
+  },
+
+  // ── findUnique by id (select status only) ───────────────────────────────
+  async findStatusById(
+    disputeId: string,
+    tx?: DbClient,
+  ): Promise<{ status: DisputeStatus } | null> {
+    const client = tx ?? db;
+    return client.dispute.findUnique({
+      where: { id: disputeId },
+      select: { status: true },
+    });
+  },
+
+  // ── create ──────────────────────────────────────────────────────────────
+  async create(
+    data: {
+      orderId: string;
+      reason: string;
+      source: string;
+      status: string;
+      buyerStatement: string | null;
+      openedAt: Date;
+    },
+    tx?: DbClient,
+  ): Promise<Dispute> {
+    const client = tx ?? db;
+    return client.dispute.create({
+      data: data as Prisma.DisputeUncheckedCreateInput,
+    });
+  },
+
+  // ── update ──────────────────────────────────────────────────────────────
+  async update(
+    disputeId: string,
+    data: Prisma.DisputeUpdateInput,
+    tx?: DbClient,
+  ): Promise<Dispute> {
+    const client = tx ?? db;
+    return client.dispute.update({
+      where: { id: disputeId },
+      data,
+    });
+  },
+
+  // ── createManyEvidence ──────────────────────────────────────────────────
+  async createManyEvidence(
+    records: {
+      disputeId: string;
+      uploadedBy: EvidenceUploadedBy;
+      uploaderId: string;
+      r2Key: string;
+      fileType: string;
+      label?: string | null;
+    }[],
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = tx ?? db;
+    await client.disputeEvidence.createMany({ data: records });
+  },
+
+  // ── $transaction (pass-through for service-level transactions) ─────────
+  async transaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return db.$transaction(fn);
+  },
+
+  // ── Stub methods preserved for other consumers ─────────────────────────
+
+  /** Find a dispute by ID with full relations (admin views). */
   async findByIdWithRelations(
     id: string,
+    tx?: DbClient,
   ): Promise<DisputeWithRelations | null> {
-    // TODO: move from src/server/services/dispute/dispute.service.ts
-    throw new Error("Not implemented");
+    const client = tx ?? db;
+    return client.dispute.findUnique({
+      where: { id },
+      include: {
+        order: {
+          include: {
+            buyer: { select: { id: true, displayName: true, email: true } },
+            seller: { select: { id: true, displayName: true, email: true } },
+            listing: { select: { id: true, title: true, priceNzd: true } },
+          },
+        },
+        evidence: true,
+      },
+    }) as Promise<DisputeWithRelations | null>;
   },
 
-  /** Find a dispute by order ID.
-   * @source src/modules/disputes/auto-resolution.service.ts */
-  async findByOrderId(
-    orderId: string,
-  ): Promise<Prisma.DisputeGetPayload<{
-    select: { id: true; status: true };
-  }> | null> {
-    // TODO: move from src/modules/disputes/auto-resolution.service.ts
-    throw new Error("Not implemented");
+  /** Count recent disputes for a buyer (abuse-detection check). */
+  async countRecentByBuyer(
+    buyerId: string,
+    since: Date,
+    tx?: DbClient,
+  ): Promise<number> {
+    const client = tx ?? db;
+    return client.dispute.count({
+      where: {
+        order: { buyerId },
+        openedAt: { gte: since },
+      },
+    });
   },
 
-  /** Create a dispute (called inside a transaction).
-   * @source src/server/actions/disputes.ts */
-  async create(
-    data: Prisma.DisputeCreateInput,
-    tx?: Prisma.TransactionClient,
-  ): Promise<Prisma.DisputeGetPayload<{ select: { id: true } }>> {
-    // TODO: move from src/server/actions/disputes.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Update dispute status and resolution fields.
-   * @source src/modules/admin/admin-disputes.service.ts */
-  async resolve(
-    id: string,
-    data: Prisma.DisputeUpdateInput,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    // TODO: move from src/modules/admin/admin-disputes.service.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Add evidence to a dispute.
-   * @source src/server/actions/disputes.ts */
-  async createEvidence(
-    data: Prisma.DisputeEvidenceCreateInput,
-  ): Promise<Prisma.DisputeEvidenceGetPayload<{ select: { id: true } }>> {
-    // TODO: move from src/server/actions/disputes.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Count recent disputes for a buyer (abuse-detection check).
-   * @source src/server/actions/disputes.ts */
-  async countRecentByBuyer(buyerId: string, since: Date): Promise<number> {
-    // TODO: move from src/server/actions/disputes.ts
-    throw new Error("Not implemented");
-  },
-
-  /** Fetch open disputes (admin queue, paginated).
-   * @source src/app/api/admin/disputes/route.ts */
+  /** Fetch open disputes (admin queue, paginated). */
   async findOpen(
     take: number,
     cursor?: string,
+    tx?: DbClient,
   ): Promise<DisputeWithRelations[]> {
-    // TODO: move from src/app/api/admin/disputes/route.ts
-    throw new Error("Not implemented");
+    const client = tx ?? db;
+    return client.dispute.findMany({
+      where: {
+        status: {
+          in: [
+            "OPEN",
+            "AWAITING_SELLER_RESPONSE",
+            "SELLER_RESPONDED",
+            "UNDER_REVIEW",
+          ],
+        },
+      },
+      include: {
+        order: {
+          include: {
+            buyer: { select: { id: true, displayName: true, email: true } },
+            seller: { select: { id: true, displayName: true, email: true } },
+            listing: { select: { id: true, title: true, priceNzd: true } },
+          },
+        },
+        evidence: true,
+      },
+      orderBy: { openedAt: "asc" },
+      take,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    }) as Promise<DisputeWithRelations[]>;
   },
 
-  /** Update verification application status after dispute.
-   * @source src/server/actions/disputes.ts, src/server/actions/seller.ts */
+  /** Update verification application status after dispute. */
   async updateVerificationApplication(
     sellerId: string,
     data: Prisma.VerificationApplicationUpdateManyMutationInput,
+    tx?: DbClient,
   ): Promise<void> {
-    // TODO: move from src/server/actions/disputes.ts
-    throw new Error("Not implemented");
+    const client = tx ?? db;
+    await client.verificationApplication.updateMany({
+      where: { sellerId },
+      data,
+    });
   },
 };

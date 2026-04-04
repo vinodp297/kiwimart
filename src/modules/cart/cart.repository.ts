@@ -1,80 +1,276 @@
-import { db } from "@/lib/db";
+// src/modules/cart/cart.repository.ts
+// ─── Cart Repository — data access only, no business logic ──────────────────
+
+import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
-// ---------------------------------------------------------------------------
-// Cart repository — data access only, no business logic.
-// All stubs will be filled in Phase 2 by migrating calls from:
-//   - src/server/actions/cart.ts
-// ---------------------------------------------------------------------------
-
-export type CartWithItems = Prisma.CartGetPayload<{
-  include: {
-    items: {
-      include: {
-        listing: {
-          include: {
-            images: { take: 1; orderBy: { order: "asc" } };
-            seller: true;
-          };
-        };
-      };
-    };
-  };
-}>;
+type DbClient = Prisma.TransactionClient | typeof db;
 
 export const cartRepository = {
-  /** Find a user's active cart with items and listings.
-   * @source src/server/actions/cart.ts */
-  async findByUser(userId: string): Promise<CartWithItems | null> {
-    // TODO: move from src/server/actions/cart.ts
-    throw new Error("Not implemented");
+  // ── Cart queries ──────────────────────────────────────────────────────────
+
+  async findByUser(userId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.cart.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        sellerId: true,
+        items: { select: { listingId: true } },
+      },
+    });
   },
 
-  /** Create a new cart with the first item.
-   * @source src/server/actions/cart.ts */
-  async create(data: Prisma.CartCreateInput): Promise<CartWithItems> {
-    // TODO: move from src/server/actions/cart.ts
-    throw new Error("Not implemented");
+  async findByUserForDisplay(userId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.cart.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        sellerId: true,
+        expiresAt: true,
+        items: {
+          select: {
+            id: true,
+            listingId: true,
+            priceNzd: true,
+            shippingNzd: true,
+            listing: {
+              select: {
+                title: true,
+                status: true,
+                deletedAt: true,
+                priceNzd: true,
+                shippingNzd: true,
+                shippingOption: true,
+                images: {
+                  where: { order: 0 },
+                  select: { r2Key: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
   },
 
-  /** Add an item to an existing cart and refresh expiry.
-   * @source src/server/actions/cart.ts */
-  async addItem(
+  async findByUserForCheckout(userId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.cart.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        sellerId: true,
+        expiresAt: true,
+        items: {
+          select: {
+            id: true,
+            listingId: true,
+            priceNzd: true,
+            shippingNzd: true,
+            listing: {
+              select: {
+                id: true,
+                title: true,
+                priceNzd: true,
+                shippingNzd: true,
+                shippingOption: true,
+                status: true,
+                sellerId: true,
+                deletedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  },
+
+  async findByUserCount(userId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.cart.findUnique({
+      where: { userId },
+      select: {
+        expiresAt: true,
+        _count: { select: { items: true } },
+      },
+    });
+  },
+
+  async findByUserWithItems(userId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.cart.findUnique({
+      where: { userId },
+      select: { id: true, items: { select: { id: true, listingId: true } } },
+    });
+  },
+
+  // ── Cart mutations ────────────────────────────────────────────────────────
+
+  async createCart(
+    data: {
+      userId: string;
+      sellerId: string;
+      expiresAt: Date;
+      listingId: string;
+      priceNzd: number;
+      shippingNzd: number;
+    },
+    tx?: DbClient,
+  ) {
+    const client = tx ?? db;
+    return client.cart.create({
+      data: {
+        userId: data.userId,
+        sellerId: data.sellerId,
+        expiresAt: data.expiresAt,
+        items: {
+          create: {
+            listingId: data.listingId,
+            priceNzd: data.priceNzd,
+            shippingNzd: data.shippingNzd,
+          },
+        },
+      },
+      select: { items: { select: { id: true } } },
+    });
+  },
+
+  async addItemToCart(
     cartId: string,
-    itemData: Prisma.CartItemCreateWithoutCartInput,
+    item: { listingId: string; priceNzd: number; shippingNzd: number },
     expiresAt: Date,
-  ): Promise<void> {
-    // TODO: move from src/server/actions/cart.ts
-    throw new Error("Not implemented");
+    tx?: DbClient,
+  ) {
+    const client = tx ?? db;
+    return client.cart.update({
+      where: { id: cartId },
+      data: {
+        expiresAt,
+        items: {
+          create: {
+            listingId: item.listingId,
+            priceNzd: item.priceNzd,
+            shippingNzd: item.shippingNzd,
+          },
+        },
+      },
+    });
   },
 
-  /** Remove an item from a cart.
-   * @source src/server/actions/cart.ts */
-  async removeItem(itemId: string): Promise<void> {
-    // TODO: move from src/server/actions/cart.ts
-    throw new Error("Not implemented");
+  async deleteCart(cartId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.cart.delete({ where: { id: cartId } });
   },
 
-  /** Delete a cart entirely (after checkout or when empty).
-   * @source src/server/actions/cart.ts */
-  async delete(cartId: string): Promise<void> {
-    // TODO: move from src/server/actions/cart.ts
-    throw new Error("Not implemented");
+  async deleteCartByUser(userId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.cart.deleteMany({ where: { userId } });
   },
 
-  /** Delete all carts for a user (post-checkout cleanup).
-   * @source src/server/actions/cart.ts */
-  async deleteByUser(userId: string): Promise<void> {
-    // TODO: move from src/server/actions/cart.ts
-    throw new Error("Not implemented");
+  async removeItemAndExtendExpiry(
+    itemId: string,
+    cartId: string,
+    expiresAt: Date,
+    tx?: DbClient,
+  ) {
+    const client = tx ?? db;
+    return client.$transaction([
+      client.cartItem.delete({ where: { id: itemId } }),
+      client.cart.update({
+        where: { id: cartId },
+        data: { expiresAt },
+      }),
+    ]);
   },
 
-  /** Find a cart item by ID.
-   * @source src/server/actions/cart.ts */
-  async findItemById(itemId: string): Promise<Prisma.CartItemGetPayload<{
-    select: { id: true; cartId: true; listingId: true; priceNzd: true };
-  }> | null> {
-    // TODO: move from src/server/actions/cart.ts
-    throw new Error("Not implemented");
+  // ── Checkout: order creation ──────────────────────────────────────────────
+
+  async findIdempotentOrder(
+    idempotencyKey: string,
+    buyerId: string,
+    tx?: DbClient,
+  ) {
+    const client = tx ?? db;
+    return client.order.findFirst({
+      where: { idempotencyKey, buyerId },
+      select: { id: true, status: true, stripePaymentIntentId: true },
+    });
+  },
+
+  async reserveListings(listingIds: string[], tx?: DbClient) {
+    const client = tx ?? db;
+    return client.listing.updateMany({
+      where: { id: { in: listingIds }, status: "ACTIVE" },
+      data: { status: "RESERVED" },
+    });
+  },
+
+  async releaseListings(listingIds: string[], tx?: DbClient) {
+    const client = tx ?? db;
+    return client.listing.updateMany({
+      where: { id: { in: listingIds }, status: "RESERVED" },
+      data: { status: "ACTIVE" },
+    });
+  },
+
+  async createOrder(data: Prisma.OrderUncheckedCreateInput, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.order.create({ data, select: { id: true } });
+  },
+
+  async updateOrderStripePI(
+    orderId: string,
+    stripePaymentIntentId: string,
+    tx?: DbClient,
+  ) {
+    const client = tx ?? db;
+    return client.order.update({
+      where: { id: orderId },
+      data: { stripePaymentIntentId },
+    });
+  },
+
+  async findOrderStripePI(orderId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.order.findUnique({
+      where: { id: orderId },
+      select: { stripePaymentIntentId: true },
+    });
+  },
+
+  async findBuyerDisplayName(userId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    });
+  },
+
+  // ── Listing lookup (for addToCart) ────────────────────────────────────────
+
+  async findListingForCart(listingId: string, tx?: DbClient) {
+    const client = tx ?? db;
+    return client.listing.findUnique({
+      where: { id: listingId, status: "ACTIVE", deletedAt: null },
+      select: {
+        id: true,
+        title: true,
+        priceNzd: true,
+        shippingNzd: true,
+        shippingOption: true,
+        sellerId: true,
+      },
+    });
+  },
+
+  // ── Transaction ───────────────────────────────────────────────────────────
+
+  async $transaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return db.$transaction(fn);
   },
 };

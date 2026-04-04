@@ -3,11 +3,11 @@
 // All dispute reads and writes go through this service.
 // No other file should write directly to the Dispute or DisputeEvidence tables.
 
-import db from "@/lib/db";
+import { disputeRepository } from "@/modules/disputes/dispute.repository";
+import type { DisputeWithEvidence } from "@/modules/disputes/dispute.repository";
 import { logger } from "@/shared/logger";
 import type {
   Dispute,
-  DisputeEvidence,
   DisputeReason,
   DisputeSource,
   DisputeStatus,
@@ -16,14 +16,11 @@ import type {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type PrismaTransactionClient = Omit<
-  typeof db,
-  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
->;
+type PrismaTransactionClient = Parameters<
+  Parameters<typeof disputeRepository.transaction>[0]
+>[0];
 
-export type DisputeWithEvidence = Dispute & {
-  evidence: DisputeEvidence[];
-};
+export type { DisputeWithEvidence };
 
 // ── createDispute ────────────────────────────────────────────────────────────
 
@@ -40,12 +37,12 @@ export async function createDispute(params: {
     params;
 
   // Check no dispute already exists for this order
-  const existing = await tx.dispute.findUnique({ where: { orderId } });
+  const existing = await disputeRepository.findByOrderId(orderId, tx);
   if (existing) throw new Error("Dispute already exists for this order");
 
   // Create Dispute record
-  const dispute = await tx.dispute.create({
-    data: {
+  const dispute = await disputeRepository.create(
+    {
       orderId,
       reason,
       source,
@@ -53,19 +50,21 @@ export async function createDispute(params: {
       buyerStatement,
       openedAt: new Date(),
     },
-  });
+    tx,
+  );
 
   // Create DisputeEvidence records for buyer evidence
   if (evidenceKeys.length > 0) {
-    await tx.disputeEvidence.createMany({
-      data: evidenceKeys.map((key) => ({
+    await disputeRepository.createManyEvidence(
+      evidenceKeys.map((key) => ({
         disputeId: dispute.id,
         uploadedBy: "BUYER" as EvidenceUploadedBy,
         uploaderId: buyerId,
         r2Key: key,
         fileType: "image",
       })),
-    });
+      tx,
+    );
   }
 
   logger.info("dispute.created", {
@@ -89,13 +88,12 @@ export async function addEvidence(params: {
   label?: string;
   tx?: PrismaTransactionClient;
 }): Promise<void> {
-  const { disputeId, r2Keys, uploadedBy, uploaderId, label } = params;
-  const client = params.tx ?? db;
+  const { disputeId, r2Keys, uploadedBy, uploaderId, label, tx } = params;
 
   if (r2Keys.length === 0) return;
 
-  await client.disputeEvidence.createMany({
-    data: r2Keys.map((key) => ({
+  await disputeRepository.createManyEvidence(
+    r2Keys.map((key) => ({
       disputeId,
       uploadedBy,
       uploaderId,
@@ -103,19 +101,18 @@ export async function addEvidence(params: {
       fileType: "image",
       label: label ?? null,
     })),
-  });
+    tx,
+  );
 
   // If seller is adding evidence and dispute is OPEN, update status
   if (uploadedBy === "SELLER") {
-    const dispute = await client.dispute.findUnique({
-      where: { id: disputeId },
-      select: { status: true },
-    });
+    const dispute = await disputeRepository.findStatusById(disputeId, tx);
     if (dispute?.status === "OPEN") {
-      await client.dispute.update({
-        where: { id: disputeId },
-        data: { status: "AWAITING_SELLER_RESPONSE" },
-      });
+      await disputeRepository.update(
+        disputeId,
+        { status: "AWAITING_SELLER_RESPONSE" },
+        tx,
+      );
     }
   }
 
@@ -136,10 +133,7 @@ export async function addSellerResponse(params: {
 }): Promise<void> {
   const { disputeId, sellerId, statement, evidenceKeys } = params;
 
-  const dispute = await db.dispute.findUnique({
-    where: { id: disputeId },
-    select: { status: true },
-  });
+  const dispute = await disputeRepository.findStatusById(disputeId);
 
   if (!dispute) throw new Error("Dispute not found");
   if (
@@ -149,15 +143,16 @@ export async function addSellerResponse(params: {
     throw new Error("Dispute is not in a state that accepts seller responses");
   }
 
-  await db.$transaction(async (tx) => {
-    await tx.dispute.update({
-      where: { id: disputeId },
-      data: {
+  await disputeRepository.transaction(async (tx) => {
+    await disputeRepository.update(
+      disputeId,
+      {
         sellerStatement: statement,
         sellerRespondedAt: new Date(),
         status: "SELLER_RESPONDED",
       },
-    });
+      tx,
+    );
 
     if (evidenceKeys.length > 0) {
       await addEvidence({
@@ -195,16 +190,17 @@ export async function resolveDispute(params: {
 
   const newStatus = statusMap[decision] ?? "RESOLVED_BUYER";
 
-  await tx.dispute.update({
-    where: { id: disputeId },
-    data: {
+  await disputeRepository.update(
+    disputeId,
+    {
       status: newStatus,
       resolution: decision,
       refundAmount: refundAmount ?? null,
       adminNotes: adminNotes ?? null,
       resolvedAt: new Date(),
     },
-  });
+    tx,
+  );
 
   logger.info("dispute.resolved", {
     disputeId,
@@ -217,10 +213,7 @@ export async function resolveDispute(params: {
 // ── markUnderReview ──────────────────────────────────────────────────────────
 
 export async function markUnderReview(disputeId: string): Promise<void> {
-  const dispute = await db.dispute.findUnique({
-    where: { id: disputeId },
-    select: { status: true },
-  });
+  const dispute = await disputeRepository.findStatusById(disputeId);
 
   if (!dispute) return;
 
@@ -232,10 +225,7 @@ export async function markUnderReview(disputeId: string): Promise<void> {
   ];
   if (!reviewableStates.includes(dispute.status)) return;
 
-  await db.dispute.update({
-    where: { id: disputeId },
-    data: { status: "UNDER_REVIEW" },
-  });
+  await disputeRepository.update(disputeId, { status: "UNDER_REVIEW" });
 
   logger.info("dispute.under_review", { disputeId });
 }
@@ -247,13 +237,10 @@ export async function setAutoResolving(
   score: number,
   reason: string,
 ): Promise<void> {
-  await db.dispute.update({
-    where: { id: disputeId },
-    data: {
-      status: "AUTO_RESOLVING",
-      autoResolutionScore: score,
-      autoResolutionReason: reason,
-    },
+  await disputeRepository.update(disputeId, {
+    status: "AUTO_RESOLVING",
+    autoResolutionScore: score,
+    autoResolutionReason: reason,
   });
 }
 
@@ -262,10 +249,7 @@ export async function setAutoResolving(
 export async function getDisputeByOrderId(
   orderId: string,
 ): Promise<DisputeWithEvidence | null> {
-  return db.dispute.findUnique({
-    where: { orderId },
-    include: { evidence: { orderBy: { createdAt: "asc" } } },
-  });
+  return disputeRepository.findByOrderIdWithEvidence(orderId);
 }
 
 // ── getDisputeById ───────────────────────────────────────────────────────────
@@ -273,8 +257,5 @@ export async function getDisputeByOrderId(
 export async function getDisputeById(
   disputeId: string,
 ): Promise<DisputeWithEvidence | null> {
-  return db.dispute.findUnique({
-    where: { id: disputeId },
-    include: { evidence: { orderBy: { createdAt: "asc" } } },
-  });
+  return disputeRepository.findByIdWithEvidence(disputeId);
 }

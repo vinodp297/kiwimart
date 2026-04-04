@@ -4,7 +4,12 @@
 // Creates 27 users, 120 listings, 35 orders, reviews, messages, watchlist,
 // offers, and payouts for a realistic NZ marketplace simulation.
 
-import { PrismaClient } from "@prisma/client";
+import {
+  PrismaClient,
+  type OrderStatus,
+  type OfferStatus,
+  type PayoutStatus,
+} from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { loadEnvConfig } from "@next/env";
 
@@ -2895,7 +2900,7 @@ async function main() {
   };
   const lr: LR[] = [];
   const now = new Date();
-  const in30d = new Date(now.getTime() + 30 * 86_400_000);
+  const _in30d = new Date(now.getTime() + 30 * 86_400_000);
 
   for (let i = 0; i < listings.length; i++) {
     const l = listings[i]!;
@@ -3221,7 +3226,7 @@ async function main() {
         itemNzd,
         shippingNzd: shipNzd,
         totalNzd,
-        status: od.status as any,
+        status: od.status as unknown as OrderStatus,
         trackingNumber: od.tracking ?? null,
         dispatchedAt:
           od.dispatchedDaysAgo != null
@@ -3409,14 +3414,13 @@ async function main() {
     await prisma.review.create({
       data: {
         orderId: or.id,
-        sellerId: or.sellerId,
+        subjectId: or.sellerId,
         authorId: or.buyerId,
+        reviewerRole: "BUYER",
         rating: rv.r,
         comment: rv.c,
-        sellerReply: rv.reply ?? null,
-        sellerRepliedAt: rv.reply
-          ? daysAgo((or.completedDaysAgo ?? 10) - 1)
-          : null,
+        reply: rv.reply ?? null,
+        repliedAt: rv.reply ? daysAgo((or.completedDaysAgo ?? 10) - 1) : null,
         createdAt: daysAgo((or.completedDaysAgo ?? 10) - randomInt(0, 2)),
       },
     });
@@ -3945,7 +3949,7 @@ async function main() {
         sellerId: listing.sellerId,
         amountNzd: $(od.amount),
         note: od.note ?? null,
-        status: od.status as any,
+        status: od.status as unknown as OfferStatus,
         expiresAt,
         respondedAt: ["ACCEPTED", "DECLINED"].includes(od.status)
           ? daysAgo(randomInt(1, 5))
@@ -4009,7 +4013,7 @@ async function main() {
         amountNzd: amount,
         platformFeeNzd: platformFee,
         stripeFeeNzd: stripeFee,
-        status: status as any,
+        status: status as unknown as PayoutStatus,
         stripeTransferId,
         initiatedAt,
         paidAt,

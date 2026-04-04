@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/seller-downgrade",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/price-drop-alerts",
+      "schedule": "0 9 * * *"
     }
   ],
   "headers": [

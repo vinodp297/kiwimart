@@ -2,7 +2,7 @@
 // ─── Message Service ─────────────────────────────────────────────────────────
 // Thread and message operations. Framework-free.
 
-import db from "@/lib/db";
+import { messageRepository } from "./message.repository";
 import { moderateText } from "@/server/lib/moderation";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
@@ -21,22 +21,13 @@ export class MessageService {
     }
 
     // Verify recipient exists and is not banned
-    const recipient = await db.user.findUnique({
-      where: { id: input.recipientId, isBanned: false, deletedAt: null },
-      select: { id: true, email: true, displayName: true },
-    });
+    const recipient = await messageRepository.findActiveUserById(
+      input.recipientId,
+    );
     if (!recipient) throw AppError.notFound("Recipient");
 
     // Check if either party has blocked the other
-    const block = await db.blockedUser.findFirst({
-      where: {
-        OR: [
-          { blockerId: userId, blockedId: input.recipientId },
-          { blockerId: input.recipientId, blockedId: userId },
-        ],
-      },
-      select: { id: true },
-    });
+    const block = await messageRepository.findBlock(userId, input.recipientId);
     if (block) {
       throw new AppError("UNAUTHORISED", "You cannot message this user.", 403);
     }
@@ -45,22 +36,14 @@ export class MessageService {
     const [p1 = "", p2 = ""] = [userId, input.recipientId].sort();
 
     let thread = input.threadId
-      ? await db.messageThread.findUnique({ where: { id: input.threadId } })
-      : await db.messageThread.findFirst({
-          where: {
-            participant1Id: p1,
-            participant2Id: p2,
-            listingId: input.listingId ?? null,
-          },
-        });
+      ? await messageRepository.findThreadByIdFull(input.threadId)
+      : await messageRepository.findThread(p1, p2, input.listingId ?? null);
 
     if (!thread) {
-      thread = await db.messageThread.create({
-        data: {
-          participant1Id: p1,
-          participant2Id: p2,
-          listingId: input.listingId ?? null,
-        },
+      thread = await messageRepository.createThread({
+        participant1Id: p1,
+        participant2Id: p2,
+        listingId: input.listingId ?? null,
       });
     }
 
@@ -77,22 +60,16 @@ export class MessageService {
     const flagReason: string | null = modResult.flagReason ?? null;
 
     // Create message
-    const message = await db.message.create({
-      data: {
-        threadId: thread.id,
-        senderId: userId,
-        body: input.body,
-        flagged,
-        flagReason,
-      },
-      select: { id: true, createdAt: true },
+    const message = await messageRepository.createMessage({
+      threadId: thread.id,
+      senderId: userId,
+      body: input.body,
+      flagged,
+      flagReason,
     });
 
     // Update thread's lastMessageAt
-    await db.messageThread.update({
-      where: { id: thread.id },
-      data: { lastMessageAt: new Date() },
-    });
+    await messageRepository.touchThread(thread.id, new Date());
 
     // Emit Pusher event for real-time delivery
     try {
@@ -114,10 +91,7 @@ export class MessageService {
     }
 
     // Notify the recipient of new message (fire-and-forget, don't block send)
-    const sender = await db.user.findUnique({
-      where: { id: userId },
-      select: { displayName: true },
-    });
+    const sender = await messageRepository.findUserDisplayName(userId);
     createNotification({
       userId: input.recipientId,
       type: "MESSAGE_RECEIVED",
@@ -145,27 +119,11 @@ export class MessageService {
     options?: { cursor?: string; limit?: number },
   ) {
     const limit = options?.limit ?? 20;
-    const threads = await db.messageThread.findMany({
-      where: {
-        OR: [{ participant1Id: userId }, { participant2Id: userId }],
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: {
-            id: true,
-            body: true,
-            senderId: true,
-            createdAt: true,
-            read: true,
-          },
-        },
-      },
-      orderBy: { lastMessageAt: "desc" },
-      take: limit + 1,
-      ...(options?.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
-    });
+    const threads = await messageRepository.findThreadsByUser(
+      userId,
+      limit + 1,
+      options?.cursor,
+    );
 
     const hasMore = threads.length > limit;
     const page = hasMore ? threads.slice(0, limit) : threads;
@@ -178,10 +136,7 @@ export class MessageService {
     userId: string,
     options?: { take?: number; cursor?: string },
   ) {
-    const thread = await db.messageThread.findUnique({
-      where: { id: threadId },
-      select: { participant1Id: true, participant2Id: true },
-    });
+    const thread = await messageRepository.findThreadById(threadId);
 
     if (!thread) return { messages: [], hasMore: false };
     if (thread.participant1Id !== userId && thread.participant2Id !== userId) {
@@ -189,34 +144,15 @@ export class MessageService {
     }
 
     // Mark messages as read
-    await db.message.updateMany({
-      where: {
-        threadId,
-        senderId: { not: userId },
-        read: false,
-      },
-      data: { read: true, readAt: new Date() },
-    });
+    await messageRepository.markThreadRead(threadId, userId);
 
     const take = options?.take ?? 50;
 
-    const messages = await db.message.findMany({
-      where: { threadId },
-      take: take + 1, // fetch one extra to detect hasMore
-      ...(options?.cursor && {
-        cursor: { id: options.cursor },
-        skip: 1,
-      }),
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        body: true,
-        senderId: true,
-        createdAt: true,
-        read: true,
-        sender: { select: { displayName: true } },
-      },
-    });
+    const messages = await messageRepository.findMessagesByThread(
+      threadId,
+      take + 1, // fetch one extra to detect hasMore
+      options?.cursor,
+    );
 
     const hasMore = messages.length > take;
     if (hasMore) messages.pop(); // remove the extra

@@ -12,10 +12,10 @@
 // write, the updateMany returns count=0 and we throw a P2025-coded error.
 // The caller should catch P2025 and treat it as "already processed".
 
-import db from "@/lib/db";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
-import { Prisma, OrderStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { orderRepository } from "./order.repository";
 
 // Metadata carried through a status transition (e.g. reason, reference IDs).
 // Deliberately wide but excludes `any` — callers must use serialisable values.
@@ -77,16 +77,12 @@ export async function transitionOrder(
   options: { tx?: Prisma.TransactionClient; fromStatus?: string } = {},
 ): Promise<void> {
   const { tx, fromStatus } = options;
-  const client: Prisma.TransactionClient | typeof db = tx ?? db;
 
   let currentStatus = fromStatus;
 
   // Only fetch if fromStatus wasn't provided by the caller
   if (!currentStatus) {
-    const order = await client.order.findUnique({
-      where: { id: orderId },
-      select: { id: true, status: true },
-    });
+    const order = await orderRepository.findByIdForTransition(orderId, tx);
     if (!order) throw AppError.notFound("Order");
     currentStatus = order.status as string;
   }
@@ -98,10 +94,13 @@ export async function transitionOrder(
   // If another process already transitioned this order, count will be 0
   // assertOrderTransition() above guarantees currentStatus and to are valid
   // OrderStatus enum values — the casts here are safe by construction.
-  const result = await client.order.updateMany({
-    where: { id: orderId, status: currentStatus as OrderStatus },
-    data: { status: to as OrderStatus, ...data },
-  });
+  const result = await orderRepository.updateStatusOptimistic(
+    orderId,
+    currentStatus,
+    to,
+    data,
+    tx,
+  );
 
   if (result.count === 0) {
     // Another process updated the status between our read and write

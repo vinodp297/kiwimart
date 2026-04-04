@@ -55,6 +55,8 @@ export interface OrderDetailData {
   otherPartyName: string;
   otherPartyUsername: string;
   hasReview: boolean;
+  hasBuyerReview: boolean;
+  hasSellerReview: boolean;
   cancelledBy: string | null;
   cancelReason: string | null;
   cancelledAt: string | null;
@@ -118,7 +120,9 @@ export async function fetchOrderDetail(
         },
         buyer: { select: { displayName: true, username: true } },
         seller: { select: { displayName: true, username: true } },
-        review: { select: { id: true } },
+        reviews: {
+          select: { id: true, reviewerRole: true },
+        },
       },
     });
 
@@ -181,7 +185,9 @@ export async function fetchOrderDetail(
         otherPartyUsername: isBuyer
           ? order.seller.username
           : order.buyer.username,
-        hasReview: !!order.review,
+        hasReview: order.reviews.length > 0,
+        hasBuyerReview: order.reviews.some((r) => r.reviewerRole === "BUYER"),
+        hasSellerReview: order.reviews.some((r) => r.reviewerRole === "SELLER"),
       },
     };
   } catch (err) {

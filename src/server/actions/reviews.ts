@@ -24,13 +24,14 @@ export async function createReview(
       };
     }
 
-    const { reviewId, sellerId } = await reviewService.createReview(
+    const { reviewId, subjectId } = await reviewService.createReview(
       parsed.data,
       user.id,
     );
 
-    revalidatePath(`/sellers/${sellerId}`);
+    revalidatePath(`/sellers/${subjectId}`);
     revalidatePath("/dashboard/buyer");
+    revalidatePath("/dashboard/seller");
 
     return { success: true, data: { reviewId } };
   } catch (err) {
@@ -58,6 +59,7 @@ export async function replyToReview(raw: unknown): Promise<ActionResult<void>> {
     await reviewService.replyToReview(parsed.data, user.id);
 
     revalidatePath("/dashboard/seller");
+    revalidatePath("/dashboard/buyer");
 
     return { success: true, data: undefined };
   } catch (err) {

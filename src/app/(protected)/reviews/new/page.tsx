@@ -1,6 +1,6 @@
 "use client";
 // src/app/(protected)/reviews/new/page.tsx
-// ─── New Review Page ────────────────────────────────────────────────────────
+// ─── New Review Page (buyer→seller or seller→buyer) ─────────────────────────
 
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -17,11 +17,15 @@ export default function NewReviewPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const orderId = searchParams.get("orderId");
+  const roleParam = searchParams.get("role"); // "seller" for seller→buyer review
+  const isSeller = roleParam === "seller";
+  const reviewerRole = isSeller ? ("SELLER" as const) : ("BUYER" as const);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [orderTitle, setOrderTitle] = useState("");
+  const [otherPartyName, setOtherPartyName] = useState("");
 
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
@@ -38,7 +42,10 @@ export default function NewReviewPage() {
       const result = await fetchOrderDetail(orderId!);
       if (result.success) {
         setOrderTitle(result.data.listingTitle);
-        if (result.data.hasReview) {
+        setOtherPartyName(result.data.otherPartyName);
+        if (isSeller && result.data.hasSellerReview) {
+          setError("You have already reviewed this buyer.");
+        } else if (!isSeller && result.data.hasBuyerReview) {
           setError("You have already reviewed this order.");
         }
         if (result.data.status !== "completed") {
@@ -50,7 +57,7 @@ export default function NewReviewPage() {
       setLoading(false);
     }
     load();
-  }, [orderId]);
+  }, [orderId, isSeller]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -70,16 +77,29 @@ export default function NewReviewPage() {
       orderId: orderId!,
       rating,
       comment,
-      tags: selectedTags,
+      tags: isSeller ? [] : selectedTags,
+      reviewerRole,
     });
 
     if (result.success) {
-      router.push("/dashboard/buyer?reviewSubmitted=true");
+      const dest = isSeller
+        ? "/dashboard/seller?reviewSubmitted=true"
+        : "/dashboard/buyer?reviewSubmitted=true";
+      router.push(dest);
     } else {
       setError(result.error);
       setSubmitting(false);
     }
   }
+
+  const dashboardLink = isSeller ? "/dashboard/seller" : "/dashboard/buyer";
+  const heading = isSeller ? "Review buyer" : "Leave a review";
+  const tagQuestion = isSeller
+    ? "What did this buyer do well?"
+    : "What did this seller do well?";
+  const commentPlaceholder = isSeller
+    ? "Describe your experience with this buyer..."
+    : "Describe your experience with this purchase...";
 
   if (loading) {
     return (
@@ -102,21 +122,27 @@ export default function NewReviewPage() {
         <div className="max-w-lg mx-auto px-4 sm:px-6 py-12">
           <nav className="flex items-center gap-2 text-[12.5px] text-[#9E9A91] mb-6">
             <Link
-              href="/dashboard/buyer"
+              href={dashboardLink}
               className="hover:text-[#D4A843] transition-colors"
             >
               Dashboard
             </Link>
             <span>/</span>
-            <span className="text-[#141414] font-medium">Leave a review</span>
+            <span className="text-[#141414] font-medium">{heading}</span>
           </nav>
 
           <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold text-[#141414] mb-2">
-            Leave a review
+            {heading}
           </h1>
           {orderTitle && (
-            <p className="text-[14px] text-[#73706A] mb-8">
+            <p className="text-[14px] text-[#73706A] mb-1">
               For: <strong className="text-[#141414]">{orderTitle}</strong>
+            </p>
+          )}
+          {otherPartyName && (
+            <p className="text-[14px] text-[#73706A] mb-8">
+              {isSeller ? "Buyer" : "Seller"}:{" "}
+              <strong className="text-[#141414]">{otherPartyName}</strong>
             </p>
           )}
 
@@ -179,42 +205,44 @@ export default function NewReviewPage() {
               )}
             </div>
 
-            {/* Tag chips */}
-            <div className="mb-6">
-              <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
-                What did this seller do well?
-              </label>
-              <p className="text-[11px] text-[#9E9A91] mb-3">
-                Optional — select all that apply
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {REVIEW_TAG_OPTIONS.map((opt) => {
-                  const isSelected = selectedTags.includes(opt.value);
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => {
-                        setSelectedTags((prev) =>
-                          isSelected
-                            ? prev.filter((t) => t !== opt.value)
-                            : [...prev, opt.value],
-                        );
-                      }}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px]
-                        font-medium border transition-all duration-150 ${
-                          isSelected
-                            ? "bg-[#F5ECD4] text-[#8B6914] border-[#D4A843]/50 shadow-sm"
-                            : "bg-[#F8F7F4] text-[#73706A] border-[#E3E0D9] hover:border-[#D4A843]/30 hover:bg-[#F5ECD4]/30"
-                        }`}
-                    >
-                      <span>{opt.emoji}</span>
-                      {opt.label}
-                    </button>
-                  );
-                })}
+            {/* Tag chips — buyer reviews only (seller tags aren't applicable) */}
+            {!isSeller && (
+              <div className="mb-6">
+                <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
+                  {tagQuestion}
+                </label>
+                <p className="text-[11px] text-[#9E9A91] mb-3">
+                  Optional — select all that apply
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {REVIEW_TAG_OPTIONS.map((opt) => {
+                    const isSelected = selectedTags.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTags((prev) =>
+                            isSelected
+                              ? prev.filter((t) => t !== opt.value)
+                              : [...prev, opt.value],
+                          );
+                        }}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px]
+                          font-medium border transition-all duration-150 ${
+                            isSelected
+                              ? "bg-[#F5ECD4] text-[#8B6914] border-[#D4A843]/50 shadow-sm"
+                              : "bg-[#F8F7F4] text-[#73706A] border-[#E3E0D9] hover:border-[#D4A843]/30 hover:bg-[#F5ECD4]/30"
+                          }`}
+                      >
+                        <span>{opt.emoji}</span>
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Comment */}
             <div className="mb-6">
@@ -224,7 +252,7 @@ export default function NewReviewPage() {
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Describe your experience with this purchase..."
+                placeholder={commentPlaceholder}
                 rows={5}
                 maxLength={1000}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-[#C9C5BC] bg-white text-[13px]
