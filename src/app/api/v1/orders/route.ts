@@ -54,7 +54,9 @@ export async function GET(request: Request) {
     const orders = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (orders.at(-1)?.id ?? null) : null;
 
-    return withCors(apiOk({ orders, nextCursor, hasMore }));
+    const res = withCors(apiOk({ orders, nextCursor, hasMore }));
+    res.headers.set("Cache-Control", "private, no-store");
+    return res;
   } catch (e) {
     return withCors(handleApiError(e));
   }
