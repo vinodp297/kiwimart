@@ -10,8 +10,6 @@ import { signOut } from "next-auth/react";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
 import CATEGORIES from "@/data/categories";
 
-const HIDDEN_CATEGORY_IDS = ["property"];
-
 // ─────────────────────────────────────────────────────────────────────────────
 export default function NavBar() {
   const pathname = usePathname();
@@ -705,9 +703,7 @@ export default function NavBar() {
               >
                 All
               </Link>
-              {CATEGORIES.filter(
-                (cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id),
-              ).map((cat) => (
+              {CATEGORIES.map((cat) => (
                 <Link
                   key={cat.id}
                   href={`/search?category=${cat.id}`}
@@ -842,9 +838,7 @@ export default function NavBar() {
             <p className="px-5 py-2 text-[10.5px] font-semibold text-[#9E9A91] uppercase tracking-wide">
               Categories
             </p>
-            {CATEGORIES.filter(
-              (cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id),
-            ).map((cat) => (
+            {CATEGORIES.map((cat) => (
               <Link
                 key={cat.id}
                 href={`/search?category=${cat.id}`}

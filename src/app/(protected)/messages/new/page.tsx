@@ -119,9 +119,11 @@ export default async function NewMessagePage({ searchParams }: Props) {
     select: { id: true },
   });
 
-  // If a thread already exists, go straight to it in the dashboard
+  // If a thread already exists, open it directly in the messages tab
   if (existingThread) {
-    redirect("/dashboard/buyer");
+    redirect(
+      `/dashboard/buyer?tab=messages&conversationId=${existingThread.id}`,
+    );
   }
 
   const thumbUrl =
