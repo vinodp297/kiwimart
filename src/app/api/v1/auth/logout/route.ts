@@ -5,7 +5,7 @@
 import { revokeMobileToken, verifyMobileToken } from "@/lib/mobile-auth";
 import { requireApiUser } from "../../_helpers/response";
 import { apiOk, apiError } from "../../_helpers/response";
-import { corsHeaders, withCors } from "../../_helpers/cors";
+import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import { logger } from "@/shared/logger";
 
 export async function POST(request: Request) {
@@ -45,5 +45,5 @@ export async function POST(request: Request) {
 }
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 }

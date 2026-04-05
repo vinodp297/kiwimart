@@ -11,7 +11,7 @@ import {
   handleApiError,
   requireApiUser,
 } from "../../_helpers/response";
-import { corsHeaders, withCors } from "../../_helpers/cors";
+import { getCorsHeaders, withCors } from "../../_helpers/cors";
 
 const respondBodySchema = z.object({
   action: z.enum(["ACCEPT", "DECLINE"]),
@@ -65,5 +65,5 @@ export async function PATCH(
 }
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 }

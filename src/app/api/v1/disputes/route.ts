@@ -11,7 +11,7 @@ import {
   handleApiError,
   requireApiUser,
 } from "../_helpers/response";
-import { corsHeaders, withCors } from "../_helpers/cors";
+import { getCorsHeaders, withCors } from "../_helpers/cors";
 
 const openDisputeSchema = z.object({
   orderId: z.string().min(1),
@@ -72,5 +72,5 @@ export async function POST(request: Request) {
 }
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 }
