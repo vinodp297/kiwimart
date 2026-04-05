@@ -49,7 +49,9 @@ export async function GET(request: Request) {
     const reviews = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (reviews.at(-1)?.id ?? null) : null;
 
-    return withCors(apiOk({ reviews, nextCursor, hasMore }));
+    const res = withCors(apiOk({ reviews, nextCursor, hasMore }));
+    res.headers.set("Cache-Control", "private, no-store");
+    return res;
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/reviews GET",

@@ -37,7 +37,9 @@ export async function GET(request: Request) {
       cursor: query.cursor,
       limit: query.limit,
     });
-    return withCors(apiOk(result));
+    const res = withCors(apiOk(result));
+    res.headers.set("Cache-Control", "private, no-store");
+    return res;
   } catch (e) {
     return withCors(handleApiError(e));
   }
