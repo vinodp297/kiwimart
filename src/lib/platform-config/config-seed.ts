@@ -1,15 +1,34 @@
-import defaultDb from "@/lib/db";
 import { CONFIG_KEYS } from "./config-keys";
 
-type DbClient = typeof defaultDb;
+// Structural type covering the PlatformConfig delegate we use here.
+// Defined inline so this module can be imported from prisma/seed.ts
+// (which runs outside Next.js) without triggering the server-only import
+// chain via @/lib/db.
+type DbClient = {
+  platformConfig: {
+    upsert: (args: {
+      where: { key: string };
+      create: Record<string, unknown>;
+      update: Record<string, unknown>;
+    }) => Promise<unknown>;
+  };
+};
 
 /**
  * Seed all PlatformConfig records.
  * Accepts an optional db client for use in prisma/seed.ts which
  * creates its own PrismaClient instance outside the Next.js runtime.
+ * When no override is provided, the default server-only client is loaded
+ * lazily so this module stays importable from plain Node contexts.
  */
 export async function seedPlatformConfig(dbOverride?: DbClient) {
-  const db = dbOverride ?? defaultDb;
+  let db: DbClient;
+  if (dbOverride) {
+    db = dbOverride;
+  } else {
+    const mod = await import("@/lib/db");
+    db = mod.default as unknown as DbClient;
+  }
 
   async function seed(params: {
     key: string;
