@@ -22,15 +22,19 @@ export function MessagesTab({
 }) {
   const [newMessage, setNewMessage] = useState("");
 
+  const [sendError, setSendError] = useState<string | null>(null);
+
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!newMessage.trim() || !activeThread) return;
     const body = newMessage;
     setNewMessage("");
+    setSendError(null);
 
     // Optimistic update
+    const optimisticId = `temp-${Date.now()}`;
     const optimisticMsg: MessageRow = {
-      id: `temp-${Date.now()}`,
+      id: optimisticId,
       body,
       senderId: "me",
       senderName: "You",
@@ -53,15 +57,61 @@ export function MessagesTab({
       t ? { ...t, messages: [...t.messages, optimisticMsg] } : null,
     );
 
-    // Actually send via server action — find the real recipientId from the thread
+    // Persist to DB via server action
     try {
-      await sendMessageAction({
-        recipientId: activeThread.otherPartyName, // We need the actual user ID
+      const result = await sendMessageAction({
+        threadId: activeThread.id,
+        recipientId: activeThread.otherPartyId,
         body,
         listingId: activeThread.listingId || undefined,
       });
+
+      if (!result.success) {
+        // Roll back optimistic message
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === activeThread.id
+              ? {
+                  ...t,
+                  messages: t.messages.filter((m) => m.id !== optimisticId),
+                  lastMessage: t.messages.at(-2)?.body ?? "",
+                }
+              : t,
+          ),
+        );
+        setActiveThread((t) =>
+          t
+            ? {
+                ...t,
+                messages: t.messages.filter((m) => m.id !== optimisticId),
+              }
+            : null,
+        );
+        setNewMessage(body);
+        setSendError(
+          result.error ?? "Message couldn't be sent. Please try again.",
+        );
+      }
     } catch {
-      // Message already shown optimistically — silently fail for now
+      // Roll back optimistic message on network error
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.id === activeThread.id
+            ? {
+                ...t,
+                messages: t.messages.filter((m) => m.id !== optimisticId),
+                lastMessage: t.messages.at(-2)?.body ?? "",
+              }
+            : t,
+        ),
+      );
+      setActiveThread((t) =>
+        t
+          ? { ...t, messages: t.messages.filter((m) => m.id !== optimisticId) }
+          : null,
+      );
+      setNewMessage(body);
+      setSendError("Message couldn't be sent. Please check your connection.");
     }
   }
 
@@ -188,6 +238,11 @@ export function MessagesTab({
           </div>
 
           {/* Message input */}
+          {sendError && (
+            <p className="px-4 pb-1 text-[12px] text-red-600" role="alert">
+              {sendError}
+            </p>
+          )}
           <form
             onSubmit={handleSendMessage}
             className="p-4 border-t border-[#E3E0D9] flex gap-2"

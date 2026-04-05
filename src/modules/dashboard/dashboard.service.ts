@@ -63,6 +63,7 @@ export interface WatchlistRow {
 
 export interface ThreadRow {
   id: string;
+  otherPartyId: string;
   otherPartyName: string;
   otherPartyUsername: string;
   otherPartyAvatar: string | null;
@@ -293,6 +294,7 @@ class DashboardService {
 
       return {
         id: t.id,
+        otherPartyId: otherId,
         otherPartyName: other?.displayName ?? "Unknown",
         otherPartyUsername: other?.username ?? "unknown",
         otherPartyAvatar: other?.avatarKey ? r2Url(other.avatarKey) : null,
