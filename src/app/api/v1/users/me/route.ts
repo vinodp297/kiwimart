@@ -7,7 +7,7 @@ import {
   handleApiError,
   requireApiUser,
 } from "../../_helpers/response";
-import { corsHeaders, withCors } from "../../_helpers/cors";
+import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import db from "@/lib/db";
 
 export async function GET() {
@@ -43,5 +43,5 @@ export async function GET() {
 }
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 }

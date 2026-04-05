@@ -24,7 +24,7 @@ import {
   handleApiError,
   requireApiUser,
 } from "../../_helpers/response";
-import { corsHeaders, withCors } from "../../_helpers/cors";
+import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import { rateLimit } from "@/server/lib/rateLimit";
 
 const pushTokenSchema = z.object({
@@ -77,5 +77,5 @@ export async function POST(request: Request) {
 }
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 }

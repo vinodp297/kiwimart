@@ -9,7 +9,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../../_helpers/response";
-import { corsHeaders, withCors } from "../../_helpers/cors";
+import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import { cancelPickupSchema } from "@/modules/pickup/pickup.schema";
 import { cancelPickupOrder } from "@/server/services/pickup/pickup-cancel.service";
 
@@ -51,5 +51,5 @@ export async function POST(request: Request) {
 }
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 }

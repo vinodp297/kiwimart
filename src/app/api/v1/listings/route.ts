@@ -16,7 +16,7 @@ import {
   requireApiUser,
   checkApiRateLimit,
 } from "../_helpers/response";
-import { corsHeaders, withCors } from "../_helpers/cors";
+import { getCorsHeaders, withCors } from "../_helpers/cors";
 import { listingsQuerySchema } from "@/modules/listings/listing.schema";
 
 export async function GET(request: Request) {
@@ -271,5 +271,5 @@ export async function POST(request: Request) {
 }
 
 export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 }
