@@ -70,7 +70,7 @@ export function MessagesTab({
       role="tabpanel"
       aria-label="Messages"
       className="bg-white rounded-2xl border border-[#E3E0D9] overflow-hidden
-        grid grid-cols-1 md:grid-cols-[280px_1fr] min-h-[520px]"
+        grid grid-cols-1 md:grid-cols-[280px_1fr]"
     >
       {/* Thread list */}
       <div className="border-b md:border-b-0 md:border-r border-[#E3E0D9]">
@@ -140,7 +140,7 @@ export function MessagesTab({
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-4 max-h-[360px]">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-[160px] max-h-[500px]">
             {activeThread.messages.map((msg) => {
               const isMe = msg.senderId === "me";
               return (

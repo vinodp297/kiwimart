@@ -12,6 +12,106 @@ export const dynamic = "force-dynamic";
 
 const APP_VERSION = process.env.npm_package_version ?? "0.1.0";
 
+const CRON_JOBS: { name: string; schedule: string; scheduleLabel: string }[] = [
+  {
+    name: "auto-release",
+    schedule: "0 2 * * *",
+    scheduleLabel: "Daily 2:00 AM UTC",
+  },
+  {
+    name: "dispute-auto-resolve",
+    schedule: "0 3 * * *",
+    scheduleLabel: "Daily 3:00 AM UTC",
+  },
+  {
+    name: "expire-listings",
+    schedule: "30 3 * * *",
+    scheduleLabel: "Daily 3:30 AM UTC",
+  },
+  {
+    name: "delivery-reminders",
+    schedule: "0 4 * * *",
+    scheduleLabel: "Daily 4:00 AM UTC",
+  },
+  {
+    name: "seller-downgrade",
+    schedule: "0 6 * * *",
+    scheduleLabel: "Daily 6:00 AM UTC",
+  },
+  {
+    name: "daily-digest",
+    schedule: "0 7 * * *",
+    scheduleLabel: "Daily 7:00 AM UTC",
+  },
+  {
+    name: "price-drop-alerts",
+    schedule: "0 9 * * *",
+    scheduleLabel: "Daily 9:00 AM UTC",
+  },
+  {
+    name: "stripe-reconciliation",
+    schedule: "0 14 * * *",
+    scheduleLabel: "Daily 2:00 PM UTC",
+  },
+];
+
+interface CronJobRow {
+  name: string;
+  scheduleLabel: string;
+  lastRunAt: Date | null;
+  lastStatus: "success" | "error" | null;
+}
+
+async function getCronJobStatuses(): Promise<CronJobRow[]> {
+  try {
+    const latestRuns = await db.cronLog.findMany({
+      where: { jobName: { in: CRON_JOBS.map((j) => j.name) } },
+      orderBy: { startedAt: "desc" },
+      take: 200,
+    });
+    const byJob = new Map<string, { startedAt: Date; status: string }>();
+    for (const row of latestRuns) {
+      if (!byJob.has(row.jobName)) {
+        byJob.set(row.jobName, {
+          startedAt: row.startedAt,
+          status: row.status,
+        });
+      }
+    }
+    return CRON_JOBS.map((job) => {
+      const last = byJob.get(job.name);
+      return {
+        name: job.name,
+        scheduleLabel: job.scheduleLabel,
+        lastRunAt: last ? last.startedAt : null,
+        lastStatus: last ? (last.status as "success" | "error") : null,
+      };
+    });
+  } catch (err) {
+    logger.warn("system.cron_jobs.query_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return CRON_JOBS.map((job) => ({
+      name: job.name,
+      scheduleLabel: job.scheduleLabel,
+      lastRunAt: null,
+      lastStatus: null,
+    }));
+  }
+}
+
+function formatRelative(date: Date | null): string {
+  if (!date) return "Never";
+  const diffMs = Date.now() - date.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 interface ServiceStatus {
   name: string;
   status: "ok" | "error";
@@ -69,9 +169,10 @@ export default async function SystemPage() {
   const commitSha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null;
 
   // Run health checks in parallel
-  const [dbStatus, redisStatus] = await Promise.all([
+  const [dbStatus, redisStatus, cronJobs] = await Promise.all([
     checkDatabase(),
     checkRedis(),
+    getCronJobStatuses(),
   ]);
 
   const services = [dbStatus, redisStatus];
@@ -183,6 +284,53 @@ export default async function SystemPage() {
                   </span>
                   <p className="text-[11px] text-[#C9C5BC]">
                     {service.latencyMs}ms
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Cron Jobs */}
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
+          <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-4">
+            Cron Jobs
+          </h2>
+          <div className="space-y-3">
+            {cronJobs.map((job) => (
+              <div
+                key={job.name}
+                className="flex items-center justify-between py-3 border-b border-[#F0EDE8] last:border-0"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="inline-block w-3 h-3 rounded-full bg-emerald-500" />
+                  <div>
+                    <p className="text-[13.5px] font-semibold text-[#141414] font-mono">
+                      {job.name}
+                    </p>
+                    <p className="text-[12px] text-[#9E9A91]">
+                      {job.scheduleLabel} · Scheduled
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {job.lastStatus ? (
+                    <span
+                      className={`text-[12px] font-semibold ${
+                        job.lastStatus === "success"
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {job.lastStatus === "success" ? "Success" : "Failed"}
+                    </span>
+                  ) : (
+                    <span className="text-[12px] font-semibold text-[#C9C5BC]">
+                      No runs yet
+                    </span>
+                  )}
+                  <p className="text-[11px] text-[#C9C5BC]">
+                    {formatRelative(job.lastRunAt)}
                   </p>
                 </div>
               </div>

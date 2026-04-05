@@ -1482,3 +1482,21 @@ model DynamicListItem {
   @@index([listType, active, sortOrder])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cron Logs — records the last run time and outcome of each scheduled job
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CronLog {
+  id        String    @id @default(cuid())
+  jobName   String
+  status    String    // "success" | "error"
+  startedAt DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  detail    String?   @db.Text
+  createdAt DateTime  @default(now())
+
+  @@index([jobName, startedAt(sort: Desc)])
+  @@index([startedAt(sort: Desc)])
+}
+

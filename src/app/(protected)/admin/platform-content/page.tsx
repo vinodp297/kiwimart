@@ -1,5 +1,5 @@
-// src/app/(protected)/admin/lists/page.tsx
-// ─── Admin Dynamic Lists — Server Component ────────────────────────────────
+// src/app/(protected)/admin/platform-content/page.tsx
+// ─── Admin Platform Content — Server Component ─────────────────────────────
 
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { getListItems, getListTypeCounts } from "@/server/actions/admin-lists";

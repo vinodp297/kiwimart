@@ -176,7 +176,7 @@ export default function ListingActions({
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 md:p-6 sticky top-[88px]">
+      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 md:p-6 sticky top-[72px] z-0 isolate">
         {/* Price row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>

@@ -9,6 +9,7 @@ import {
   releaseExpiredOfferReservations,
 } from "@/server/jobs/expireListings";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
+import { recordCronRun } from "@/server/lib/cronLogger";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export async function GET(request: Request) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
+  const startedAt = new Date();
   try {
     logger.info("cron.expire_listings.triggered");
 
@@ -26,6 +28,7 @@ export async function GET(request: Request) {
       releaseExpiredOfferReservations(),
     ]);
 
+    await recordCronRun("expire-listings", "success", startedAt);
     return NextResponse.json({
       success: true,
       listings: listingResult,
@@ -33,10 +36,12 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
     });
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     logger.error("api.error", {
       path: "/api/cron/expire-listings",
-      error: e instanceof Error ? e.message : e,
+      error: msg,
     });
+    await recordCronRun("expire-listings", "error", startedAt, msg);
     return NextResponse.json(
       { error: "Listing expiration job failed." },
       { status: 500 },

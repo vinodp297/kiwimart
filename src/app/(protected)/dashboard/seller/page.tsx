@@ -189,15 +189,12 @@ export default function SellerDashboardPage() {
         <NavBar />
         <main className="bg-[#FAFAF8] min-h-screen">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-            <div className="animate-pulse space-y-4">
-              <div className="bg-[#141414] rounded-2xl h-48" />
-              <div className="bg-white rounded-2xl border border-[#E3E0D9] p-4 h-12" />
+            <div className="space-y-4">
+              <div className="skeleton-shimmer rounded-2xl h-48" />
+              <div className="skeleton-shimmer rounded-2xl h-12" />
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="bg-white rounded-2xl border border-[#E3E0D9] h-32"
-                  />
+                  <div key={i} className="skeleton-shimmer rounded-2xl h-32" />
                 ))}
               </div>
             </div>

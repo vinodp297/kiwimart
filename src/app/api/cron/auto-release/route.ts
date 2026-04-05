@@ -8,6 +8,7 @@ import { processAutoReleases } from "@/server/jobs/autoReleaseEscrow";
 import { sendDeliveryReminders } from "@/server/jobs/buyerReminders";
 import { sendDispatchReminders } from "@/server/jobs/dispatchReminders";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
+import { recordCronRun } from "@/server/lib/cronLogger";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,13 @@ export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
+  const startedAt = new Date();
   try {
     await sendDeliveryReminders();
     const dispatchResult = await sendDispatchReminders();
     const result = await processAutoReleases();
 
+    await recordCronRun("auto-release", "success", startedAt);
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -28,9 +31,9 @@ export async function GET(request: NextRequest) {
       dispatchReminders: dispatchResult,
     });
   } catch (error) {
-    logger.error("cron.auto_release.failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("cron.auto_release.failed", { error: msg });
+    await recordCronRun("auto-release", "error", startedAt, msg);
     return NextResponse.json(
       { success: false, error: "Job failed" },
       { status: 500 },

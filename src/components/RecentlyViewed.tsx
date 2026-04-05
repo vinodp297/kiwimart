@@ -8,8 +8,7 @@ import Link from "next/link";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
 import { getRecentlyViewed } from "@/lib/recently-viewed";
 import { getRecentlyViewedFromDB } from "@/server/actions/recentlyViewed";
-import { formatPrice, CONDITION_LABELS } from "@/lib/utils";
-import type { Condition } from "@/types";
+import { formatPrice, formatCondition } from "@/lib/utils";
 
 interface DisplayItem {
   id: string;
@@ -113,8 +112,7 @@ export default function RecentlyViewed({
               </p>
               {item.condition && (
                 <span className="text-[10px] text-[#9E9A91] mt-0.5 block">
-                  {CONDITION_LABELS[item.condition as Condition] ??
-                    item.condition}
+                  {formatCondition(item.condition)}
                 </span>
               )}
             </div>

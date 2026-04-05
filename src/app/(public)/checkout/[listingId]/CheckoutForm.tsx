@@ -15,7 +15,7 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { Button, Input, Select, Alert } from "@/components/ui/primitives";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, formatCondition } from "@/lib/utils";
 import { createOrder } from "@/server/actions/orders";
 
 const stripePromise = loadStripe(
@@ -557,7 +557,7 @@ function OrderSummary({
             {listing.title}
           </p>
           <p className="text-[12px] text-[#9E9A91] mt-0.5">
-            {listing.condition} · {listing.sellerName}
+            {formatCondition(listing.condition)} · {listing.sellerName}
           </p>
         </div>
       </div>

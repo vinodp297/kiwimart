@@ -48,8 +48,13 @@ export default function AdminUsersPage() {
       const params = new URLSearchParams({ page: String(page), q: search });
       const res = await fetch(`/api/admin/users?${params}`);
       if (res.ok) {
-        const data = await res.json();
-        setUsers(data.users);
+        const json = (await res.json()) as {
+          success: boolean;
+          data?: { users: AdminUser[] };
+        };
+        setUsers(json.data?.users ?? []);
+      } else {
+        setUsers([]);
       }
     } finally {
       setLoading(false);

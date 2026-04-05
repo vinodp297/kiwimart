@@ -47,7 +47,7 @@ const nextConfig: NextConfig = {
       {
         key: "Content-Security-Policy",
         value:
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://js.stripe.com https://app.posthog.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://*.cloudflare.com; font-src 'self'; frame-src https://challenges.cloudflare.com https://js.stripe.com; connect-src 'self' https://*.pusher.com wss://*.pusher.com https://app.posthog.com https://*.sentry.io; object-src 'none'; base-uri 'self'; form-action 'self';",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://js.stripe.com https://app.posthog.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://*.r2.dev https://*.cloudflare.com https://images.unsplash.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com https://js.stripe.com; connect-src 'self' https://*.pusher.com wss://*.pusher.com https://app.posthog.com https://*.sentry.io; object-src 'none'; base-uri 'self'; form-action 'self';",
       },
       { key: "X-Frame-Options", value: "DENY" },
       { key: "X-Content-Type-Options", value: "nosniff" },
@@ -78,6 +78,15 @@ const nextConfig: NextConfig = {
       { source: "/api/pusher/:path*", headers: corsHeaders },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: "/admin/lists",
+        destination: "/admin/platform-content",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 3600,
@@ -105,6 +114,11 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "pub-*.r2.dev",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "pub-2617903b3bbb49de8c16c6d5d59ca3ef.r2.dev",
         pathname: "/**",
       },
       {

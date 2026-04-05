@@ -25,6 +25,32 @@ import { getRedisClient } from "@/infrastructure/redis/client";
 // ── Constants ────────────────────────────────────────────────────────────────
 const CART_REDIS_TTL = 60 * 60 * 24 * 7; // 7 days in seconds
 
+// Redis is a best-effort cache for the active-cart session pointer.
+// If Upstash is not configured or unreachable, cart operations must still
+// succeed (the cart itself lives in Postgres). All Redis writes/reads go
+// through this helper so a Redis outage never breaks `addToCart`.
+async function safeRedisSet(key: string, value: string): Promise<void> {
+  try {
+    await getRedisClient().set(key, value, { ex: CART_REDIS_TTL });
+  } catch (err) {
+    console.error("[cart] redis set failed (non-fatal)", {
+      key,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function safeRedisDel(key: string): Promise<void> {
+  try {
+    await getRedisClient().del(key);
+  } catch (err) {
+    console.error("[cart] redis del failed (non-fatal)", {
+      key,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface CartData {
@@ -98,9 +124,7 @@ export class CartService {
         new Date(Date.now() + CART_EXPIRY_MS),
       );
 
-      await getRedisClient().set(`cart:active:${userId}`, existingCart.id, {
-        ex: CART_REDIS_TTL,
-      });
+      await safeRedisSet(`cart:active:${userId}`, existingCart.id);
 
       return {
         ok: true,
@@ -117,9 +141,7 @@ export class CartService {
       shippingNzd,
     });
 
-    await getRedisClient().set(`cart:active:${userId}`, newCart.id, {
-      ex: CART_REDIS_TTL,
-    });
+    await safeRedisSet(`cart:active:${userId}`, newCart.id);
 
     return { ok: true, data: { cartItemCount: newCart.items.length } };
   }
@@ -154,9 +176,7 @@ export class CartService {
       new Date(Date.now() + CART_EXPIRY_MS),
     );
 
-    await getRedisClient().set(`cart:active:${userId}`, cart.id, {
-      ex: CART_REDIS_TTL,
-    });
+    await safeRedisSet(`cart:active:${userId}`, cart.id);
 
     return { ok: true, data: { cartItemCount: cart.items.length - 1 } };
   }
@@ -165,7 +185,7 @@ export class CartService {
 
   async clearCart(userId: string): Promise<void> {
     await cartRepository.deleteCartByUser(userId);
-    await getRedisClient().del(`cart:active:${userId}`);
+    await safeRedisDel(`cart:active:${userId}`);
   }
 
   // ── getCart ────────────────────────────────────────────────────────────
@@ -272,7 +292,7 @@ export class CartService {
 
     if (new Date(cart.expiresAt) < new Date()) {
       await cartRepository.deleteCart(cart.id);
-      await getRedisClient().del(`cart:active:${userId}`);
+      await safeRedisDel(`cart:active:${userId}`);
       return {
         ok: false,
         error: "Your cart has expired. Please add items again.",
@@ -472,7 +492,7 @@ export class CartService {
         })
         .catch(() => {});
 
-      await getRedisClient().del(`cart:active:${userId}`);
+      await safeRedisDel(`cart:active:${userId}`);
 
       logger.info("cart.checkout.success", {
         userId,

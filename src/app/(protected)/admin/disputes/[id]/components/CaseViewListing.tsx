@@ -187,7 +187,8 @@ export default function CaseViewListing({
               </p>
               {listing.condition && (
                 <p className="text-[11.5px] text-[#73706A] mt-1">
-                  Condition: {listing.condition}
+                  Condition:{" "}
+                  {CONDITION_LABELS[listing.condition] ?? listing.condition}
                 </p>
               )}
               <p className="text-[12px] text-[#73706A] mt-2 line-clamp-4">

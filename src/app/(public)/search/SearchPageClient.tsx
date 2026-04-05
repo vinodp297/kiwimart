@@ -7,8 +7,8 @@ import CATEGORIES from "@/data/categories";
 import ListingCard from "@/components/ListingCard";
 import EmptyState from "@/components/EmptyState";
 import QuickFilterChips from "@/components/QuickFilterChips";
-import type { Condition, NZRegion, SortOption } from "@/types";
-import { CONDITION_LABELS } from "@/lib/utils";
+import type { NZRegion, SortOption } from "@/types";
+import { formatCondition } from "@/lib/utils";
 import Link from "next/link";
 import type { SearchResult } from "@/server/actions/search";
 
@@ -576,7 +576,7 @@ export default function SearchPageClient({
           )}
           {filters.condition && (
             <FilterPill
-              label={CONDITION_LABELS[filters.condition as Condition]}
+              label={formatCondition(filters.condition)}
               onRemove={() => updateFilter({ condition: "" })}
             />
           )}

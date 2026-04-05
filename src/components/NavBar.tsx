@@ -78,6 +78,25 @@ export default function NavBar() {
     return icons[type] ?? "🔔";
   }
 
+  function getNotifIconBg(type: string): string {
+    // Green for completed/positive, amber for warnings, neutral otherwise
+    const green = new Set([
+      "ORDER_COMPLETED",
+      "OFFER_ACCEPTED",
+      "ID_VERIFIED",
+      "ORDER_DISPATCHED",
+    ]);
+    const amber = new Set([
+      "ORDER_DISPUTED",
+      "OFFER_DECLINED",
+      "PRICE_DROP",
+      "WATCHLIST_SOLD",
+    ]);
+    if (green.has(type)) return "bg-emerald-50 ring-1 ring-emerald-100";
+    if (amber.has(type)) return "bg-amber-50 ring-1 ring-amber-100";
+    return "bg-[#F5ECD4]/60 ring-1 ring-[#F0EDE8]";
+  }
+
   function formatRelativeTime(dateStr: string): string {
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60_000);
@@ -367,7 +386,7 @@ export default function NavBar() {
 
                     {notifOpen && (
                       <div
-                        className="absolute top-full right-0 mt-2 w-72 bg-white
+                        className="absolute top-full right-0 mt-2 w-80 bg-white
                           border border-[#E3E0D9] rounded-2xl shadow-xl overflow-hidden
                           z-[300]"
                       >
@@ -379,13 +398,15 @@ export default function NavBar() {
                             Notifications
                           </p>
                           <button
-                            className="text-[11.5px] text-[#D4A843] font-semibold hover:text-[#B8912E]"
+                            className="text-[11px] font-semibold px-3 py-1.5 rounded-full
+                              bg-[#141414] text-white hover:opacity-80 active:scale-95
+                              transition-all"
                             onClick={markAllRead}
                           >
                             Mark all read
                           </button>
                         </div>
-                        <div className="divide-y divide-[#F8F7F4]">
+                        <div>
                           {notifications.length === 0 ? (
                             <div className="px-4 py-8 text-center">
                               <p className="text-[13px] text-[#9E9A91]">
@@ -399,15 +420,26 @@ export default function NavBar() {
                                 href={n.link ?? "/notifications"}
                                 onClick={() => setNotifOpen(false)}
                                 className={`flex items-start gap-3 px-4 py-3
-                                hover:bg-[#F8F7F4] cursor-pointer transition-colors
-                                ${!n.read ? "bg-[#F5ECD4]/40" : ""}`}
+                                hover:bg-gray-50 cursor-pointer transition-colors
+                                border-b border-[#F8F7F4] last:border-b-0 relative`}
                               >
-                                <span className="text-lg shrink-0 mt-0.5">
+                                {/* Unread blue dot indicator */}
+                                {!n.read && (
+                                  <span
+                                    className="absolute left-1.5 top-1/2 -translate-y-1/2
+                                      w-2 h-2 rounded-full bg-blue-500 shrink-0"
+                                    aria-label="Unread"
+                                  />
+                                )}
+                                <span
+                                  className={`w-10 h-10 rounded-full flex items-center
+                                    justify-center text-xl shrink-0 ${getNotifIconBg(n.type)}`}
+                                >
                                   {getNotifIcon(n.type)}
                                 </span>
                                 <div className="flex-1 min-w-0">
                                   <p
-                                    className={`text-[12px] text-[#141414] leading-snug ${!n.read ? "font-semibold" : ""}`}
+                                    className={`text-[12.5px] text-[#141414] leading-snug ${!n.read ? "font-semibold" : ""}`}
                                   >
                                     {n.title}
                                   </p>
@@ -418,18 +450,15 @@ export default function NavBar() {
                                     {formatRelativeTime(n.createdAt)}
                                   </p>
                                 </div>
-                                {!n.read && (
-                                  <div className="w-2 h-2 rounded-full bg-[#D4A843] shrink-0 mt-1.5" />
-                                )}
                               </Link>
                             ))
                           )}
                         </div>
                         <Link
                           href="/notifications"
-                          className="block text-center py-3 text-[12px] font-semibold
-                            text-[#D4A843] hover:text-[#B8912E] transition-colors
-                            border-t border-[#F0EDE8]"
+                          className="block w-full text-center px-4 py-3.5 text-[12.5px]
+                            font-semibold text-[#141414] hover:bg-gray-50
+                            transition-colors border-t border-[#F0EDE8]"
                         >
                           View all notifications
                         </Link>
