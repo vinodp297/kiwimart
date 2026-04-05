@@ -27,6 +27,41 @@ function sha256(val: string) {
   return createHash("sha256").update(val).digest("hex");
 }
 
+// ─── Listing images ──────────────────────────────────────────────────────────
+// Seed data uses Unsplash URLs directly — getImageUrl() returns any value
+// starting with "http" as-is, so these render without R2 uploads.
+const LISTING_IMAGE_FALLBACK =
+  "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
+
+function pickListingImage(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes("macbook") || t.includes("ipad") || t.includes("laptop"))
+    return "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800";
+  if (t.includes("iphone") || t.includes("phone"))
+    return "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=800";
+  if (t.includes("tv") || t.includes("television"))
+    return "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=800";
+  if (t.includes("headphone") || t.includes("wh-1000"))
+    return "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800";
+  if (t.includes("camera") || t.includes("canon eos") || t.includes("eos r"))
+    return "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800";
+  if (t.includes("dining table"))
+    return "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800";
+  if (t.includes("chair"))
+    return "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=800";
+  if (t.includes("kayak"))
+    return "https://images.unsplash.com/photo-1472745942893-4b9f730c7668?w=800";
+  if (t.includes("tent"))
+    return "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800";
+  if (t.includes("bike") || t.includes("bicycle"))
+    return "https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=800";
+  if (t.includes("watch") || t.includes("rolex"))
+    return "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
+  if (t.includes("jacket") || t.includes("coat"))
+    return "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800";
+  return LISTING_IMAGE_FALLBACK;
+}
+
 // ─── Wipe ────────────────────────────────────────────────────────────────────
 
 async function wipeDatabase() {
@@ -540,12 +575,14 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
         priceDroppedAt: data.priceDroppedAt ?? null,
       },
     });
-    // Add a listing image (R2 key placeholder)
+    // Add a listing image — Unsplash URL mapped to the title.
+    // getImageUrl() passes http(s) URLs through as-is, so no R2 upload needed.
+    const imageUrl = pickListingImage(data.title);
     await db.listingImage.create({
       data: {
         listingId: listing.id,
-        r2Key: `listings/${listing.id}/1.webp`,
-        thumbnailKey: `listings/${listing.id}/1-thumb.webp`,
+        r2Key: imageUrl,
+        thumbnailKey: imageUrl,
         order: 0,
         scanned: true,
         safe: true,
@@ -968,8 +1005,8 @@ async function makeSnapshot(
       isNegotiable: listing.isNegotiable,
       images: [
         {
-          r2Key: `listings/${listing.id}/1.webp`,
-          thumbnailKey: `listings/${listing.id}/1-thumb.webp`,
+          r2Key: pickListingImage(listing.title),
+          thumbnailKey: pickListingImage(listing.title),
           order: 0,
         },
       ],

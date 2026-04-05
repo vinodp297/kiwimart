@@ -6,15 +6,18 @@ import "server-only";
 // ensures values converge within 5 minutes of an admin change.
 
 import db from "@/lib/db";
+import { logger } from "@/shared/logger";
 import type { ConfigKey } from "./config-keys";
+import { CONFIG_DEFAULTS } from "./config-defaults";
 
 // ── Cache ────────────────────────────────────────────────────────────────────
 
 export const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const cache = new Map<string, { value: string; expiresAt: number }>();
+const warnedMissing = new Set<string>();
 
-// ── Raw reader (cache-first, DB fallback) ────────────────────────────────────
+// ── Raw reader (cache-first, DB fallback, static default as last resort) ────
 
 async function getRaw(key: ConfigKey): Promise<string> {
   const now = Date.now();
@@ -26,14 +29,31 @@ async function getRaw(key: ConfigKey): Promise<string> {
     select: { value: true },
   });
 
-  if (!config) {
-    throw new Error(
-      `PlatformConfig key not found: ${key}. Run seedPlatformConfig() to initialise.`,
-    );
+  if (config) {
+    cache.set(key, { value: config.value, expiresAt: now + CACHE_TTL_MS });
+    return config.value;
   }
 
-  cache.set(key, { value: config.value, expiresAt: now + CACHE_TTL_MS });
-  return config.value;
+  // DB row missing — fall back to the hardcoded default so pages don't crash.
+  // This path indicates PlatformConfig was not seeded; admins should run
+  // seedPlatformConfig() to make these values editable at runtime.
+  const fallback = CONFIG_DEFAULTS[key];
+  if (fallback !== undefined) {
+    if (!warnedMissing.has(key)) {
+      warnedMissing.add(key);
+      logger.warn("platform_config.missing_key_using_default", {
+        key,
+        fallback,
+      });
+    }
+    // Use a short TTL so an admin-run seed is picked up within a minute.
+    cache.set(key, { value: fallback, expiresAt: now + 60_000 });
+    return fallback;
+  }
+
+  throw new Error(
+    `PlatformConfig key not found: ${key}. Run seedPlatformConfig() to initialise.`,
+  );
 }
 
 // ── Typed getters ────────────────────────────────────────────────────────────
@@ -102,9 +122,27 @@ export async function getConfigMany(
       where: { key: { in: missing } },
       select: { key: true, value: true },
     });
+    const foundKeys = new Set<string>();
     for (const row of rows) {
       cache.set(row.key, { value: row.value, expiresAt: now + CACHE_TTL_MS });
       result.set(row.key as ConfigKey, row.value);
+      foundKeys.add(row.key);
+    }
+    // Fallback to static defaults for any keys that are still missing from
+    // the DB so callers never get a partial map.
+    for (const key of missing) {
+      if (foundKeys.has(key)) continue;
+      const fallback = CONFIG_DEFAULTS[key];
+      if (fallback === undefined) continue;
+      if (!warnedMissing.has(key)) {
+        warnedMissing.add(key);
+        logger.warn("platform_config.missing_key_using_default", {
+          key,
+          fallback,
+        });
+      }
+      cache.set(key, { value: fallback, expiresAt: now + 60_000 });
+      result.set(key, fallback);
     }
   }
 

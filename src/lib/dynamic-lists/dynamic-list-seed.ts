@@ -4,7 +4,6 @@
 // update so admin-set values are never overwritten.
 
 import type { PrismaClient, DynamicListType } from "@prisma/client";
-import dbDefault from "@/lib/db";
 
 interface SeedItem {
   value: string;
@@ -45,7 +44,16 @@ async function seedList(
 export async function seedDynamicLists(
   dbOverride?: PrismaClient,
 ): Promise<void> {
-  const db = (dbOverride ?? dbDefault) as PrismaClient;
+  // When no override is provided, lazily load the default server-only
+  // client so this module can be imported from plain Node contexts
+  // (e.g. prisma/seed.ts) without pulling in server-only.
+  let db: PrismaClient;
+  if (dbOverride) {
+    db = dbOverride;
+  } else {
+    const mod = await import("@/lib/db");
+    db = mod.default as unknown as PrismaClient;
+  }
 
   // ── BANNED_KEYWORDS ─────────────────────────────────────────────────────
   await seedList(db, "BANNED_KEYWORDS", [
