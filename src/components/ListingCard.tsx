@@ -17,9 +17,10 @@ import type { ListingCard as ListingCardType } from "@/types";
 import {
   formatPrice,
   relativeTime,
-  CONDITION_LABELS,
+  formatCondition,
   CONDITION_COLOURS,
 } from "@/lib/utils";
+import type { Condition } from "@/types";
 import { toggleWatch } from "@/server/actions/listings";
 
 interface Props {
@@ -182,9 +183,9 @@ export default memo(function ListingCard({ listing, priority = false }: Props) {
           <span
             className={`inline-flex items-center px-1.5 py-0.5 rounded-full
               text-[9.5px] font-semibold tracking-wide ring-1
-              ${CONDITION_COLOURS[listing.condition]}`}
+              ${CONDITION_COLOURS[String(listing.condition).toLowerCase().replace(/_/g, "-") as Condition] ?? "bg-[#F8F7F4] text-[#73706A] ring-[#C9C5BC]"}`}
           >
-            {CONDITION_LABELS[listing.condition]}
+            {formatCondition(listing.condition)}
           </span>
           {listing.offersEnabled && !isSold && (
             <span

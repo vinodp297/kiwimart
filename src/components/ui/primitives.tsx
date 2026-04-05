@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { forwardRef } from "react";
 import type { Condition } from "@/types";
-import { CONDITION_LABELS, CONDITION_COLOURS } from "@/lib/utils";
+import { CONDITION_COLOURS, formatCondition } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Button
@@ -295,17 +295,25 @@ export function ConditionBadge({
   condition,
   size = "sm",
 }: {
-  condition: Condition;
+  condition: Condition | string;
   size?: "sm" | "md";
 }) {
+  // Accept Prisma enum values ("LIKE_NEW"), legacy kebab ("like-new"),
+  // or snake_case — normalise to the kebab key used by CONDITION_COLOURS.
+  const normalized = String(condition)
+    .toLowerCase()
+    .replace(/_/g, "-") as Condition;
+  const colour =
+    CONDITION_COLOURS[normalized] ??
+    "bg-[#F8F7F4] text-[#73706A] ring-[#C9C5BC]";
   return (
     <span
       className={`inline-flex items-center rounded-full font-semibold tracking-wide ring-1
-        ${CONDITION_COLOURS[condition]}
+        ${colour}
         ${size === "sm" ? "px-2 py-0.5 text-[10.5px]" : "px-3 py-1 text-[12px]"}
       `}
     >
-      {CONDITION_LABELS[condition]}
+      {formatCondition(condition)}
     </span>
   );
 }

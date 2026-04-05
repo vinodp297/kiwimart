@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
 import { runSellerDowngradeCheck } from "@/server/jobs/sellerDowngradeCheck";
+import { recordCronRun } from "@/server/lib/cronLogger";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -15,17 +16,19 @@ export async function GET(request: NextRequest) {
   const authError = verifyCronSecret(request);
   if (authError) return authError;
 
+  const startedAt = new Date();
   try {
     const result = await runSellerDowngradeCheck();
+    await recordCronRun("seller-downgrade", "success", startedAt);
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
       data: result,
     });
   } catch (error) {
-    logger.error("cron.seller-downgrade.failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("cron.seller-downgrade.failed", { error: msg });
+    await recordCronRun("seller-downgrade", "error", startedAt, msg);
     return NextResponse.json(
       { success: false, error: "Seller downgrade check failed" },
       { status: 500 },

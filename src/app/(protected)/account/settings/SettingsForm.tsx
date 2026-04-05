@@ -3,7 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { updateProfile, deleteAccount } from "@/server/actions/account";
+import {
+  updateProfile,
+  deleteAccount,
+  changePassword,
+} from "@/server/actions/account";
 
 const NZ_REGIONS_DEFAULT = [
   "Auckland",
@@ -34,6 +38,16 @@ interface UserProfile {
   agreeMarketing: boolean;
 }
 
+type Visibility = "public" | "buyers" | "private";
+
+const sectionHeadingClass = "font-semibold text-[#141414] text-[16px] mb-5";
+const sectionCardClass =
+  "bg-white rounded-2xl border border-[#E3E0D9] p-6 scroll-mt-24";
+const inputClass =
+  "w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] text-[14px] " +
+  "text-[#141414] placeholder:text-[#C9C5BC] focus:outline-none " +
+  "focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition";
+
 export default function SettingsForm({
   user,
   regions,
@@ -54,16 +68,23 @@ export default function SettingsForm({
   const [saveError, setSaveError] = useState("");
   const [isPending, startTransition] = useTransition();
 
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [isPwPending, startPwTransition] = useTransition();
+
+  // Privacy state
+  const [visibility, setVisibility] = useState<Visibility>("public");
+  const [privacyToast, setPrivacyToast] = useState("");
+
   const router = useRouter();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [isDeleting, startDeleteTransition] = useTransition();
-
-  const inputClass =
-    "w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] text-[14px] " +
-    "text-[#141414] placeholder:text-[#C9C5BC] focus:outline-none " +
-    "focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition";
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -77,6 +98,32 @@ export default function SettingsForm({
         setSaveError(result.error);
       }
     });
+  }
+
+  function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    setPwError("");
+    setPwSuccess(false);
+    startPwTransition(async () => {
+      const result = await changePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+      if (result.success) {
+        setPwSuccess(true);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        setPwError(result.error);
+      }
+    });
+  }
+
+  function showPrivacyToast(msg: string) {
+    setPrivacyToast(msg);
+    setTimeout(() => setPrivacyToast(""), 2500);
   }
 
   // Calculate profile completeness
@@ -93,33 +140,24 @@ export default function SettingsForm({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-      {/* ── Left column: Profile form (3/5) ──────────────────────────── */}
-      <div className="lg:col-span-3 space-y-6">
-        {/* ── Section 1: Profile ───────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
-          <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
-            Profile settings
-          </h2>
+      {/* ── Left column: Main forms (3/5) ────────────────────────────── */}
+      <div className="lg:col-span-3 space-y-6 max-w-2xl">
+        {/* ── Profile section ───────────────────────────────────────── */}
+        <div id="profile" className={sectionCardClass}>
+          <h2 className={sectionHeadingClass}>Profile settings</h2>
 
           {saveError && (
-            <div
-              className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200
-              text-[13px] text-red-700"
-            >
+            <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-[13px] text-red-700">
               {saveError}
             </div>
           )}
           {saveSuccess && (
-            <div
-              className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200
-              text-[13px] text-emerald-700"
-            >
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[13px] text-emerald-700">
               Profile updated successfully.
             </div>
           )}
 
           <form onSubmit={handleSave} className="space-y-4">
-            {/* Display name */}
             <div>
               <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
                 Display name
@@ -135,7 +173,6 @@ export default function SettingsForm({
               />
             </div>
 
-            {/* Username (read-only) */}
             <div>
               <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
                 Username
@@ -152,7 +189,6 @@ export default function SettingsForm({
               </p>
             </div>
 
-            {/* Email (read-only + verified badge) */}
             <div>
               <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
                 Email address
@@ -166,18 +202,13 @@ export default function SettingsForm({
                   disabled
                 />
                 {user.emailVerified && (
-                  <span
-                    className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5
-                      rounded-full bg-emerald-50 border border-emerald-200
-                      text-[11px] font-semibold text-emerald-700"
-                  >
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-700">
                     Verified
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Region */}
             <div>
               <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
                 Region
@@ -185,9 +216,7 @@ export default function SettingsForm({
               <select
                 value={region}
                 onChange={(e) => setRegion(e.target.value)}
-                className="w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8]
-                  text-[14px] text-[#141414] focus:outline-none
-                  focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition"
+                className="w-full h-11 px-4 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] text-[14px] text-[#141414] focus:outline-none focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] transition"
               >
                 <option value="">Select your region</option>
                 {NZ_REGIONS.map((r) => (
@@ -198,8 +227,7 @@ export default function SettingsForm({
               </select>
             </div>
 
-            {/* Bio */}
-            <div id="bio">
+            <div>
               <label className="block text-[12.5px] font-semibold text-[#141414] mb-1.5">
                 Bio{" "}
                 <span className="text-[#9E9A91] font-normal">(optional)</span>
@@ -210,10 +238,7 @@ export default function SettingsForm({
                 placeholder="Tell buyers a little about yourself..."
                 rows={3}
                 maxLength={500}
-                className="w-full px-4 py-3 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8]
-                  text-[14px] text-[#141414] placeholder:text-[#C9C5BC]
-                  focus:outline-none focus:ring-2 focus:ring-[#D4A843]/30
-                  focus:border-[#D4A843] resize-none transition"
+                className="w-full px-4 py-3 rounded-xl border border-[#E3E0D9] bg-[#FAFAF8] text-[14px] text-[#141414] placeholder:text-[#C9C5BC] focus:outline-none focus:ring-2 focus:ring-[#D4A843]/30 focus:border-[#D4A843] resize-none transition"
               />
               <p className="text-[11.5px] text-[#9E9A91] mt-1 text-right">
                 {bio.length}/500
@@ -223,19 +248,210 @@ export default function SettingsForm({
             <button
               type="submit"
               disabled={isPending}
-              className="h-11 px-8 rounded-xl bg-[#D4A843] text-[#141414]
-                font-semibold text-[14px] hover:bg-[#B8912E] hover:text-white
-                transition-colors disabled:opacity-60"
+              className="h-11 px-8 rounded-xl bg-[#D4A843] text-[#141414] font-semibold text-[14px] hover:bg-[#B8912E] hover:text-white transition-colors disabled:opacity-60"
             >
               {isPending ? "Saving..." : "Save changes"}
             </button>
           </form>
         </div>
+
+        {/* ── Security section ──────────────────────────────────────── */}
+        <div id="security" className={sectionCardClass}>
+          <h2 className={sectionHeadingClass}>Security settings</h2>
+
+          {pwError && (
+            <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-[13px] text-red-700">
+              {pwError}
+            </div>
+          )}
+          {pwSuccess && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[13px] text-emerald-700">
+              Password changed successfully.
+            </div>
+          )}
+
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <label
+                htmlFor="current-password"
+                className="block text-[12.5px] font-semibold text-[#141414] mb-1.5"
+              >
+                Current password
+              </label>
+              <input
+                id="current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className={inputClass}
+                required
+                autoComplete="current-password"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="new-password"
+                className="block text-[12.5px] font-semibold text-[#141414] mb-1.5"
+              >
+                New password
+              </label>
+              <input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className={inputClass}
+                required
+                minLength={12}
+                autoComplete="new-password"
+              />
+              <p className="text-[11px] text-[#9E9A91] mt-1">
+                Min 12 characters, must include uppercase, lowercase, and a
+                number.
+              </p>
+            </div>
+
+            <div>
+              <label
+                htmlFor="confirm-password"
+                className="block text-[12.5px] font-semibold text-[#141414] mb-1.5"
+              >
+                Confirm new password
+              </label>
+              <input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={inputClass}
+                required
+                autoComplete="new-password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isPwPending}
+              className="h-11 px-8 rounded-xl bg-[#141414] text-white font-semibold text-[14px] hover:bg-[#D4A843] hover:text-[#141414] transition-colors disabled:opacity-60"
+            >
+              {isPwPending ? "Updating..." : "Update password"}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-[#F0EDE8]">
+            <p className="text-[13px] text-[#73706A] mb-3">
+              Need extra protection? Enable two-factor authentication for
+              additional account security.
+            </p>
+            <Link
+              href="/account/security"
+              className="inline-flex items-center justify-center h-9 px-5 rounded-full border border-[#E3E0D9] text-[13px] font-semibold text-[#141414] hover:border-[#D4A843] hover:text-[#D4A843] transition-colors"
+            >
+              Manage 2FA
+            </Link>
+          </div>
+        </div>
+
+        {/* ── Privacy section ───────────────────────────────────────── */}
+        <div id="privacy" className={sectionCardClass}>
+          <h2 className={sectionHeadingClass}>Privacy &amp; data</h2>
+
+          {privacyToast && (
+            <div className="mb-4 p-3 rounded-xl bg-blue-50 border border-blue-200 text-[13px] text-blue-700">
+              {privacyToast}
+            </div>
+          )}
+
+          <div className="space-y-6">
+            {/* Download my data */}
+            <div>
+              <p className="text-[13.5px] font-semibold text-[#141414] mb-1">
+                Download my data
+              </p>
+              <p className="text-[12.5px] text-[#73706A] mb-3 leading-relaxed">
+                Export a copy of your account data including profile, orders,
+                messages, and listings in a machine-readable format.
+              </p>
+              <button
+                type="button"
+                onClick={() => showPrivacyToast("Coming soon")}
+                className="inline-flex items-center justify-center h-9 px-5 rounded-full border border-[#E3E0D9] text-[13px] font-semibold text-[#141414] hover:border-[#D4A843] hover:text-[#D4A843] transition-colors"
+              >
+                Download my data
+              </button>
+            </div>
+
+            <div className="pt-6 border-t border-[#F0EDE8]">
+              <p className="text-[13.5px] font-semibold text-[#141414] mb-1">
+                Who can see my profile
+              </p>
+              <p className="text-[12.5px] text-[#73706A] mb-3 leading-relaxed">
+                Control who can view your profile page, listings history, and
+                public activity.
+              </p>
+              <fieldset className="space-y-2.5">
+                {[
+                  {
+                    value: "public" as const,
+                    label: "Public",
+                    desc: "Anyone on the internet can view your profile.",
+                  },
+                  {
+                    value: "buyers" as const,
+                    label: "Buyers only",
+                    desc: "Only signed-in KiwiMart members can view your profile.",
+                  },
+                  {
+                    value: "private" as const,
+                    label: "Private",
+                    desc: "Only you and users you transact with can see your profile.",
+                  },
+                ].map(({ value, label, desc }) => (
+                  <label
+                    key={value}
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                      visibility === value
+                        ? "border-[#D4A843] bg-[#F5ECD4]/20"
+                        : "border-[#E3E0D9] hover:bg-[#FAFAF8]"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      value={value}
+                      checked={visibility === value}
+                      onChange={() => setVisibility(value)}
+                      className="mt-0.5 accent-[#D4A843]"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-[#141414]">
+                        {label}
+                      </p>
+                      <p className="text-[12px] text-[#73706A] leading-snug">
+                        {desc}
+                      </p>
+                    </div>
+                  </label>
+                ))}
+              </fieldset>
+              <button
+                type="button"
+                onClick={() =>
+                  showPrivacyToast("Privacy preferences saved (coming soon)")
+                }
+                className="mt-4 h-11 px-8 rounded-xl bg-[#D4A843] text-[#141414] font-semibold text-[14px] hover:bg-[#B8912E] hover:text-white transition-colors"
+              >
+                Save privacy preferences
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ── Right column: Progress + notifications + actions (2/5) ──── */}
-      <div className="lg:col-span-2 space-y-6">
-        {/* ── Profile completeness card ────────────────────────────── */}
+      {/* ── Right column: sticky sidebar (2/5) ───────────────────────── */}
+      <div className="lg:col-span-2 space-y-6 lg:sticky lg:top-24 lg:self-start">
+        {/* Profile completeness */}
         <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
           <h2 className="font-semibold text-[#141414] text-[16px] mb-4">
             Profile completeness
@@ -290,14 +506,12 @@ export default function SettingsForm({
           </ul>
         </div>
 
-        {/* ── Section 2: Notification preferences ──────────────────── */}
+        {/* Notification preferences */}
         <div
           id="notifications"
-          className="bg-white rounded-2xl border border-[#E3E0D9] p-6"
+          className="bg-white rounded-2xl border border-[#E3E0D9] p-6 scroll-mt-24"
         >
-          <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
-            Notifications
-          </h2>
+          <h2 className={sectionHeadingClass}>Notification preferences</h2>
           <div className="space-y-4">
             {[
               {
@@ -343,13 +557,10 @@ export default function SettingsForm({
                   role="switch"
                   aria-checked={value}
                   onClick={() => set((v: boolean) => !v)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full
-                    transition-colors shrink-0
-                    ${value ? "bg-[#D4A843]" : "bg-[#E3E0D9]"}`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${value ? "bg-[#D4A843]" : "bg-[#E3E0D9]"}`}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow
-                      transition-transform ${value ? "translate-x-6" : "translate-x-1"}`}
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${value ? "translate-x-6" : "translate-x-1"}`}
                   />
                 </button>
               </div>
@@ -357,42 +568,15 @@ export default function SettingsForm({
           </div>
         </div>
 
-        {/* ── Section 3: Account actions ────────────────────────────── */}
-        <div
-          id="security"
-          className="bg-white rounded-2xl border border-[#E3E0D9] p-6"
-        >
+        {/* Account actions */}
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6">
           <h2 className="font-semibold text-[#141414] text-[16px] mb-5">
             Account actions
           </h2>
           <div className="space-y-3">
             <Link
-              href="/account/security"
-              className="flex items-center justify-between px-4 py-3.5
-                rounded-xl border border-[#E3E0D9] hover:border-[#D4A843]
-                hover:bg-[#F5ECD4]/20 transition-colors group"
-            >
-              <span className="text-[13.5px] font-medium text-[#141414]">
-                Change password
-              </span>
-              <svg
-                className="text-[#9E9A91] group-hover:text-[#D4A843] transition-colors"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </Link>
-
-            <Link
               href="/account/verify"
-              className="flex items-center justify-between px-4 py-3.5
-                rounded-xl border border-[#E3E0D9] hover:border-[#D4A843]
-                hover:bg-[#F5ECD4]/20 transition-colors group"
+              className="flex items-center justify-between px-4 py-3.5 rounded-xl border border-[#E3E0D9] hover:border-[#D4A843] hover:bg-[#F5ECD4]/20 transition-colors group"
             >
               <span className="text-[13.5px] font-medium text-[#141414]">
                 Verify your identity
@@ -412,9 +596,7 @@ export default function SettingsForm({
 
             <button
               onClick={() => setShowDeleteModal(true)}
-              className="w-full flex items-center justify-between px-4 py-3.5
-                rounded-xl border border-red-200 text-red-500
-                hover:border-red-400 hover:bg-red-50 transition-colors"
+              className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl border border-red-200 text-red-500 hover:border-red-400 hover:bg-red-50 transition-colors"
             >
               <span className="text-[13.5px] font-medium">
                 Delete my account
@@ -438,8 +620,7 @@ export default function SettingsForm({
       {/* ── Delete account confirmation modal ───────────────────────── */}
       {showDeleteModal && (
         <div
-          className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm
-            flex items-center justify-center p-4"
+          className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowDeleteModal(false);
@@ -449,10 +630,7 @@ export default function SettingsForm({
           }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
-            <div
-              className="w-12 h-12 rounded-full bg-red-50 flex items-center
-                justify-center mb-4"
-            >
+            <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4">
               <svg
                 width="22"
                 height="22"
@@ -466,10 +644,7 @@ export default function SettingsForm({
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <h2
-              className="font-[family-name:var(--font-playfair)] text-[1.25rem]
-              font-semibold text-[#141414] mb-2"
-            >
+            <h2 className="font-[family-name:var(--font-playfair)] text-[1.25rem] font-semibold text-[#141414] mb-2">
               Delete your account?
             </h2>
             <p className="text-[13.5px] text-[#73706A] leading-relaxed mb-4">
@@ -500,9 +675,7 @@ export default function SettingsForm({
                   setDeleteConfirmText("");
                   setDeleteError("");
                 }}
-                className="flex-1 h-11 rounded-xl border border-[#E3E0D9]
-                  text-[13.5px] font-semibold text-[#141414]
-                  hover:bg-[#F8F7F4] transition-colors"
+                className="flex-1 h-11 rounded-xl border border-[#E3E0D9] text-[13.5px] font-semibold text-[#141414] hover:bg-[#F8F7F4] transition-colors"
               >
                 Cancel
               </button>
@@ -519,10 +692,7 @@ export default function SettingsForm({
                     }
                   });
                 }}
-                className="flex-1 h-11 rounded-xl bg-red-500 text-white
-                  text-[13.5px] font-semibold flex items-center justify-center
-                  hover:bg-red-600 transition-colors
-                  disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 h-11 rounded-xl bg-red-500 text-white text-[13.5px] font-semibold flex items-center justify-center hover:bg-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isDeleting ? "Deleting..." : "Delete my account"}
               </button>

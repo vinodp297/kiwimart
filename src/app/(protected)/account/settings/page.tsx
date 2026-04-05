@@ -45,7 +45,7 @@ export default async function AccountSettingsPage() {
     <>
       <NavBar />
       <main className="bg-[#FAFAF8] min-h-screen">
-        <div className="max-w-5xl mx-auto px-4 py-12">
+        <div className="max-w-6xl mx-auto px-4 py-12">
           <h1
             className="font-[family-name:var(--font-playfair)] text-[2rem]
               font-semibold text-[#141414] mb-2"
@@ -90,15 +90,10 @@ export default async function AccountSettingsPage() {
                   bio={user.bio}
                 />
               </div>
-              <div id="profile">
-                <SettingsForm user={user} regions={regions} />
-              </div>
+              <SettingsForm user={user} regions={regions} />
 
               {blockedUsers.length > 0 && (
-                <div
-                  id="privacy"
-                  className="border-t border-[#E3E0D9] pt-6 mt-6"
-                >
+                <div className="mt-6 bg-white rounded-2xl border border-[#E3E0D9] p-6">
                   <h3 className="font-semibold text-[14px] text-[#141414] mb-3">
                     Blocked Users ({blockedUsers.length})
                   </h3>

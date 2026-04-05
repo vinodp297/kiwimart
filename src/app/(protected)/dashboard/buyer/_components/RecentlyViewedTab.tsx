@@ -4,8 +4,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/primitives";
-import { formatPrice, CONDITION_LABELS } from "@/lib/utils";
-import type { Condition } from "@/types";
+import { formatPrice, formatCondition } from "@/lib/utils";
 import {
   getRecentlyViewedFromDB,
   type RecentlyViewedRow,
@@ -95,7 +94,7 @@ export function RecentlyViewedTab() {
               {formatPrice(item.price)}
             </p>
             <span className="text-[10px] text-[#9E9A91] mt-0.5 block">
-              {CONDITION_LABELS[item.condition as Condition] ?? item.condition}
+              {formatCondition(item.condition)}
             </span>
           </div>
         </Link>

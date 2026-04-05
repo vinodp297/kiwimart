@@ -65,8 +65,8 @@ const ALL_NAV_ITEMS: NavItem[] = [
     permission: "VIEW_AUDIT_LOGS",
   },
   {
-    href: "/admin/lists",
-    label: "Lists",
+    href: "/admin/platform-content",
+    label: "Platform Content",
     icon: "📝",
     permission: "VIEW_DYNAMIC_LISTS",
   },

@@ -242,12 +242,12 @@ export default function ListsClient({
       <div className="bg-[#141414] text-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
           <p className="text-[11px] text-white/40 uppercase tracking-wider mb-2">
-            Admin / Content
+            Admin / Platform Content
           </p>
           <div className="flex items-center gap-3 mb-1">
             <span className="text-[#D4A843] text-xl">{"\u{1F4DD}"}</span>
             <h1 className="font-[family-name:var(--font-playfair)] text-[1.75rem] font-semibold">
-              Dynamic Lists
+              Platform Content Manager
             </h1>
           </div>
           <p className="text-white/50 text-[13.5px]">
