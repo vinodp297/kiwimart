@@ -88,15 +88,18 @@ export default function NotFound() {
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {[
-                { href: "/search?category=electronics", label: "Electronics" },
-                { href: "/search?category=fashion", label: "Fashion" },
                 {
-                  href: "/search?category=home-garden",
+                  href: "/search?category=cat-electronics",
+                  label: "Electronics",
+                },
+                { href: "/search?category=cat-fashion", label: "Fashion" },
+                {
+                  href: "/search?category=cat-home",
                   label: "Home & Garden",
                 },
-                { href: "/search?category=sport-outdoors", label: "Sports" },
+                { href: "/search?category=cat-sports", label: "Sports" },
                 {
-                  href: "/search?category=collectibles",
+                  href: "/search?category=cat-collectibles",
                   label: "Collectibles",
                 },
               ].map(({ href, label }) => (

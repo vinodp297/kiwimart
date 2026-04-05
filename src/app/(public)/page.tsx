@@ -7,7 +7,6 @@ import { getCached } from "@/server/lib/cache";
 import CATEGORIES from "@/data/categories";
 import LISTINGS from "@/data/listings";
 
-const HIDDEN_CATEGORY_IDS = ["property"];
 import ListingCard from "@/components/ListingCard";
 import CategoryPills from "@/components/CategoryPills";
 import TrustBadge from "@/components/TrustBadge";
@@ -262,14 +261,10 @@ export default async function HomePage() {
     ? Object.fromEntries(categoryCounts.map((c) => [c.categoryId, c._count.id]))
     : {};
 
-  const visibleCategories = CATEGORIES.filter(
-    (cat) => !HIDDEN_CATEGORY_IDS.includes(cat.id),
-  )
-    .map((cat) => ({
-      ...cat,
-      listingCount: countMap[cat.id] ?? cat.listingCount,
-    }))
-    .slice(0, 8);
+  const visibleCategories = CATEGORIES.map((cat) => ({
+    ...cat,
+    listingCount: countMap[cat.id] ?? cat.listingCount,
+  })).slice(0, 8);
 
   // Format stats — use real data if available, fall back to mock
   const STATS = [
@@ -420,9 +415,7 @@ export default async function HomePage() {
                     [background-repeat:no-repeat] [background-position:right_14px_center]"
                 >
                   <option value="">All categories</option>
-                  {CATEGORIES.filter(
-                    (c) => !HIDDEN_CATEGORY_IDS.includes(c.id),
-                  ).map((c) => (
+                  {CATEGORIES.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.icon} {c.name}
                     </option>

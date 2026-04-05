@@ -77,8 +77,10 @@ export function NewMessageForm({
         return;
       }
 
-      // Redirect to buyer dashboard messages tab
-      router.push("/dashboard/buyer");
+      // Redirect straight to the new conversation in the messages tab
+      router.push(
+        `/dashboard/buyer?tab=messages&conversationId=${result.data.threadId}`,
+      );
     } catch {
       setError(
         "Your message couldn't be sent. Please check your connection and try again.",

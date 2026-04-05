@@ -34,8 +34,12 @@ type Tab = "orders" | "watchlist" | "messages" | "recently-viewed";
 export default function BuyerDashboardPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const conversationId = searchParams.get("conversationId");
   const initialTab = (searchParams.get("tab") as Tab) || "orders";
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  // If a conversationId is provided, default directly to the messages tab
+  const [activeTab, setActiveTab] = useState<Tab>(
+    conversationId ? "messages" : initialTab,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,8 +81,14 @@ export default function BuyerDashboardPage() {
           setOrders(result.data.orders);
           setWatchlist(result.data.watchlist);
           setThreads(result.data.threads);
+          // If arriving from "Message seller" with a specific conversationId,
+          // pre-select that thread; otherwise fall back to the first one.
           if (result.data.threads.length > 0) {
-            setActiveThread(result.data.threads[0] ?? null);
+            const target = conversationId
+              ? (result.data.threads.find((t) => t.id === conversationId) ??
+                result.data.threads[0])
+              : result.data.threads[0];
+            setActiveThread(target ?? null);
           }
         } else {
           setError(result.error);
