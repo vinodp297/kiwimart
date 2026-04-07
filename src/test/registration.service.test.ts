@@ -12,6 +12,8 @@ process.env.MOBILE_JWT_SECRET = "test-jwt-secret-key-minimum-32-chars-xxxx";
 
 // ── In-memory Redis store shared across mobile-auth functions ─────────────────
 const redisStore = new Map<string, string>();
+// Separate set store for SADD/SMEMBERS/SREM operations (session sets)
+const setStore = new Map<string, Set<string>>();
 const mockRedis = {
   set: vi.fn().mockImplementation(async (key: string, value: string) => {
     redisStore.set(key, value);
@@ -29,6 +31,25 @@ const mockRedis = {
     const prefix = pattern.endsWith(":*") ? pattern.slice(0, -1) : pattern;
     return [...redisStore.keys()].filter((k) => k.startsWith(prefix));
   }),
+  sadd: vi
+    .fn()
+    .mockImplementation(async (key: string, ...members: string[]) => {
+      if (!setStore.has(key)) setStore.set(key, new Set());
+      members.forEach((m) => setStore.get(key)!.add(m));
+      return members.length;
+    }),
+  smembers: vi.fn().mockImplementation(async (key: string) => {
+    return [...(setStore.get(key) ?? [])];
+  }),
+  srem: vi
+    .fn()
+    .mockImplementation(async (key: string, ...members: string[]) => {
+      const s = setStore.get(key);
+      if (!s) return 0;
+      members.forEach((m) => s.delete(m));
+      return members.length;
+    }),
+  expire: vi.fn().mockResolvedValue(1),
 };
 
 // ── Additional mocks ──────────────────────────────────────────────────────────
@@ -824,6 +845,7 @@ describe("mobile token revocation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     redisStore.clear();
+    setStore.clear();
     // Re-wire redis implementations
     mockRedis.set.mockImplementation(async (key: string, value: string) => {
       redisStore.set(key, value);
@@ -840,6 +862,25 @@ describe("mobile token revocation", () => {
       const prefix = pattern.endsWith(":*") ? pattern.slice(0, -1) : pattern;
       return [...redisStore.keys()].filter((k) => k.startsWith(prefix));
     });
+    mockRedis.sadd.mockImplementation(
+      async (key: string, ...members: string[]) => {
+        if (!setStore.has(key)) setStore.set(key, new Set());
+        members.forEach((m) => setStore.get(key)!.add(m));
+        return members.length;
+      },
+    );
+    mockRedis.smembers.mockImplementation(async (key: string) => {
+      return [...(setStore.get(key) ?? [])];
+    });
+    mockRedis.srem.mockImplementation(
+      async (key: string, ...members: string[]) => {
+        const s = setStore.get(key);
+        if (!s) return 0;
+        members.forEach((m) => s.delete(m));
+        return members.length;
+      },
+    );
+    mockRedis.expire.mockResolvedValue(1);
   });
 
   it("logout route revokes the specific token jti in Redis", async () => {

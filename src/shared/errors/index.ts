@@ -32,7 +32,8 @@ export type ErrorCode =
   | "STRIPE_NOT_ONBOARDED"
   | "INVALID_CATEGORY"
   | "IMAGE_VALIDATION_FAILED"
-  | "ACCOUNT_BANNED";
+  | "ACCOUNT_BANNED"
+  | "AUTH_SERVICE_UNAVAILABLE";
 
 export class AppError extends Error {
   constructor(
@@ -96,6 +97,14 @@ export class AppError extends Error {
       "RATE_LIMITED",
       "Too many requests. Please wait before trying again.",
       429,
+    );
+  }
+
+  static authServiceUnavailable(): AppError {
+    return new AppError(
+      "AUTH_SERVICE_UNAVAILABLE",
+      "Authentication service is temporarily unavailable. Please try again shortly.",
+      503,
     );
   }
 }

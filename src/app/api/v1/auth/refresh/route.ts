@@ -3,6 +3,7 @@
 // POST /api/v1/auth/refresh — verify existing Bearer token, issue a fresh one.
 
 import { verifyMobileToken, signMobileToken } from "@/lib/mobile-auth";
+import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "../../_helpers/response";
 import { getCorsHeaders, withCors } from "../../_helpers/cors";
@@ -40,6 +41,12 @@ export async function POST(request: Request) {
       request.headers.get("origin"),
     );
   } catch (e) {
+    if (e instanceof AppError) {
+      return withCors(
+        apiError(e.message, e.statusCode, e.code),
+        request.headers.get("origin"),
+      );
+    }
     logger.error("api.error", {
       path: "/api/v1/auth/refresh",
       error: e instanceof Error ? e.message : e,

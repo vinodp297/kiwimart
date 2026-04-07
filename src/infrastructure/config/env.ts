@@ -7,18 +7,25 @@
 // Do NOT import it in any file that runs during the Next.js build
 // unless all env vars are present in the build environment.
 
-import { z } from 'zod'
+import { z } from "zod";
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z
+    .enum(["development", "test", "production"])
+    .default("development"),
   NEXT_PUBLIC_APP_URL: z.string().url(),
   DATABASE_URL: z.string().min(1),
   DATABASE_DIRECT_URL: z.string().min(1),
-  NEXTAUTH_SECRET: z.string().min(32, 'AUTH_SECRET must be at least 32 characters. Generate with: openssl rand -base64 32'),
+  NEXTAUTH_SECRET: z
+    .string()
+    .min(
+      32,
+      "AUTH_SECRET must be at least 32 characters. Generate with: openssl rand -base64 32",
+    ),
   NEXTAUTH_URL: z.string().url(),
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().startsWith('pk_'),
-  STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
-  STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().startsWith("pk_"),
+  STRIPE_SECRET_KEY: z.string().startsWith("sk_"),
+  STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
   STRIPE_CONNECT_CLIENT_ID: z.string().optional(),
   PUSHER_APP_ID: z.string().min(1),
   PUSHER_KEY: z.string().min(1),
@@ -36,6 +43,13 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1),
   RESEND_API_KEY: z.string().min(1),
   EMAIL_FROM: z.string().min(1),
+  MOBILE_JWT_SECRET: z
+    .string()
+    .min(
+      32,
+      "MOBILE_JWT_SECRET must be at least 32 characters. Generate with: openssl rand -base64 32",
+    )
+    .optional(),
   CRON_SECRET: z.string().min(16),
   WORKER_SECRET: z.string().min(16),
   ADMIN_EMAIL: z.string().email().optional(),
@@ -44,45 +58,84 @@ const envSchema = z.object({
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_HOST: z.string().optional(),
-})
+});
 
-export type Env = z.infer<typeof envSchema>
+export type Env = z.infer<typeof envSchema>;
 
 function validateEnv(): Env {
-  const result = envSchema.safeParse(process.env)
+  const result = envSchema.safeParse(process.env);
   if (!result.success) {
-    const errors = result.error.flatten().fieldErrors
+    const errors = result.error.flatten().fieldErrors;
     const missing = Object.entries(errors)
-      .map(([key, msgs]) => `  ${key}: ${msgs?.join(', ')}`)
-      .join('\n')
+      .map(([key, msgs]) => `  ${key}: ${msgs?.join(", ")}`)
+      .join("\n");
     throw new Error(
       `\n❌ Invalid environment variables:\n${missing}\n` +
-      `\nCheck your .env.local file and Vercel environment settings.`
-    )
+        `\nCheck your .env.local file and Vercel environment settings.`,
+    );
   }
 
   // ── Turnstile production enforcement ────────────────────────────────────
   // Cloudflare test keys (1x/2x prefix) auto-pass all challenges — zero bot
   // protection. Hard-fail in production so test keys can never ship.
-  if (result.data.NODE_ENV === 'production') {
-    const turnstileSiteKey = result.data.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''
-    const turnstileSecretKey = result.data.CLOUDFLARE_TURNSTILE_SECRET_KEY ?? ''
+  if (result.data.NODE_ENV === "production") {
+    const turnstileSiteKey = result.data.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+    const turnstileSecretKey =
+      result.data.CLOUDFLARE_TURNSTILE_SECRET_KEY ?? "";
 
-    const siteKeyBad = !turnstileSiteKey || turnstileSiteKey.startsWith('1x') || turnstileSiteKey.startsWith('2x')
-    const secretKeyBad = !turnstileSecretKey || turnstileSecretKey.startsWith('1x') || turnstileSecretKey.startsWith('2x')
+    const siteKeyBad =
+      !turnstileSiteKey ||
+      turnstileSiteKey.startsWith("1x") ||
+      turnstileSiteKey.startsWith("2x");
+    const secretKeyBad =
+      !turnstileSecretKey ||
+      turnstileSecretKey.startsWith("1x") ||
+      turnstileSecretKey.startsWith("2x");
 
     if (siteKeyBad || secretKeyBad) {
       throw new Error(
-        '\n❌ PRODUCTION DEPLOYMENT BLOCKED: Turnstile keys are missing or using test keys!\n' +
-        '   Bot protection would be completely DISABLED in production.\n' +
-        '   Get real keys at: https://dash.cloudflare.com/turnstile\n' +
-        '   Set NEXT_PUBLIC_TURNSTILE_SITE_KEY and CLOUDFLARE_TURNSTILE_SECRET_KEY\n' +
-        `   Site key bad: ${siteKeyBad} | Secret key bad: ${secretKeyBad}\n`
-      )
+        "\n❌ PRODUCTION DEPLOYMENT BLOCKED: Turnstile keys are missing or using test keys!\n" +
+          "   Bot protection would be completely DISABLED in production.\n" +
+          "   Get real keys at: https://dash.cloudflare.com/turnstile\n" +
+          "   Set NEXT_PUBLIC_TURNSTILE_SITE_KEY and CLOUDFLARE_TURNSTILE_SECRET_KEY\n" +
+          `   Site key bad: ${siteKeyBad} | Secret key bad: ${secretKeyBad}\n`,
+      );
+    }
+
+    // ── MOBILE_JWT_SECRET production enforcement ─────────────────────────────
+    // Must be set, at least 32 chars, and not a weak/default value.
+    const mobileJwtSecret = result.data.MOBILE_JWT_SECRET ?? "";
+    if (!mobileJwtSecret || mobileJwtSecret.length < 32) {
+      throw new Error(
+        "\n❌ PRODUCTION DEPLOYMENT BLOCKED: MOBILE_JWT_SECRET is missing or too short!\n" +
+          "   Mobile JWT signing would be insecure or broken in production.\n" +
+          "   Generate a secure secret with: openssl rand -base64 32\n" +
+          "   Set MOBILE_JWT_SECRET in your Vercel environment settings.\n",
+      );
+    }
+    const WEAK_MOBILE_JWT_VALUES = [
+      "secret",
+      "password",
+      "changeme",
+      "mobile_jwt_secret",
+      "mobile-jwt-secret",
+    ];
+    const isAllSameChar = mobileJwtSecret
+      .split("")
+      .every((c) => c === mobileJwtSecret[0]);
+    const isWeak = WEAK_MOBILE_JWT_VALUES.some((w) =>
+      mobileJwtSecret.toLowerCase().includes(w),
+    );
+    if (isAllSameChar || isWeak) {
+      throw new Error(
+        "\n❌ PRODUCTION DEPLOYMENT BLOCKED: MOBILE_JWT_SECRET is weak or uses a known default value!\n" +
+          "   The secret must be randomly generated and unpredictable.\n" +
+          "   Generate a secure secret with: openssl rand -base64 32\n",
+      );
     }
   }
 
-  return result.data
+  return result.data;
 }
 
-export const env = validateEnv()
+export const env = validateEnv();
