@@ -217,9 +217,12 @@ describe("OfferService", () => {
         if (typeof cb === "function") return await cb(db as never);
         return [] as never;
       });
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
+      // accept() → updateMany WHERE status='PENDING' → count: 1
+      // declineCompetitors() → updateMany WHERE listingId, id: {not} → count: 0
+      vi.mocked(db.offer.updateMany)
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 0 } as never);
       vi.mocked(db.listing.update).mockResolvedValue({} as never);
-      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 0 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "ACCEPT" },
@@ -233,7 +236,8 @@ describe("OfferService", () => {
 
     it("declines offer without changing listing", async () => {
       vi.mocked(db.offer.findUnique).mockResolvedValue(mockOffer as never);
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
+      // decline() now uses updateMany WHERE status='PENDING'
+      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 1 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "DECLINE" },
@@ -241,7 +245,7 @@ describe("OfferService", () => {
         "127.0.0.1",
       );
 
-      expect(db.offer.update).toHaveBeenCalledWith(
+      expect(db.offer.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: "DECLINED" }),
         }),
@@ -309,9 +313,12 @@ describe("OfferService", () => {
         if (typeof cb === "function") return await cb(db as never);
         return [] as never;
       });
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
       vi.mocked(db.listing.update).mockResolvedValue({} as never);
-      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 3 } as never);
+      // First updateMany = accept() WHERE status='PENDING' → count: 1
+      // Second updateMany = declineCompetitors() WHERE listingId, id:{not} → count: 3
+      vi.mocked(db.offer.updateMany)
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 3 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "ACCEPT" },
@@ -320,16 +327,22 @@ describe("OfferService", () => {
       );
 
       expect(db.$transaction).toHaveBeenCalled();
-      expect(db.offer.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            listingId: "listing-1",
-            id: { not: "offer-1" },
-            status: "PENDING",
-          }),
-          data: expect.objectContaining({ status: "DECLINED" }),
-        }),
+      // Verify declineCompetitors was called (the second updateMany call)
+      const updateManyCalls = vi.mocked(db.offer.updateMany).mock.calls;
+      const competitorCall = updateManyCalls.find(
+        (call) =>
+          (call[0] as { where?: { listingId?: string } })?.where?.listingId ===
+          "listing-1",
       );
+      expect(competitorCall).toBeDefined();
+      expect(competitorCall?.[0]).toMatchObject({
+        where: expect.objectContaining({
+          listingId: "listing-1",
+          id: { not: "offer-1" },
+          status: "PENDING",
+        }),
+        data: expect.objectContaining({ status: "DECLINED" }),
+      });
     });
 
     it("acquires distributed lock when accepting offer", async () => {
@@ -338,9 +351,10 @@ describe("OfferService", () => {
         if (typeof cb === "function") return await cb(db as never);
         return [] as never;
       });
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
       vi.mocked(db.listing.update).mockResolvedValue({} as never);
-      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 0 } as never);
+      vi.mocked(db.offer.updateMany)
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 0 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "ACCEPT" },
@@ -356,7 +370,7 @@ describe("OfferService", () => {
 
     it("does not use lock when declining", async () => {
       vi.mocked(db.offer.findUnique).mockResolvedValue(mockOffer as never);
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
+      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 1 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "DECLINE" },
@@ -373,9 +387,10 @@ describe("OfferService", () => {
         if (typeof cb === "function") return await cb(db as never);
         return [] as never;
       });
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
       vi.mocked(db.listing.update).mockResolvedValue({} as never);
-      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 0 } as never);
+      vi.mocked(db.offer.updateMany)
+        .mockResolvedValueOnce({ count: 1 } as never)
+        .mockResolvedValueOnce({ count: 0 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "ACCEPT" },
@@ -393,7 +408,7 @@ describe("OfferService", () => {
 
     it("notifies buyer on decline", async () => {
       vi.mocked(db.offer.findUnique).mockResolvedValue(mockOffer as never);
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
+      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 1 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "DECLINE" },
@@ -410,7 +425,7 @@ describe("OfferService", () => {
 
     it("sends email to buyer on response", async () => {
       vi.mocked(db.offer.findUnique).mockResolvedValue(mockOffer as never);
-      vi.mocked(db.offer.update).mockResolvedValue({} as never);
+      vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 1 } as never);
 
       await offerService.respondOffer(
         { offerId: "offer-1", action: "DECLINE" },

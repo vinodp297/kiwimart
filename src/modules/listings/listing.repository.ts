@@ -328,7 +328,33 @@ export const listingRepository = {
         description: true,
         categoryId: true,
         status: true,
+        updatedAt: true,
       },
+    });
+  },
+
+  /**
+   * Update a listing with an optimistic lock on updatedAt.
+   *
+   * The WHERE clause includes the last-known updatedAt so that a concurrent
+   * write (which bumps updatedAt) causes this UPDATE to match 0 rows.
+   * Callers must check result.count — 0 means another process modified the
+   * record first (or it was deleted), and should surface CONCURRENT_MODIFICATION
+   * or NOT_FOUND accordingly.
+   *
+   * Note: Prisma does not auto-bump @updatedAt in updateMany, so we set it
+   * explicitly.
+   */
+  async updateListingOptimistic(
+    id: string,
+    data: Prisma.ListingUncheckedUpdateInput,
+    expectedUpdatedAt: Date,
+    tx?: DbClient,
+  ): Promise<Prisma.BatchPayload> {
+    const client = tx ?? db;
+    return client.listing.updateMany({
+      where: { id, updatedAt: expectedUpdatedAt },
+      data: { ...data, updatedAt: new Date() },
     });
   },
 

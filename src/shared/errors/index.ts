@@ -35,7 +35,8 @@ export type ErrorCode =
   | "ACCOUNT_BANNED"
   | "AUTH_SERVICE_UNAVAILABLE"
   | "ERASURE_BLOCKED"
-  | "EXPORT_RATE_LIMITED";
+  | "EXPORT_RATE_LIMITED"
+  | "CONCURRENT_MODIFICATION";
 
 export class AppError extends Error {
   constructor(
@@ -108,6 +109,13 @@ export class AppError extends Error {
       "Authentication service is temporarily unavailable. Please try again shortly.",
       503,
     );
+  }
+
+  /** HTTP 409 — record was modified by a concurrent request. */
+  static concurrentModification(
+    message = "This record was modified by another request. Please refresh and try again.",
+  ): AppError {
+    return new AppError("CONCURRENT_MODIFICATION", message, 409);
   }
 }
 

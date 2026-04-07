@@ -490,6 +490,7 @@ describe("ListingService - updateListing", () => {
     description: "Old description about this item",
     categoryId: "cat-1",
     status: "ACTIVE",
+    updatedAt: new Date("2025-01-01"),
   };
 
   beforeEach(() => {
@@ -502,7 +503,8 @@ describe("ListingService - updateListing", () => {
     vi.mocked(db.listing.findUnique).mockResolvedValue(
       existingActiveListing as never,
     );
-    vi.mocked(db.listing.update).mockResolvedValue({} as never);
+    // updateListingOptimistic → db.listing.updateMany (count: 1 = success)
+    vi.mocked(db.listing.updateMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(getKeywordLists).mockResolvedValue({ banned: [], risk: [] });
 
     const result = await listingService.updateListing(
@@ -516,8 +518,10 @@ describe("ListingService - updateListing", () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(db.listing.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: LISTING_ID } }),
+    expect(db.listing.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: LISTING_ID }),
+      }),
     );
   });
 
@@ -562,7 +566,7 @@ describe("ListingService - updateListing", () => {
     vi.mocked(db.listing.findUnique).mockResolvedValue(
       existingActiveListing as never,
     );
-    vi.mocked(db.listing.update).mockResolvedValue({} as never);
+    vi.mocked(db.listing.updateMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(getKeywordLists).mockResolvedValue({ banned: [], risk: [] });
 
     await listingService.updateListing(SELLER_ID, SELLER_EMAIL, false, {
@@ -585,6 +589,8 @@ describe("ListingService - updateListing", () => {
     vi.mocked(db.listing.findUnique).mockResolvedValue(
       existingActiveListing as never,
     );
+    // Main update (optimistic) succeeds; then keyword scan sets REMOVED via update()
+    vi.mocked(db.listing.updateMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(db.listing.update).mockResolvedValue({} as never);
     vi.mocked(getKeywordLists).mockResolvedValue({
       banned: ["prohibited"],

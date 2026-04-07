@@ -497,47 +497,71 @@ export class ListingService {
           }
         : {};
 
-    await listingRepository.updateListing(listingId, {
-      ...(data.title != null ? { title: data.title } : {}),
-      ...(data.description != null ? { description: data.description } : {}),
-      ...(newPriceNzd != null ? { priceNzd: newPriceNzd } : {}),
-      ...(data.isGstIncluded != null
-        ? { isGstIncluded: data.isGstIncluded }
-        : {}),
-      ...(data.condition != null ? { condition: data.condition } : {}),
-      ...(data.categoryId != null ? { categoryId: data.categoryId } : {}),
-      ...(data.subcategoryName !== undefined
-        ? { subcategoryName: data.subcategoryName ?? null }
-        : {}),
-      ...(data.region != null ? { region: data.region } : {}),
-      ...(data.suburb != null ? { suburb: data.suburb } : {}),
-      ...(data.shippingOption != null
-        ? { shippingOption: data.shippingOption }
-        : {}),
-      ...(data.shippingPrice != null
-        ? { shippingNzd: Math.round(data.shippingPrice * 100) }
-        : {}),
-      ...(data.pickupAddress !== undefined
-        ? { pickupAddress: data.pickupAddress ?? null }
-        : {}),
-      ...(data.isOffersEnabled != null
-        ? { isOffersEnabled: data.isOffersEnabled }
-        : {}),
-      ...(data.isUrgent != null ? { isUrgent: data.isUrgent } : {}),
-      ...(data.isNegotiable != null ? { isNegotiable: data.isNegotiable } : {}),
-      ...(data.shipsNationwide != null
-        ? { shipsNationwide: data.shipsNationwide }
-        : {}),
-      ...priceDropData,
-      // If listing was NEEDS_CHANGES, resubmit for review
-      ...(existing.status === "NEEDS_CHANGES"
-        ? {
-            status: "PENDING_REVIEW",
-            moderationNote: null,
-            resubmissionCount: { increment: 1 },
-          }
-        : {}),
-    } as Prisma.ListingUncheckedUpdateInput);
+    // ── Optimistic lock: include the last-known updatedAt in the WHERE clause.
+    // If another request already modified this listing, updateMany returns
+    // count=0 and we surface CONCURRENT_MODIFICATION rather than silently
+    // overwriting the other writer's changes.
+    const mainUpdateResult = await listingRepository.updateListingOptimistic(
+      listingId,
+      {
+        ...(data.title != null ? { title: data.title } : {}),
+        ...(data.description != null ? { description: data.description } : {}),
+        ...(newPriceNzd != null ? { priceNzd: newPriceNzd } : {}),
+        ...(data.isGstIncluded != null
+          ? { isGstIncluded: data.isGstIncluded }
+          : {}),
+        ...(data.condition != null ? { condition: data.condition } : {}),
+        ...(data.categoryId != null ? { categoryId: data.categoryId } : {}),
+        ...(data.subcategoryName !== undefined
+          ? { subcategoryName: data.subcategoryName ?? null }
+          : {}),
+        ...(data.region != null ? { region: data.region } : {}),
+        ...(data.suburb != null ? { suburb: data.suburb } : {}),
+        ...(data.shippingOption != null
+          ? { shippingOption: data.shippingOption }
+          : {}),
+        ...(data.shippingPrice != null
+          ? { shippingNzd: Math.round(data.shippingPrice * 100) }
+          : {}),
+        ...(data.pickupAddress !== undefined
+          ? { pickupAddress: data.pickupAddress ?? null }
+          : {}),
+        ...(data.isOffersEnabled != null
+          ? { isOffersEnabled: data.isOffersEnabled }
+          : {}),
+        ...(data.isUrgent != null ? { isUrgent: data.isUrgent } : {}),
+        ...(data.isNegotiable != null
+          ? { isNegotiable: data.isNegotiable }
+          : {}),
+        ...(data.shipsNationwide != null
+          ? { shipsNationwide: data.shipsNationwide }
+          : {}),
+        ...priceDropData,
+        // If listing was NEEDS_CHANGES, resubmit for review
+        ...(existing.status === "NEEDS_CHANGES"
+          ? {
+              status: "PENDING_REVIEW",
+              moderationNote: null,
+              resubmissionCount: { increment: 1 },
+            }
+          : {}),
+      } as Prisma.ListingUncheckedUpdateInput,
+      existing.updatedAt,
+    );
+
+    if (mainUpdateResult.count === 0) {
+      // Distinguish concurrent modification (listing still exists) from a
+      // race where the listing was deleted between our read and write.
+      const stillExists = await listingRepository.findByIdForUpdate(listingId);
+      if (!stillExists || stillExists.deletedAt) {
+        return { ok: false, error: "Listing not found." };
+      }
+      return {
+        ok: false,
+        error:
+          "This listing was modified by another request. Please refresh and try again.",
+      };
+    }
 
     // If resubmitting from NEEDS_CHANGES, re-run auto-review
     if (existing.status === "NEEDS_CHANGES") {

@@ -63,15 +63,22 @@ export const offerRepository = {
     return db.offer.create({ data, select: { id: true } });
   },
 
-  /** Accept an offer and set payment deadline (inside a transaction).
-   * @source src/modules/offers/offer.service.ts */
+  /**
+   * Accept an offer — optimistic lock via status guard (inside a transaction).
+   *
+   * The WHERE clause includes `status: "PENDING"` so that a concurrent accept
+   * or decline returns count=0 instead of overwriting the competing write.
+   * Callers must check result.count — 0 means CONCURRENT_MODIFICATION.
+   *
+   * @source src/modules/offers/offer.service.ts
+   */
   async accept(
     id: string,
     paymentDeadlineAt: Date,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
-    await tx.offer.update({
-      where: { id },
+  ): Promise<Prisma.BatchPayload> {
+    return tx.offer.updateMany({
+      where: { id, status: "PENDING" },
       data: {
         status: "ACCEPTED",
         respondedAt: new Date(),
@@ -80,11 +87,21 @@ export const offerRepository = {
     });
   },
 
-  /** Decline an offer.
-   * @source src/modules/offers/offer.service.ts */
-  async decline(id: string, declineReason?: string): Promise<void> {
-    await db.offer.update({
-      where: { id },
+  /**
+   * Decline an offer — optimistic lock via status guard.
+   *
+   * The WHERE clause includes `status: "PENDING"` so that a concurrent
+   * response returns count=0 instead of overwriting it.
+   * Callers must check result.count — 0 means CONCURRENT_MODIFICATION.
+   *
+   * @source src/modules/offers/offer.service.ts
+   */
+  async decline(
+    id: string,
+    declineReason?: string,
+  ): Promise<Prisma.BatchPayload> {
+    return db.offer.updateMany({
+      where: { id, status: "PENDING" },
       data: {
         status: "DECLINED",
         respondedAt: new Date(),

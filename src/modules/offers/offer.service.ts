@@ -132,10 +132,10 @@ export class OfferService {
       );
     }
     if (offer.status !== "PENDING") {
-      throw new AppError(
-        "ORDER_WRONG_STATE",
+      // Surface as 409 CONCURRENT_MODIFICATION — the offer was responded to by
+      // another request between this seller's page load and their submit.
+      throw AppError.concurrentModification(
         "This offer has already been responded to.",
-        400,
       );
     }
     if (offer.expiresAt < new Date()) {
@@ -149,11 +149,18 @@ export class OfferService {
         await withLock(`listing:purchase:${offer.listingId}`, async () => {
           // Atomic: accept offer + reserve listing + decline competing offers
           await db.$transaction(async (tx) => {
-            await offerRepository.accept(
+            // Optimistic lock: WHERE status='PENDING' ensures only one winner
+            // in a true concurrent race that both passed the pre-check above.
+            const acceptResult = await offerRepository.accept(
               input.offerId,
               new Date(Date.now() + 24 * 60 * 60 * 1000),
               tx,
             );
+            if (acceptResult.count === 0) {
+              throw AppError.concurrentModification(
+                "This offer has already been responded to.",
+              );
+            }
             await listingRepository.setStatus(offer.listingId, "RESERVED", tx);
             await offerRepository.declineCompetitors(
               offer.listingId,
@@ -177,7 +184,17 @@ export class OfferService {
         throw lockErr;
       }
     } else {
-      await offerRepository.decline(input.offerId, input.declineReason);
+      // Optimistic lock on DECLINE: WHERE status='PENDING' ensures we don't
+      // overwrite a concurrent accept.
+      const declineResult = await offerRepository.decline(
+        input.offerId,
+        input.declineReason,
+      );
+      if (declineResult.count === 0) {
+        throw AppError.concurrentModification(
+          "This offer has already been responded to.",
+        );
+      }
     }
 
     // Notify buyer directly — BullMQ worker does not run on Vercel serverless
