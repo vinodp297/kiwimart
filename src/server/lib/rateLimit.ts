@@ -95,6 +95,33 @@ const reviewLimiter = () =>
     analytics: true,
   });
 
+/**
+ * 300 requests per minute per IP — public listing browse.
+ * IP-based only: unauthenticated requests have no user ID.
+ * Fail-open: if Redis is unavailable the rateLimit() function returns
+ * success:true so browsing is never blocked by infrastructure issues.
+ */
+const publicReadLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(300, "1 m"),
+    prefix: "km:rl:public-read",
+    analytics: true,
+  });
+
+/**
+ * 60 requests per minute per IP — public search.
+ * Lower than browse because full-text search queries are more expensive.
+ * Fail-open: same policy as publicReadLimiter.
+ */
+const publicSearchLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(60, "1 m"),
+    prefix: "km:rl:public-search",
+    analytics: true,
+  });
+
 /** 60 watchlist toggles per hour per user — generous for browsing, prevents bot abuse */
 const watchLimiter = () =>
   new Ratelimit({
@@ -194,6 +221,9 @@ export type RateLimitKey =
   | "offerRespond"
   | "accountUpdate"
   | "pushToken"
+  // Public read — IP-based, fail-open when Redis is unavailable
+  | "publicRead"
+  | "publicSearch"
   // Admin actions — keyed by admin user ID, not IP
   | "adminIdVerify"
   | "adminBan"
@@ -253,6 +283,8 @@ export async function rateLimit(
     offerRespond: offerRespondLimiter,
     accountUpdate: accountUpdateLimiter,
     pushToken: pushTokenLimiter,
+    publicRead: publicReadLimiter,
+    publicSearch: publicSearchLimiter,
     adminIdVerify: adminIdVerifyLimiter,
     adminBan: adminBanLimiter,
     adminErase: adminEraseLimiter,
@@ -260,15 +292,32 @@ export async function rateLimit(
     adminListingMod: adminListingModLimiter,
   };
 
-  const limiter = limiterFactories[type]();
-  const result = await limiter.limit(identifier);
+  // Public read endpoints fail OPEN — never block browsing or search because
+  // Redis is unavailable. All other endpoints fail closed (throw propagates).
+  const FAIL_OPEN_KEYS = new Set<RateLimitKey>(["publicRead", "publicSearch"]);
 
-  return {
-    success: result.success,
-    remaining: result.remaining,
-    reset: result.reset,
-    retryAfter: Math.ceil((result.reset - Date.now()) / 1000),
-  };
+  try {
+    const limiter = limiterFactories[type]();
+    const result = await limiter.limit(identifier);
+
+    return {
+      success: result.success,
+      remaining: result.remaining,
+      reset: result.reset,
+      retryAfter: Math.ceil((result.reset - Date.now()) / 1000),
+    };
+  } catch (err) {
+    if (FAIL_OPEN_KEYS.has(type)) {
+      // Redis unavailable — allow the request rather than blocking legitimate users.
+      return {
+        success: true,
+        remaining: -1,
+        reset: Date.now() + 60_000,
+        retryAfter: 0,
+      };
+    }
+    throw err;
+  }
 }
 
 /**

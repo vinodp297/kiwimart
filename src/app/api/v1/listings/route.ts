@@ -16,8 +16,10 @@ import { listingsQuerySchema } from "@/modules/listings/listing.schema";
 import { listingService } from "@/modules/listings/listing.service";
 
 export async function GET(request: Request) {
-  // Rate limit: reuse listing limiter (10/hr matches server action)
-  const rateLimited = await checkApiRateLimit(request, "listing");
+  // 300 requests per minute per IP — dedicated public read limiter.
+  // Fails open if Redis is unavailable so browsing is never blocked by
+  // infrastructure issues. Keyed by IP — no user ID required.
+  const rateLimited = await checkApiRateLimit(request, "publicRead");
   if (rateLimited) return rateLimited;
 
   try {

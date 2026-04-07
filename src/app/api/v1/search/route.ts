@@ -40,8 +40,10 @@ const SearchParamsSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  // Rate limit: 30 req/min for search
-  const rateLimited = await checkApiRateLimit(request, "listing");
+  // 60 requests per minute per IP — dedicated search limiter.
+  // Lower than the browse limit because full-text search queries are more
+  // expensive. Fails open if Redis is unavailable.
+  const rateLimited = await checkApiRateLimit(request, "publicSearch");
   if (rateLimited) return rateLimited;
 
   try {
