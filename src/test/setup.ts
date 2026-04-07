@@ -273,6 +273,16 @@ vi.mock("@/infrastructure/storage/r2", () => ({
   R2_PUBLIC_URL: "https://test.r2.dev",
 }));
 
+// ── Mock AWS S3 presigner ─────────────────────────────────────────────────────
+// Prevents real HTTP calls in tests that generate signed URLs (e.g. data export).
+vi.mock("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: vi
+    .fn()
+    .mockResolvedValue(
+      "https://test-bucket.r2.example.com/exports/user-1/signed-url?X-Amz-Signature=mock",
+    ),
+}));
+
 // ── Mock Auth.js ─────────────────────────────────────────────────────────────
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),

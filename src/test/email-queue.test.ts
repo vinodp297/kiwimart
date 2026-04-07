@@ -211,15 +211,19 @@ describe("exportUserData — queues dataExport email", () => {
     );
   });
 
-  it("dataExport job payload includes jsonPayload", async () => {
+  it("dataExport job payload includes downloadUrl (not jsonPayload)", async () => {
     await exportUserData("user-1", "test@buyzi.test");
 
     expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
       expect.objectContaining({
         template: "dataExport",
-        jsonPayload: expect.any(String),
+        downloadUrl: expect.any(String),
+        expiresAt: expect.any(String),
       }),
     );
+    // Raw JSON data must never be in the queue payload
+    const call = vi.mocked(enqueueEmail).mock.calls[0]![0]!;
+    expect(call).not.toHaveProperty("jsonPayload");
   });
 
   it("dataExport job payload includes displayName", async () => {

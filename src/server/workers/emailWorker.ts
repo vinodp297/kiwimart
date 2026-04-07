@@ -70,7 +70,8 @@ export function startEmailWorker() {
           await sendDataExportEmail({
             to: data.to,
             displayName: data.displayName,
-            jsonPayload: data.jsonPayload,
+            downloadUrl: data.downloadUrl,
+            expiresAt: data.expiresAt,
           });
           break;
 

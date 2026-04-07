@@ -118,7 +118,10 @@ export type EmailJobData = {
       template: "dataExport";
       to: string;
       displayName: string;
-      jsonPayload: string;
+      /** Signed R2 URL — the user clicks this to download their data (24 h TTL). */
+      downloadUrl: string;
+      /** Human-readable expiry string, e.g. "15 Jan 2026, 3:45 pm". */
+      expiresAt: string;
     }
   | { template: "erasureConfirmation"; to: string; displayName: string }
   | {

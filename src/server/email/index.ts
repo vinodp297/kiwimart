@@ -749,40 +749,46 @@ export async function sendPriceDropEmail(params: {
 export async function sendDataExportEmail(params: {
   to: string;
   displayName: string;
-  jsonPayload: string;
+  /** Presigned R2 download URL — valid for 24 hours. */
+  downloadUrl: string;
+  /** Human-readable expiry, e.g. "15 Jan 2026, 3:45 pm". */
+  expiresAt: string;
 }): Promise<void> {
   const html = baseTemplate(
-    `<h1>Your ${esc(APP_NAME)} Data Export</h1>
+    `<h1>Your ${esc(APP_NAME)} data export is ready</h1>
     <p>Kia ora ${esc(params.displayName)},</p>
     <p>
-      As requested, here is a copy of all personal data we hold for your account.
-      This export is provided under the <strong>NZ Privacy Act 2020</strong> (Information
-      Privacy Principle 6).
+      Your personal data export has been prepared as requested under the
+      <strong>NZ Privacy Act 2020</strong> (Information Privacy Principle 6).
     </p>
     <p>
-      Your data is included below in JSON format. You can open it in any text
-      editor or import it into a spreadsheet application.
+      Click the button below to download your data. This link will expire in
+      <strong>24 hours</strong> (at ${esc(params.expiresAt)}).
     </p>
-    <hr class="divider">
-    <details style="margin:16px 0;">
-      <summary style="cursor:pointer; font-weight:600; font-size:14px; color:#141414;">
-        Click to view your data
-      </summary>
-      <pre style="background:#F8F7F4; border:1px solid #E3E0D9; border-radius:12px; padding:16px; font-size:11px; overflow-x:auto; max-height:600px; white-space:pre-wrap; word-break:break-all; margin-top:12px;">${esc(params.jsonPayload)}</pre>
-    </details>
+    <div style="text-align:center; margin:32px 0;">
+      <a href="${params.downloadUrl}"
+         style="background:#D4A843; color:#141414; padding:14px 28px; border-radius:8px; font-weight:700; font-size:15px; text-decoration:none; display:inline-block;">
+        Download Your Data
+      </a>
+    </div>
+    <p style="font-size:13px; color:#9E9A91;">
+      If the button does not work, copy and paste this link into your browser:
+    </p>
+    <p style="font-size:12px; word-break:break-all; color:#9E9A91;">${esc(params.downloadUrl)}</p>
     <hr class="divider">
     <p style="font-size:12px; color:#9E9A91;">
-      This export was generated on ${new Date().toLocaleDateString("en-NZ")} and reflects
-      the data held at the time of your request. If you have questions or wish to
-      request deletion, visit
-      <a href="${APP_URL}/account/settings" style="color:#D4A843;">Account Settings</a>
-      or contact us at <a href="mailto:privacy@buyzi.co.nz" style="color:#D4A843;">privacy@buyzi.co.nz</a>.
+      This link is time-limited and will expire after 24 hours. The file will be
+      permanently deleted from our servers after this time. If you need another
+      copy, you can request a new export from
+      <a href="${APP_URL}/account/settings" style="color:#D4A843;">Account Settings</a>.
+      For questions, contact us at
+      <a href="mailto:privacy@buyzi.co.nz" style="color:#D4A843;">privacy@buyzi.co.nz</a>.
     </p>`,
-    `Your ${APP_NAME} data export`,
+    `Your ${APP_NAME} data export is ready`,
   );
   await sendTransactionalEmail({
     to: params.to,
-    subject: `Your ${APP_NAME} data export`,
+    subject: `Your ${APP_NAME} data export is ready`,
     html,
   });
 }
