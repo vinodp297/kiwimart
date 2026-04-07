@@ -44,6 +44,59 @@
 3. If connection limit hit: restart Vercel deployment to reset pools
 4. Emergency: switch DATABASE_URL to staging branch as read-only
 
+## Failed Job Recovery (Dead-Letter Queue)
+
+When a BullMQ job fails all 3 retry attempts it stays in the queue's "failed" set permanently (`removeOnFail: false`). These jobs are the dead-letter queue (DLQ). Failed payout jobs mean sellers are not paid; failed pickup jobs mean buyers miss OTP notifications.
+
+### Checking failed jobs
+
+```bash
+# GET /api/admin/jobs/failed  (requires admin auth with VIEW_SYSTEM_HEALTH)
+curl -s -H "Cookie: <session_cookie>" \
+  "https://[domain]/api/admin/jobs/failed" | jq .
+```
+
+The response includes every queue's failed count and the 50 most recent failed jobs per queue. Each job includes:
+
+- `id` — the BullMQ job ID (used for retry)
+- `failedReason` — the error message from the last attempt
+- `attemptsMade` — how many times it was tried (max 3)
+- `correlationId` — links back to the originating HTTP request; search structured logs and Sentry by this ID to trace what happened
+- `createdAt` / `failedAt` — timestamps for when the job was enqueued and when it finally failed
+
+### Retrying a specific job
+
+```bash
+# POST /api/admin/jobs/:jobId/retry  (requires admin auth with VIEW_SYSTEM_HEALTH)
+curl -s -X POST \
+  -H "Cookie: <session_cookie>" \
+  -H "Content-Type: application/json" \
+  -d '{"queueName": "payout"}' \
+  "https://[domain]/api/admin/jobs/<JOB_ID>/retry"
+```
+
+This moves the job from "failed" back to "waiting" so BullMQ will process it again (with a fresh set of 3 attempts).
+
+### When to retry vs investigate first
+
+| Scenario                                                    | Action                                                          |
+| ----------------------------------------------------------- | --------------------------------------------------------------- |
+| `failedReason` mentions timeout / connection refused        | Likely transient — safe to retry                                |
+| `failedReason` mentions invalid data / validation error     | Investigate first — retrying will fail again                    |
+| Same job has been manually retried 2+ times                 | Investigate — the root cause is not transient                   |
+| Multiple jobs in the same queue failed around the same time | Check the dependency (Stripe, Redis, DB) status before retrying |
+
+### What correlationId means
+
+Every HTTP request that enters the proxy is assigned a UUID (`x-correlation-id`). This ID is threaded through:
+
+- Structured log lines (`correlationId` field)
+- BullMQ job data (`correlationId` field)
+- Stripe payment metadata (`correlationId`)
+- Sentry error tags (`correlationId`)
+
+To trace a failed job back to its origin: search structured logs for the job's `correlationId`. This shows the full request lifecycle — from the API call that enqueued the job through to the job's own processing logs.
+
 ## Common Issues
 
 ### Images Not Loading
@@ -182,6 +235,31 @@ npx prisma migrate deploy
 ```
 
 **Never run `prisma migrate dev` against production** — it resets the database. Always use `prisma migrate deploy`.
+
+### Rollback limitations
+
+> **IMPORTANT:** Automatic rollback reverts application CODE only. Database migrations are NOT rolled back automatically. If a migration caused the failure, manual intervention is required — see "Manual migration rollback" below.
+
+The verify job retries the health check 5 times (15 s apart) before deciding to roll back. The decision logic:
+
+| Health status           | HTTP code | Action                                                          |
+| ----------------------- | --------- | --------------------------------------------------------------- |
+| `ok`                    | 200       | Pass — deployment verified                                      |
+| `degraded`              | 200       | Pass with warning — partial functionality, investigate promptly |
+| `unhealthy`             | 503       | After 5 failed attempts → automatic rollback                    |
+| Network error / timeout | N/A       | After 5 failed attempts → automatic rollback                    |
+
+"Degraded" does **not** trigger a rollback because partial functionality is better than a rollback that may introduce schema/code mismatch.
+
+### Manual migration rollback
+
+If a migration itself caused the health check failure:
+
+1. The automatic rollback will restore the previous application code.
+2. The database schema is now **ahead** of the running code.
+3. Assess whether the rolled-back code can tolerate the new schema (additive migrations usually can; destructive ones cannot).
+4. If incompatible: manually revert the migration SQL against the production database, then verify the health endpoint.
+5. Fix the migration, re-test locally, and redeploy.
 
 ## Monitoring Checklist (Daily)
 

@@ -23,6 +23,16 @@ export { getQueueConnection };
 // created exactly once per export. The exported API (`emailQueue.add(...)` etc.)
 // is identical to a plain Queue — callers need no changes.
 
+// ── Default job options ──────────────────────────────────────────────────────
+// removeOnFail: false keeps ALL failed jobs in the "failed" set, forming a
+// dead-letter queue. Operators can inspect and retry them via the admin API.
+const DEFAULT_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: "exponential" as const, delay: 5000 },
+  removeOnComplete: { count: 100 },
+  removeOnFail: false,
+};
+
 function lazyQueue(name: string): Queue {
   let instance: Queue | null = null;
   const getInstance = (): Queue => {
@@ -33,10 +43,7 @@ function lazyQueue(name: string): Queue {
         // cast bridges the type mismatch.
         connection:
           getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
-        defaultJobOptions: {
-          removeOnComplete: 100,
-          removeOnFail: 50,
-        },
+        defaultJobOptions: DEFAULT_JOB_OPTIONS,
       });
     }
     return instance;
@@ -59,6 +66,28 @@ export const imageQueue = lazyQueue("image");
 export const payoutQueue = lazyQueue("payout");
 export const notificationQueue = lazyQueue("notification");
 export const pickupQueue = lazyQueue("pickup");
+
+// ── Queue name map ───────────────────────────────────────────────────────────
+// Used by admin endpoints to look up a queue by its short name.
+
+export type QueueName =
+  | "email"
+  | "image"
+  | "payout"
+  | "notification"
+  | "pickup";
+
+export const QUEUE_MAP: Record<QueueName, Queue> = {
+  email: emailQueue,
+  image: imageQueue,
+  payout: payoutQueue,
+  notification: notificationQueue,
+  pickup: pickupQueue,
+};
+
+export const VALID_QUEUE_NAMES = Object.keys(QUEUE_MAP) as QueueName[];
+
+export { DEFAULT_JOB_OPTIONS };
 
 // ── Job type definitions ─────────────────────────────────────────────────────
 

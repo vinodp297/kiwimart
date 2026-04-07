@@ -264,8 +264,8 @@ jobs:
 
             echo "  Failed (HTTP ${HTTP_CODE}, status: ${STATUS:-unknown}, checks: ${CHECKS})"
             if [ "$i" -lt 5 ]; then
-              echo "  Retrying in 10s..."
-              sleep 10
+              echo "  Retrying in 15s..."
+              sleep 15
             fi
           done
 
