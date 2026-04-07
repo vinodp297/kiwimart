@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { requirePermission } from "@/shared/auth/requirePermission";
-import { getClientIp } from "@/server/lib/rateLimit";
+import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { createNotification } from "@/modules/notifications/notification.service";
 import {
   sendListingApprovedEmail,
@@ -25,6 +25,28 @@ export async function approveListing(
 ): Promise<ActionResult<void>> {
   try {
     const admin = await requirePermission("MODERATE_CONTENT");
+
+    // Rate limit — 100 listing moderation actions per hour per admin (keyed by admin ID)
+    try {
+      const limit = await rateLimit(
+        "adminListingMod",
+        `admin:${admin.id}:approveListing`,
+      );
+      if (!limit.success) {
+        return {
+          success: false,
+          error: "Too many requests. Please slow down.",
+        };
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "approveListing",
+        adminId: admin.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
+    }
+
     const reqHeaders = await headers();
     const ip = getClientIp(reqHeaders);
 
@@ -128,6 +150,28 @@ export async function requestListingChanges(
 ): Promise<ActionResult<void>> {
   try {
     const admin = await requirePermission("MODERATE_CONTENT");
+
+    // Rate limit — 100 listing moderation actions per hour per admin (keyed by admin ID)
+    try {
+      const limit = await rateLimit(
+        "adminListingMod",
+        `admin:${admin.id}:requestListingChanges`,
+      );
+      if (!limit.success) {
+        return {
+          success: false,
+          error: "Too many requests. Please slow down.",
+        };
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "requestListingChanges",
+        adminId: admin.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
+    }
+
     const reqHeaders = await headers();
     const ip = getClientIp(reqHeaders);
 
@@ -229,6 +273,28 @@ export async function rejectListing(
 ): Promise<ActionResult<void>> {
   try {
     const admin = await requirePermission("MODERATE_CONTENT");
+
+    // Rate limit — 100 listing moderation actions per hour per admin (keyed by admin ID)
+    try {
+      const limit = await rateLimit(
+        "adminListingMod",
+        `admin:${admin.id}:rejectListing`,
+      );
+      if (!limit.success) {
+        return {
+          success: false,
+          error: "Too many requests. Please slow down.",
+        };
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "rejectListing",
+        adminId: admin.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
+    }
+
     const reqHeaders = await headers();
     const ip = getClientIp(reqHeaders);
 

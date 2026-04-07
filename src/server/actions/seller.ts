@@ -10,6 +10,7 @@ import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { audit } from "@/server/lib/audit";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
+import { logger } from "@/shared/logger";
 import { enqueueEmail } from "@/lib/email-queue";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
@@ -168,7 +169,25 @@ export async function approveIdVerification(
     };
   }
 
-  // 3. Check user exists and has a pending submission
+  // 3. Rate limit — 20 ID verification actions per hour per admin (keyed by admin ID)
+  try {
+    const idVerifyLimit = await rateLimit(
+      "adminIdVerify",
+      `admin:${guard.userId}:approveIdVerification`,
+    );
+    if (!idVerifyLimit.success) {
+      return { success: false, error: "Too many requests. Please slow down." };
+    }
+  } catch (rlErr) {
+    logger.warn("admin:rate-limit-unavailable", {
+      action: "approveIdVerification",
+      adminId: guard.userId,
+      error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+    });
+    // Fail open — allow the action if rate limiter is unavailable
+  }
+
+  // 4. Check user exists and has a pending submission
   const target = await userRepository.findForIdApproval(parsed.data.userId);
 
   if (!target) return { success: false, error: "User not found." };
@@ -181,7 +200,7 @@ export async function approveIdVerification(
     };
   }
 
-  // 4. Execute
+  // 5. Execute
   const now = new Date();
   await userRepository.update(target.id, {
     idVerified: true,
@@ -237,6 +256,27 @@ export async function rejectIdVerification(
           parsed.error.issues[0]?.message ??
           "Please check your input and try again.",
       };
+    }
+
+    // Rate limit — 20 ID verification actions per hour per admin (keyed by admin ID)
+    try {
+      const idVerifyLimit = await rateLimit(
+        "adminIdVerify",
+        `admin:${guard.userId}:rejectIdVerification`,
+      );
+      if (!idVerifyLimit.success) {
+        return {
+          success: false,
+          error: "Too many requests. Please slow down.",
+        };
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "rejectIdVerification",
+        adminId: guard.userId,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
     }
 
     const { userId, reason, notes } = parsed.data;

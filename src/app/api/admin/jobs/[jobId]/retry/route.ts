@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { logger } from "@/shared/logger";
 import { requirePermission } from "@/shared/auth/requirePermission";
+import { rateLimit } from "@/server/lib/rateLimit";
 import { QUEUE_MAP, VALID_QUEUE_NAMES, type QueueName } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,9 @@ export async function POST(
   { params }: { params: Promise<{ jobId: string }> },
 ) {
   // Auth guard — requires VIEW_SYSTEM_HEALTH permission
+  let admin;
   try {
-    await requirePermission("VIEW_SYSTEM_HEALTH");
+    admin = await requirePermission("VIEW_SYSTEM_HEALTH");
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -25,6 +27,30 @@ export async function POST(
     const { jobId } = await params;
     const body = (await request.json()) as { queueName?: string };
     const queueName = body.queueName as QueueName | undefined;
+
+    // Rate limit — 30 job retries per hour per admin (keyed by admin ID)
+    try {
+      const limit = await rateLimit(
+        "adminJobRetry",
+        `admin:${admin.id}:jobRetry`,
+      );
+      if (!limit.success) {
+        return NextResponse.json(
+          {
+            error: "Too many requests. Please slow down.",
+            code: "RATE_LIMITED",
+          },
+          { status: 429 },
+        );
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "jobRetry",
+        adminId: admin.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
+    }
 
     if (!queueName || !VALID_QUEUE_NAMES.includes(queueName as QueueName)) {
       return NextResponse.json(

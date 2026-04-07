@@ -4,6 +4,8 @@ import { safeActionError } from "@/shared/errors";
 // Business logic delegated to AdminService.
 
 import { requirePermission } from "@/shared/auth/requirePermission";
+import { rateLimit } from "@/server/lib/rateLimit";
+import { logger } from "@/shared/logger";
 import { adminService } from "@/modules/admin/admin.service";
 import { userRepository } from "@/modules/users/user.repository";
 import { audit } from "@/server/lib/audit";
@@ -36,6 +38,23 @@ export async function banUser(
     if (parsed.data.userId === admin.id) {
       return { success: false, error: "You cannot ban your own account." };
     }
+    // Rate limit — 10 ban/unban actions per hour per admin (keyed by admin ID)
+    try {
+      const limit = await rateLimit("adminBan", `admin:${admin.id}:banUser`);
+      if (!limit.success) {
+        return {
+          success: false,
+          error: "Too many requests. Please slow down.",
+        };
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "banUser",
+        adminId: admin.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
+    }
     await adminService.banUser(
       parsed.data.userId,
       parsed.data.reason,
@@ -55,6 +74,23 @@ export async function unbanUser(userId: string): Promise<ActionResult<void>> {
     return { success: false, error: "Invalid user ID." };
   try {
     const admin = await requirePermission("UNBAN_USERS");
+    // Rate limit — 10 ban/unban actions per hour per admin (keyed by admin ID)
+    try {
+      const limit = await rateLimit("adminBan", `admin:${admin.id}:unbanUser`);
+      if (!limit.success) {
+        return {
+          success: false,
+          error: "Too many requests. Please slow down.",
+        };
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "unbanUser",
+        adminId: admin.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
+    }
     await adminService.unbanUser(userId, admin.id);
     return { success: true, data: undefined };
   } catch (err) {

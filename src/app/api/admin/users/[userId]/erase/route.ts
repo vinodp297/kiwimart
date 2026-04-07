@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { performAccountErasure } from "@/modules/users/erasure.service";
 import { requireSuperAdmin } from "@/shared/auth/requirePermission";
+import { rateLimit } from "@/server/lib/rateLimit";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
 
@@ -25,6 +26,27 @@ export async function POST(
 
   try {
     const { userId } = await params;
+
+    // Rate limit — 5 account erasures per hour per admin (keyed by admin ID)
+    try {
+      const limit = await rateLimit("adminErase", `admin:${admin.id}:erase`);
+      if (!limit.success) {
+        return NextResponse.json(
+          {
+            error: "Too many requests. Please slow down.",
+            code: "RATE_LIMITED",
+          },
+          { status: 429 },
+        );
+      }
+    } catch (rlErr) {
+      logger.warn("admin:rate-limit-unavailable", {
+        action: "erase",
+        adminId: admin.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the action if rate limiter is unavailable
+    }
 
     const result = await performAccountErasure({
       userId,

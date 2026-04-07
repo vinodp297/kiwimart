@@ -131,6 +131,53 @@ const pushTokenLimiter = () =>
     analytics: true,
   });
 
+// ── Admin rate limiters — keyed by admin user ID, not IP ──────────────────────
+
+/** 20 ID verification approve/reject actions per hour per admin */
+const adminIdVerifyLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(20, "1 h"),
+    prefix: "km:rl:admin-id-verify",
+    analytics: true,
+  });
+
+/** 10 user ban/unban actions per hour per admin */
+const adminBanLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(10, "1 h"),
+    prefix: "km:rl:admin-ban",
+    analytics: true,
+  });
+
+/** 5 account erasures per hour per admin — NZ Privacy Act admin-initiated erasure */
+const adminEraseLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(5, "1 h"),
+    prefix: "km:rl:admin-erase",
+    analytics: true,
+  });
+
+/** 30 dead-letter queue job retries per hour per admin */
+const adminJobRetryLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(30, "1 h"),
+    prefix: "km:rl:admin-job-retry",
+    analytics: true,
+  });
+
+/** 100 listing moderation actions per hour per admin (approve/reject/request changes) */
+const adminListingModLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(100, "1 h"),
+    prefix: "km:rl:admin-listing-mod",
+    analytics: true,
+  });
+
 // ── Rate limit types ──────────────────────────────────────────────────────────
 
 export type RateLimitKey =
@@ -146,7 +193,13 @@ export type RateLimitKey =
   | "watch"
   | "offerRespond"
   | "accountUpdate"
-  | "pushToken";
+  | "pushToken"
+  // Admin actions — keyed by admin user ID, not IP
+  | "adminIdVerify"
+  | "adminBan"
+  | "adminErase"
+  | "adminJobRetry"
+  | "adminListingMod";
 
 export interface RateLimitResult {
   success: boolean;
@@ -200,6 +253,11 @@ export async function rateLimit(
     offerRespond: offerRespondLimiter,
     accountUpdate: accountUpdateLimiter,
     pushToken: pushTokenLimiter,
+    adminIdVerify: adminIdVerifyLimiter,
+    adminBan: adminBanLimiter,
+    adminErase: adminEraseLimiter,
+    adminJobRetry: adminJobRetryLimiter,
+    adminListingMod: adminListingModLimiter,
   };
 
   const limiter = limiterFactories[type]();
