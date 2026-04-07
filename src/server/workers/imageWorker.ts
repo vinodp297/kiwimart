@@ -6,13 +6,14 @@
 //
 // Processes imageQueue jobs:
 //   1. Download from R2
-//   2. Mock ClamAV scan (Sprint 5: real virus scanning)
-//   3. Resize with sharp (full 1200×1200 + thumb 480×480)
-//   4. Convert to WebP, strip EXIF/GPS data
-//   5. Re-upload processed versions to R2
-//   6. Update DB: safe=true, dimensions, new r2Key
+//   2. Decodability check via sharp (see processImage — Step 2)
+//   3. AV integration point — scanForMalware() (see imageProcessor.ts)
+//   4. Resize with sharp (full 1200×1200 + thumb 480×480)
+//   5. Convert to WebP, strip EXIF/GPS data
+//   6. Re-upload processed versions to R2
+//   7. Update DB: isScanned/isSafe flags, dimensions, new r2Key
 //
-// On scan failure: mark safe=false, log to audit (Sprint 5: notify admin)
+// On validation failure: mark isSafe=false, log error
 // All jobs are idempotent — re-processing overwrites the same R2 keys.
 
 import { Worker } from "bullmq";

@@ -261,6 +261,79 @@ If a migration itself caused the health check failure:
 4. If incompatible: manually revert the migration SQL against the production database, then verify the health endpoint.
 5. Fix the migration, re-test locally, and redeploy.
 
+## Image Upload Security
+
+### What checks ARE performed on every uploaded image
+
+| Check                                        | Where                                            | Notes                                                                               |
+| -------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| MIME type whitelist (JPEG / PNG / WebP only) | `src/server/lib/fileValidation.ts`               | Applied at presigned-URL request time                                               |
+| File size ≤ 8 MB                             | `src/server/lib/fileValidation.ts`               | Applied at presigned-URL request time                                               |
+| Magic byte validation                        | `src/server/lib/fileValidation.ts`               | Confirms file contents match declared type — prevents MIME spoofing                 |
+| Dangerous extension block                    | `src/server/lib/fileValidation.ts`               | Blocks `.php`, `.asp`, `.exe`, `.svg`, etc.                                         |
+| SVG blocked entirely                         | `src/server/lib/fileValidation.ts`               | Prevents stored XSS via embedded `<script>` tags                                    |
+| Image decodability                           | `src/server/actions/imageProcessor.ts` Step 2    | sharp parses the image structure — corrupt files and disguised non-images fail here |
+| Minimum dimensions (200×200)                 | `src/server/actions/imageProcessor.ts` Step 4    | Rejects trivial placeholder images                                                  |
+| EXIF stripping                               | `src/server/actions/imageProcessor.ts` Steps 5–6 | Removes GPS coordinates and all metadata                                            |
+| Re-encoding to WebP                          | `src/server/actions/imageProcessor.ts` Steps 5–6 | Output is always a re-encoded WebP — original bytes are discarded                   |
+
+### What checks are NOT performed
+
+- **No antivirus / malware scan.** There is no ClamAV, VirusTotal, or similar
+  AV integration. The `isScanned: true` flag on `ListingImage` means the image
+  passed the validation pipeline above — it does **not** mean an AV scan was run.
+- **No content moderation.** Adult or prohibited content is not automatically
+  detected. Moderation is manual via admin tools.
+
+### Defence-in-depth rationale
+
+Images are uploaded directly to Cloudflare R2 (never to the application server),
+processed by sharp (which re-encodes them from scratch, discarding all original
+bytes), and served from R2 via a CDN. A file that somehow bypasses magic byte
+and decodability checks cannot execute on the server because it is never run —
+only re-encoded as WebP and served as an image.
+
+### How to add real AV scanning in future
+
+1. Choose a service:
+   - **ClamAV (self-hosted)**: add a sidecar container, use the `clamav.js` npm
+     package via a Unix socket or TCP connection.
+   - **VirusTotal API**: `POST /files` with the buffer, poll for the analysis
+     result. Free tier has rate limits.
+   - **Cloudflare R2 malware scanning**: check current plan availability.
+   - **AWS GuardDuty Malware Protection**: relevant if migrating to S3.
+
+2. Replace the body of `scanForMalware()` in
+   `src/server/actions/imageProcessor.ts` (at the bottom of the file).
+   The function signature is:
+
+   ```typescript
+   export async function scanForMalware(
+     buffer: Buffer,
+     filename: string,
+   ): Promise<{ isSafe: boolean; reason?: string }>;
+   ```
+
+   Return `{ isSafe: false, reason: "..." }` to reject the file.
+
+3. Update `ListingImage.isScanned` semantics in `docs/DATABASE.md` to note
+   that the flag now implies a full AV scan.
+
+4. Update tests in `src/test/image-processor.test.ts` — the
+   `scanForMalware` tests currently assert the placeholder behaviour.
+
+### ListingImage flag semantics (current)
+
+```
+isScanned: true  = passed validation pipeline (magic bytes + decodability)
+isSafe:    true  = passed validation pipeline AND scanForMalware() returned safe
+```
+
+Neither flag implies a full antivirus scan. Both flags are set together by the
+`processImage()` pipeline in `src/server/actions/imageProcessor.ts`.
+
+---
+
 ## Monitoring Checklist (Daily)
 
 - [ ] Sentry error rate < 0.1%
