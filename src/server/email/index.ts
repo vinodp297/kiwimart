@@ -743,3 +743,46 @@ export async function sendPriceDropEmail(params: {
     html,
   });
 }
+
+// ── Data Export Email (NZ Privacy Act 2020) ──────────────────────────────────
+
+export async function sendDataExportEmail(params: {
+  to: string;
+  displayName: string;
+  jsonPayload: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Your ${esc(APP_NAME)} Data Export</h1>
+    <p>Kia ora ${esc(params.displayName)},</p>
+    <p>
+      As requested, here is a copy of all personal data we hold for your account.
+      This export is provided under the <strong>NZ Privacy Act 2020</strong> (Information
+      Privacy Principle 6).
+    </p>
+    <p>
+      Your data is included below in JSON format. You can open it in any text
+      editor or import it into a spreadsheet application.
+    </p>
+    <hr class="divider">
+    <details style="margin:16px 0;">
+      <summary style="cursor:pointer; font-weight:600; font-size:14px; color:#141414;">
+        Click to view your data
+      </summary>
+      <pre style="background:#F8F7F4; border:1px solid #E3E0D9; border-radius:12px; padding:16px; font-size:11px; overflow-x:auto; max-height:600px; white-space:pre-wrap; word-break:break-all; margin-top:12px;">${esc(params.jsonPayload)}</pre>
+    </details>
+    <hr class="divider">
+    <p style="font-size:12px; color:#9E9A91;">
+      This export was generated on ${new Date().toLocaleDateString("en-NZ")} and reflects
+      the data held at the time of your request. If you have questions or wish to
+      request deletion, visit
+      <a href="${APP_URL}/account/settings" style="color:#D4A843;">Account Settings</a>
+      or contact us at <a href="mailto:privacy@buyzi.co.nz" style="color:#D4A843;">privacy@buyzi.co.nz</a>.
+    </p>`,
+    `Your ${APP_NAME} data export`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Your ${APP_NAME} data export`,
+    html,
+  });
+}

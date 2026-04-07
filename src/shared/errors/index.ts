@@ -33,7 +33,9 @@ export type ErrorCode =
   | "INVALID_CATEGORY"
   | "IMAGE_VALIDATION_FAILED"
   | "ACCOUNT_BANNED"
-  | "AUTH_SERVICE_UNAVAILABLE";
+  | "AUTH_SERVICE_UNAVAILABLE"
+  | "ERASURE_BLOCKED"
+  | "EXPORT_RATE_LIMITED";
 
 export class AppError extends Error {
   constructor(

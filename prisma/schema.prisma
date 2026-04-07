@@ -1504,3 +1504,22 @@ model CronLog {
   @@index([startedAt(sort: Desc)])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Erasure Logs — NZ Privacy Act 2020 compliance
+// ─────────────────────────────────────────────────────────────────────────────
+// Records every account erasure (self-service or admin-initiated).
+// This model is IMMUTABLE — no updates or deletes are ever performed on it.
+
+model ErasureLog {
+  id          String    @id @default(cuid())
+  userId      String
+  requestedAt DateTime  @default(now())
+  completedAt DateTime?
+  scope       String    // "full" | "partial"
+  operatorId  String    // "self-service" or admin userId
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
+}
+

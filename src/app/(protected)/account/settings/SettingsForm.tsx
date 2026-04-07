@@ -81,6 +81,7 @@ export default function SettingsForm({
   // Privacy state
   const [visibility, setVisibility] = useState<Visibility>("public");
   const [privacyToast, setPrivacyToast] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   const router = useRouter();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -377,10 +378,33 @@ export default function SettingsForm({
               </p>
               <button
                 type="button"
-                onClick={() => showPrivacyToast("Coming soon")}
-                className="inline-flex items-center justify-center h-9 px-5 rounded-full border border-[#E3E0D9] text-[13px] font-semibold text-[#141414] hover:border-[#D4A843] hover:text-[#D4A843] transition-colors"
+                disabled={isExporting}
+                onClick={async () => {
+                  setIsExporting(true);
+                  try {
+                    const res = await fetch("/api/v1/account/export-data", {
+                      method: "POST",
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                      showPrivacyToast(
+                        data.data?.message ??
+                          "Your data export has been emailed to you.",
+                      );
+                    } else {
+                      showPrivacyToast(
+                        data.error ?? "Export failed. Please try again.",
+                      );
+                    }
+                  } catch {
+                    showPrivacyToast("Export failed. Please try again.");
+                  } finally {
+                    setIsExporting(false);
+                  }
+                }}
+                className="inline-flex items-center justify-center h-9 px-5 rounded-full border border-[#E3E0D9] text-[13px] font-semibold text-[#141414] hover:border-[#D4A843] hover:text-[#D4A843] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Download my data
+                {isExporting ? "Exporting..." : "Download my data"}
               </button>
             </div>
 

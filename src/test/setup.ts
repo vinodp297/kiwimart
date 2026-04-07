@@ -114,6 +114,7 @@ vi.mock("@/lib/db", () => {
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       groupBy: vi.fn().mockResolvedValue([]),
     },
     orderEvent: {
@@ -148,6 +149,7 @@ vi.mock("@/lib/db", () => {
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
+      deleteMany: vi.fn(),
     },
     messageThread: {
       findUnique: vi.fn(),
@@ -174,6 +176,7 @@ vi.mock("@/lib/db", () => {
       findMany: vi.fn(),
       create: vi.fn(),
       delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
     blockedUser: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -193,6 +196,11 @@ vi.mock("@/lib/db", () => {
       update: vi.fn(),
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
+    },
+    erasureLog: {
+      create: vi.fn().mockResolvedValue({ id: "erasure-log-1" }),
+      findMany: vi.fn().mockResolvedValue([]),
+      findUnique: vi.fn().mockResolvedValue(null),
     },
     $transaction: vi.fn().mockImplementation(async (fnOrArray: unknown) => {
       if (typeof fnOrArray === "function") {
