@@ -4,6 +4,7 @@
 // OTP initiation (seller), OTP confirmation (buyer), item rejection (buyer).
 
 import { safeActionError } from "@/shared/errors";
+import { getRequestContext } from "@/lib/request-context";
 import { requireUser } from "@/server/lib/requireUser";
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
@@ -150,7 +151,11 @@ export async function initiatePickupOTP(
     await pickupQueue
       .add(
         "PICKUP_JOB",
-        { type: "OTP_EXPIRED" as const, orderId },
+        {
+          type: "OTP_EXPIRED" as const,
+          orderId,
+          correlationId: getRequestContext()?.correlationId,
+        },
         {
           delay: otpExpiryMinutes * 60 * 1000,
           jobId: otpJobId,

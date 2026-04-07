@@ -11,6 +11,7 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { pickupQueue } from "@/lib/queue";
+import { getRequestContext } from "@/lib/request-context";
 import { orderRepository } from "@/modules/orders/order.repository";
 import { pickupRepository } from "@/modules/pickup/pickup.repository";
 import type {
@@ -186,6 +187,7 @@ export async function requestReschedule(params: {
         type: "RESCHEDULE_RESPONSE_EXPIRED" as const,
         orderId,
         rescheduleRequestId: requestId!,
+        correlationId: getRequestContext()?.correlationId,
       },
       { delay: pickupCfg.RESCHEDULE_EXPIRY_MS, jobId: rescheduleJobId },
     )

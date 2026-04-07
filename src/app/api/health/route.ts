@@ -1,46 +1,98 @@
 // src/app/api/health/route.ts
 // ─── Public Liveness Probe ──────────────────────────────────────────────────
-// Returns minimal status only. No dependency details, no error messages.
-// Used by: Vercel health checks, Better Uptime.
+// Performs real dependency checks (database, Redis) with 3s timeouts each.
+// Used by: deploy pipeline verify job, Vercel health checks, Better Uptime.
 // For detailed service health, see /api/admin/health (requires SUPER_ADMIN).
+//
+// Response rules:
+//   status "ok"        — all checks pass → HTTP 200
+//   status "degraded"  — a check timed out or Redis is unreachable → HTTP 200
+//   status "unhealthy" — database is unreachable (app cannot function) → HTTP 503
+//
+// IMPORTANT: Never expose connection strings, passwords, or internal error
+// messages publicly — check values are limited to ok / degraded / unreachable.
 
 import db from "@/lib/db";
+import { getRedisClient } from "@/infrastructure/redis/client";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const checks: Record<string, { status: string; message?: string }> = {};
+type CheckStatus = "ok" | "degraded" | "unreachable";
 
-  // Search vector health: detect stale listings missing searchVector
+// Wraps a check function with a hard timeout. Throws an Error with
+// message "timeout" if the check takes longer than timeoutMs.
+async function withTimeout<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  return Promise.race([
+    fn(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), timeoutMs),
+    ),
+  ]);
+}
+
+const CHECK_TIMEOUT_MS = 3000;
+
+async function checkDatabase(): Promise<CheckStatus> {
   try {
-    const searchVectorCheck = await db.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*) as count
-      FROM "Listing"
-      WHERE status = 'ACTIVE'
-      AND "searchVector" IS NULL
-      AND "createdAt" > NOW() - INTERVAL '1 hour'
-    `;
-    const staleSearchVectors = Number(searchVectorCheck[0]?.count ?? 0);
-    if (staleSearchVectors > 0) {
-      checks.searchVector = {
-        status: "degraded",
-        message: `${staleSearchVectors} active listings missing search vector`,
-      };
-    } else {
-      checks.searchVector = { status: "ok" };
-    }
-  } catch {
-    checks.searchVector = { status: "unknown" };
+    await withTimeout(() => db.$queryRaw`SELECT 1`, CHECK_TIMEOUT_MS);
+    return "ok";
+  } catch (e) {
+    // Timeout means the DB is slow but may still be up — degrade, don't declare dead.
+    if (e instanceof Error && e.message === "timeout") return "degraded";
+    return "unreachable";
+  }
+}
+
+async function checkRedis(): Promise<CheckStatus> {
+  try {
+    await withTimeout(() => getRedisClient().ping(), CHECK_TIMEOUT_MS);
+    return "ok";
+  } catch (e) {
+    if (e instanceof Error && e.message === "timeout") return "degraded";
+    return "unreachable";
+  }
+}
+
+export async function GET(request: Request) {
+  const start = Date.now();
+
+  // Correlate with the upstream proxy-generated ID so deploy logs are traceable.
+  const correlationId =
+    request.headers.get("x-correlation-id") ?? crypto.randomUUID();
+
+  const [database, redis] = await Promise.all([checkDatabase(), checkRedis()]);
+
+  const checks = { database, redis };
+
+  // Database being unreachable is fatal — the app cannot serve any requests.
+  // Redis being unreachable is degraded — the app can partially function.
+  let status: "ok" | "degraded" | "unhealthy";
+  if (database === "unreachable") {
+    status = "unhealthy";
+  } else if (Object.values(checks).some((c) => c !== "ok")) {
+    status = "degraded";
+  } else {
+    status = "ok";
   }
 
-  const overallStatus = Object.values(checks).some(
-    (c) => c.status === "degraded",
-  )
-    ? "degraded"
-    : "ok";
+  // Version: prefer the git commit SHA set by Vercel, fall back to npm package
+  // version, then a safe unknown sentinel. Never expose internal paths.
+  const version =
+    process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ??
+    process.env.npm_package_version ??
+    "unknown";
 
   return Response.json(
-    { status: overallStatus, checks, timestamp: new Date().toISOString() },
-    { status: 200 },
+    {
+      status,
+      version,
+      checks,
+      responseTimeMs: Date.now() - start,
+      correlationId,
+    },
+    { status: status === "unhealthy" ? 503 : 200 },
   );
 }

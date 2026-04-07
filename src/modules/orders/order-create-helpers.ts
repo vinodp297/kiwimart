@@ -13,6 +13,7 @@ import {
 } from "./order-event.service";
 import { orderRepository } from "./order.repository";
 import { pickupQueue } from "@/lib/queue";
+import { getRequestContext } from "@/lib/request-context";
 
 // ── handleCashOnPickup ────────────────────────────────────────────────────────
 
@@ -140,7 +141,11 @@ export function schedulePickupDeadline(orderId: string) {
   pickupQueue
     .add(
       "PICKUP_JOB",
-      { type: "PICKUP_SCHEDULE_DEADLINE" as const, orderId },
+      {
+        type: "PICKUP_SCHEDULE_DEADLINE" as const,
+        orderId,
+        correlationId: getRequestContext()?.correlationId,
+      },
       { delay: 48 * 60 * 60 * 1000, jobId: deadlineJobId },
     )
     .then(() => {

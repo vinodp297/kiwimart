@@ -11,6 +11,7 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { pickupQueue } from "@/lib/queue";
+import { getRequestContext } from "@/lib/request-context";
 import { orderRepository } from "@/modules/orders/order.repository";
 import { pickupRepository } from "@/modules/pickup/pickup.repository";
 import { messageRepository } from "@/modules/messaging/message.repository";
@@ -293,7 +294,11 @@ export async function acceptPickupTime(params: {
   pickupQueue
     .add(
       "PICKUP_JOB",
-      { type: "PICKUP_WINDOW_EXPIRED" as const, orderId },
+      {
+        type: "PICKUP_WINDOW_EXPIRED" as const,
+        orderId,
+        correlationId: getRequestContext()?.correlationId,
+      },
       { delay: Math.max(windowDelay, 0), jobId: windowJobId },
     )
     .then(() => {

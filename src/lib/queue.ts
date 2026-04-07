@@ -85,6 +85,7 @@ export interface PayoutJobData {
   sellerId: string;
   amountNzd: number;
   stripeAccountId: string;
+  correlationId?: string;
 }
 
 export interface NotificationJobData {
@@ -105,4 +106,5 @@ export interface PickupJobData {
   type: PickupJobType;
   orderId: string;
   rescheduleRequestId?: string;
+  correlationId?: string;
 }

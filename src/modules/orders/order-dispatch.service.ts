@@ -7,6 +7,7 @@ import { paymentService } from "@/modules/payments/payment.service";
 import { transitionOrder } from "./order.transitions";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
+import { getRequestContext } from "@/lib/request-context";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendOrderDispatchedEmail } from "@/server/email";
 import {
@@ -96,6 +97,7 @@ export async function confirmDelivery(
           sellerId: order.sellerId,
           amountNzd: order.totalNzd,
           stripeAccountId: seller.stripeAccountId,
+          correlationId: getRequestContext()?.correlationId,
         },
         {
           delay: 3 * 24 * 60 * 60 * 1000,

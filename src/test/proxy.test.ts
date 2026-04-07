@@ -5,6 +5,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// ─── Hoisted counter for unique UUIDs per request ──────────────────────────
+// Must be hoisted so it is available inside the vi.mock("crypto") factory.
+const uuidState = vi.hoisted(() => ({ count: 0 }));
+
 // ─── Mock auth() wrapper — passthrough that exposes request.auth ────────────
 vi.mock("@/lib/auth", () => ({
   auth: (handler: (...args: unknown[]) => unknown) => handler,
@@ -12,14 +16,14 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("server-only", () => ({}));
 
-// ─── Mock crypto for nonce generation ──────────────────────────────────────
+// ─── Mock crypto for nonce generation + unique correlation IDs ──────────────
 vi.mock("crypto", () => ({
   default: {
     randomBytes: () => ({ toString: () => "test-nonce-abc" }),
-    randomUUID: () => "test-uuid-123",
+    randomUUID: () => `test-uuid-${++uuidState.count}`,
   },
   randomBytes: () => ({ toString: () => "test-nonce-abc" }),
-  randomUUID: () => "test-uuid-123",
+  randomUUID: () => `test-uuid-${++uuidState.count}`,
 }));
 
 // ─── Mock sessionStore (used for defence-in-depth session version check) ────
@@ -180,5 +184,52 @@ describe("proxy — auth guard", () => {
     expect(res?.status).toBe(401);
     const body = await res?.json();
     expect(body.code).toBe("AUTH_REQUIRED");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("proxy — correlation ID", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset counter so each test suite starts at a predictable baseline.
+    uuidState.count = 0;
+  });
+
+  // ── Test C1: pass-through response carries x-correlation-id ─────────────
+  // Authenticated requests on a protected page reach the final response-header
+  // block where both x-request-id and x-correlation-id are set.
+  it("sets x-correlation-id on pass-through responses", async () => {
+    const res = await proxy(
+      makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+    );
+    expect(res?.headers.get("x-correlation-id")).toBe("test-uuid-1");
+  });
+
+  // ── Test C2: two requests use different correlation IDs ──────────────────
+  it("generates a unique correlation ID per request", async () => {
+    const res1 = await proxy(
+      makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+    );
+    const res2 = await proxy(
+      makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+    );
+    const id1 = res1?.headers.get("x-correlation-id");
+    const id2 = res2?.headers.get("x-correlation-id");
+    expect(id1).toBeTruthy();
+    expect(id2).toBeTruthy();
+    expect(id1).not.toBe(id2);
+  });
+
+  // ── Test C3: x-correlation-id matches x-request-id ──────────────────────
+  // Both headers are set from the same requestId so that log queries,
+  // Stripe metadata, and Sentry tags all resolve to the same trace.
+  it("x-correlation-id equals x-request-id on the same response", async () => {
+    const res = await proxy(
+      makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+    );
+    expect(res?.headers.get("x-correlation-id")).toBe(
+      res?.headers.get("x-request-id"),
+    );
   });
 });

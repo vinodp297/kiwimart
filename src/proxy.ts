@@ -91,9 +91,14 @@ export const proxy = auth(async function proxyHandler(
   // ── Security headers (applied to all responses) ───────────────────────────
   const nonce = generateNonce();
 
+  // Thread the correlation ID through to route handlers via a request header
+  // so downstream code (logger, BullMQ jobs, Stripe metadata) can read it.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-correlation-id", requestId);
+
   const response = NextResponse.next({
     request: {
-      headers: new Headers(request.headers),
+      headers: requestHeaders,
     },
   });
   // Pass nonce to server components via request header
@@ -254,8 +259,12 @@ export const proxy = auth(async function proxyHandler(
     return NextResponse.redirect(new URL(defaultDashboard, request.url));
   }
 
-  // ── Request ID + structured logging ──────────────────────────────────────
+  // ── Request ID + correlation ID ───────────────────────────────────────────
+  // x-request-id: internal tracing identifier (unchanged)
+  // x-correlation-id: same UUID, exposed to clients so they can reference it
+  //   in support requests and correlate with Stripe / BullMQ / Sentry traces.
   response.headers.set("x-request-id", requestId);
+  response.headers.set("x-correlation-id", requestId);
 
   logger.info("http.request", {
     requestId,

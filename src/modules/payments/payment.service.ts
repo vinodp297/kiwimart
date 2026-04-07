@@ -6,6 +6,7 @@
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
+import { getRequestContext } from "@/lib/request-context";
 import type {
   CreatePaymentIntentInput,
   CapturePaymentInput,
@@ -45,6 +46,9 @@ export class PaymentService {
           listingId: input.listingId,
           buyerId: input.buyerId,
           sellerId: input.sellerId,
+          // Thread correlationId into Stripe so dashboard events can be
+          // linked back to structured application logs by the same ID.
+          correlationId: getRequestContext()?.correlationId ?? "unknown",
           ...input.metadata,
         },
         description: `KiwiMart: ${input.listingTitle}`,
