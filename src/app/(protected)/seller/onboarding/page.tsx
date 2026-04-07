@@ -23,15 +23,15 @@ export default async function SellerOnboardingPage() {
       id: true,
       displayName: true,
       email: true,
-      sellerEnabled: true,
+      isSellerEnabled: true,
       sellerTermsAcceptedAt: true,
-      phoneVerified: true,
+      isPhoneVerified: true,
       idVerified: true,
       idVerifiedAt: true,
       idSubmittedAt: true,
-      stripeOnboarded: true,
+      isStripeOnboarded: true,
       nzbn: true,
-      gstRegistered: true,
+      isGstRegistered: true,
       gstNumber: true,
       verificationApplication: {
         select: {
@@ -45,7 +45,7 @@ export default async function SellerOnboardingPage() {
   });
 
   if (!user) redirect("/auth/signin");
-  if (!user.sellerEnabled) redirect("/dashboard/buyer");
+  if (!user.isSellerEnabled) redirect("/dashboard/buyer");
 
   const [tier, allTiers] = await Promise.all([
     getSellerTier(user),
@@ -79,13 +79,13 @@ export default async function SellerOnboardingPage() {
               email: user.email,
               sellerTermsAcceptedAt:
                 user.sellerTermsAcceptedAt?.toISOString() ?? null,
-              phoneVerified: user.phoneVerified,
+              isPhoneVerified: user.isPhoneVerified,
               idVerified: user.idVerified,
               idVerifiedAt: user.idVerifiedAt?.toISOString() ?? null,
               idSubmittedAt: user.idSubmittedAt?.toISOString() ?? null,
-              stripeOnboarded: user.stripeOnboarded,
+              isStripeOnboarded: user.isStripeOnboarded,
               nzbn: user.nzbn,
-              gstRegistered: user.gstRegistered,
+              isGstRegistered: user.isGstRegistered,
               gstNumber: user.gstNumber,
             }}
             verificationApp={

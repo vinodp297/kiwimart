@@ -258,6 +258,128 @@ export async function processAutoReleases(): Promise<{
     }
   }
 
+  // ── Cash pickup orders: finalize PENDING payouts after escrow window ──────
+  // CASH_ON_PICKUP orders are already COMPLETED at this point (the pickup
+  // worker transitions them). A Payout record with status PENDING was created
+  // at order-creation time. After the same business-day escrow window we mark
+  // the payout PAID — no Stripe involvement because cash changed hands IRL.
+
+  const cashCutoff = new Date();
+  cashCutoff.setDate(cashCutoff.getDate() - 30);
+
+  const cashOrders = await db.order.findMany({
+    where: {
+      status: "COMPLETED",
+      fulfillmentType: "CASH_ON_PICKUP",
+      completedAt: {
+        not: null,
+        gte: cashCutoff,
+      },
+      payout: {
+        status: "PENDING",
+      },
+    },
+    take: 500,
+    orderBy: { completedAt: "asc" },
+    select: {
+      id: true,
+      sellerId: true,
+      completedAt: true,
+      payout: { select: { id: true, status: true } },
+    },
+  });
+
+  const nowCash = new Date();
+  const eligibleCashOrders = cashOrders.filter((order) => {
+    if (!order.completedAt) return false;
+    const releaseDate = addBusinessDays(order.completedAt, escrowDays);
+    return releaseDate <= nowCash;
+  });
+
+  logger.info("escrow.cash_release.started", {
+    eligible: eligibleCashOrders.length,
+    total: cashOrders.length,
+  });
+
+  for (let i = 0; i < eligibleCashOrders.length; i += BATCH_SIZE) {
+    const batch = eligibleCashOrders.slice(i, i + BATCH_SIZE);
+
+    const results = await Promise.allSettled(
+      batch.map(async (order) => {
+        const lockValue = await acquireLock(
+          `order:cash-release:${order.id}`,
+          60,
+        );
+        if (lockValue === null) {
+          logger.info("escrow.cash_release.lock_skipped", {
+            orderId: order.id,
+          });
+          return true;
+        }
+        if (
+          lockValue === "NO_REDIS_LOCK" &&
+          process.env.NODE_ENV === "production"
+        ) {
+          logger.error("escrow.cash_release.redis_unavailable", {
+            orderId: order.id,
+          });
+          return false;
+        }
+
+        try {
+          await db.payout.updateMany({
+            where: { orderId: order.id, status: "PENDING" },
+            data: { status: "PAID", paidAt: new Date() },
+          });
+
+          audit({
+            userId: null,
+            action: "PAYOUT_INITIATED",
+            entityType: "Payout",
+            entityId: order.payout?.id ?? order.id,
+            metadata: {
+              orderId: order.id,
+              newStatus: "PAID",
+              trigger: "CASH_ESCROW_RELEASE",
+            },
+          });
+
+          orderEventService.recordEvent({
+            orderId: order.id,
+            type: ORDER_EVENT_TYPES.COMPLETED,
+            actorId: null,
+            actorRole: ACTOR_ROLES.SYSTEM,
+            summary:
+              "Cash pickup payout finalized — escrow hold period elapsed",
+            metadata: { trigger: "CASH_ESCROW_RELEASE" },
+          });
+
+          logger.info("escrow.cash_release.payout_finalized", {
+            orderId: order.id,
+            sellerId: order.sellerId,
+          });
+          return true;
+        } catch (err) {
+          logger.error("escrow.cash_release.failed", {
+            orderId: order.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return false;
+        } finally {
+          await releaseLock(`order:cash-release:${order.id}`, lockValue);
+        }
+      }),
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        processed++;
+      } else {
+        errors++;
+      }
+    }
+  }
+
   logger.info("escrow.auto_release.completed", { processed, errors });
   return { processed, errors };
 }

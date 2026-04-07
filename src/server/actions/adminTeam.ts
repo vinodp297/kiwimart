@@ -40,13 +40,13 @@ export async function inviteAdmin(
       create: {
         email,
         adminRole: role,
-        invitedBy: admin.id,
+        invitedById: admin.id,
         tokenHash,
         expiresAt,
       },
       update: {
         adminRole: role,
-        invitedBy: admin.id,
+        invitedById: admin.id,
         tokenHash,
         expiresAt,
         acceptedAt: null,
@@ -67,7 +67,7 @@ export async function inviteAdmin(
     logger.info("admin.invitation.sent", {
       invitedEmail: email,
       role,
-      invitedBy: admin.id,
+      invitedById: admin.id,
     });
     return { success: true, data: undefined };
   } catch (err) {

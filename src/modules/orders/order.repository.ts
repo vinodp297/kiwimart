@@ -394,7 +394,7 @@ export const orderRepository = {
         seller: {
           select: {
             stripeAccountId: true,
-            stripeOnboarded: true,
+            isStripeOnboarded: true,
             displayName: true,
             email: true,
           },

@@ -115,7 +115,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             emailVerified: true,
             isBanned: true,
             bannedReason: true,
-            sellerEnabled: true,
+            isSellerEnabled: true,
             isAdmin: true,
           },
         });
@@ -238,35 +238,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             id: true,
             isAdmin: true,
             isBanned: true,
-            sellerEnabled: true,
-            stripeOnboarded: true,
+            isSellerEnabled: true,
+            isStripeOnboarded: true,
             displayName: true,
             username: true,
             avatarKey: true,
             emailVerified: true,
             idVerified: true,
-            mfaEnabled: true,
+            isMfaEnabled: true,
           },
         });
         if (dbUser) {
           token.id = dbUser.id;
           token.isAdmin = dbUser.isAdmin;
           token.isBanned = dbUser.isBanned;
-          token.sellerEnabled = dbUser.sellerEnabled;
-          token.stripeOnboarded = dbUser.stripeOnboarded;
+          token.isSellerEnabled = dbUser.isSellerEnabled;
+          token.isStripeOnboarded = dbUser.isStripeOnboarded;
           token.displayName = dbUser.displayName;
           token.username = dbUser.username;
           token.avatarUrl = dbUser.avatarKey ?? null;
           token.emailVerified = dbUser.emailVerified?.toISOString() ?? null;
           token.idVerified = dbUser.idVerified;
           // MFA: if user has TOTP enabled, mark session as pending verification
-          token.mfaPending = dbUser.mfaEnabled;
+          token.mfaPending = dbUser.isMfaEnabled;
         }
       }
 
       // On subsequent requests: if mfaPending, check if MFA was verified
       if (token.mfaPending && token.sub) {
-        const verified = await isMfaVerified(`user:${token.sub}`);
+        const verified = token.jti
+          ? await isMfaVerified(token.jti as string)
+          : false;
         if (verified) {
           token.mfaPending = false;
         }
@@ -289,10 +291,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.user.id = token.id as string;
           session.user.isAdmin = (token.isAdmin as boolean) ?? false;
           session.user.isBanned = (token.isBanned as boolean) ?? false;
-          session.user.sellerEnabled =
-            (token.sellerEnabled as boolean) ?? false;
-          session.user.stripeOnboarded =
-            (token.stripeOnboarded as boolean) ?? false;
+          session.user.isSellerEnabled =
+            (token.isSellerEnabled as boolean) ?? false;
+          session.user.isStripeOnboarded =
+            (token.isStripeOnboarded as boolean) ?? false;
           session.user.displayName = (token.displayName as string) ?? "";
           session.user.username = (token.username as string) ?? "";
           session.user.avatarUrl = (token.avatarUrl as string | null) ?? null;
@@ -306,8 +308,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const dbUser = user as typeof user & {
             isAdmin: boolean;
             isBanned: boolean;
-            sellerEnabled: boolean;
-            stripeOnboarded: boolean;
+            isSellerEnabled: boolean;
+            isStripeOnboarded: boolean;
             displayName: string;
             username: string;
             avatarUrl?: string | null;
@@ -317,8 +319,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.user.id = dbUser.id;
           session.user.isAdmin = dbUser.isAdmin;
           session.user.isBanned = dbUser.isBanned;
-          session.user.sellerEnabled = dbUser.sellerEnabled;
-          session.user.stripeOnboarded = dbUser.stripeOnboarded;
+          session.user.isSellerEnabled = dbUser.isSellerEnabled;
+          session.user.isStripeOnboarded = dbUser.isStripeOnboarded;
           session.user.displayName = dbUser.displayName;
           session.user.username = dbUser.username;
           session.user.avatarUrl = dbUser.avatarUrl ?? null;

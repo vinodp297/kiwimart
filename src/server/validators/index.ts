@@ -95,7 +95,7 @@ export const registerSchema = z
     password: passwordField,
     confirmPassword: z.string().min(1, "Please confirm your password"),
     agreeTerms: z.literal<true>(true),
-    agreeMarketing: z.boolean().default(false),
+    hasMarketingConsent: z.boolean().default(false),
     turnstileToken: z.string().default(""),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -174,8 +174,8 @@ export const createListingSchema = z.object({
         .positive("Price must be greater than $0")
         .max(100_000, "Maximum price is $100,000"),
     ),
-  offersEnabled: z.boolean().default(true),
-  gstIncluded: z.boolean().default(false),
+  isOffersEnabled: z.boolean().default(true),
+  isGstIncluded: z.boolean().default(false),
   isUrgent: z.boolean().default(false),
   isNegotiable: z.boolean().default(false),
   shipsNationwide: z.boolean().default(false),
@@ -260,8 +260,8 @@ export const saveDraftSchema = z.object({
       return typeof v === "string" ? Number(v) : v;
     })
     .pipe(z.number().min(0).max(100_000).optional()),
-  offersEnabled: z.boolean().optional(),
-  gstIncluded: z.boolean().optional(),
+  isOffersEnabled: z.boolean().optional(),
+  isGstIncluded: z.boolean().optional(),
   isUrgent: z.boolean().optional(),
   isNegotiable: z.boolean().optional(),
   shipsNationwide: z.boolean().optional(),
@@ -303,7 +303,7 @@ export type CreateOfferInput = z.infer<typeof createOfferSchema>;
 export const respondOfferSchema = z.object({
   offerId: z.string().min(1),
   action: z.enum(["ACCEPT", "DECLINE"]),
-  declineNote: z.string().max(300).optional(),
+  declineReason: z.string().max(300).optional(),
 });
 export type RespondOfferInput = z.infer<typeof respondOfferSchema>;
 
@@ -636,6 +636,7 @@ export type RemoveFromCartInput = z.infer<typeof removeFromCartSchema>;
 export const checkoutCartSchema = z.object({
   idempotencyKey: z.string().max(128).optional(),
   shippingAddress: shippingAddressSchema,
+  confirmedPriceVersion: z.boolean().optional(),
 });
 export type CheckoutCartInput = z.infer<typeof checkoutCartSchema>;
 
@@ -832,7 +833,7 @@ export const updateBusinessDetailsSchema = z.object({
     .regex(/^\d{13}$/, "NZBN must be a 13-digit number")
     .optional()
     .or(z.literal("")),
-  gstRegistered: z.boolean().default(false),
+  isGstRegistered: z.boolean().default(false),
   gstNumber: z
     .string()
     .regex(/^\d{2}-\d{3}-\d{3}$/, "GST number must be in XX-XXX-XXX format")

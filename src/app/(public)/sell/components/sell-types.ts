@@ -12,7 +12,7 @@ export interface ImagePreview {
   progress: number;
   error: string | null;
   uploaded: boolean;
-  safe: boolean; // true only after server confirms scanned + safe
+  isSafe: boolean; // true only after server confirms isScanned + isSafe
   compressedSize: number | null;
   originalSize: number | null;
   dimensions: { width: number; height: number } | null;

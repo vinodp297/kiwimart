@@ -16,7 +16,7 @@ export function TierProgressionList({
   currentTierName,
   tiers,
   termsAccepted,
-  phoneVerified,
+  isPhoneVerified,
   onPhoneVerified,
   onIdSubmitted,
 }: {
@@ -25,7 +25,7 @@ export function TierProgressionList({
   currentTierName: SellerTierName;
   tiers: SellerTier[];
   termsAccepted: boolean;
-  phoneVerified: boolean;
+  isPhoneVerified: boolean;
   onPhoneVerified: () => void;
   onIdSubmitted: () => void;
 }) {
@@ -98,7 +98,7 @@ export function TierProgressionList({
                     <div className="mt-3 space-y-2">
                       {tier.name === "phone_verified" && (
                         <div>
-                          {phoneVerified ? (
+                          {isPhoneVerified ? (
                             <p className="text-[12.5px] text-green-700">
                               <span className="text-green-500">✓</span> Phone
                               verified

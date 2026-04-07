@@ -37,7 +37,7 @@ export async function runSellerDowngradeCheck(): Promise<{
     // Sellers with trust metrics exceeding dispute rate threshold
     db.user.findMany({
       where: {
-        sellerEnabled: true,
+        isSellerEnabled: true,
         isBanned: false,
         sellerTierOverride: null,
         trustMetrics: {
@@ -59,7 +59,7 @@ export async function runSellerDowngradeCheck(): Promise<{
     // Sellers with too many simultaneously open disputes
     db.user.findMany({
       where: {
-        sellerEnabled: true,
+        isSellerEnabled: true,
         isBanned: false,
         sellerTierOverride: null,
         sellerOrders: {

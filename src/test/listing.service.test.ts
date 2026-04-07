@@ -91,7 +91,7 @@ const validCreateInput = {
   title: "Test Listing",
   description: "A great item for sale",
   price: 29.99,
-  gstIncluded: false,
+  isGstIncluded: false,
   condition: "GOOD",
   categoryId: "cat-1",
   subcategoryName: null as null,
@@ -100,7 +100,7 @@ const validCreateInput = {
   shippingOption: "PICKUP",
   shippingPrice: null as null,
   pickupAddress: "123 Test St",
-  offersEnabled: true,
+  isOffersEnabled: true,
   isUrgent: false,
   isNegotiable: true,
   shipsNationwide: false,
@@ -111,13 +111,13 @@ const validCreateInput = {
 const verifiedUser = {
   emailVerified: new Date("2024-01-01"),
   sellerTermsAcceptedAt: new Date("2024-01-01"),
-  sellerEnabled: true,
+  isSellerEnabled: true,
   displayName: "Test Seller",
 };
 
 const validImages = [
-  { id: "img-1", r2Key: "key-1", scanned: true, safe: true },
-  { id: "img-2", r2Key: "key-2", scanned: true, safe: true },
+  { id: "img-1", r2Key: "key-1", isScanned: true, isSafe: true },
+  { id: "img-2", r2Key: "key-2", isScanned: true, isSafe: true },
 ];
 
 // ── Helper: configure all mocks needed for a successful createListing call ────
@@ -230,7 +230,7 @@ describe("ListingService - createListing", () => {
     const result = await listingService.createListing(
       SELLER_ID,
       SELLER_EMAIL,
-      false, // stripeOnboarded = false
+      false, // isStripeOnboarded = false
       validCreateInput,
       "127.0.0.1",
     );
@@ -269,7 +269,7 @@ describe("ListingService - createListing", () => {
     mockCategoryFindUnique.mockResolvedValue({ id: "cat-1" });
     // Only return one image when two keys were provided
     mockListingImageFindMany.mockResolvedValue([
-      { id: "img-1", r2Key: "key-1", scanned: true, safe: true },
+      { id: "img-1", r2Key: "key-1", isScanned: true, isSafe: true },
     ]);
 
     const result = await listingService.createListing(
@@ -291,8 +291,8 @@ describe("ListingService - createListing", () => {
     );
     mockCategoryFindUnique.mockResolvedValue({ id: "cat-1" });
     mockListingImageFindMany.mockResolvedValue([
-      { id: "img-1", r2Key: "key-1", scanned: true, safe: false }, // unsafe
-      { id: "img-2", r2Key: "key-2", scanned: true, safe: true },
+      { id: "img-1", r2Key: "key-1", isScanned: true, isSafe: false }, // unsafe
+      { id: "img-2", r2Key: "key-2", isScanned: true, isSafe: true },
     ]);
 
     const result = await listingService.createListing(

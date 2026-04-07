@@ -26,7 +26,7 @@ describe("OfferService", () => {
     sellerId: "seller-1",
     title: "iPhone 15",
     priceNzd: 100000, // $1000.00 in cents
-    offersEnabled: true,
+    isOffersEnabled: true,
     seller: { email: "seller@test.com", displayName: "Seller" },
   };
 
@@ -110,7 +110,7 @@ describe("OfferService", () => {
     it("rejects offer when offers disabled on listing", async () => {
       vi.mocked(db.listing.findUnique).mockResolvedValue({
         ...mockListing,
-        offersEnabled: false,
+        isOffersEnabled: false,
       } as never);
 
       await expect(

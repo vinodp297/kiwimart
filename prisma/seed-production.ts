@@ -334,8 +334,8 @@ async function main() {
         suburb: s.suburb,
         idVerified: s.idVerified,
         idVerifiedAt: s.idVerified ? new Date(s.created) : undefined,
-        sellerEnabled: true,
-        stripeOnboarded: true,
+        isSellerEnabled: true,
+        isStripeOnboarded: true,
         stripeAccountId: `acct_test_${s.username.toLowerCase()}`,
         agreedTermsAt: new Date(s.created),
         createdAt: new Date(s.created),
@@ -357,7 +357,7 @@ async function main() {
         passwordHash: hash,
         region: b.region,
         suburb: b.suburb,
-        sellerEnabled: false,
+        isSellerEnabled: false,
         agreedTermsAt: new Date(b.created),
         createdAt: new Date(b.created),
       },
@@ -2926,7 +2926,7 @@ async function main() {
         suburb: l.sb,
         shippingOption: l.sh,
         shippingNzd,
-        offersEnabled: l.o,
+        isOffersEnabled: l.o,
         viewCount: randomInt(50, 2000),
         watcherCount: randomInt(5, 150),
         publishedAt: published,
@@ -2937,8 +2937,8 @@ async function main() {
             r2Key: img(l.im),
             altText: l.t,
             order: 0,
-            scanned: true,
-            safe: true,
+            isScanned: true,
+            isSafe: true,
             scannedAt: created,
             width: 800,
             height: 600,
@@ -3769,7 +3769,7 @@ async function main() {
           threadId: thread.id,
           senderId,
           body,
-          read: isRead,
+          isRead: isRead,
           readAt: isRead ? hoursAgo(randomInt(1, 24)) : null,
           createdAt: hoursAgo((td.msgs.length - i) * randomInt(2, 12)),
         },
@@ -3819,7 +3819,7 @@ async function main() {
     amount: number;
     status: string;
     note?: string;
-    declineNote?: string;
+    declineReason?: string;
   }[] = [
     // 5 PENDING
     {
@@ -3893,7 +3893,7 @@ async function main() {
       amount: 1200,
       status: "DECLINED",
       note: "Hi, would you take $1,200?",
-      declineNote: "Cheers for the offer but I'm pretty firm on price",
+      declineReason: "Cheers for the offer but I'm pretty firm on price",
     },
     {
       buyer: "emma_w",
@@ -3901,7 +3901,7 @@ async function main() {
       amount: 550,
       status: "DECLINED",
       note: "Would you do $550?",
-      declineNote: "No worries, but can't go lower than asking",
+      declineReason: "No worries, but can't go lower than asking",
     },
     {
       buyer: "david_p",
@@ -3909,7 +3909,7 @@ async function main() {
       amount: 500,
       status: "DECLINED",
       note: "Would $500 work?",
-      declineNote: "Appreciate the offer mate, but firm on this one",
+      declineReason: "Appreciate the offer mate, but firm on this one",
     },
     {
       buyer: "fatima_a",
@@ -3917,7 +3917,7 @@ async function main() {
       amount: 250,
       status: "DECLINED",
       note: "Can you do $250?",
-      declineNote: "Sorry, price is firm on this one",
+      declineReason: "Sorry, price is firm on this one",
     },
     // 2 EXPIRED
     {
@@ -3954,7 +3954,7 @@ async function main() {
         respondedAt: ["ACCEPTED", "DECLINED"].includes(od.status)
           ? daysAgo(randomInt(1, 5))
           : null,
-        declineNote: od.declineNote ?? null,
+        declineReason: od.declineReason ?? null,
         createdAt: daysAgo(randomInt(3, 15)),
       },
     });

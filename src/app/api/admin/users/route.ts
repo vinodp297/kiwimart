@@ -60,7 +60,7 @@ export async function GET(request: Request) {
         email: true,
         displayName: true,
         region: true,
-        sellerEnabled: true,
+        isSellerEnabled: true,
         idVerified: true,
         isBanned: true,
         createdAt: true,

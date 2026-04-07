@@ -20,7 +20,7 @@ export interface AutoReviewInput {
   description: string;
   priceNzd: number; // in cents
   categoryId: string;
-  images: { safe: boolean | null }[];
+  images: { isSafe: boolean | null }[];
 }
 
 export interface SellerProfile {
@@ -83,7 +83,7 @@ export async function runAutoReview(
     await getKeywordLists();
 
   // ── Load platform config ────────────────────────────────────────────────
-  const cfg = await getConfigMany([
+  const config = await getConfigMany([
     CONFIG_KEYS.LISTING_MIN_TITLE_LENGTH,
     CONFIG_KEYS.LISTING_MAX_TITLE_LENGTH,
     CONFIG_KEYS.LISTING_MIN_DESCRIPTION_LENGTH,
@@ -110,7 +110,7 @@ export async function runAutoReview(
   ]);
 
   const cfgInt = (k: ConfigKey, fallback: number) =>
-    parseInt(cfg.get(k) ?? String(fallback), 10);
+    parseInt(config.get(k) ?? String(fallback), 10);
 
   const minTitleLen = cfgInt(CONFIG_KEYS.LISTING_MIN_TITLE_LENGTH, 5);
   const maxTitleLen = cfgInt(CONFIG_KEYS.LISTING_MAX_TITLE_LENGTH, 80);
@@ -204,7 +204,7 @@ export async function runAutoReview(
     };
   }
 
-  if (listing.images.every((img) => img.safe === false)) {
+  if (listing.images.every((img) => img.isSafe === false)) {
     return {
       verdict: "reject",
       score: 100,

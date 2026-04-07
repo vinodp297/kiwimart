@@ -160,15 +160,15 @@ export default function SellerPanel({
       {seller.badges.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4">
           {seller.badges.map((badge) => {
-            const cfg = BADGE_CONFIG[badge];
+            const config = BADGE_CONFIG[badge];
             return (
               <span
                 key={badge}
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full
-                  text-[10.5px] font-semibold ring-1 ${cfg.colour}`}
+                  text-[10.5px] font-semibold ring-1 ${config.colour}`}
               >
-                <span aria-hidden>{cfg.icon}</span>
-                {cfg.label}
+                <span aria-hidden>{config.icon}</span>
+                {config.label}
               </span>
             );
           })}

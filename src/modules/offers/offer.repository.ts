@@ -67,7 +67,7 @@ export const offerRepository = {
    * @source src/modules/offers/offer.service.ts */
   async accept(
     id: string,
-    paymentDeadline: Date,
+    paymentDeadlineAt: Date,
     tx: Prisma.TransactionClient,
   ): Promise<void> {
     await tx.offer.update({
@@ -75,20 +75,20 @@ export const offerRepository = {
       data: {
         status: "ACCEPTED",
         respondedAt: new Date(),
-        paymentDeadline,
+        paymentDeadlineAt,
       },
     });
   },
 
   /** Decline an offer.
    * @source src/modules/offers/offer.service.ts */
-  async decline(id: string, declineNote?: string): Promise<void> {
+  async decline(id: string, declineReason?: string): Promise<void> {
     await db.offer.update({
       where: { id },
       data: {
         status: "DECLINED",
         respondedAt: new Date(),
-        declineNote: declineNote ?? null,
+        declineReason: declineReason ?? null,
       },
     });
   },

@@ -1,5 +1,7 @@
--- CreateTable
-CREATE TABLE "CronLog" (
+-- CreateTable: CronLog for job execution tracking
+-- Idempotent: uses IF NOT EXISTS guards.
+
+CREATE TABLE IF NOT EXISTS "CronLog" (
     "id" TEXT NOT NULL,
     "jobName" TEXT NOT NULL,
     "status" TEXT NOT NULL,
@@ -12,8 +14,5 @@ CREATE TABLE "CronLog" (
     CONSTRAINT "CronLog_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "CronLog_jobName_startedAt_idx" ON "CronLog"("jobName", "startedAt" DESC);
-
--- CreateIndex
-CREATE INDEX "CronLog_startedAt_idx" ON "CronLog"("startedAt" DESC);
+CREATE INDEX IF NOT EXISTS "CronLog_jobName_startedAt_idx" ON "CronLog"("jobName", "startedAt" DESC);
+CREATE INDEX IF NOT EXISTS "CronLog_startedAt_idx" ON "CronLog"("startedAt" DESC);

@@ -15,7 +15,7 @@ import { getCorsHeaders, withCors } from "../../_helpers/cors";
 
 const respondBodySchema = z.object({
   action: z.enum(["ACCEPT", "DECLINE"]),
-  declineNote: z.string().max(300).optional(),
+  declineReason: z.string().max(300).optional(),
 });
 
 export async function PATCH(
@@ -33,6 +33,7 @@ export async function PATCH(
           429,
           "RATE_LIMITED",
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -42,12 +43,16 @@ export async function PATCH(
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = respondBodySchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const ip = getClientIp(new Headers(request.headers)) || "unknown";
@@ -58,12 +63,15 @@ export async function PATCH(
       ip,
     );
 
-    return withCors(apiOk(null));
+    return withCors(apiOk(null), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

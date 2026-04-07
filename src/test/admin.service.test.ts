@@ -23,15 +23,14 @@ describe("AdminService", () => {
       expect(db.$transaction).toHaveBeenCalled();
     });
 
-    it("calls $transaction with an array", async () => {
-      vi.mocked(db.$transaction).mockResolvedValue([] as never);
-
+    it("calls $transaction with a callback (atomic ban + session delete)", async () => {
+      // banUser was refactored to use callback-style $transaction so that
+      // setBanState and deleteAllSessions share the same transaction client.
       await adminService.banUser("user-123", "Spam", "admin-1");
 
-      // $transaction is called with an array of Prisma promises
       const call = vi.mocked(db.$transaction).mock.calls[0] ?? undefined;
       expect(call).toBeDefined();
-      expect(Array.isArray(call?.[0])).toBe(true);
+      expect(typeof call?.[0]).toBe("function");
     });
   });
 
@@ -61,7 +60,7 @@ describe("AdminService", () => {
   describe("toggleSellerEnabled", () => {
     it("enables seller when currently disabled", async () => {
       vi.mocked(db.user.findUnique).mockResolvedValue({
-        sellerEnabled: false,
+        isSellerEnabled: false,
       } as never);
       vi.mocked(db.user.update).mockResolvedValue({} as never);
 
@@ -69,14 +68,14 @@ describe("AdminService", () => {
 
       expect(db.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { sellerEnabled: true },
+          data: { isSellerEnabled: true },
         }),
       );
     });
 
     it("disables seller when currently enabled", async () => {
       vi.mocked(db.user.findUnique).mockResolvedValue({
-        sellerEnabled: true,
+        isSellerEnabled: true,
       } as never);
       vi.mocked(db.user.update).mockResolvedValue({} as never);
 
@@ -84,7 +83,7 @@ describe("AdminService", () => {
 
       expect(db.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { sellerEnabled: false },
+          data: { isSellerEnabled: false },
         }),
       );
     });

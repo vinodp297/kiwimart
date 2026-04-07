@@ -105,8 +105,8 @@ export default function EditListingPage() {
   const [subcategory, setSubcategory] = useState("");
   const [condition, setCondition] = useState<Condition | "">("");
   const [price, setPrice] = useState("");
-  const [offersEnabled, setOffersEnabled] = useState(true);
-  const [gstIncluded, setGstIncluded] = useState(false);
+  const [isOffersEnabled, setOffersEnabled] = useState(true);
+  const [isGstIncluded, setGstIncluded] = useState(false);
   const [isUrgent, setIsUrgent] = useState(false);
   const [isNegotiable, setIsNegotiable] = useState(false);
   const [shipsNationwide, setShipsNationwide] = useState(false);
@@ -145,8 +145,8 @@ export default function EditListingPage() {
       setSubcategory(d.subcategoryName ?? "");
       setCondition(dbConditionToForm(d.condition));
       setPrice((d.priceNzd / 100).toFixed(2));
-      setOffersEnabled(d.offersEnabled);
-      setGstIncluded(d.gstIncluded);
+      setOffersEnabled(d.isOffersEnabled);
+      setGstIncluded(d.isGstIncluded);
       setIsUrgent(d.isUrgent);
       setIsNegotiable(d.isNegotiable);
       setShipsNationwide(d.shipsNationwide);
@@ -218,8 +218,8 @@ export default function EditListingPage() {
       subcategoryName: subcategory || undefined,
       condition: condition.toUpperCase().replace(/-/g, "_"),
       price,
-      offersEnabled,
-      gstIncluded,
+      isOffersEnabled,
+      isGstIncluded,
       isUrgent,
       isNegotiable,
       shipsNationwide,
@@ -711,12 +711,12 @@ export default function EditListingPage() {
                 {[
                   {
                     label: "Accept offers",
-                    checked: offersEnabled,
+                    checked: isOffersEnabled,
                     set: setOffersEnabled,
                   },
                   {
                     label: "GST included",
-                    checked: gstIncluded,
+                    checked: isGstIncluded,
                     set: setGstIncluded,
                   },
                   { label: "Urgent sale", checked: isUrgent, set: setIsUrgent },

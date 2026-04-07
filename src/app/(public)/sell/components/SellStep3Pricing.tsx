@@ -40,8 +40,8 @@ function CheckboxOption({
 
 interface SellStep3PricingProps {
   price: string;
-  offersEnabled: boolean;
-  gstIncluded: boolean;
+  isOffersEnabled: boolean;
+  isGstIncluded: boolean;
   isUrgent: boolean;
   isNegotiable: boolean;
   shipsNationwide: boolean;
@@ -56,8 +56,8 @@ interface SellStep3PricingProps {
 
 export default function SellStep3Pricing({
   price,
-  offersEnabled,
-  gstIncluded,
+  isOffersEnabled,
+  isGstIncluded,
   isUrgent,
   isNegotiable,
   shipsNationwide,
@@ -134,13 +134,13 @@ export default function SellStep3Pricing({
       {/* Options */}
       <div className="space-y-3">
         <CheckboxOption
-          checked={offersEnabled}
+          checked={isOffersEnabled}
           onChange={onOffersEnabledChange}
           label="Accept offers"
           hint="Buyers can make lower offers. You choose to accept or decline."
         />
         <CheckboxOption
-          checked={gstIncluded}
+          checked={isGstIncluded}
           onChange={onGstIncludedChange}
           label="GST included in price"
           hint="Only if you're a GST-registered NZ business (IRD number required)."

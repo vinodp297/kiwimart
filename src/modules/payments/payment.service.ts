@@ -26,7 +26,9 @@ export class PaymentService {
       !input.sellerStripeAccountId ||
       !input.sellerStripeAccountId.startsWith("acct_")
     ) {
-      throw AppError.stripeError("Seller payment account is not configured");
+      throw AppError.paymentGatewayError(
+        "Seller payment account is not configured",
+      );
     }
 
     try {
@@ -72,7 +74,9 @@ export class PaymentService {
         orderId: input.orderId,
         error: err instanceof Error ? err.message : String(err),
       });
-      throw AppError.stripeError("Payment setup failed. Please try again.");
+      throw AppError.paymentGatewayError(
+        "Payment setup failed. Please try again.",
+      );
     }
   }
 
@@ -131,7 +135,7 @@ export class PaymentService {
 
           // Authorization expired or PI is in a non-capturable state
           // (canceled, requires_payment_method, etc.) — this is NOT a success
-          throw AppError.stripeError(
+          throw AppError.paymentGatewayError(
             "Payment authorization has expired. A new payment is needed to complete this order.",
           );
         } catch (retrieveErr) {
@@ -145,7 +149,7 @@ export class PaymentService {
                 ? retrieveErr.message
                 : String(retrieveErr),
           });
-          throw AppError.stripeError(
+          throw AppError.paymentGatewayError(
             "Payment capture failed. Please try again.",
           );
         }
@@ -157,7 +161,9 @@ export class PaymentService {
         paymentIntentId: input.paymentIntentId,
         error: msg,
       });
-      throw AppError.stripeError("Payment capture failed. Please try again.");
+      throw AppError.paymentGatewayError(
+        "Payment capture failed. Please try again.",
+      );
     }
   }
 
@@ -184,7 +190,7 @@ export class PaymentService {
         orderId: input.orderId,
         error: msg,
       });
-      throw AppError.stripeError(
+      throw AppError.paymentGatewayError(
         "Refund failed. Please try again or contact support.",
       );
     }

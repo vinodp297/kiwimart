@@ -82,9 +82,9 @@ describe("AppError", () => {
       expect(err.statusCode).toBe(400);
     });
 
-    it("stripeError returns 502", () => {
-      const err = AppError.stripeError("Charge failed");
-      expect(err.code).toBe("STRIPE_ERROR");
+    it("paymentGatewayError returns 502", () => {
+      const err = AppError.paymentGatewayError("Charge failed");
+      expect(err.code).toBe("PAYMENT_GATEWAY_ERROR");
       expect(err.statusCode).toBe(502);
     });
 

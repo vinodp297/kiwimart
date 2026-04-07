@@ -15,8 +15,8 @@ export type AuthenticatedUser = {
   id: string;
   email: string;
   isAdmin: boolean;
-  sellerEnabled: boolean;
-  stripeOnboarded: boolean;
+  isSellerEnabled: boolean;
+  isStripeOnboarded: boolean;
 };
 
 export async function requireUser(): Promise<AuthenticatedUser> {
@@ -43,8 +43,8 @@ export async function requireUser(): Promise<AuthenticatedUser> {
       email: true,
       isAdmin: true,
       isBanned: true,
-      sellerEnabled: true,
-      stripeOnboarded: true,
+      isSellerEnabled: true,
+      isStripeOnboarded: true,
     },
   });
 
@@ -65,7 +65,7 @@ export async function requireUser(): Promise<AuthenticatedUser> {
     id: user.id,
     email: user.email,
     isAdmin: user.isAdmin,
-    sellerEnabled: user.sellerEnabled,
-    stripeOnboarded: user.stripeOnboarded,
+    isSellerEnabled: user.isSellerEnabled,
+    isStripeOnboarded: user.isStripeOnboarded,
   };
 }

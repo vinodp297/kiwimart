@@ -16,7 +16,7 @@ import { headers } from "next/headers";
 import crypto from "crypto";
 import db from "@/lib/db";
 import { userRepository } from "@/modules/users/user.repository";
-import { hashPassword, checkPwnedPassword } from "@/server/lib/password";
+import { hashPassword, isPasswordBreached } from "@/server/lib/password";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { audit } from "@/server/lib/audit";
@@ -78,8 +78,20 @@ export async function registerUser(
     }
   }
 
-  // 5b. Check password against HaveIBeenPwned (k-anonymity — never sends full password)
-  const isCompromised = await checkPwnedPassword(data.password);
+  // 5b. Check password against breach database (k-anonymity — never sends full password)
+  // FAIL OPEN: isPasswordBreached returns false on network errors internally, but this
+  // outer try-catch guards against any unexpected throw (e.g., an unhandled edge case).
+  // Never block a legitimate user because a third-party service check fails — log at
+  // warn so the failure is visible in monitoring without gating registration on it.
+  let isCompromised = false;
+  try {
+    isCompromised = await isPasswordBreached(data.password);
+  } catch (err) {
+    logger.warn("auth.register.breach_check_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    // Fail-open: proceed with registration
+  }
   if (isCompromised) {
     return {
       success: false,
@@ -124,7 +136,7 @@ export async function registerUser(
     username: finalUsername,
     displayName: `${data.firstName} ${data.lastName}`,
     passwordHash,
-    agreeMarketing: data.agreeMarketing,
+    hasMarketingConsent: data.hasMarketingConsent,
     agreedTermsAt: new Date(),
     emailVerifyToken: verifyToken,
     emailVerifyExpires: verifyExpires,

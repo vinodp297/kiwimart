@@ -9,10 +9,11 @@ CREATE INDEX IF NOT EXISTS "Listing_active_partial_idx"
   WHERE status = 'ACTIVE' AND "deletedAt" IS NULL;
 
 -- 2. WatchlistItem: price drop notification job filter
---    priceDropNotifications.ts queries listingId + priceAlertEnabled=true.
-CREATE INDEX IF NOT EXISTS "WatchlistItem_listingId_priceAlertEnabled_idx"
-  ON "WatchlistItem" ("listingId", "priceAlertEnabled")
-  WHERE "priceAlertEnabled" = true;
+--    priceDropNotifications.ts queries listingId + isPriceAlertEnabled=true.
+--    Column was renamed priceAlertEnabled → isPriceAlertEnabled (migration 20260406100008).
+CREATE INDEX IF NOT EXISTS "WatchlistItem_listingId_isPriceAlertEnabled_idx"
+  ON "WatchlistItem" ("listingId", "isPriceAlertEnabled")
+  WHERE "isPriceAlertEnabled" = true;
 
 -- 3. Order: stripe reconciliation date-range filter
 --    stripeReconciliation.ts queries status=PAYMENT_HELD + createdAt>=since.

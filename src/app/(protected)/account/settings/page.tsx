@@ -25,7 +25,7 @@ export default async function AccountSettingsPage() {
         emailVerified: true,
         region: true,
         bio: true,
-        agreeMarketing: true,
+        hasMarketingConsent: true,
       },
     }),
     db.blockedUser.findMany({

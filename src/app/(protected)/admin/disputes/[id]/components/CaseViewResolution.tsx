@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { Section } from "./case-view-shared";
-import { SOP, fmtDate } from "./case-view-types";
+import { SOP, formatDate } from "./case-view-types";
 import type { AutoResolution, DisputeData } from "./case-view-types";
 import {
   resolveDispute,
@@ -607,7 +607,7 @@ export default function CaseViewResolution({
             This dispute has been resolved
           </p>
           <p className="text-[11px] text-emerald-600 mt-1">
-            Resolved: {fmtDate(dispute?.resolvedAt ?? null)}
+            Resolved: {formatDate(dispute?.resolvedAt ?? null)}
           </p>
         </div>
       ) : (

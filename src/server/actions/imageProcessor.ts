@@ -84,7 +84,7 @@ export async function processImage(
     // Mark as unsafe in DB
     await db.listingImage.update({
       where: { id: imageId },
-      data: { scanned: true, safe: false, scannedAt: new Date() },
+      data: { isScanned: true, isSafe: false, scannedAt: new Date() },
     });
     throw new Error(`Image failed virus scan: ${scanResult.threat}`);
   }
@@ -97,7 +97,7 @@ export async function processImage(
   if (origWidth < 200 || origHeight < 200) {
     await db.listingImage.update({
       where: { id: imageId },
-      data: { scanned: true, safe: false, scannedAt: new Date() },
+      data: { isScanned: true, isSafe: false, scannedAt: new Date() },
     });
     throw new Error(
       `Image too small: ${origWidth}×${origHeight} (min 200×200)`,
@@ -156,8 +156,8 @@ export async function processImage(
       sizeBytes: fullImage.info.size,
       originalSizeBytes: originalBuffer.length,
       processedAt: new Date(),
-      scanned: true,
-      safe: true,
+      isScanned: true,
+      isSafe: true,
       scannedAt: new Date(),
     },
   });

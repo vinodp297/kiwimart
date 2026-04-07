@@ -27,6 +27,7 @@ export async function POST(request: Request) {
           `Too many login attempts. Try again in ${limitResult.retryAfter} seconds.`,
           429,
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
@@ -42,6 +44,7 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return withCors(
         apiError("Invalid email or password format", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
@@ -75,6 +78,7 @@ export async function POST(request: Request) {
       });
       return withCors(
         apiError("Invalid credentials", 401, "INVALID_CREDENTIALS"),
+        request.headers.get("origin"),
       );
     }
 
@@ -85,7 +89,10 @@ export async function POST(request: Request) {
         action: "USER_LOGIN",
         metadata: { success: false, reason: "banned", channel: "mobile" },
       });
-      return withCors(apiError("Account is suspended", 403, "ACCOUNT_BANNED"));
+      return withCors(
+        apiError("Account is suspended", 403, "ACCOUNT_BANNED"),
+        request.headers.get("origin"),
+      );
     }
 
     // 5. Issue token
@@ -110,16 +117,23 @@ export async function POST(request: Request) {
         expiresAt,
         user: { id: user.id, email: user.email, role },
       }),
+      request.headers.get("origin"),
     );
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/auth/token",
       error: e instanceof Error ? e.message : e,
     });
-    return withCors(apiError("Authentication failed. Please try again.", 500));
+    return withCors(
+      apiError("Authentication failed. Please try again.", 500),
+      request.headers.get("origin"),
+    );
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

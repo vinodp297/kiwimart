@@ -12,8 +12,8 @@ declare module "next-auth/jwt" {
     id?: string;
     isAdmin?: boolean;
     isBanned?: boolean;
-    sellerEnabled?: boolean;
-    stripeOnboarded?: boolean;
+    isSellerEnabled?: boolean;
+    isStripeOnboarded?: boolean;
     displayName?: string;
     username?: string;
     avatarUrl?: string | null;
@@ -33,8 +33,8 @@ declare module "next-auth" {
       image?: string | null;
       isAdmin: boolean;
       isBanned: boolean;
-      sellerEnabled: boolean;
-      stripeOnboarded: boolean;
+      isSellerEnabled: boolean;
+      isStripeOnboarded: boolean;
       displayName: string;
       username: string;
       avatarUrl?: string | null;
@@ -49,8 +49,8 @@ declare module "next-auth" {
   interface User extends DefaultUser {
     isAdmin?: boolean;
     isBanned?: boolean;
-    sellerEnabled?: boolean;
-    stripeOnboarded?: boolean;
+    isSellerEnabled?: boolean;
+    isStripeOnboarded?: boolean;
     displayName?: string;
     username?: string;
     avatarUrl?: string | null;

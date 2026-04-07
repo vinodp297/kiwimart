@@ -27,13 +27,13 @@ export async function createStripeConnectAccount(): Promise<
 
     if (!user) return { success: false, error: "User not found." };
 
-    if (!user.sellerEnabled) {
+    if (!user.isSellerEnabled) {
       return { success: false, error: "Seller mode must be enabled first." };
     }
 
     // If already has an account, return a fresh onboarding link
     if (user.stripeAccountId) {
-      if (user.stripeOnboarded) {
+      if (user.isStripeOnboarded) {
         return {
           success: false,
           error: "Stripe account already connected and active.",
@@ -118,7 +118,7 @@ export async function getStripeOnboardingUrl(): Promise<
         error: "No Stripe account found. Please create one first.",
       };
     }
-    if (user.stripeOnboarded) {
+    if (user.isStripeOnboarded) {
       return {
         success: false,
         error: "Stripe account is already fully onboarded.",
@@ -183,9 +183,9 @@ export async function getStripeAccountStatus(): Promise<
     const onboarded = chargesEnabled && detailsSubmitted;
 
     // Sync onboarded status if changed
-    if (onboarded !== user.stripeOnboarded) {
+    if (onboarded !== user.isStripeOnboarded) {
       await userRepository.update(authedUser.id, {
-        stripeOnboarded: onboarded,
+        isStripeOnboarded: onboarded,
       });
     }
 

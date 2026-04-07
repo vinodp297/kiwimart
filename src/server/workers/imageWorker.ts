@@ -15,20 +15,22 @@
 // On scan failure: mark safe=false, log to audit (Sprint 5: notify admin)
 // All jobs are idempotent — re-processing overwrites the same R2 keys.
 
-import { Worker } from 'bullmq';
-import { getRedisConnection } from '@/lib/queue';
-import type { ImageJobData } from '@/lib/queue';
-import { processImage } from '@/server/actions/imageProcessor';
-import { audit } from '@/server/lib/audit';
-import { logger } from '@/shared/logger';
+import { Worker } from "bullmq";
+import { getQueueConnection } from "@/lib/queue";
+import type { ImageJobData } from "@/lib/queue";
+import { processImage } from "@/server/actions/imageProcessor";
+import { audit } from "@/server/lib/audit";
+import { logger } from "@/shared/logger";
 
 export function startImageWorker() {
   if (process.env.VERCEL) {
-    console.error('worker.image: BullMQ workers cannot run on Vercel serverless.');
+    console.error(
+      "worker.image: BullMQ workers cannot run on Vercel serverless.",
+    );
     return;
   }
   const worker = new Worker<ImageJobData>(
-    'image',
+    "image",
     async (job) => {
       const { imageId, r2Key, userId } = job.data;
 
@@ -36,43 +38,51 @@ export function startImageWorker() {
 
       audit({
         userId,
-        action: 'ADMIN_ACTION',
-        entityType: 'ListingImage',
+        action: "ADMIN_ACTION",
+        entityType: "ListingImage",
         entityId: imageId,
         metadata: {
-          worker: 'image',
+          worker: "image",
           jobId: job.id,
           fullKey: result.fullKey,
           thumbKey: result.thumbKey,
           dimensions: `${result.width}×${result.height}`,
-          status: 'processed',
+          status: "processed",
         },
       });
 
       return result;
     },
     {
-      connection: getRedisConnection() as unknown as import('bullmq').ConnectionOptions,
+      connection:
+        getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 3, // Process 3 images at a time (memory-intensive)
-    }
+    },
   );
 
-  worker.on('failed', (job, err) => {
-    logger.error('image.worker.job_failed', { jobId: job?.id, imageId: job?.data?.imageId, error: err.message });
+  worker.on("failed", (job, err) => {
+    logger.error("image.worker.job_failed", {
+      jobId: job?.id,
+      imageId: job?.data?.imageId,
+      error: err.message,
+    });
     audit({
-      action: 'ADMIN_ACTION',
+      action: "ADMIN_ACTION",
       metadata: {
-        worker: 'image',
+        worker: "image",
         jobId: job?.id,
         imageId: job?.data?.imageId,
         error: err.message,
-        status: 'failed',
+        status: "failed",
       },
     });
   });
 
-  worker.on('completed', (job) => {
-    logger.info('image.worker.job_completed', { jobId: job.id, imageId: job.data.imageId });
+  worker.on("completed", (job) => {
+    logger.info("image.worker.job_completed", {
+      jobId: job.id,
+      imageId: job.data.imageId,
+    });
   });
 
   return worker;

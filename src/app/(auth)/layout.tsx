@@ -28,8 +28,8 @@ export default async function AuthLayout({
 
   if (session?.user?.id) {
     // Already signed in — send to the appropriate dashboard
-    const sellerEnabled = session.user.sellerEnabled;
-    redirect(sellerEnabled ? "/dashboard/seller" : "/dashboard/buyer");
+    const isSellerEnabled = session.user.isSellerEnabled;
+    redirect(isSellerEnabled ? "/dashboard/seller" : "/dashboard/buyer");
   }
 
   return <>{children}</>;

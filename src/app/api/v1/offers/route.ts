@@ -46,11 +46,14 @@ export async function GET(request: Request) {
     const offers = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (offers.at(-1)?.id ?? null) : null;
 
-    const res = withCors(apiOk({ offers, nextCursor, hasMore }));
+    const res = withCors(
+      apiOk({ offers, nextCursor, hasMore }),
+      request.headers.get("origin"),
+    );
     res.headers.set("Cache-Control", "private, no-store");
     return res;
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
@@ -65,22 +68,29 @@ export async function POST(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = createOfferSchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const ip = getClientIp(new Headers(request.headers)) || "unknown";
     const result = await offerService.createOffer(parsed.data, user.id, ip);
-    return withCors(apiOk(result, 201));
+    return withCors(apiOk(result, 201), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

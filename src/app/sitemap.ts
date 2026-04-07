@@ -1,10 +1,10 @@
-import { MetadataRoute } from 'next';
-import db from '@/lib/db';
+import { MetadataRoute } from "next";
+import db from "@/lib/db";
 
 export const revalidate = 86400; // 24 hours
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = 'https://kiwimart.co.nz';
+  const baseUrl = "https://kiwimart.co.nz";
 
   const staticPages = [
     { url: baseUrl, priority: 1.0 },
@@ -18,18 +18,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ].map((page) => ({
     ...page,
     lastModified: new Date(),
-    changeFrequency: 'weekly' as const,
+    changeFrequency: "weekly" as const,
   }));
 
   const [listings, sellers] = await Promise.all([
     db.listing.findMany({
-      where: { status: 'ACTIVE', deletedAt: null },
+      where: { status: "ACTIVE", deletedAt: null },
       select: { id: true, updatedAt: true },
-      orderBy: { watcherCount: 'desc' },
+      orderBy: { watcherCount: "desc" },
       take: 1000,
     }),
     db.user.findMany({
-      where: { sellerEnabled: true, isBanned: false },
+      where: { isSellerEnabled: true, isBanned: false },
       select: { username: true, updatedAt: true },
     }),
   ]);
@@ -37,14 +37,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const listingPages = listings.map((l) => ({
     url: `${baseUrl}/listings/${l.id}`,
     lastModified: l.updatedAt,
-    changeFrequency: 'daily' as const,
+    changeFrequency: "daily" as const,
     priority: 0.8,
   }));
 
   const sellerPages = sellers.map((s) => ({
     url: `${baseUrl}/sellers/${s.username}`,
     lastModified: s.updatedAt,
-    changeFrequency: 'weekly' as const,
+    changeFrequency: "weekly" as const,
     priority: 0.7,
   }));
 

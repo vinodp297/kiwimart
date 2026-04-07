@@ -23,7 +23,7 @@ export interface ConfigRecord {
   unit: string | null;
   minValue: string | null;
   maxValue: string | null;
-  updatedBy: string | null;
+  updatedById: string | null;
   updatedAt: string; // ISO string
   createdAt: string; // ISO string
   updaterName: string | null;
@@ -59,7 +59,7 @@ export async function getAllConfigs(): Promise<
         unit: r.unit,
         minValue: r.minValue,
         maxValue: r.maxValue,
-        updatedBy: r.updatedBy,
+        updatedById: r.updatedById,
         updatedAt: r.updatedAt.toISOString(),
         createdAt: r.createdAt.toISOString(),
         updaterName: r.updater?.displayName ?? null,
@@ -168,7 +168,7 @@ export async function updateConfig(
       where: { key },
       data: {
         value: trimmed,
-        updatedBy: admin.id,
+        updatedById: admin.id,
       },
     });
 

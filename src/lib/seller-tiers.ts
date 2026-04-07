@@ -11,11 +11,11 @@
 // │     Stored on: User.sellerTierOverride (when set by admin/system)        │
 // │                                                                          │
 // │  2. VERIFICATION TIER  (LEVEL_1 / LEVEL_2 / LEVEL_3)                   │
-// │     Derived from User.idVerified and User.phoneVerified flags.           │
+// │     Derived from User.idVerified and User.isPhoneVerified flags.           │
 // │     Determines listing limits, price caps, and platform trust level.     │
 // │     LEVEL_1 = no verification, LEVEL_2 = phone verified,                │
 // │     LEVEL_3 = phone + ID verified.                                       │
-// │     Stored on: User.idVerified + User.phoneVerified (not a field itself) │
+// │     Stored on: User.idVerified + User.isPhoneVerified (not a field itself) │
 // ├─────────────────────────────────────────────────────────────────────────┤
 // │  These systems are orthogonal. A seller can be GOLD + LEVEL_1           │
 // │  (high performer, unverified) or BRONZE + LEVEL_3 (new but verified).   │

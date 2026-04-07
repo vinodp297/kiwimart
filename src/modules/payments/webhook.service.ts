@@ -343,9 +343,9 @@ export class WebhookService {
     await db.user.updateMany({
       where: { stripeAccountId: account.id },
       data: {
-        stripeOnboarded: onboarded,
-        stripeChargesEnabled: account.charges_enabled ?? false,
-        stripePayoutsEnabled: account.payouts_enabled ?? false,
+        isStripeOnboarded: onboarded,
+        isStripeChargesEnabled: account.charges_enabled ?? false,
+        isStripePayoutsEnabled: account.payouts_enabled ?? false,
       },
     });
   }

@@ -30,7 +30,7 @@ export async function getStorageStats(): Promise<ActionResult<StorageStats>> {
       await Promise.all([
         db.listingImage.count(),
         db.listingImage.count({ where: { processedAt: { not: null } } }),
-        db.listingImage.count({ where: { scanned: false } }),
+        db.listingImage.count({ where: { isScanned: false } }),
         db.listingImage.count({ where: { thumbnailKey: { not: null } } }),
       ]);
 

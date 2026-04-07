@@ -62,11 +62,11 @@ export function needsRehash(hash: string): boolean {
  * HaveIBeenPwned k-anonymity API. Never sends the full password — only the
  * first 5 hex characters of the SHA-1 hash are transmitted.
  *
- * Returns true if the password is compromised, false if it is safe.
+ * Returns true if the password is breached, false if it is safe.
  * Wraps network errors and returns false (fail-open) — never blocks registration
- * if the HIBP API is unavailable.
+ * if the breach-check API is unavailable.
  */
-export async function checkPwnedPassword(password: string): Promise<boolean> {
+export async function isPasswordBreached(password: string): Promise<boolean> {
   try {
     const hashBuffer = await crypto.subtle.digest(
       "SHA-1",

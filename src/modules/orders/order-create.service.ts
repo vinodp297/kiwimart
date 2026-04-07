@@ -96,7 +96,7 @@ export async function createOrder(
     };
   }
 
-  if (!listing.seller.stripeAccountId || !listing.seller.stripeOnboarded) {
+  if (!listing.seller.stripeAccountId || !listing.seller.isStripeOnboarded) {
     return {
       ok: false,
       error:
@@ -162,6 +162,25 @@ export async function createOrder(
       );
 
       await captureListingSnapshot(created.id, listing.id, tx);
+
+      // CASH_ON_PICKUP — create a Payout record immediately so the escrow
+      // auto-release job has something to act on once the order is completed.
+      // No Stripe IDs are set because cash orders have no platform payment.
+      if (fulfillmentType === "CASH_ON_PICKUP") {
+        await tx.payout.upsert({
+          where: { orderId: created.id },
+          create: {
+            orderId: created.id,
+            userId: listing.sellerId,
+            amountNzd: totalNzd,
+            platformFeeNzd: 0,
+            stripeFeeNzd: 0,
+            status: "PENDING",
+          },
+          update: {},
+        });
+      }
+
       return created;
     });
   } catch (txErr) {

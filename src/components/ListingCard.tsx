@@ -5,7 +5,7 @@
 //   • sellerUsername field used for /sellers/[username] link
 //   • status badge (sold overlay)
 //   • shippingOption displayed (free shipping badge)
-//   • offersEnabled chip
+//   • isOffersEnabled chip
 //   • Graceful fallback for listings without sellerUsername
 
 import { useState, useCallback, memo } from "react";
@@ -187,7 +187,7 @@ export default memo(function ListingCard({ listing, priority = false }: Props) {
           >
             {formatCondition(listing.condition)}
           </span>
-          {listing.offersEnabled && !isSold && (
+          {listing.isOffersEnabled && !isSold && (
             <span
               className="inline-flex items-center px-1.5 py-0.5 rounded-full
               text-[9.5px] font-semibold bg-[#F5ECD4] text-[#8B6914] ring-1 ring-[#D4A843]/30"

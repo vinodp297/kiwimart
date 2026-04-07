@@ -55,9 +55,9 @@ export default function SellPage() {
   // ── Seller status check ──────────────────────────────────────────────────
   const [sellerStatus, setSellerStatus] = useState<{
     loading: boolean;
-    stripeOnboarded: boolean;
+    isStripeOnboarded: boolean;
     authenticated: boolean;
-  }>({ loading: true, stripeOnboarded: false, authenticated: false });
+  }>({ loading: true, isStripeOnboarded: false, authenticated: false });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,7 +75,7 @@ export default function SellPage() {
         const payload = res.data ?? res;
         setSellerStatus({
           loading: false,
-          stripeOnboarded: payload.stripeOnboarded,
+          isStripeOnboarded: payload.isStripeOnboarded,
           authenticated: payload.authenticated,
         });
       })
@@ -83,7 +83,7 @@ export default function SellPage() {
         clearTimeout(timeoutId);
         setSellerStatus({
           loading: false,
-          stripeOnboarded: false,
+          isStripeOnboarded: false,
           authenticated: false,
         });
       });
@@ -113,8 +113,8 @@ export default function SellPage() {
 
   // Step 3 — Pricing
   const [price, setPrice] = useState("");
-  const [offersEnabled, setOffersEnabled] = useState(true);
-  const [gstIncluded, setGstIncluded] = useState(false);
+  const [isOffersEnabled, setOffersEnabled] = useState(true);
+  const [isGstIncluded, setGstIncluded] = useState(false);
   const [isUrgent, setIsUrgent] = useState(false);
   const [isNegotiable, setIsNegotiable] = useState(false);
   const [shipsNationwide, setShipsNationwide] = useState(false);
@@ -257,7 +257,7 @@ export default function SellPage() {
                 processing: false,
                 progress: 100,
                 uploaded: true,
-                safe: processed.safe ?? true,
+                isSafe: processed.isSafe ?? true,
                 r2Key: finalR2Key,
                 imageId,
                 originalSize: processed.originalSize ?? img.file.size,
@@ -324,7 +324,7 @@ export default function SellPage() {
         progress: 0,
         error: null,
         uploaded: false,
-        safe: false,
+        isSafe: false,
         compressedSize: null,
         originalSize: null,
         dimensions: null,
@@ -374,11 +374,11 @@ export default function SellPage() {
       const failed = images.filter((i) => i.error);
       if (failed.length > 0)
         errs.images = `${failed.length} photo${failed.length > 1 ? "s" : ""} failed. Remove or retry them before continuing.`;
-      const unsafe = images.filter((i) => i.uploaded && !i.safe && !i.error);
+      const unsafe = images.filter((i) => i.uploaded && !i.isSafe && !i.error);
       if (unsafe.length > 0)
         errs.images =
           "Some photos haven't been verified yet. Please wait or re-upload them.";
-      const flagged = images.filter((i) => i.uploaded && !i.safe && i.error);
+      const flagged = images.filter((i) => i.uploaded && !i.isSafe && i.error);
       if (flagged.length > 0)
         errs.images = "Please remove flagged photos before continuing.";
     }
@@ -454,8 +454,8 @@ export default function SellPage() {
       subcategoryName: subcategory || undefined,
       condition: condition.toUpperCase().replace(/-/g, "_"),
       price,
-      offersEnabled,
-      gstIncluded,
+      isOffersEnabled,
+      isGstIncluded,
       isUrgent,
       isNegotiable,
       shipsNationwide,
@@ -480,8 +480,8 @@ export default function SellPage() {
           subcategoryName: 2,
           condition: 2,
           price: 3,
-          offersEnabled: 3,
-          gstIncluded: 3,
+          isOffersEnabled: 3,
+          isGstIncluded: 3,
           isUrgent: 3,
           isNegotiable: 3,
           shipsNationwide: 3,
@@ -546,8 +546,8 @@ export default function SellPage() {
       subcategoryName: subcategory || undefined,
       condition: condition ? condition.toUpperCase() : undefined,
       price: price || undefined,
-      offersEnabled,
-      gstIncluded,
+      isOffersEnabled,
+      isGstIncluded,
       isUrgent,
       isNegotiable,
       shipsNationwide,
@@ -587,8 +587,8 @@ export default function SellPage() {
           subcategory,
           condition,
           price,
-          offersEnabled,
-          gstIncluded,
+          isOffersEnabled,
+          isGstIncluded,
           isUrgent,
           isNegotiable,
           shipsNationwide,
@@ -613,8 +613,8 @@ export default function SellPage() {
     subcategory,
     condition,
     price,
-    offersEnabled,
-    gstIncluded,
+    isOffersEnabled,
+    isGstIncluded,
     isUrgent,
     isNegotiable,
     shipsNationwide,
@@ -658,8 +658,9 @@ export default function SellPage() {
     if (typeof d.subcategory === "string") setSubcategory(d.subcategory);
     if (typeof d.condition === "string") setCondition(d.condition as Condition);
     if (typeof d.price === "string") setPrice(d.price);
-    if (typeof d.offersEnabled === "boolean") setOffersEnabled(d.offersEnabled);
-    if (typeof d.gstIncluded === "boolean") setGstIncluded(d.gstIncluded);
+    if (typeof d.isOffersEnabled === "boolean")
+      setOffersEnabled(d.isOffersEnabled);
+    if (typeof d.isGstIncluded === "boolean") setGstIncluded(d.isGstIncluded);
     if (typeof d.isUrgent === "boolean") setIsUrgent(d.isUrgent);
     if (typeof d.isNegotiable === "boolean") setIsNegotiable(d.isNegotiable);
     if (typeof d.shipsNationwide === "boolean")
@@ -720,7 +721,7 @@ export default function SellPage() {
     return <LoadingScreen />;
   }
 
-  if (sellerStatus.authenticated && !sellerStatus.stripeOnboarded) {
+  if (sellerStatus.authenticated && !sellerStatus.isStripeOnboarded) {
     return <StripeGateScreen />;
   }
 
@@ -840,8 +841,8 @@ export default function SellPage() {
             {step === 3 && (
               <SellStep3Pricing
                 price={price}
-                offersEnabled={offersEnabled}
-                gstIncluded={gstIncluded}
+                isOffersEnabled={isOffersEnabled}
+                isGstIncluded={isGstIncluded}
                 isUrgent={isUrgent}
                 isNegotiable={isNegotiable}
                 shipsNationwide={shipsNationwide}
@@ -946,8 +947,8 @@ export default function SellPage() {
         shippingPrice={shippingPrice}
         region={region}
         suburb={suburb}
-        offersEnabled={offersEnabled}
-        gstIncluded={gstIncluded}
+        isOffersEnabled={isOffersEnabled}
+        isGstIncluded={isGstIncluded}
         isUrgent={isUrgent}
         isNegotiable={isNegotiable}
         shipsNationwide={shipsNationwide}

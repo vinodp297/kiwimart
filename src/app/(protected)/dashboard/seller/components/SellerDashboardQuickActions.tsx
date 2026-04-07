@@ -3,15 +3,15 @@
 import Link from "next/link";
 
 interface Props {
-  stripeOnboarded: boolean | null;
+  isStripeOnboarded: boolean | null;
 }
 
 export default function SellerDashboardQuickActions({
-  stripeOnboarded,
+  isStripeOnboarded,
 }: Props) {
   const cards = [
     // Stripe Connect setup card — show only if not onboarded
-    ...(stripeOnboarded === false
+    ...(isStripeOnboarded === false
       ? [
           {
             title: "Set up payouts",
@@ -21,7 +21,7 @@ export default function SellerDashboardQuickActions({
             colour: "border-[#D4A843]/40 bg-[#F5ECD4]/40",
           },
         ]
-      : stripeOnboarded === true
+      : isStripeOnboarded === true
         ? [
             {
               title: "Payouts active",

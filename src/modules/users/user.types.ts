@@ -2,26 +2,26 @@
 // ─── User Domain Types ──────────────────────────────────────────────────────
 
 export interface UpdateProfileInput {
-  displayName: string
-  region?: string
-  bio?: string
+  displayName: string;
+  region?: string;
+  bio?: string;
 }
 
 export interface ChangePasswordInput {
-  currentPassword: string
-  newPassword: string
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface RegisterInput {
-  firstName: string
-  lastName: string
-  email: string
-  password: string
-  agreeMarketing: boolean
-  turnstileToken?: string
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  hasMarketingConsent: boolean;
+  turnstileToken?: string;
 }
 
 export interface ResetPasswordInput {
-  token: string
-  password: string
+  token: string;
+  password: string;
 }

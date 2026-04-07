@@ -31,7 +31,7 @@ export default function SellerOnboardingClient({
   const [termsAcceptedAt, setTermsAcceptedAt] = useState(
     user.sellerTermsAcceptedAt,
   );
-  const [phoneVerified, setPhoneVerified] = useState(user.phoneVerified);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(user.isPhoneVerified);
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -156,9 +156,9 @@ export default function SellerOnboardingClient({
         currentTierName={currentTierName}
         tiers={tiers}
         termsAccepted={termsAccepted}
-        phoneVerified={phoneVerified}
+        isPhoneVerified={isPhoneVerified}
         onPhoneVerified={() => {
-          setPhoneVerified(true);
+          setIsPhoneVerified(true);
           setMessage({
             type: "success",
             text: "Phone verified! Your tier has been upgraded.",
@@ -172,7 +172,7 @@ export default function SellerOnboardingClient({
         }}
       />
 
-      <StripeCta stripeOnboarded={user.stripeOnboarded} />
+      <StripeCta isStripeOnboarded={user.isStripeOnboarded} />
 
       <BusinessDetailsSection user={user} />
 

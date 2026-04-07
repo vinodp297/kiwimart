@@ -52,6 +52,7 @@ export async function GET(request: Request) {
     if (!parsed.success) {
       return withCors(
         apiError("Invalid search parameters", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
@@ -79,6 +80,7 @@ export async function GET(request: Request) {
         total: results.totalCount,
         totalPages: results.totalPages,
       }),
+      request.headers.get("origin"),
     );
     response.headers.set(
       "Cache-Control",
@@ -86,10 +88,13 @@ export async function GET(request: Request) {
     );
     return response;
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

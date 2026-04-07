@@ -69,6 +69,72 @@ describe("Order State Machine", () => {
       ).not.toThrow();
     });
 
+    it("allows AWAITING_PAYMENT → AWAITING_PICKUP (cash-on-pickup)", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "AWAITING_PAYMENT", "AWAITING_PICKUP"),
+      ).not.toThrow();
+    });
+
+    it("allows AWAITING_PICKUP → COMPLETED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "AWAITING_PICKUP", "COMPLETED"),
+      ).not.toThrow();
+    });
+
+    it("allows AWAITING_PICKUP → CANCELLED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "AWAITING_PICKUP", "CANCELLED"),
+      ).not.toThrow();
+    });
+
+    it("allows AWAITING_PICKUP → DISPUTED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "AWAITING_PICKUP", "DISPUTED"),
+      ).not.toThrow();
+    });
+
+    it("allows PAYMENT_HELD → DISPUTED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "PAYMENT_HELD", "DISPUTED"),
+      ).not.toThrow();
+    });
+
+    it("allows PAYMENT_HELD → CANCELLED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "PAYMENT_HELD", "CANCELLED"),
+      ).not.toThrow();
+    });
+
+    it("allows DISPATCHED → DISPUTED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "DISPATCHED", "DISPUTED"),
+      ).not.toThrow();
+    });
+
+    it("allows DISPATCHED → COMPLETED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "DISPATCHED", "COMPLETED"),
+      ).not.toThrow();
+    });
+
+    it("allows DELIVERED → DISPUTED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "DELIVERED", "DISPUTED"),
+      ).not.toThrow();
+    });
+
+    it("allows DISPUTED → COMPLETED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "DISPUTED", "COMPLETED"),
+      ).not.toThrow();
+    });
+
+    it("allows DISPUTED → CANCELLED", () => {
+      expect(() =>
+        assertOrderTransition("o-1", "DISPUTED", "CANCELLED"),
+      ).not.toThrow();
+    });
+
     it("rejects COMPLETED → anything (terminal state)", () => {
       expect(() =>
         assertOrderTransition("o-1", "COMPLETED", "DISPATCHED"),

@@ -6,7 +6,7 @@ import { safeActionError } from "@/shared/errors";
 import { requireUser } from "@/server/lib/requireUser";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { cartService } from "@/modules/cart/cart.service";
-import type { CartData } from "@/modules/cart/cart.service";
+import type { CartData, DriftedItem } from "@/modules/cart/cart.service";
 import type { ActionResult } from "@/types";
 import {
   addToCartSchema as AddToCartSchema,
@@ -15,7 +15,7 @@ import {
 } from "@/server/validators";
 
 // Re-export types for consumers that import from this file
-export type { CartData };
+export type { CartData, DriftedItem };
 export type { CartItemData } from "@/modules/cart/cart.service";
 
 // ── addToCart ────────────────────────────────────────────────────────────────
@@ -174,9 +174,16 @@ export async function getCartCount(): Promise<ActionResult<number>> {
 
 // ── checkoutCart ─────────────────────────────────────────────────────────────
 
-export async function checkoutCart(
-  raw: unknown,
-): Promise<ActionResult<{ orderId: string; clientSecret: string }>> {
+export type CheckoutResult =
+  | { success: true; data: { orderId: string; clientSecret: string } }
+  | {
+      success: false;
+      error: string;
+      requiresPriceConfirmation?: true;
+      driftedItems?: DriftedItem[];
+    };
+
+export async function checkoutCart(raw: unknown): Promise<CheckoutResult> {
   try {
     const user = await requireUser();
 
@@ -204,7 +211,16 @@ export async function checkoutCart(
       parsed.data,
     );
     if (!result.ok) {
-      return { success: false, error: result.error };
+      return {
+        success: false,
+        error: result.error,
+        ...(result.requiresPriceConfirmation
+          ? {
+              requiresPriceConfirmation: true,
+              driftedItems: result.driftedItems,
+            }
+          : {}),
+      };
     }
     return { success: true, data: result.data };
   } catch (err) {

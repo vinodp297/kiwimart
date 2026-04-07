@@ -8,16 +8,16 @@
 //   • Events are batched and flushed asynchronously
 //   • Disabled in development unless POSTHOG_KEY is set
 
-import { PostHog } from 'posthog-node';
+import { PostHog } from "posthog-node";
 
 const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
 // Only use PostHog when a real project key is present — placeholder values
 // ('phc_placeholder', etc.) cause 401/404 errors on every analytics call.
 const isConfigured =
-  typeof POSTHOG_KEY === 'string' &&
-  POSTHOG_KEY.startsWith('phc_') &&
-  !POSTHOG_KEY.toLowerCase().includes('placeholder');
+  typeof POSTHOG_KEY === "string" &&
+  POSTHOG_KEY.startsWith("phc_") &&
+  !POSTHOG_KEY.toLowerCase().includes("placeholder");
 
 let posthogClient: PostHog | null = null;
 
@@ -28,7 +28,7 @@ function getPostHog(): PostHog | null {
 
   if (!posthogClient) {
     posthogClient = new PostHog(POSTHOG_KEY!, {
-      host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com',
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
       // Batch events — flush every 30 seconds or 20 events
       flushAt: 20,
       flushInterval: 30000,
@@ -52,7 +52,7 @@ function getPostHog(): PostHog | null {
 export function trackEvent(
   userId: string,
   event: string,
-  properties?: Record<string, unknown>
+  properties?: Record<string, unknown>,
 ): void {
   try {
     const ph = getPostHog();
@@ -63,7 +63,7 @@ export function trackEvent(
       event,
       properties: {
         ...properties,
-        source: 'server',
+        source: "server",
         timestamp: new Date().toISOString(),
       },
     });
@@ -78,11 +78,11 @@ export function trackEvent(
  * Only call with non-PII properties (region, seller status, etc.)
  *
  * @example
- * identifyUser(userId, { region: 'Auckland', sellerEnabled: true });
+ * identifyUser(userId, { region: 'Auckland', isSellerEnabled: true });
  */
 export function identifyUser(
   userId: string,
-  properties: Record<string, unknown>
+  properties: Record<string, unknown>,
 ): void {
   try {
     const ph = getPostHog();

@@ -21,7 +21,7 @@ export type SellerPublicProfile = Prisma.UserGetPayload<{
     region: true;
     bio: true;
     createdAt: true;
-    sellerEnabled: true;
+    isSellerEnabled: true;
     idVerified: true;
     avgResponseTimeMinutes: true;
     responseRate: true;
@@ -57,7 +57,7 @@ export const sellerRepository = {
         region: true,
         bio: true,
         createdAt: true,
-        sellerEnabled: true,
+        isSellerEnabled: true,
         idVerified: true,
         avgResponseTimeMinutes: true,
         responseRate: true,
@@ -79,7 +79,7 @@ export const sellerRepository = {
         region: true,
         bio: true,
         createdAt: true,
-        sellerEnabled: true,
+        isSellerEnabled: true,
         idVerified: true,
         avgResponseTimeMinutes: true,
         responseRate: true,
@@ -143,13 +143,13 @@ export const sellerRepository = {
       select: {
         id: true;
         sellerTierOverride: true;
-        sellerEnabled: true;
+        isSellerEnabled: true;
       };
     }>[]
   > {
     return db.user.findMany({
-      where: { sellerEnabled: true, isBanned: false },
-      select: { id: true, sellerTierOverride: true, sellerEnabled: true },
+      where: { isSellerEnabled: true, isBanned: false },
+      select: { id: true, sellerTierOverride: true, isSellerEnabled: true },
       take,
     });
   },
@@ -174,7 +174,7 @@ export const sellerRepository = {
   > {
     return db.user.findMany({
       where: {
-        sellerEnabled: true,
+        isSellerEnabled: true,
         isBanned: false,
         sellerOrders: { some: { status: "DISPUTED" } },
       },

@@ -167,13 +167,13 @@ function TierProgress({
           : null;
 
   if (nextTierKey === null) {
-    const cfg = TIER_CONFIG["GOLD"] ?? { icon: "", label: "", colour: "" };
+    const config = TIER_CONFIG["GOLD"] ?? { icon: "", label: "", colour: "" };
     return (
       <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-lg">{cfg.icon}</span>
+          <span className="text-lg">{config.icon}</span>
           <h3 className="text-[14px] font-semibold text-[#141414]">
-            {cfg.label}
+            {config.label}
           </h3>
         </div>
         <p className="text-[12.5px] text-[#73706A]">
@@ -184,7 +184,11 @@ function TierProgress({
   }
 
   const req = TIER_REQUIREMENTS_DEFAULT[nextTierKey] ?? { sales: 0, rating: 0 };
-  const cfg = TIER_CONFIG[nextTierKey] ?? { icon: "", label: "", colour: "" };
+  const config = TIER_CONFIG[nextTierKey] ?? {
+    icon: "",
+    label: "",
+    colour: "",
+  };
   const salesPct = Math.min(
     100,
     Math.round((completedSales / req.sales) * 100),
@@ -194,9 +198,9 @@ function TierProgress({
   return (
     <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-lg">{cfg.icon}</span>
+        <span className="text-lg">{config.icon}</span>
         <h3 className="text-[14px] font-semibold text-[#141414]">
-          {currentTier ? `Next: ${cfg.label}` : `Unlock ${cfg.label}`}
+          {currentTier ? `Next: ${config.label}` : `Unlock ${config.label}`}
         </h3>
       </div>
       <div className="space-y-3">

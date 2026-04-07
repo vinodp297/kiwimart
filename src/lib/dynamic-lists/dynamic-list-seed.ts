@@ -34,7 +34,7 @@ async function seedList(
         description: item.description ?? null,
         metadata: (item.metadata ?? undefined) as unknown,
         sortOrder: i,
-        active: true,
+        isActive: true,
       },
       update: {},
     });

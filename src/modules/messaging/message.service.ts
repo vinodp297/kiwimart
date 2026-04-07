@@ -64,7 +64,7 @@ export class MessageService {
       threadId: thread.id,
       senderId: userId,
       body: input.body,
-      flagged,
+      isFlagged: flagged,
       flagReason,
     });
 

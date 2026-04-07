@@ -29,8 +29,8 @@ export async function GET() {
       return dep(
         apiOk({
           authenticated: false,
-          stripeOnboarded: false,
-          sellerEnabled: false,
+          isStripeOnboarded: false,
+          isSellerEnabled: false,
         }),
       );
     }
@@ -38,18 +38,18 @@ export async function GET() {
     const user = await db.user.findUnique({
       where: { id: session.user.id },
       select: {
-        stripeOnboarded: true,
+        isStripeOnboarded: true,
         stripeAccountId: true,
-        sellerEnabled: true,
+        isSellerEnabled: true,
       },
     });
 
     return dep(
       apiOk({
         authenticated: true,
-        stripeOnboarded: user?.stripeOnboarded ?? false,
+        isStripeOnboarded: user?.isStripeOnboarded ?? false,
         hasStripeAccount: !!user?.stripeAccountId,
-        sellerEnabled: user?.sellerEnabled ?? false,
+        isSellerEnabled: user?.isSellerEnabled ?? false,
       }),
     );
   } catch (e) {

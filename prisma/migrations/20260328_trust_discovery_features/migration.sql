@@ -19,7 +19,16 @@ ALTER TABLE "Listing" ADD COLUMN IF NOT EXISTS "locationLng" DOUBLE PRECISION;
 CREATE INDEX IF NOT EXISTS "Listing_locationLat_locationLng_idx" ON "Listing"("locationLat", "locationLng");
 
 -- ── WatchlistItem: price alert fields ───────────────────────────────────────
-ALTER TABLE "WatchlistItem" ADD COLUMN IF NOT EXISTS "priceAlertEnabled" BOOLEAN NOT NULL DEFAULT true;
+-- priceAlertEnabled → isPriceAlertEnabled (renamed in later migration; 3-way check)
+DO $$BEGIN
+  IF NOT EXISTS (
+    SELECT FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'WatchlistItem'
+      AND column_name IN ('priceAlertEnabled', 'isPriceAlertEnabled')
+  ) THEN
+    ALTER TABLE "WatchlistItem" ADD COLUMN "priceAlertEnabled" BOOLEAN NOT NULL DEFAULT true;
+  END IF;
+END$$;
 ALTER TABLE "WatchlistItem" ADD COLUMN IF NOT EXISTS "priceAtWatch" INTEGER;
 
 -- ── Enums ───────────────────────────────────────────────────────────────────

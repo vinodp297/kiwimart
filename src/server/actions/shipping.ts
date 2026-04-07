@@ -47,26 +47,26 @@ export async function calculateShipping(params: {
 > {
   const { fromRegion, toRegion } = params;
 
-  const cfg = await getConfigMany([
+  const config = await getConfigMany([
     CONFIG_KEYS.SHIPPING_SAME_REGION_CENTS,
     CONFIG_KEYS.SHIPPING_SAME_ISLAND_CENTS,
     CONFIG_KEYS.SHIPPING_INTER_ISLAND_CENTS,
     CONFIG_KEYS.SHIPPING_RURAL_SURCHARGE_CENTS,
   ]);
   const SAME_REGION_RATE = parseInt(
-    cfg.get(CONFIG_KEYS.SHIPPING_SAME_REGION_CENTS) ?? "600",
+    config.get(CONFIG_KEYS.SHIPPING_SAME_REGION_CENTS) ?? "600",
     10,
   );
   const SAME_ISLAND_RATE = parseInt(
-    cfg.get(CONFIG_KEYS.SHIPPING_SAME_ISLAND_CENTS) ?? "800",
+    config.get(CONFIG_KEYS.SHIPPING_SAME_ISLAND_CENTS) ?? "800",
     10,
   );
   const INTER_ISLAND_RATE = parseInt(
-    cfg.get(CONFIG_KEYS.SHIPPING_INTER_ISLAND_CENTS) ?? "1200",
+    config.get(CONFIG_KEYS.SHIPPING_INTER_ISLAND_CENTS) ?? "1200",
     10,
   );
   const RURAL_SURCHARGE = parseInt(
-    cfg.get(CONFIG_KEYS.SHIPPING_RURAL_SURCHARGE_CENTS) ?? "400",
+    config.get(CONFIG_KEYS.SHIPPING_RURAL_SURCHARGE_CENTS) ?? "400",
     10,
   );
 

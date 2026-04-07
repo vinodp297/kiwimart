@@ -11,7 +11,10 @@ export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return withCors(apiError("Missing Bearer token", 401, "MISSING_TOKEN"));
+      return withCors(
+        apiError("Missing Bearer token", 401, "MISSING_TOKEN"),
+        request.headers.get("origin"),
+      );
     }
 
     const token = authHeader.slice(7);
@@ -20,6 +23,7 @@ export async function POST(request: Request) {
     if (!payload?.sub || !payload.email) {
       return withCors(
         apiError("Invalid or expired token", 401, "INVALID_TOKEN"),
+        request.headers.get("origin"),
       );
     }
 
@@ -31,7 +35,10 @@ export async function POST(request: Request) {
 
     logger.info("mobile.token.refreshed", { userId: payload.sub });
 
-    return withCors(apiOk({ token: newToken, expiresAt }));
+    return withCors(
+      apiOk({ token: newToken, expiresAt }),
+      request.headers.get("origin"),
+    );
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/auth/refresh",
@@ -39,10 +46,14 @@ export async function POST(request: Request) {
     });
     return withCors(
       apiError("Token refresh failed. Please sign in again.", 500),
+      request.headers.get("origin"),
     );
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

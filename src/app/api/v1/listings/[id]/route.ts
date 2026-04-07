@@ -30,10 +30,16 @@ export async function PATCH(
     });
 
     if (!listing) {
-      return withCors(apiError("Listing not found", 404, "NOT_FOUND"));
+      return withCors(
+        apiError("Listing not found", 404, "NOT_FOUND"),
+        request.headers.get("origin"),
+      );
     }
     if (listing.sellerId !== user.id) {
-      return withCors(apiError("Not your listing", 403, "FORBIDDEN"));
+      return withCors(
+        apiError("Not your listing", 403, "FORBIDDEN"),
+        request.headers.get("origin"),
+      );
     }
 
     // Parse body
@@ -41,12 +47,16 @@ export async function PATCH(
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = updateBodySchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const data = parsed.data;
@@ -67,9 +77,10 @@ export async function PATCH(
       update.shippingOption = data.shippingOption;
     if (data.shippingPrice !== undefined)
       update.shippingNzd = Math.round(data.shippingPrice * 100);
-    if (data.offersEnabled !== undefined)
-      update.offersEnabled = data.offersEnabled;
-    if (data.gstIncluded !== undefined) update.gstIncluded = data.gstIncluded;
+    if (data.isOffersEnabled !== undefined)
+      update.isOffersEnabled = data.isOffersEnabled;
+    if (data.isGstIncluded !== undefined)
+      update.isGstIncluded = data.isGstIncluded;
     if (data.isUrgent !== undefined) update.isUrgent = data.isUrgent;
     if (data.isNegotiable !== undefined)
       update.isNegotiable = data.isNegotiable;
@@ -79,7 +90,10 @@ export async function PATCH(
       update.pickupAddress = data.pickupAddress;
 
     if (Object.keys(update).length === 0) {
-      return withCors(apiError("No fields to update", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("No fields to update", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const updated = await db.listing.update({
@@ -94,9 +108,9 @@ export async function PATCH(
       },
     });
 
-    return withCors(apiOk({ listing: updated }));
+    return withCors(apiOk({ listing: updated }), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
@@ -114,10 +128,16 @@ export async function DELETE(
     });
 
     if (!listing) {
-      return withCors(apiError("Listing not found", 404, "NOT_FOUND"));
+      return withCors(
+        apiError("Listing not found", 404, "NOT_FOUND"),
+        request.headers.get("origin"),
+      );
     }
     if (listing.sellerId !== user.id && !user.isAdmin) {
-      return withCors(apiError("Not your listing", 403, "FORBIDDEN"));
+      return withCors(
+        apiError("Not your listing", 403, "FORBIDDEN"),
+        request.headers.get("origin"),
+      );
     }
 
     await db.listing.update({
@@ -125,12 +145,18 @@ export async function DELETE(
       data: { deletedAt: new Date(), status: "REMOVED" },
     });
 
-    return withCors(apiOk({ message: "Listing deleted" }));
+    return withCors(
+      apiOk({ message: "Listing deleted" }),
+      request.headers.get("origin"),
+    );
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

@@ -37,7 +37,7 @@ export async function initMfaSetup(): Promise<
     // Check not already enabled
     const dbUser = await userRepository.findMfaInfo(user.id);
     if (!dbUser) return { success: false, error: "User not found." };
-    if (dbUser.mfaEnabled) {
+    if (dbUser.isMfaEnabled) {
       return { success: false, error: "MFA is already enabled." };
     }
 
@@ -159,13 +159,13 @@ export async function getMfaStatus(): Promise<
     const dbUser = await userRepository.findMfaInfo(user.id);
     if (!dbUser) return { success: false, error: "User not found." };
 
-    const backupCodesRemaining = dbUser.mfaEnabled
+    const backupCodesRemaining = dbUser.isMfaEnabled
       ? await getBackupCodeCount(user.id)
       : 0;
 
     return {
       success: true,
-      data: { enabled: dbUser.mfaEnabled, backupCodesRemaining },
+      data: { enabled: dbUser.isMfaEnabled, backupCodesRemaining },
     };
   } catch (err) {
     return {

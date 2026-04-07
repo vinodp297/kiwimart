@@ -26,7 +26,10 @@ export async function POST(request: Request) {
       body = proposePickupSchema.parse(await request.json());
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+        return withCors(
+          apiError("Validation failed", 400, "VALIDATION_ERROR"),
+          request.headers.get("origin"),
+        );
       }
       throw err;
     }
@@ -39,12 +42,20 @@ export async function POST(request: Request) {
       select: { buyerId: true, sellerId: true },
     });
 
-    if (!order) return withCors(apiError("Order not found.", 404));
+    if (!order)
+      return withCors(
+        apiError("Order not found.", 404),
+        request.headers.get("origin"),
+      );
 
     let role: "BUYER" | "SELLER";
     if (user.id === order.buyerId) role = "BUYER";
     else if (user.id === order.sellerId) role = "SELLER";
-    else return withCors(apiError("You are not a party to this order.", 403));
+    else
+      return withCors(
+        apiError("You are not a party to this order.", 403),
+        request.headers.get("origin"),
+      );
 
     const result = await proposePickupTime({
       orderId: body.orderId,
@@ -54,15 +65,21 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
-      return withCors(apiError(result.error!, 400));
+      return withCors(
+        apiError(result.error!, 400),
+        request.headers.get("origin"),
+      );
     }
 
-    return withCors(apiOk({ proposed: true }));
+    return withCors(apiOk({ proposed: true }), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

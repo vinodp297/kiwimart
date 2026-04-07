@@ -8,10 +8,10 @@ CREATE INDEX IF NOT EXISTS "Listing_status_expiresAt_idx"
   ON "Listing" ("status", "expiresAt");
 
 -- 2. Offer: payment deadline auto-release filter
---    Auto-release job queries status=ACCEPTED + paymentDeadline<=now().
---    Without this, the job scans the entire Offer table.
-CREATE INDEX IF NOT EXISTS "Offer_status_paymentDeadline_idx"
-  ON "Offer" ("status", "paymentDeadline");
+--    Auto-release job queries status=ACCEPTED + paymentDeadlineAt<=now().
+--    Column was renamed paymentDeadline → paymentDeadlineAt (migration 20260406100004).
+CREATE INDEX IF NOT EXISTS "Offer_status_paymentDeadlineAt_idx"
+  ON "Offer" ("status", "paymentDeadlineAt");
 
 -- 3. Notification: deduplication lookup
 --    dispatchReminders.ts batches userId+orderId+type lookups to prevent

@@ -132,7 +132,7 @@ export async function submitIdVerification(
     if (!dbUser) return { success: false, error: "User not found." };
     if (dbUser.idVerified)
       return { success: false, error: "Your identity is already verified." };
-    if (!dbUser.sellerEnabled)
+    if (!dbUser.isSellerEnabled)
       return { success: false, error: "Seller account is not enabled." };
 
     // Check for existing pending application

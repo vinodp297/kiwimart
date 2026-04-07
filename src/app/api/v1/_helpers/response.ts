@@ -39,15 +39,16 @@ export function apiError(
   );
 }
 
-export function handleApiError(e: unknown): Response {
+export function handleApiError(e: unknown, origin?: string | null): Response {
   if (e instanceof AppError) {
-    return withCors(apiError(e.message, e.statusCode, e.code));
+    return withCors(apiError(e.message, e.statusCode, e.code), origin);
   }
   return withCors(
     apiError(
       "An unexpected error occurred. Please try again or contact support.",
       500,
     ),
+    origin,
   );
 }
 
@@ -56,8 +57,8 @@ const USER_SELECT = {
   email: true,
   isAdmin: true,
   isBanned: true,
-  sellerEnabled: true,
-  stripeOnboarded: true,
+  isSellerEnabled: true,
+  isStripeOnboarded: true,
 } as const;
 
 export async function requireApiUser(request?: Request) {

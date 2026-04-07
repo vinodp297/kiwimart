@@ -189,7 +189,7 @@ export default function ListingActions({
                 NZD
               </span>
             </p>
-            {listing.gstIncluded && (
+            {listing.isGstIncluded && (
               <p className="text-[11px] text-[#9E9A91] mt-1">GST included</p>
             )}
           </div>
@@ -342,7 +342,7 @@ export default function ListingActions({
             )}
 
             {/* Make Offer */}
-            {listing.offersEnabled && (
+            {listing.isOffersEnabled && (
               <button
                 onClick={() => setOfferOpen(true)}
                 className="w-full min-h-[52px] border-2 border-[#C9C5BC]

@@ -20,7 +20,7 @@ export type AdminUserRow = Prisma.UserGetPayload<{
     displayName: true;
     username: true;
     isBanned: true;
-    sellerEnabled: true;
+    isSellerEnabled: true;
     isAdmin: true;
     createdAt: true;
   };
@@ -64,7 +64,7 @@ export const adminRepository = {
         displayName: true,
         username: true,
         isBanned: true,
-        sellerEnabled: true,
+        isSellerEnabled: true,
         isAdmin: true,
         createdAt: true,
       },

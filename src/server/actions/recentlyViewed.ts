@@ -88,7 +88,7 @@ export async function getRecentlyViewedFromDB(
             status: true,
             deletedAt: true,
             images: {
-              where: { order: 0, safe: true },
+              where: { order: 0, isSafe: true },
               select: { r2Key: true, thumbnailKey: true },
               take: 1,
             },

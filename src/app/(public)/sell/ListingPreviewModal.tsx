@@ -31,8 +31,8 @@ interface ListingPreviewProps {
   shippingPrice: string;
   region: NZRegion | "";
   suburb: string;
-  offersEnabled: boolean;
-  gstIncluded: boolean;
+  isOffersEnabled: boolean;
+  isGstIncluded: boolean;
   isUrgent: boolean;
   isNegotiable: boolean;
   shipsNationwide: boolean;
@@ -209,8 +209,8 @@ export default function ListingPreviewModal(props: ListingPreviewProps) {
     shippingPrice,
     region,
     suburb,
-    offersEnabled,
-    gstIncluded,
+    isOffersEnabled,
+    isGstIncluded,
     isUrgent,
     isNegotiable,
     shipsNationwide,
@@ -382,7 +382,7 @@ export default function ListingPreviewModal(props: ListingPreviewProps) {
                   <p className="text-[2rem] font-bold text-[#141414] tracking-tight">
                     {formattedPrice}
                   </p>
-                  {gstIncluded && (
+                  {isGstIncluded && (
                     <p className="text-[11.5px] text-[#9E9A91]">GST included</p>
                   )}
                 </div>
@@ -396,7 +396,7 @@ export default function ListingPreviewModal(props: ListingPreviewProps) {
                   >
                     Buy Now
                   </button>
-                  {offersEnabled && (
+                  {isOffersEnabled && (
                     <button
                       disabled
                       className="w-full py-3 px-6 bg-white text-[#141414] font-semibold

@@ -107,7 +107,7 @@ const validListing = {
   sellerId: "seller-1",
   seller: {
     stripeAccountId: "acct_1234567890abcdef",
-    stripeOnboarded: true,
+    isStripeOnboarded: true,
     displayName: "Test Seller",
   },
 };

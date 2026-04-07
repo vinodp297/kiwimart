@@ -33,6 +33,10 @@ const PROTECTED_PREFIXES = [
   "/sell",
   "/orders",
   "/reviews",
+  "/notifications",
+  "/cart",
+  "/seller",
+  "/welcome",
 ];
 
 const AUTH_PREFIXES = [
@@ -50,6 +54,21 @@ function matchesProtected(pathname: string): boolean {
   );
 }
 
+// API v1 endpoints that work without session cookies
+function isPublicApi(pathname: string, method: string): boolean {
+  // Mobile auth endpoints (credentials/bearer, no cookies)
+  if (pathname.startsWith("/api/v1/auth/")) return true;
+  // Public GET-only endpoints
+  if (method !== "GET") return false;
+  return [
+    "/api/v1/listings",
+    "/api/v1/reviews",
+    "/api/v1/search",
+    "/api/v1/notifications", // Returns empty for unauthenticated
+    "/api/v1/cart", // Returns { count: 0 } for unauthenticated
+  ].some((p) => pathname.startsWith(p));
+}
+
 // auth() as a callback wrapper — request.auth is the decoded session
 // (JWT for credentials, DB row for OAuth).  Auth.js handles both transparently.
 export const proxy = auth(async function proxyHandler(
@@ -57,9 +76,10 @@ export const proxy = auth(async function proxyHandler(
     auth: {
       user?: {
         id?: string;
-        sellerEnabled?: boolean;
+        isSellerEnabled?: boolean;
         isAdmin?: boolean;
         isBanned?: boolean;
+        mfaPending?: boolean;
       };
     } | null;
   },
@@ -146,6 +166,26 @@ export const proxy = auth(async function proxyHandler(
   const isAuthPath = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
   const isAdminPath = pathname === "/admin" || pathname.startsWith("/admin/");
 
+  // ── API route auth checks ─────────────────────────────────────────────
+  // Returns 401 JSON for unauthenticated/MFA-pending API requests.
+  // API clients expect JSON errors, not redirects.
+  if (pathname.startsWith("/api/v1/") || pathname.startsWith("/api/admin/")) {
+    if (isPublicApi(pathname, request.method)) return response;
+    if (!isAuthenticated) {
+      return NextResponse.json(
+        { error: "Unauthorised", code: "AUTH_REQUIRED" },
+        { status: 401 },
+      );
+    }
+    if (sessionUser?.mfaPending) {
+      return NextResponse.json(
+        { error: "MFA verification required", code: "MFA_REQUIRED" },
+        { status: 401 },
+      );
+    }
+    return response;
+  }
+
   // ── Proxy-level session version check (defence-in-depth) ────────────────
   // If the user appears authenticated on a protected route, verify the
   // session version stored in the cookie hasn't been superseded by a
@@ -185,9 +225,9 @@ export const proxy = auth(async function proxyHandler(
     }
   }
 
-  const sellerEnabled = sessionUser?.sellerEnabled ?? false;
+  const isSellerEnabled = sessionUser?.isSellerEnabled ?? false;
   const isAdmin = sessionUser?.isAdmin ?? false;
-  const defaultDashboard = sellerEnabled
+  const defaultDashboard = isSellerEnabled
     ? "/dashboard/seller"
     : "/dashboard/buyer";
 
@@ -195,6 +235,14 @@ export const proxy = auth(async function proxyHandler(
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // MFA pending: redirect to /mfa-verify before granting access
+  // /mfa-verify itself is NOT in PROTECTED_PREFIXES so no infinite redirect
+  if (isProtected && isAuthenticated && sessionUser?.mfaPending) {
+    const mfaUrl = new URL("/mfa-verify", request.url);
+    mfaUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(mfaUrl);
   }
 
   // Admin-only routes: redirect non-admins to buyer dashboard

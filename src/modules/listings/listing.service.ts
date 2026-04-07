@@ -28,7 +28,7 @@ export interface CreateListingInput {
   title: string;
   description: string;
   price: number;
-  gstIncluded: boolean;
+  isGstIncluded: boolean;
   condition: string;
   categoryId: string;
   subcategoryName?: string | null;
@@ -37,7 +37,7 @@ export interface CreateListingInput {
   shippingOption: string;
   shippingPrice?: number | null;
   pickupAddress?: string | null;
-  offersEnabled: boolean;
+  isOffersEnabled: boolean;
   isUrgent: boolean;
   isNegotiable: boolean;
   shipsNationwide: boolean;
@@ -50,7 +50,7 @@ export interface SaveDraftInput {
   title?: string;
   description?: string;
   price?: number | null;
-  gstIncluded?: boolean | null;
+  isGstIncluded?: boolean | null;
   condition?: string | null;
   categoryId?: string | null;
   subcategoryName?: string | null;
@@ -59,7 +59,7 @@ export interface SaveDraftInput {
   shippingOption?: string | null;
   shippingPrice?: number | null;
   pickupAddress?: string | null;
-  offersEnabled?: boolean | null;
+  isOffersEnabled?: boolean | null;
   isUrgent?: boolean | null;
   isNegotiable?: boolean | null;
   shipsNationwide?: boolean | null;
@@ -71,7 +71,7 @@ export interface UpdateListingInput {
   title?: string | null;
   description?: string | null;
   price?: number | null;
-  gstIncluded?: boolean | null;
+  isGstIncluded?: boolean | null;
   condition?: string | null;
   categoryId?: string | null;
   subcategoryName?: string | null;
@@ -80,7 +80,7 @@ export interface UpdateListingInput {
   shippingOption?: string | null;
   shippingPrice?: number | null;
   pickupAddress?: string | null;
-  offersEnabled?: boolean | null;
+  isOffersEnabled?: boolean | null;
   isUrgent?: boolean | null;
   isNegotiable?: boolean | null;
   shipsNationwide?: boolean | null;
@@ -186,7 +186,7 @@ export class ListingService {
   async createListing(
     userId: string,
     email: string,
-    stripeOnboarded: boolean,
+    isStripeOnboarded: boolean,
     data: CreateListingInput,
     ip: string,
   ): Promise<CreateResult> {
@@ -205,7 +205,7 @@ export class ListingService {
           "Please accept seller terms before listing items. Go to Seller Hub to accept.",
       };
     }
-    if (!stripeOnboarded) {
+    if (!isStripeOnboarded) {
       return {
         ok: false,
         error: "Please set up your payment account before listing items.",
@@ -227,7 +227,7 @@ export class ListingService {
     const missingKeys = data.imageKeys.filter(
       (key) => !images.some((img) => img.r2Key === key),
     );
-    const unsafeImages = images.filter((img) => !img.scanned || !img.safe);
+    const unsafeImages = images.filter((img) => !img.isScanned || !img.isSafe);
     if (missingKeys.length > 0 || unsafeImages.length > 0) {
       const issues: string[] = [];
       if (missingKeys.length > 0)
@@ -242,8 +242,8 @@ export class ListingService {
         missingKeys,
         unsafeImages: unsafeImages.map((i) => ({
           id: i.id,
-          scanned: i.scanned,
-          safe: i.safe,
+          isScanned: i.isScanned,
+          isSafe: i.isSafe,
         })),
         totalExpected: data.imageKeys.length,
         totalFound: images.length,
@@ -264,7 +264,7 @@ export class ListingService {
           title: data.title,
           description: data.description,
           priceNzd,
-          gstIncluded: data.gstIncluded,
+          isGstIncluded: data.isGstIncluded,
           condition: data.condition,
           status: "PENDING_REVIEW",
           categoryId: data.categoryId,
@@ -277,7 +277,7 @@ export class ListingService {
               ? Math.round(data.shippingPrice * 100)
               : null,
           pickupAddress: data.pickupAddress ?? null,
-          offersEnabled: data.offersEnabled,
+          isOffersEnabled: data.isOffersEnabled,
           isUrgent: data.isUrgent,
           isNegotiable: data.isNegotiable,
           shipsNationwide: data.shipsNationwide,
@@ -298,7 +298,7 @@ export class ListingService {
         tx,
       );
 
-      if (!userDetails.sellerEnabled) {
+      if (!userDetails.isSellerEnabled) {
         await listingRepository.enableSeller(userId, tx);
       }
 
@@ -317,7 +317,7 @@ export class ListingService {
           description: data.description,
           priceNzd,
           categoryId: data.categoryId,
-          images: images.map((img) => ({ safe: img.safe })),
+          images: images.map((img) => ({ isSafe: img.isSafe })),
         },
         userId,
         email,
@@ -362,7 +362,9 @@ export class ListingService {
       ...(data.title != null ? { title: data.title } : {}),
       ...(data.description != null ? { description: data.description } : {}),
       ...(data.price != null ? { priceNzd: Math.round(data.price * 100) } : {}),
-      ...(data.gstIncluded != null ? { gstIncluded: data.gstIncluded } : {}),
+      ...(data.isGstIncluded != null
+        ? { isGstIncluded: data.isGstIncluded }
+        : {}),
       ...(data.condition != null ? { condition: data.condition } : {}),
       ...(data.categoryId != null ? { categoryId: data.categoryId } : {}),
       ...(data.subcategoryName !== undefined
@@ -379,8 +381,8 @@ export class ListingService {
       ...(data.pickupAddress !== undefined
         ? { pickupAddress: data.pickupAddress ?? null }
         : {}),
-      ...(data.offersEnabled != null
-        ? { offersEnabled: data.offersEnabled }
+      ...(data.isOffersEnabled != null
+        ? { isOffersEnabled: data.isOffersEnabled }
         : {}),
       ...(data.isUrgent != null ? { isUrgent: data.isUrgent } : {}),
       ...(data.isNegotiable != null ? { isNegotiable: data.isNegotiable } : {}),
@@ -428,7 +430,7 @@ export class ListingService {
       title: data.title || "Untitled Draft",
       description: data.description || "",
       priceNzd: data.price != null ? Math.round(data.price * 100) : 0,
-      gstIncluded: data.gstIncluded ?? false,
+      isGstIncluded: data.isGstIncluded ?? false,
       condition: data.condition ?? "GOOD",
       status: "DRAFT",
       categoryId: data.categoryId || "",
@@ -441,7 +443,7 @@ export class ListingService {
           ? Math.round(data.shippingPrice * 100)
           : null,
       pickupAddress: data.pickupAddress ?? null,
-      offersEnabled: data.offersEnabled ?? true,
+      isOffersEnabled: data.isOffersEnabled ?? true,
       isUrgent: data.isUrgent ?? false,
       isNegotiable: data.isNegotiable ?? false,
       shipsNationwide: data.shipsNationwide ?? false,
@@ -499,7 +501,9 @@ export class ListingService {
       ...(data.title != null ? { title: data.title } : {}),
       ...(data.description != null ? { description: data.description } : {}),
       ...(newPriceNzd != null ? { priceNzd: newPriceNzd } : {}),
-      ...(data.gstIncluded != null ? { gstIncluded: data.gstIncluded } : {}),
+      ...(data.isGstIncluded != null
+        ? { isGstIncluded: data.isGstIncluded }
+        : {}),
       ...(data.condition != null ? { condition: data.condition } : {}),
       ...(data.categoryId != null ? { categoryId: data.categoryId } : {}),
       ...(data.subcategoryName !== undefined
@@ -516,8 +520,8 @@ export class ListingService {
       ...(data.pickupAddress !== undefined
         ? { pickupAddress: data.pickupAddress ?? null }
         : {}),
-      ...(data.offersEnabled != null
-        ? { offersEnabled: data.offersEnabled }
+      ...(data.isOffersEnabled != null
+        ? { isOffersEnabled: data.isOffersEnabled }
         : {}),
       ...(data.isUrgent != null ? { isUrgent: data.isUrgent } : {}),
       ...(data.isNegotiable != null ? { isNegotiable: data.isNegotiable } : {}),
@@ -548,7 +552,7 @@ export class ListingService {
             description: data.description ?? existing.description,
             priceNzd: newPriceNzd ?? existing.priceNzd,
             categoryId: data.categoryId ?? existing.categoryId,
-            images: listingImages.map((img) => ({ safe: img.safe })),
+            images: listingImages.map((img) => ({ isSafe: img.isSafe })),
           },
           userId,
           email,
@@ -723,7 +727,7 @@ export class ListingService {
         title: listing.title,
         description: listing.description,
         priceNzd: listing.priceNzd,
-        gstIncluded: listing.gstIncluded,
+        isGstIncluded: listing.isGstIncluded,
         condition: listing.condition,
         status: listing.status,
         moderationNote: listing.moderationNote,
@@ -733,7 +737,7 @@ export class ListingService {
         suburb: listing.suburb,
         shippingOption: listing.shippingOption,
         shippingNzd: listing.shippingNzd,
-        offersEnabled: listing.offersEnabled,
+        isOffersEnabled: listing.isOffersEnabled,
         isUrgent: listing.isUrgent,
         isNegotiable: listing.isNegotiable,
         shipsNationwide: listing.shipsNationwide,
@@ -760,7 +764,7 @@ export class ListingService {
 
     let sellerLevel = "LEVEL_1";
     if (sellerData?.idVerified) sellerLevel = "LEVEL_3";
-    else if (sellerData?.phoneVerified) sellerLevel = "LEVEL_2";
+    else if (sellerData?.isPhoneVerified) sellerLevel = "LEVEL_2";
 
     const sellerProfile: SellerProfile = {
       id: userId,

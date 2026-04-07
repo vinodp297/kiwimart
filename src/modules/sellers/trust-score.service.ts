@@ -71,7 +71,7 @@ async function fetchSellerTrustProfile(
         _count: { id: true },
       }),
       db.review.aggregate({
-        where: { subjectId: sellerId, reviewerRole: "BUYER", approved: true },
+        where: { subjectId: sellerId, reviewerRole: "BUYER", isApproved: true },
         _avg: { rating: true },
         _count: { id: true },
       }),

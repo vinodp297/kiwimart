@@ -130,7 +130,7 @@ export default async function VerifyPage({
       displayName: true,
       email: true,
       username: true,
-      phoneVerified: true,
+      isPhoneVerified: true,
       idVerified: true,
       idSubmittedAt: true,
       createdAt: true,
@@ -227,9 +227,9 @@ export default async function VerifyPage({
             Phone verified
           </p>
           <p
-            className={`text-[14px] font-medium ${user.phoneVerified ? "text-green-600" : "text-[#9E9A91]"}`}
+            className={`text-[14px] font-medium ${user.isPhoneVerified ? "text-green-600" : "text-[#9E9A91]"}`}
           >
-            {user.phoneVerified ? "Yes" : "No"}
+            {user.isPhoneVerified ? "Yes" : "No"}
           </p>
         </div>
         <div>

@@ -1,7 +1,8 @@
 -- Recently Viewed Listings — persistent tracking for authenticated users.
 -- Guests still fall back to localStorage.
+-- Idempotent: all statements use IF NOT EXISTS guards.
 
-CREATE TABLE "RecentlyViewed" (
+CREATE TABLE IF NOT EXISTS "RecentlyViewed" (
   "id"        TEXT NOT NULL,
   "userId"    TEXT NOT NULL,
   "listingId" TEXT NOT NULL,
@@ -11,19 +12,27 @@ CREATE TABLE "RecentlyViewed" (
 );
 
 -- One row per (user, listing) — upsert updates viewedAt on revisit
-CREATE UNIQUE INDEX "RecentlyViewed_userId_listingId_key"
+CREATE UNIQUE INDEX IF NOT EXISTS "RecentlyViewed_userId_listingId_key"
   ON "RecentlyViewed"("userId", "listingId");
 
 -- Fast fetch: user's recently viewed sorted by recency
-CREATE INDEX "RecentlyViewed_userId_viewedAt_idx"
+CREATE INDEX IF NOT EXISTS "RecentlyViewed_userId_viewedAt_idx"
   ON "RecentlyViewed"("userId", "viewedAt" DESC);
 
-ALTER TABLE "RecentlyViewed"
-  ADD CONSTRAINT "RecentlyViewed_userId_fkey"
-  FOREIGN KEY ("userId") REFERENCES "User"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RecentlyViewed_userId_fkey') THEN
+    ALTER TABLE "RecentlyViewed"
+      ADD CONSTRAINT "RecentlyViewed_userId_fkey"
+      FOREIGN KEY ("userId") REFERENCES "User"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END$$;
 
-ALTER TABLE "RecentlyViewed"
-  ADD CONSTRAINT "RecentlyViewed_listingId_fkey"
-  FOREIGN KEY ("listingId") REFERENCES "Listing"("id")
-  ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RecentlyViewed_listingId_fkey') THEN
+    ALTER TABLE "RecentlyViewed"
+      ADD CONSTRAINT "RecentlyViewed_listingId_fkey"
+      FOREIGN KEY ("listingId") REFERENCES "Listing"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END$$;

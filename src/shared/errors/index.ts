@@ -16,14 +16,23 @@ export type ErrorCode =
   | "ORDER_WRONG_STATE"
   | "MISSING_PAYMENT_INTENT"
   | "PAYMENT_FAILED"
-  | "STRIPE_ERROR"
+  | "PAYMENT_GATEWAY_ERROR"
   | "RATE_LIMITED"
   | "MESSAGE_FLAGGED"
   | "DATABASE_ERROR"
   | "QUEUE_ERROR"
   | "STORAGE_ERROR"
   | "EMAIL_ERROR"
-  | "INVALID_OPERATION";
+  | "INVALID_OPERATION"
+  | "MISSING_TOKEN"
+  | "INVALID_TOKEN"
+  | "CART_ERROR"
+  | "EMAIL_NOT_VERIFIED"
+  | "TERMS_NOT_ACCEPTED"
+  | "STRIPE_NOT_ONBOARDED"
+  | "INVALID_CATEGORY"
+  | "IMAGE_VALIDATION_FAILED"
+  | "ACCOUNT_BANNED";
 
 export class AppError extends Error {
   constructor(
@@ -78,8 +87,8 @@ export class AppError extends Error {
     );
   }
 
-  static stripeError(message: string): AppError {
-    return new AppError("STRIPE_ERROR", message, 502);
+  static paymentGatewayError(message: string): AppError {
+    return new AppError("PAYMENT_GATEWAY_ERROR", message, 502);
   }
 
   static rateLimited(): AppError {

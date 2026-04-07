@@ -52,8 +52,12 @@ export function CurrentTierCard({
   );
 }
 
-export function StripeCta({ stripeOnboarded }: { stripeOnboarded: boolean }) {
-  if (stripeOnboarded) return null;
+export function StripeCta({
+  isStripeOnboarded,
+}: {
+  isStripeOnboarded: boolean;
+}) {
+  if (isStripeOnboarded) return null;
   return (
     <div className="bg-white rounded-2xl border border-amber-200 bg-amber-50/50 p-6">
       <div className="flex items-start gap-3">

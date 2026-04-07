@@ -17,7 +17,7 @@ const notificationSelect = {
   title: true,
   body: true,
   link: true,
-  read: true,
+  isRead: true,
   createdAt: true,
   listingId: true,
   orderId: true,
@@ -76,7 +76,7 @@ export const notificationRepository = {
     const client = tx ?? db;
     await client.notification.updateMany({
       where: { id: { in: notificationIds }, userId },
-      data: { read: true },
+      data: { isRead: true },
     });
   },
 
@@ -85,8 +85,8 @@ export const notificationRepository = {
   async markAllRead(userId: string, tx?: DbClient): Promise<void> {
     const client = tx ?? db;
     await client.notification.updateMany({
-      where: { userId, read: false },
-      data: { read: true },
+      where: { userId, isRead: false },
+      data: { isRead: true },
     });
   },
 
@@ -95,7 +95,7 @@ export const notificationRepository = {
   async countUnread(userId: string, tx?: DbClient): Promise<number> {
     const client = tx ?? db;
     return client.notification.count({
-      where: { userId, read: false },
+      where: { userId, isRead: false },
     });
   },
 
@@ -142,7 +142,7 @@ export const notificationRepository = {
             title: payload.title,
             body: payload.body,
             link: payload.link ?? null,
-            read: false,
+            isRead: false,
           },
         }),
       ),

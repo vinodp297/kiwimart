@@ -62,7 +62,7 @@ export async function setupMfa(
     data: {
       mfaSecret: encrypt(base32Secret),
       mfaBackupCodes: encrypt(JSON.stringify(backupCodes)),
-      mfaEnabled: false, // not enabled until verified
+      isMfaEnabled: false, // not enabled until verified
     },
   });
 
@@ -95,7 +95,7 @@ export async function verifyMfaSetup(
 
   await db.user.update({
     where: { id: userId },
-    data: { mfaEnabled: true },
+    data: { isMfaEnabled: true },
   });
 
   return { verified: true };
@@ -173,7 +173,7 @@ export async function disableMfa(
     where: { id: userId },
     data: {
       mfaSecret: null,
-      mfaEnabled: false,
+      isMfaEnabled: false,
       mfaBackupCodes: null,
     },
   });
@@ -187,9 +187,9 @@ export async function disableMfa(
 export async function hasMfaEnabled(userId: string): Promise<boolean> {
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { mfaEnabled: true },
+    select: { isMfaEnabled: true },
   });
-  return user?.mfaEnabled ?? false;
+  return user?.isMfaEnabled ?? false;
 }
 
 /**

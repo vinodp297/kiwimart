@@ -97,8 +97,8 @@ describe("API Response Helpers", () => {
         email: "user@test.com",
         isAdmin: false,
         isBanned: false,
-        sellerEnabled: true,
-        stripeOnboarded: true,
+        isSellerEnabled: true,
+        isStripeOnboarded: true,
       } as never);
 
       const req = new Request("http://localhost/api/test", {
@@ -130,8 +130,8 @@ describe("API Response Helpers", () => {
         email: "web@test.com",
         isAdmin: false,
         isBanned: false,
-        sellerEnabled: false,
-        stripeOnboarded: false,
+        isSellerEnabled: false,
+        isStripeOnboarded: false,
       } as never);
 
       const req = new Request("http://localhost/api/test");
@@ -152,8 +152,8 @@ describe("API Response Helpers", () => {
         email: "banned@test.com",
         isAdmin: false,
         isBanned: true,
-        sellerEnabled: false,
-        stripeOnboarded: false,
+        isSellerEnabled: false,
+        isStripeOnboarded: false,
       } as never);
 
       const req = new Request("http://localhost/api/test", {
@@ -180,8 +180,8 @@ describe("API Response Helpers", () => {
         email: "banned@test.com",
         isAdmin: false,
         isBanned: true,
-        sellerEnabled: false,
-        stripeOnboarded: false,
+        isSellerEnabled: false,
+        isStripeOnboarded: false,
       } as never);
 
       const req = new Request("http://localhost/api/test");

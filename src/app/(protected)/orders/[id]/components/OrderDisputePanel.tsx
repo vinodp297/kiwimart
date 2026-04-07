@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/primitives";
 import type { OrderDetailData, TimelineEvent } from "./order-types";
-import { fmtDate } from "./order-utils";
+import { formatDate } from "./order-utils";
 import { getOrderStatusInfo } from "@/lib/orderStatusMessages";
 import OrderCounterEvidence from "./OrderCounterEvidence";
 
@@ -256,7 +256,7 @@ export default function OrderDisputePanel({
               </p>
               {order.dispute?.sellerRespondedAt && (
                 <p className="mt-1.5 text-[11px] opacity-60">
-                  Responded {fmtDate(order.dispute?.sellerRespondedAt)}
+                  Responded {formatDate(order.dispute?.sellerRespondedAt)}
                 </p>
               )}
             </div>

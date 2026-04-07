@@ -10,7 +10,7 @@ import {
 import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import db from "@/lib/db";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const sessionUser = await requireApiUser();
 
@@ -24,24 +24,30 @@ export async function GET() {
         avatarKey: true,
         region: true,
         bio: true,
-        sellerEnabled: true,
-        stripeOnboarded: true,
+        isSellerEnabled: true,
+        isStripeOnboarded: true,
         idVerified: true,
-        phoneVerified: true,
+        isPhoneVerified: true,
         createdAt: true,
       },
     });
 
     if (!user) {
-      return withCors(apiError("User not found", 404, "NOT_FOUND"));
+      return withCors(
+        apiError("User not found", 404, "NOT_FOUND"),
+        request.headers.get("origin"),
+      );
     }
 
-    return withCors(apiOk(user));
+    return withCors(apiOk(user), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

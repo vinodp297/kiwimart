@@ -13,7 +13,10 @@ export async function POST(request: Request) {
     // 1. Require Bearer token — session-cookie callers don't have a jti to revoke
     const authHeader = request.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return withCors(apiError("Missing Bearer token", 401, "MISSING_TOKEN"));
+      return withCors(
+        apiError("Missing Bearer token", 401, "MISSING_TOKEN"),
+        request.headers.get("origin"),
+      );
     }
 
     const token = authHeader.slice(7);
@@ -23,6 +26,7 @@ export async function POST(request: Request) {
     if (!payload?.sub || !payload.jti) {
       return withCors(
         apiError("Invalid or expired token", 401, "INVALID_TOKEN"),
+        request.headers.get("origin"),
       );
     }
 
@@ -34,16 +38,25 @@ export async function POST(request: Request) {
 
     logger.info("mobile.token.revoked", { userId: payload.sub });
 
-    return withCors(apiOk({ message: "Logged out successfully" }));
+    return withCors(
+      apiOk({ message: "Logged out successfully" }),
+      request.headers.get("origin"),
+    );
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/auth/logout",
       error: e instanceof Error ? e.message : e,
     });
-    return withCors(apiError("Logout failed. Please try again.", 500));
+    return withCors(
+      apiError("Logout failed. Please try again.", 500),
+      request.headers.get("origin"),
+    );
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

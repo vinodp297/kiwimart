@@ -27,18 +27,22 @@ export async function POST(
           429,
           "RATE_LIMITED",
         ),
+        request.headers.get("origin"),
       );
     }
 
     const { id } = await params;
 
     const result = await listingService.toggleWatch(id, user.id);
-    return withCors(apiOk(result));
+    return withCors(apiOk(result), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

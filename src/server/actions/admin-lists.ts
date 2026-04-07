@@ -19,8 +19,8 @@ export interface ListItemRecord {
   description: string | null;
   metadata: unknown;
   sortOrder: number;
-  active: boolean;
-  updatedBy: string | null;
+  isActive: boolean;
+  updatedById: string | null;
   updaterName: string | null;
   updatedAt: string;
 }
@@ -49,8 +49,8 @@ export async function getListItems(
       description: i.description,
       metadata: i.metadata,
       sortOrder: i.sortOrder,
-      active: i.active,
-      updatedBy: i.updatedBy,
+      isActive: i.isActive,
+      updatedById: i.updatedById,
       updaterName: i.updater?.displayName ?? null,
       updatedAt: i.updatedAt.toISOString(),
     }));
@@ -125,7 +125,7 @@ export async function createListItem(params: {
             ? (metadata as Prisma.InputJsonValue)
             : Prisma.JsonNull,
         sortOrder: (maxSort?.sortOrder ?? -1) + 1,
-        updatedBy: admin.id,
+        updatedById: admin.id,
       },
     });
 
@@ -156,11 +156,11 @@ export async function updateListItem(params: {
   label?: string | null;
   description?: string | null;
   metadata?: Record<string, unknown> | null;
-  active?: boolean;
+  isActive?: boolean;
 }): Promise<ActionResult<void>> {
   try {
     const admin = await requirePermission("MANAGE_DYNAMIC_LISTS");
-    const { id, value, label, description, metadata, active } = params;
+    const { id, value, label, description, metadata, isActive } = params;
 
     const existing = await db.dynamicListItem.findUnique({
       where: { id },
@@ -168,7 +168,7 @@ export async function updateListItem(params: {
     });
     if (!existing) return { success: false, error: "Item not found." };
 
-    const data: Record<string, unknown> = { updatedBy: admin.id };
+    const data: Record<string, unknown> = { updatedById: admin.id };
     if (value !== undefined) data.value = value.trim();
     if (label !== undefined) data.label = label?.trim() || null;
     if (description !== undefined)
@@ -178,7 +178,7 @@ export async function updateListItem(params: {
         metadata === null
           ? Prisma.JsonNull
           : (metadata as Prisma.InputJsonValue);
-    if (active !== undefined) data.active = active;
+    if (isActive !== undefined) data.isActive = isActive;
 
     await db.dynamicListItem.update({ where: { id }, data });
 

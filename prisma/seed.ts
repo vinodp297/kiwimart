@@ -30,36 +30,265 @@ function sha256(val: string) {
 // ─── Listing images ──────────────────────────────────────────────────────────
 // Seed data uses Unsplash URLs directly — getImageUrl() returns any value
 // starting with "http" as-is, so these render without R2 uploads.
-const LISTING_IMAGE_FALLBACK =
-  "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
+// Returns 2–4 curated URLs per listing matched to category/title.
 
-function pickListingImage(title: string): string {
+function pickListingImages(title: string): string[] {
   const t = title.toLowerCase();
-  if (t.includes("macbook") || t.includes("ipad") || t.includes("laptop"))
-    return "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800";
+
+  // Electronics — Laptops / MacBook
+  if (t.includes("macbook"))
+    return [
+      "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=800",
+      "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800",
+      "https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=800",
+      "https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?w=800",
+    ];
+  if (t.includes("laptop") || t.includes("ipad") || t.includes("tablet"))
+    return [
+      "https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?w=800",
+      "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800",
+      "https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=800",
+    ];
+
+  // Electronics — Phones / iPhone
   if (t.includes("iphone") || t.includes("phone"))
-    return "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=800";
-  if (t.includes("tv") || t.includes("television"))
-    return "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=800";
-  if (t.includes("headphone") || t.includes("wh-1000"))
-    return "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800";
-  if (t.includes("camera") || t.includes("canon eos") || t.includes("eos r"))
-    return "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=800";
-  if (t.includes("dining table"))
-    return "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800";
-  if (t.includes("chair"))
-    return "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=800";
-  if (t.includes("kayak"))
-    return "https://images.unsplash.com/photo-1472745942893-4b9f730c7668?w=800";
-  if (t.includes("tent"))
-    return "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?w=800";
-  if (t.includes("bike") || t.includes("bicycle"))
-    return "https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=800";
-  if (t.includes("watch") || t.includes("rolex"))
-    return "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800";
-  if (t.includes("jacket") || t.includes("coat"))
-    return "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=800";
-  return LISTING_IMAGE_FALLBACK;
+    return [
+      "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800",
+      "https://images.unsplash.com/photo-1585792180666-f7347c490ee2?w=800",
+    ];
+
+  // Electronics — Cameras
+  if (t.includes("camera") || t.includes("canon") || t.includes("eos"))
+    return [
+      "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?w=800",
+      "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=800",
+    ];
+
+  // Electronics — Headphones / Audio / Speaker
+  if (
+    t.includes("headphone") ||
+    t.includes("wh-1000") ||
+    t.includes("speaker") ||
+    t.includes("sonos")
+  )
+    return [
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800",
+      "https://images.unsplash.com/photo-1583394838336-acd977736f90?w=800",
+    ];
+
+  // Electronics — Watches (Apple Watch, Rolex)
+  if (t.includes("watch") || t.includes("rolex") || t.includes("submariner"))
+    return [
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800",
+      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800",
+    ];
+
+  // Electronics — TV / Samsung (generic electronics)
+  if (t.includes("tv") || t.includes("television") || t.includes("samsung"))
+    return [
+      "https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?w=800",
+      "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800",
+    ];
+
+  // Furniture — Dining Table / Oak
+  if (
+    t.includes("dining table") ||
+    t.includes("oak table") ||
+    t.includes("oak dining")
+  )
+    return [
+      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800",
+      "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=800",
+      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=800",
+    ];
+
+  // Furniture — Chair / Sofa / Armchair
+  if (
+    t.includes("chair") ||
+    t.includes("sofa") ||
+    t.includes("armchair") ||
+    t.includes("couch")
+  )
+    return [
+      "https://images.unsplash.com/photo-1538688525198-9b88f6f53126?w=800",
+      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=800",
+      "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800",
+    ];
+
+  // Furniture — Desk
+  if (t.includes("desk"))
+    return [
+      "https://images.unsplash.com/photo-1533090481720-856c6e3c1fdc?w=800",
+      "https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=800",
+    ];
+
+  // Furniture — Bed / Bedroom
+  if (t.includes("bed") || t.includes("bedroom") || t.includes("mattress"))
+    return [
+      "https://images.unsplash.com/photo-1595526114035-0d45ed16cfbf?w=800",
+      "https://images.unsplash.com/photo-1588046130717-0eb0c9a3ba15?w=800",
+    ];
+
+  // Fashion — Jacket / Coat / Down Jacket
+  if (
+    t.includes("jacket") ||
+    t.includes("coat") ||
+    t.includes("down jacket") ||
+    t.includes("kathmandu")
+  )
+    return [
+      "https://images.unsplash.com/photo-1584735175315-9d5df23be620?w=800",
+      "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800",
+    ];
+
+  // Fashion — Sneakers / Shoes
+  if (t.includes("sneaker") || t.includes("shoe") || t.includes("boot"))
+    return [
+      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800",
+      "https://images.unsplash.com/photo-1491553895911-0055eca6402d?w=800",
+    ];
+
+  // Fashion — Bag / Handbag
+  if (t.includes("bag") || t.includes("handbag") || t.includes("tote"))
+    return [
+      "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=800",
+      "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=800",
+    ];
+
+  // Fashion — Clothes (generic)
+  if (t.includes("cloth") || t.includes("wear") || t.includes("dress"))
+    return [
+      "https://images.unsplash.com/photo-1523381210434-271e8be1f52b?w=800",
+      "https://images.unsplash.com/photo-1584735175315-9d5df23be620?w=800",
+    ];
+
+  // Vehicles — Car
+  if (
+    t.includes("car") ||
+    t.includes("vehicle") ||
+    t.includes("sedan") ||
+    t.includes("suv")
+  )
+    return [
+      "https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=800",
+      "https://images.unsplash.com/photo-1502877338535-766e1452684a?w=800",
+      "https://images.unsplash.com/photo-1511919884226-fd3cad34687c?w=800",
+    ];
+
+  // Vehicles — Motorbike
+  if (
+    t.includes("motorbike") ||
+    t.includes("motorcycle") ||
+    t.includes("scooter")
+  )
+    return [
+      "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+      "https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=800",
+    ];
+
+  // Sports — Bikes / Cycling
+  if (
+    t.includes("road bike") ||
+    t.includes("giant defy") ||
+    t.includes("bicycle") ||
+    (t.includes("bike") && !t.includes("motorbike"))
+  )
+    return [
+      "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800",
+      "https://images.unsplash.com/photo-1449426468159-d96dbf08f19f?w=800",
+    ];
+
+  // Sports — Kayak / Water
+  if (t.includes("kayak") || t.includes("canoe") || t.includes("paddle"))
+    return [
+      "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800",
+      "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800",
+    ];
+
+  // Sports — Tent / Camping
+  if (t.includes("tent") || t.includes("msr") || t.includes("camping"))
+    return [
+      "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800",
+      "https://images.unsplash.com/photo-1593341646782-e0b495cff86d?w=800",
+    ];
+
+  // Sports — Fitness / Gym / Weights
+  if (
+    t.includes("weights") ||
+    t.includes("dumbbell") ||
+    t.includes("gym") ||
+    t.includes("barbell")
+  )
+    return [
+      "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=800",
+      "https://images.unsplash.com/photo-1593341646782-e0b495cff86d?w=800",
+    ];
+
+  // Sports — Yoga
+  if (t.includes("yoga") || t.includes("pilates"))
+    return [
+      "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800",
+      "https://images.unsplash.com/photo-1593341646782-e0b495cff86d?w=800",
+    ];
+
+  // Home — Kitchen / Mugs / Cookware
+  if (
+    t.includes("mug") ||
+    t.includes("ceramic") ||
+    t.includes("kitchen") ||
+    t.includes("cookware") ||
+    t.includes("appliance")
+  )
+    return [
+      "https://images.unsplash.com/photo-1484154218962-a197022b5858?w=800",
+      "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800",
+    ];
+
+  // Home — Garden / Plants / Craft / Wall Hanging / Macramé
+  if (
+    t.includes("garden") ||
+    t.includes("plant") ||
+    t.includes("craft") ||
+    t.includes("macrame") ||
+    t.includes("wall hanging") ||
+    t.includes("supply") ||
+    t.includes("supplies")
+  )
+    return [
+      "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=800",
+      "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?w=800",
+    ];
+
+  // Books / Media / Vinyl
+  if (
+    t.includes("book") ||
+    t.includes("vinyl") ||
+    t.includes("record") ||
+    t.includes("dvd")
+  )
+    return [
+      "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=800",
+      "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=800",
+    ];
+
+  // Toys / Games / LEGO / Console
+  if (
+    t.includes("lego") ||
+    t.includes("console") ||
+    t.includes("gaming") ||
+    t.includes("toy") ||
+    t.includes("game")
+  )
+    return [
+      "https://images.unsplash.com/photo-1558060370-d644479cb6f7?w=800",
+      "https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?w=800",
+    ];
+
+  // Default fallback
+  return [
+    "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800",
+    "https://images.unsplash.com/photo-1593642632559-0c6d3fc62b89?w=800",
+  ];
 }
 
 // ─── Wipe ────────────────────────────────────────────────────────────────────
@@ -263,12 +492,12 @@ async function seedUsers() {
       passwordHash: buyerPass,
       emailVerified: ago(30 * DAY),
       phone: "+6421111001",
-      phoneVerified: true,
+      isPhoneVerified: true,
       phoneVerifiedAt: ago(25 * DAY),
       region: "Auckland",
       suburb: "Ponsonby",
-      onboardingCompleted: true,
-      agreeMarketing: true,
+      isOnboardingCompleted: true,
+      hasMarketingConsent: true,
       agreedTermsAt: ago(30 * DAY),
       createdAt: ago(30 * DAY),
     },
@@ -283,11 +512,11 @@ async function seedUsers() {
       passwordHash: buyerPass,
       emailVerified: ago(20 * DAY),
       phone: "+6421111002",
-      phoneVerified: true,
+      isPhoneVerified: true,
       phoneVerifiedAt: ago(18 * DAY),
       region: "Wellington",
       suburb: "Thorndon",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       agreedTermsAt: ago(20 * DAY),
       createdAt: ago(20 * DAY),
     },
@@ -302,11 +531,11 @@ async function seedUsers() {
       passwordHash: buyerPass,
       emailVerified: ago(15 * DAY),
       phone: "+6421111003",
-      phoneVerified: true,
+      isPhoneVerified: true,
       phoneVerifiedAt: ago(14 * DAY),
       region: "Canterbury",
       suburb: "Riccarton",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       agreedTermsAt: ago(15 * DAY),
       createdAt: ago(15 * DAY),
     },
@@ -323,7 +552,7 @@ async function seedUsers() {
       passwordHash: sellerPass,
       emailVerified: ago(90 * DAY),
       phone: "+6421222001",
-      phoneVerified: true,
+      isPhoneVerified: true,
       phoneVerifiedAt: ago(85 * DAY),
       idVerified: true,
       idVerifiedAt: ago(80 * DAY),
@@ -331,12 +560,12 @@ async function seedUsers() {
       verifiedSellerAt: ago(80 * DAY),
       sellerTermsAcceptedAt: ago(88 * DAY),
       stripeAccountId: "acct_test_mike",
-      stripeOnboarded: true,
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: true,
+      isStripeOnboarded: true,
+      isStripeChargesEnabled: true,
+      isStripePayoutsEnabled: true,
       region: "Auckland",
       suburb: "Newmarket",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       agreedTermsAt: ago(90 * DAY),
       createdAt: ago(90 * DAY),
     },
@@ -351,16 +580,16 @@ async function seedUsers() {
       passwordHash: sellerPass,
       emailVerified: ago(10 * DAY),
       phone: "+6421222002",
-      phoneVerified: false,
+      isPhoneVerified: false,
       idVerified: false,
       sellerTermsAcceptedAt: ago(9 * DAY),
       stripeAccountId: "acct_test_rachel",
-      stripeOnboarded: true,
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: false,
+      isStripeOnboarded: true,
+      isStripeChargesEnabled: true,
+      isStripePayoutsEnabled: false,
       region: "Waikato",
       suburb: "Hamilton Central",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       agreedTermsAt: ago(10 * DAY),
       createdAt: ago(10 * DAY),
     },
@@ -375,17 +604,17 @@ async function seedUsers() {
       passwordHash: sellerPass,
       emailVerified: ago(60 * DAY),
       phone: "+6421222003",
-      phoneVerified: true,
+      isPhoneVerified: true,
       phoneVerifiedAt: ago(55 * DAY),
       idVerified: false,
       sellerTermsAcceptedAt: ago(58 * DAY),
       stripeAccountId: "acct_test_tom",
-      stripeOnboarded: true,
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: true,
+      isStripeOnboarded: true,
+      isStripeChargesEnabled: true,
+      isStripePayoutsEnabled: true,
       region: "Otago",
       suburb: "Queenstown",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       agreedTermsAt: ago(60 * DAY),
       createdAt: ago(60 * DAY),
     },
@@ -400,7 +629,7 @@ async function seedUsers() {
       passwordHash: sellerPass,
       emailVerified: ago(45 * DAY),
       phone: "+6421222004",
-      phoneVerified: true,
+      isPhoneVerified: true,
       phoneVerifiedAt: ago(43 * DAY),
       idVerified: true,
       idVerifiedAt: ago(40 * DAY),
@@ -408,12 +637,12 @@ async function seedUsers() {
       verifiedSellerAt: ago(40 * DAY),
       sellerTermsAcceptedAt: ago(44 * DAY),
       stripeAccountId: "acct_test_aroha",
-      stripeOnboarded: true,
-      stripeChargesEnabled: true,
-      stripePayoutsEnabled: true,
+      isStripeOnboarded: true,
+      isStripeChargesEnabled: true,
+      isStripePayoutsEnabled: true,
       region: "Bay of Plenty",
       suburb: "Tauranga",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       agreedTermsAt: ago(45 * DAY),
       createdAt: ago(45 * DAY),
     },
@@ -430,9 +659,9 @@ async function seedUsers() {
       emailVerified: ago(120 * DAY),
       isAdmin: true,
       adminRole: "SUPER_ADMIN",
-      mfaEnabled: false,
+      isMfaEnabled: false,
       region: "Auckland",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       createdAt: ago(120 * DAY),
     },
   });
@@ -447,7 +676,7 @@ async function seedUsers() {
       isAdmin: true,
       adminRole: "DISPUTES_ADMIN",
       region: "Wellington",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       createdAt: ago(100 * DAY),
     },
   });
@@ -462,7 +691,7 @@ async function seedUsers() {
       isAdmin: true,
       adminRole: "TRUST_SAFETY_ADMIN",
       region: "Auckland",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       createdAt: ago(100 * DAY),
     },
   });
@@ -477,7 +706,7 @@ async function seedUsers() {
       isAdmin: true,
       adminRole: "FINANCE_ADMIN",
       region: "Auckland",
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       createdAt: ago(100 * DAY),
     },
   });
@@ -526,7 +755,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: string;
     suburb: string;
     shippingOption: "PICKUP" | "COURIER" | "BOTH";
-    offersEnabled?: boolean;
+    isOffersEnabled?: boolean;
     isNegotiable?: boolean;
     isUrgent?: boolean;
     shipsNationwide?: boolean;
@@ -556,7 +785,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
         region: data.region,
         suburb: data.suburb,
         shippingOption: data.shippingOption,
-        offersEnabled: data.offersEnabled ?? true,
+        isOffersEnabled: data.isOffersEnabled ?? true,
         isNegotiable: data.isNegotiable ?? false,
         isUrgent: data.isUrgent ?? false,
         shipsNationwide: data.shipsNationwide ?? false,
@@ -575,21 +804,23 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
         priceDroppedAt: data.priceDroppedAt ?? null,
       },
     });
-    // Add a listing image — Unsplash URL mapped to the title.
+    // Add 2–4 listing images — curated Unsplash URLs matched to the listing category.
     // getImageUrl() passes http(s) URLs through as-is, so no R2 upload needed.
-    const imageUrl = pickListingImage(data.title);
-    await db.listingImage.create({
-      data: {
-        listingId: listing.id,
-        r2Key: imageUrl,
-        thumbnailKey: imageUrl,
-        order: 0,
-        scanned: true,
-        safe: true,
-        scannedAt: ago(1 * HOUR),
-        processedAt: ago(1 * HOUR),
-      },
-    });
+    const imageUrls = pickListingImages(data.title);
+    for (let i = 0; i < imageUrls.length; i++) {
+      await db.listingImage.create({
+        data: {
+          listingId: listing.id,
+          r2Key: imageUrls[i]!,
+          thumbnailKey: imageUrls[i]!,
+          order: i,
+          isScanned: true,
+          isSafe: true,
+          scannedAt: ago(1 * HOUR),
+          processedAt: ago(1 * HOUR),
+        },
+      });
+    }
     return listing;
   }
 
@@ -609,7 +840,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Auckland",
     suburb: "Newmarket",
     shippingOption: "COURIER",
-    offersEnabled: true,
+    isOffersEnabled: true,
     isNegotiable: true,
     shipsNationwide: true,
     previousPriceNzd: 309900,
@@ -630,7 +861,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Auckland",
     suburb: "Newmarket",
     shippingOption: "BOTH",
-    offersEnabled: true,
+    isOffersEnabled: true,
     shipsNationwide: true,
   });
 
@@ -648,7 +879,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Auckland",
     suburb: "Newmarket",
     shippingOption: "BOTH",
-    offersEnabled: true,
+    isOffersEnabled: true,
     isNegotiable: true,
     isUrgent: true,
   });
@@ -668,7 +899,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Auckland",
     suburb: "Newmarket",
     shippingOption: "COURIER",
-    offersEnabled: false,
+    isOffersEnabled: false,
     soldAt: ago(22 * DAY),
     createdAt: ago(30 * DAY),
   });
@@ -687,7 +918,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Auckland",
     suburb: "Newmarket",
     shippingOption: "COURIER",
-    offersEnabled: false,
+    isOffersEnabled: false,
     soldAt: ago(18 * DAY),
     createdAt: ago(25 * DAY),
   });
@@ -706,7 +937,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Auckland",
     suburb: "Newmarket",
     shippingOption: "COURIER",
-    offersEnabled: false,
+    isOffersEnabled: false,
     soldAt: ago(15 * DAY),
     createdAt: ago(20 * DAY),
   });
@@ -811,7 +1042,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Otago",
     suburb: "Queenstown",
     shippingOption: "BOTH",
-    offersEnabled: true,
+    isOffersEnabled: true,
     isNegotiable: true,
   });
 
@@ -829,7 +1060,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Otago",
     suburb: "Queenstown",
     shippingOption: "COURIER",
-    offersEnabled: true,
+    isOffersEnabled: true,
   });
 
   // SOLD listings for disputed and refunded orders
@@ -847,7 +1078,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Otago",
     suburb: "Queenstown",
     shippingOption: "COURIER",
-    offersEnabled: false,
+    isOffersEnabled: false,
     soldAt: ago(9 * DAY),
     createdAt: ago(14 * DAY),
   });
@@ -866,7 +1097,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Otago",
     suburb: "Queenstown",
     shippingOption: "COURIER",
-    offersEnabled: false,
+    isOffersEnabled: false,
     soldAt: ago(10 * DAY),
     createdAt: ago(16 * DAY),
   });
@@ -886,7 +1117,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Bay of Plenty",
     suburb: "Tauranga",
     shippingOption: "PICKUP",
-    offersEnabled: true,
+    isOffersEnabled: true,
     isNegotiable: true,
   });
 
@@ -904,7 +1135,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Bay of Plenty",
     suburb: "Tauranga",
     shippingOption: "PICKUP",
-    offersEnabled: false,
+    isOffersEnabled: false,
     isNegotiable: true,
   });
 
@@ -922,7 +1153,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Bay of Plenty",
     suburb: "Tauranga",
     shippingOption: "BOTH",
-    offersEnabled: false,
+    isOffersEnabled: false,
     soldAt: ago(2 * DAY),
     createdAt: ago(5 * DAY),
   });
@@ -941,7 +1172,7 @@ async function seedListings(users: Awaited<ReturnType<typeof seedUsers>>) {
     region: "Bay of Plenty",
     suburb: "Tauranga",
     shippingOption: "PICKUP",
-    offersEnabled: false,
+    isOffersEnabled: false,
     soldAt: ago(3 * DAY),
     createdAt: ago(6 * DAY),
   });
@@ -1003,13 +1234,11 @@ async function makeSnapshot(
       subcategoryName: null,
       shippingOption: listing.shippingOption,
       isNegotiable: listing.isNegotiable,
-      images: [
-        {
-          r2Key: pickListingImage(listing.title),
-          thumbnailKey: pickListingImage(listing.title),
-          order: 0,
-        },
-      ],
+      images: pickListingImages(listing.title).map((url, i) => ({
+        r2Key: url,
+        thumbnailKey: url,
+        order: i,
+      })),
       attributes: [],
       capturedAt: new Date(),
     },
@@ -2342,7 +2571,7 @@ async function seedOrders(
       senderId: seller4.id,
       body: "Hi Sarah! Happy to show you the table. I am available this weekend — Saturday or Sunday morning works well. Cash only please.",
       createdAt: ago(20 * HOUR),
-      read: false,
+      isRead: false,
     },
   });
 
@@ -2567,7 +2796,7 @@ async function seedReviews(
       reply:
         "Thank you Sarah! Really glad the headphones arrived safely and you're happy with them. Enjoy!",
       repliedAt: ago(13 * DAY),
-      approved: true,
+      isApproved: true,
       createdAt: ago(14 * DAY),
     },
   });
@@ -2589,7 +2818,7 @@ async function seedReviews(
       rating: 45,
       comment:
         "Great camera, well described. Took a couple of extra days to dispatch but Mike kept me updated. Camera is in the condition described and works perfectly.",
-      approved: true,
+      isApproved: true,
       createdAt: ago(11 * DAY),
     },
   });
@@ -2611,7 +2840,7 @@ async function seedReviews(
         "Perfect transaction. Watch arrived in immaculate condition as described. Fast shipping and great packaging.",
       reply: "Thank you James! Happy to help anytime.",
       repliedAt: ago(5 * DAY),
-      approved: true,
+      isApproved: true,
       createdAt: ago(6 * DAY),
     },
   });
@@ -2750,7 +2979,7 @@ async function seedOffers(
         note: "Would you accept $820?",
         status: "ACCEPTED",
         expiresAt: future(2 * DAY),
-        paymentDeadline: future(1 * DAY),
+        paymentDeadlineAt: future(1 * DAY),
         respondedAt: ago(2 * HOUR),
         createdAt: ago(1 * DAY),
       },
@@ -2763,7 +2992,7 @@ async function seedOffers(
         status: "DECLINED",
         expiresAt: future(1 * DAY),
         respondedAt: ago(4 * HOUR),
-        declineNote:
+        declineReason:
           "Sorry, lowest I can do is $450 — it's a great tent worth every cent.",
         createdAt: ago(1 * DAY),
       },
@@ -2812,7 +3041,7 @@ async function seedMessages(
         threadId: t1.id,
         senderId: seller1.id,
         body: "Hi Sarah! Battery health is 97% — barely used. It is a fantastic machine.",
-        read: true,
+        isRead: true,
         readAt: ago(4 * HOUR),
         createdAt: ago(4 * HOUR),
       },
@@ -2826,7 +3055,7 @@ async function seedMessages(
         threadId: t1.id,
         senderId: seller1.id,
         body: "I could do $2,750 — that is my best price. It is worth it!",
-        read: false,
+        isRead: false,
         createdAt: ago(2 * HOUR),
       },
     ],
@@ -2852,7 +3081,7 @@ async function seedMessages(
         threadId: t2.id,
         senderId: seller3.id,
         body: "Yes it comes with a Werner paddle worth $300. Hatches are original and seal well. Had it 3 years but it is stored inside.",
-        read: true,
+        isRead: true,
         readAt: ago(1 * DAY + 1 * HOUR),
         createdAt: ago(1 * DAY + 2 * HOUR),
       },
@@ -2866,7 +3095,7 @@ async function seedMessages(
         threadId: t2.id,
         senderId: seller3.id,
         body: "Sure, Saturday morning works. I am in Queenstown. Let me know what time suits.",
-        read: false,
+        isRead: false,
         createdAt: ago(1 * DAY),
       },
     ],
@@ -2898,42 +3127,42 @@ async function seedWatchlist(
         userId: buyer1.id,
         listingId: listingIphone.id,
         priceAtWatch: 189900,
-        priceAlertEnabled: true,
+        isPriceAlertEnabled: true,
         createdAt: ago(2 * DAY),
       },
       {
         userId: buyer1.id,
         listingId: listingSamsungTv.id,
         priceAtWatch: 159900,
-        priceAlertEnabled: true,
+        isPriceAlertEnabled: true,
         createdAt: ago(3 * DAY),
       },
       {
         userId: buyer2.id,
         listingId: listingMacbook.id,
         priceAtWatch: 289900,
-        priceAlertEnabled: true,
+        isPriceAlertEnabled: true,
         createdAt: ago(1 * DAY),
       },
       {
         userId: buyer2.id,
         listingId: listingKayak.id,
         priceAtWatch: 89900,
-        priceAlertEnabled: false,
+        isPriceAlertEnabled: false,
         createdAt: ago(4 * DAY),
       },
       {
         userId: buyer3.id,
         listingId: listingTent.id,
         priceAtWatch: 49900,
-        priceAlertEnabled: true,
+        isPriceAlertEnabled: true,
         createdAt: ago(2 * DAY),
       },
       {
         userId: buyer3.id,
         listingId: listingPickupBike.id,
         priceAtWatch: 185000,
-        priceAlertEnabled: true,
+        isPriceAlertEnabled: true,
         createdAt: ago(1 * DAY),
       },
     ],
@@ -3041,7 +3270,7 @@ async function seedNotifications(
         body: "Your pickup order has been placed. Arrange a pickup time with the seller.",
         link: `/orders/${pickup1.id}`,
         orderId: pickup1.id,
-        read: false,
+        isRead: false,
         createdAt: ago(2 * DAY),
       },
       {
@@ -3051,7 +3280,7 @@ async function seedNotifications(
         body: "Your seller has initiated pickup confirmation. Check your SMS for the 6-digit code.",
         link: `/orders/${pickup2.id}`,
         orderId: pickup2.id,
-        read: false,
+        isRead: false,
         createdAt: ago(5 * MIN),
       },
       // Seller notifications
@@ -3062,7 +3291,7 @@ async function seedNotifications(
         body: "Sarah Mitchell has purchased your Sony WH-1000XM5 Headphones.",
         link: `/orders/${comp1.id}`,
         orderId: comp1.id,
-        read: true,
+        isRead: true,
         createdAt: ago(22 * DAY),
       },
       {
@@ -3072,7 +3301,7 @@ async function seedNotifications(
         body: "Emma Thompson has purchased your iPad Pro 12.9-inch.",
         link: `/orders/${ph1.id}`,
         orderId: ph1.id,
-        read: false,
+        isRead: false,
         createdAt: ago(3 * HOUR),
       },
       {
@@ -3082,7 +3311,7 @@ async function seedNotifications(
         body: "James Chen has opened a dispute for your iPad Pro 12.9-inch order. Please respond within 72 hours.",
         link: `/orders/${dispA.id}`,
         orderId: dispA.id,
-        read: false,
+        isRead: false,
         createdAt: ago(1 * DAY),
       },
       {
@@ -3092,7 +3321,7 @@ async function seedNotifications(
         body: "Emma Thompson has opened a dispute for your Sonos Move 2 order.",
         link: `/orders/${dispB.id}`,
         orderId: dispB.id,
-        read: false,
+        isRead: false,
         createdAt: ago(5 * DAY),
       },
       {
@@ -3100,7 +3329,7 @@ async function seedNotifications(
         type: "LISTING_NEEDS_CHANGES",
         title: "Action required on your listing",
         body: "Your listing 'Kids Bike 20 inch' needs changes before it can go live.",
-        read: false,
+        isRead: false,
         createdAt: ago(3 * HOUR),
       },
       {
@@ -3110,7 +3339,7 @@ async function seedNotifications(
         body: "Emma Thompson has placed a pickup order for your Kathmandu Epiq Down Jacket.",
         link: `/orders/${pickup1.id}`,
         orderId: pickup1.id,
-        read: false,
+        isRead: false,
         createdAt: ago(2 * DAY),
       },
       // Admin notifications
@@ -3120,7 +3349,7 @@ async function seedNotifications(
         title: "New listing in moderation queue",
         body: "A high-risk listing (score: 80) has been flagged for review.",
         link: "/admin/listings",
-        read: false,
+        isRead: false,
         createdAt: ago(1 * HOUR),
       },
       {
@@ -3128,7 +3357,7 @@ async function seedNotifications(
         type: "SYSTEM",
         title: "New dispute requiring review",
         body: "James Chen has opened a dispute for an iPad Pro order. Seller has not responded.",
-        read: false,
+        isRead: false,
         createdAt: ago(1 * DAY),
       },
       {
@@ -3137,7 +3366,7 @@ async function seedNotifications(
         title: "Seller high dispute rate alert",
         body: "Tom Wilson (tom_outdoors) has a dispute rate of 33.3% — above the 15% downgrade threshold.",
         link: "/admin/sellers",
-        read: false,
+        isRead: false,
         createdAt: ago(6 * HOUR),
       },
     ],

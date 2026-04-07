@@ -37,7 +37,7 @@ export async function calculateSellerTier(
 
   const { getConfigMany, CONFIG_KEYS } = await import("@/lib/platform-config");
 
-  const cfg = await getConfigMany([
+  const config = await getConfigMany([
     CONFIG_KEYS.GOLD_MIN_SALES,
     CONFIG_KEYS.GOLD_MIN_RATING,
     CONFIG_KEYS.GOLD_MIN_COMPLETION_RATE,
@@ -51,24 +51,24 @@ export async function calculateSellerTier(
 
   const requirements: TierRequirements = {
     GOLD: {
-      sales: parseInt(cfg.get(CONFIG_KEYS.GOLD_MIN_SALES) ?? "50", 10),
-      rating: parseFloat(cfg.get(CONFIG_KEYS.GOLD_MIN_RATING) ?? "4.5"),
+      sales: parseInt(config.get(CONFIG_KEYS.GOLD_MIN_SALES) ?? "50", 10),
+      rating: parseFloat(config.get(CONFIG_KEYS.GOLD_MIN_RATING) ?? "4.5"),
       completionRate: parseFloat(
-        cfg.get(CONFIG_KEYS.GOLD_MIN_COMPLETION_RATE) ?? "95",
+        config.get(CONFIG_KEYS.GOLD_MIN_COMPLETION_RATE) ?? "95",
       ),
     },
     SILVER: {
-      sales: parseInt(cfg.get(CONFIG_KEYS.SILVER_MIN_SALES) ?? "20", 10),
-      rating: parseFloat(cfg.get(CONFIG_KEYS.SILVER_MIN_RATING) ?? "4.0"),
+      sales: parseInt(config.get(CONFIG_KEYS.SILVER_MIN_SALES) ?? "20", 10),
+      rating: parseFloat(config.get(CONFIG_KEYS.SILVER_MIN_RATING) ?? "4.0"),
       completionRate: parseFloat(
-        cfg.get(CONFIG_KEYS.SILVER_MIN_COMPLETION_RATE) ?? "90",
+        config.get(CONFIG_KEYS.SILVER_MIN_COMPLETION_RATE) ?? "90",
       ),
     },
     BRONZE: {
-      sales: parseInt(cfg.get(CONFIG_KEYS.BRONZE_MIN_SALES) ?? "5", 10),
-      rating: parseFloat(cfg.get(CONFIG_KEYS.BRONZE_MIN_RATING) ?? "3.5"),
+      sales: parseInt(config.get(CONFIG_KEYS.BRONZE_MIN_SALES) ?? "5", 10),
+      rating: parseFloat(config.get(CONFIG_KEYS.BRONZE_MIN_RATING) ?? "3.5"),
       completionRate: parseFloat(
-        cfg.get(CONFIG_KEYS.BRONZE_MIN_COMPLETION_RATE) ?? "80",
+        config.get(CONFIG_KEYS.BRONZE_MIN_COMPLETION_RATE) ?? "80",
       ),
     },
   };
@@ -82,7 +82,7 @@ export async function calculateSellerTier(
 export async function getTierRequirements(): Promise<TierRequirements> {
   const { getConfigMany, CONFIG_KEYS } = await import("@/lib/platform-config");
 
-  const cfg = await getConfigMany([
+  const config = await getConfigMany([
     CONFIG_KEYS.GOLD_MIN_SALES,
     CONFIG_KEYS.GOLD_MIN_RATING,
     CONFIG_KEYS.GOLD_MIN_COMPLETION_RATE,
@@ -96,24 +96,24 @@ export async function getTierRequirements(): Promise<TierRequirements> {
 
   return {
     BRONZE: {
-      sales: parseInt(cfg.get(CONFIG_KEYS.BRONZE_MIN_SALES) ?? "5", 10),
-      rating: parseFloat(cfg.get(CONFIG_KEYS.BRONZE_MIN_RATING) ?? "3.5"),
+      sales: parseInt(config.get(CONFIG_KEYS.BRONZE_MIN_SALES) ?? "5", 10),
+      rating: parseFloat(config.get(CONFIG_KEYS.BRONZE_MIN_RATING) ?? "3.5"),
       completionRate: parseFloat(
-        cfg.get(CONFIG_KEYS.BRONZE_MIN_COMPLETION_RATE) ?? "80",
+        config.get(CONFIG_KEYS.BRONZE_MIN_COMPLETION_RATE) ?? "80",
       ),
     },
     SILVER: {
-      sales: parseInt(cfg.get(CONFIG_KEYS.SILVER_MIN_SALES) ?? "20", 10),
-      rating: parseFloat(cfg.get(CONFIG_KEYS.SILVER_MIN_RATING) ?? "4.0"),
+      sales: parseInt(config.get(CONFIG_KEYS.SILVER_MIN_SALES) ?? "20", 10),
+      rating: parseFloat(config.get(CONFIG_KEYS.SILVER_MIN_RATING) ?? "4.0"),
       completionRate: parseFloat(
-        cfg.get(CONFIG_KEYS.SILVER_MIN_COMPLETION_RATE) ?? "90",
+        config.get(CONFIG_KEYS.SILVER_MIN_COMPLETION_RATE) ?? "90",
       ),
     },
     GOLD: {
-      sales: parseInt(cfg.get(CONFIG_KEYS.GOLD_MIN_SALES) ?? "50", 10),
-      rating: parseFloat(cfg.get(CONFIG_KEYS.GOLD_MIN_RATING) ?? "4.5"),
+      sales: parseInt(config.get(CONFIG_KEYS.GOLD_MIN_SALES) ?? "50", 10),
+      rating: parseFloat(config.get(CONFIG_KEYS.GOLD_MIN_RATING) ?? "4.5"),
       completionRate: parseFloat(
-        cfg.get(CONFIG_KEYS.GOLD_MIN_COMPLETION_RATE) ?? "95",
+        config.get(CONFIG_KEYS.GOLD_MIN_COMPLETION_RATE) ?? "95",
       ),
     },
   };
@@ -121,12 +121,12 @@ export async function getTierRequirements(): Promise<TierRequirements> {
 
 /** Server-only: Determine a user's current seller tier with config-backed limits. */
 export async function getSellerTier(user: {
-  phoneVerified?: boolean | null;
+  isPhoneVerified?: boolean | null;
   idVerified?: boolean | null;
 }): Promise<SellerTier> {
   const { getConfigMany, CONFIG_KEYS } = await import("@/lib/platform-config");
 
-  const cfg = await getConfigMany([
+  const config = await getConfigMany([
     CONFIG_KEYS.BASIC_MAX_LISTINGS,
     CONFIG_KEYS.PHONE_MAX_LISTINGS,
     CONFIG_KEYS.BASIC_PAYOUT_DELAY_DAYS,
@@ -135,23 +135,23 @@ export async function getSellerTier(user: {
   ]);
 
   const basicMax = parseInt(
-    cfg.get(CONFIG_KEYS.BASIC_MAX_LISTINGS) ?? "10",
+    config.get(CONFIG_KEYS.BASIC_MAX_LISTINGS) ?? "10",
     10,
   );
   const phoneMax = parseInt(
-    cfg.get(CONFIG_KEYS.PHONE_MAX_LISTINGS) ?? "50",
+    config.get(CONFIG_KEYS.PHONE_MAX_LISTINGS) ?? "50",
     10,
   );
   const basicPayout = parseInt(
-    cfg.get(CONFIG_KEYS.BASIC_PAYOUT_DELAY_DAYS) ?? "7",
+    config.get(CONFIG_KEYS.BASIC_PAYOUT_DELAY_DAYS) ?? "7",
     10,
   );
   const phonePayout = parseInt(
-    cfg.get(CONFIG_KEYS.PHONE_PAYOUT_DELAY_DAYS) ?? "3",
+    config.get(CONFIG_KEYS.PHONE_PAYOUT_DELAY_DAYS) ?? "3",
     10,
   );
   const idPayout = parseInt(
-    cfg.get(CONFIG_KEYS.ID_PAYOUT_DELAY_DAYS) ?? "1",
+    config.get(CONFIG_KEYS.ID_PAYOUT_DELAY_DAYS) ?? "1",
     10,
   );
 
@@ -200,7 +200,7 @@ export async function getSellerTier(user: {
   };
 
   if (user.idVerified) return tiers.id_verified;
-  if (user.phoneVerified) return tiers.phone_verified;
+  if (user.isPhoneVerified) return tiers.phone_verified;
   return tiers.basic;
 }
 
@@ -209,7 +209,7 @@ export async function getSellerTier(user: {
  */
 export async function getAllSellerTiers(): Promise<SellerTier[]> {
   const basic = await getSellerTier({});
-  const phone = await getSellerTier({ phoneVerified: true });
+  const phone = await getSellerTier({ isPhoneVerified: true });
   const id = await getSellerTier({ idVerified: true });
   return [basic, phone, id];
 }

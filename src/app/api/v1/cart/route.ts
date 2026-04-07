@@ -21,11 +21,11 @@ const addToCartSchema = z.object({
   listingId: z.string().min(1),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return withCors(apiOk({ count: 0 }));
+      return withCors(apiOk({ count: 0 }), request.headers.get("origin"));
     }
 
     const cart = await db.cart.findUnique({
@@ -37,10 +37,13 @@ export async function GET() {
     });
 
     if (!cart || new Date(cart.expiresAt) < new Date()) {
-      return withCors(apiOk({ count: 0 }));
+      return withCors(apiOk({ count: 0 }), request.headers.get("origin"));
     }
 
-    return withCors(apiOk({ count: cart._count.items }));
+    return withCors(
+      apiOk({ count: cart._count.items }),
+      request.headers.get("origin"),
+    );
   } catch (err) {
     logger.error("api.error", {
       path: "/api/v1/cart",
@@ -48,6 +51,7 @@ export async function GET() {
     });
     return withCors(
       apiError("We couldn't process your cart request. Please try again.", 500),
+      request.headers.get("origin"),
     );
   }
 }
@@ -60,27 +64,38 @@ export async function POST(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = addToCartSchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const result = await cartService.addToCart(user.id, parsed.data.listingId);
     if (!result.ok) {
       return withCors(
         apiError(result.error ?? "Failed to add to cart", 400, "CART_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
-    return withCors(apiOk({ cartItemCount: result.data.cartItemCount }));
+    return withCors(
+      apiOk({ cartItemCount: result.data.cartItemCount }),
+      request.headers.get("origin"),
+    );
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

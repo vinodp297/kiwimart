@@ -25,13 +25,19 @@ export async function POST(request: Request) {
       body = cancelPickupSchema.parse(await request.json());
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+        return withCors(
+          apiError("Validation failed", 400, "VALIDATION_ERROR"),
+          request.headers.get("origin"),
+        );
       }
       throw err;
     }
 
     if (body.reason.trim().length < 5) {
-      return withCors(apiError("Please provide a meaningful reason.", 400));
+      return withCors(
+        apiError("Please provide a meaningful reason.", 400),
+        request.headers.get("origin"),
+      );
     }
 
     const result = await cancelPickupOrder({
@@ -41,15 +47,21 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
-      return withCors(apiError(result.error!, 400));
+      return withCors(
+        apiError(result.error!, 400),
+        request.headers.get("origin"),
+      );
     }
 
-    return withCors(apiOk({ cancelled: true }));
+    return withCors(apiOk({ cancelled: true }), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

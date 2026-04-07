@@ -14,15 +14,15 @@ export interface DashboardUser {
   username: string;
   avatarKey: string | null;
   createdAt: string;
-  sellerEnabled: boolean;
+  isSellerEnabled: boolean;
   idVerified: boolean;
-  phoneVerified: boolean;
+  isPhoneVerified: boolean;
   emailVerified: string | null;
   region: string | null;
   bio: string | null;
   onboardingIntent: string | null;
-  onboardingCompleted: boolean;
-  stripeOnboarded: boolean;
+  isOnboardingCompleted: boolean;
+  isStripeOnboarded: boolean;
   sellerTermsAcceptedAt: string | null;
 }
 
@@ -58,7 +58,7 @@ export interface WatchlistRow {
   suburb: string;
   watchedAt: string;
   status: string;
-  priceAlertEnabled: boolean;
+  isPriceAlertEnabled: boolean;
 }
 
 export interface ThreadRow {
@@ -82,7 +82,7 @@ export interface MessageRow {
   senderId: string;
   senderName: string;
   createdAt: string;
-  read: boolean;
+  isRead: boolean;
 }
 
 export interface SellerStatsRow {
@@ -119,7 +119,7 @@ export interface SellerListingRow {
   sellerVerified: boolean;
   shippingOption: string;
   shippingPrice: number | null;
-  offersEnabled: boolean;
+  isOffersEnabled: boolean;
 }
 
 export interface SellerPayoutRow {
@@ -189,22 +189,20 @@ function mapDashboardUser(
     username: dbUser.username,
     avatarKey: dbUser.avatarKey,
     createdAt: dbUser.createdAt.toISOString(),
-    sellerEnabled: dbUser.sellerEnabled,
+    isSellerEnabled: dbUser.isSellerEnabled,
     idVerified: dbUser.idVerified,
-    phoneVerified: dbUser.phoneVerified,
+    isPhoneVerified: dbUser.isPhoneVerified,
     emailVerified: dbUser.emailVerified?.toISOString() ?? null,
     region: dbUser.region ?? null,
     bio: dbUser.bio ?? null,
     onboardingIntent: dbUser.onboardingIntent ?? null,
-    onboardingCompleted: dbUser.onboardingCompleted,
-    stripeOnboarded: dbUser.stripeOnboarded,
+    isOnboardingCompleted: dbUser.isOnboardingCompleted,
+    isStripeOnboarded: dbUser.isStripeOnboarded,
     sellerTermsAcceptedAt: dbUser.sellerTermsAcceptedAt?.toISOString() ?? null,
   };
 }
 
-// ── Service result type ─────────────────────────────────────────────────────
-
-type ServiceResult<T> = { ok: true; data: T } | { ok: false; error: string };
+import type { ServiceResult } from "@/shared/types/service-result";
 
 // ── Service ─────────────────────────────────────────────────────────────────
 
@@ -263,7 +261,7 @@ class DashboardService {
       suburb: w.listing.suburb,
       watchedAt: w.createdAt.toISOString(),
       status: w.listing.status.toLowerCase(),
-      priceAlertEnabled: w.priceAlertEnabled,
+      isPriceAlertEnabled: w.isPriceAlertEnabled,
     }));
 
     // Map threads
@@ -289,7 +287,7 @@ class DashboardService {
       const listing = t.listingId ? listingMap.get(t.listingId) : null;
       const lastMsg = t.messages[t.messages.length - 1];
       const unread = t.messages.filter(
-        (m) => m.senderId !== userId && !m.read,
+        (m) => m.senderId !== userId && !m.isRead,
       ).length;
 
       return {
@@ -311,7 +309,7 @@ class DashboardService {
           senderName:
             m.senderId === userId ? "You" : (m.sender.displayName ?? "Unknown"),
           createdAt: m.createdAt.toISOString(),
-          read: m.read,
+          isRead: m.isRead,
         })),
       };
     });
@@ -401,7 +399,7 @@ class DashboardService {
       sellerVerified: dbUser.idVerified,
       shippingOption: l.shippingOption.toLowerCase(),
       shippingPrice: l.shippingNzd != null ? l.shippingNzd / 100 : null,
-      offersEnabled: l.offersEnabled,
+      isOffersEnabled: l.isOffersEnabled,
     }));
 
     const mappedOrders: SellerOrderRow[] = sellerOrders.map((o) => ({

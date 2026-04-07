@@ -39,14 +39,14 @@ vi.mock("@/infrastructure/redis/client", () => ({
   getRedisClient: vi.fn().mockReturnValue(mockRedis),
 }));
 
-// Override setup.ts password mock — add checkPwnedPassword
+// Override setup.ts password mock — add isPasswordBreached
 vi.mock("@/server/lib/password", () => ({
   hashPassword: vi
     .fn()
     .mockResolvedValue("$argon2id$v=19$m=65536,t=3,p=1$hashed"),
   verifyPassword: vi.fn().mockResolvedValue(true),
   needsRehash: vi.fn().mockReturnValue(false),
-  checkPwnedPassword: vi.fn().mockResolvedValue(false), // default: not pwned
+  isPasswordBreached: vi.fn().mockResolvedValue(false), // default: not breached
 }));
 
 // Override setup.ts email mock — add listing + auth-specific email functions
@@ -127,8 +127,9 @@ const {
   revokeAllMobileTokens,
 } = await import("@/lib/mobile-auth");
 const { userRepository } = await import("@/modules/users/user.repository");
-const { checkPwnedPassword, hashPassword, verifyPassword } =
+const { isPasswordBreached, hashPassword, verifyPassword } =
   await import("@/server/lib/password");
+const { logger } = await import("@/shared/logger");
 const { verifyTurnstile } = await import("@/server/lib/turnstile");
 const { sendVerificationEmail, sendPasswordResetEmail } =
   await import("@/server/email");
@@ -144,7 +145,7 @@ const validRegisterInput = {
   password: "SecurePass123!",
   confirmPassword: "SecurePass123!",
   agreeTerms: true as const,
-  agreeMarketing: false,
+  hasMarketingConsent: false,
   turnstileToken: "",
 };
 
@@ -164,7 +165,7 @@ describe("registerUser", () => {
       email: "john@example.com",
       displayName: "John Doe",
     });
-    vi.mocked(checkPwnedPassword).mockResolvedValue(false);
+    vi.mocked(isPasswordBreached).mockResolvedValue(false);
     vi.mocked(hashPassword).mockResolvedValue("$argon2id$v=19$hashed");
     vi.mocked(rateLimit).mockResolvedValue({
       success: true,
@@ -210,8 +211,8 @@ describe("registerUser", () => {
     expect(userRepository.create).not.toHaveBeenCalled();
   });
 
-  it("fails if password has been pwned", async () => {
-    vi.mocked(checkPwnedPassword).mockResolvedValue(true);
+  it("fails if password has been breached", async () => {
+    vi.mocked(isPasswordBreached).mockResolvedValue(true);
 
     const result = await registerUser(validRegisterInput);
 
@@ -222,14 +223,52 @@ describe("registerUser", () => {
     expect(userRepository.create).not.toHaveBeenCalled();
   });
 
-  it("HaveIBeenPwned API failure does not block registration (fail-open)", async () => {
-    // fail-open: checkPwnedPassword returns false when API is unavailable
-    vi.mocked(checkPwnedPassword).mockResolvedValue(false);
+  it("breach check API failure does not block registration (fail-open)", async () => {
+    // fail-open: isPasswordBreached returns false when API is unavailable
+    vi.mocked(isPasswordBreached).mockResolvedValue(false);
 
     const result = await registerUser(validRegisterInput);
 
     expect(result.success).toBe(true);
     expect(userRepository.create).toHaveBeenCalled();
+  });
+
+  it("breach check throws network error → registration proceeds (fail-open), warn logged", async () => {
+    vi.mocked(isPasswordBreached).mockRejectedValue(new Error("fetch failed"));
+
+    const result = await registerUser(validRegisterInput);
+
+    expect(result.success).toBe(true);
+    expect(userRepository.create).toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "auth.register.breach_check_failed",
+      expect.objectContaining({ error: "fetch failed" }),
+    );
+  });
+
+  it("breach check throws unexpected error → registration proceeds (fail-open), warn logged", async () => {
+    vi.mocked(isPasswordBreached).mockRejectedValue(
+      new TypeError("invalid response body"),
+    );
+
+    const result = await registerUser(validRegisterInput);
+
+    expect(result.success).toBe(true);
+    expect(userRepository.create).toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "auth.register.breach_check_failed",
+      expect.objectContaining({ error: "invalid response body" }),
+    );
+  });
+
+  it("hashPassword is NOT called when password is flagged as breached", async () => {
+    vi.mocked(isPasswordBreached).mockResolvedValue(true);
+
+    const result = await registerUser(validRegisterInput);
+
+    expect(result.success).toBe(false);
+    expect(hashPassword).not.toHaveBeenCalled();
+    expect(userRepository.create).not.toHaveBeenCalled();
   });
 
   it("password is hashed with argon2id before storage", async () => {
@@ -486,7 +525,7 @@ describe("resetPassword", () => {
       reset: Date.now() + 60_000,
       retryAfter: 0,
     });
-    vi.mocked(checkPwnedPassword).mockResolvedValue(false);
+    vi.mocked(isPasswordBreached).mockResolvedValue(false);
     vi.mocked(hashPassword).mockResolvedValue("$argon2id$new-hashed-password");
   });
 
@@ -609,17 +648,17 @@ describe("resetPassword", () => {
     );
   });
 
-  it("rejects new password found in pwned database", async () => {
-    vi.mocked(checkPwnedPassword).mockResolvedValue(true);
+  it("reset password does not apply breach check (only registration does)", async () => {
+    vi.mocked(isPasswordBreached).mockResolvedValue(true);
 
-    // Validation happens in resetPassword: checkPwnedPassword is NOT called here
-    // (auth.ts resetPassword does NOT call checkPwnedPassword — that's only in registration).
-    // This test verifies the correct behaviour: resetPassword ignores HIBP and proceeds.
+    // Validation happens in resetPassword: isPasswordBreached is NOT called here
+    // (auth.ts resetPassword does NOT call isPasswordBreached — that's only in registration).
+    // This test verifies the correct behaviour: resetPassword ignores breach check and proceeds.
     // (The password strength is validated by Zod schema only.)
     vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue(null);
 
     const result = await resetPassword(validResetInput);
-    // Token lookup fails first — demonstrating the service runs without HIBP gate
+    // Token lookup fails first — demonstrating the service runs without breach gate
     expect(result.success).toBe(false);
   });
 });
@@ -815,8 +854,8 @@ describe("mobile token revocation", () => {
       email: testUser.email,
       isAdmin: false,
       isBanned: false,
-      sellerEnabled: true,
-      stripeOnboarded: false,
+      isSellerEnabled: true,
+      isStripeOnboarded: false,
     } as never);
 
     const request = new Request("http://localhost/api/v1/auth/logout", {

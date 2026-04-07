@@ -76,7 +76,7 @@ export async function createNotification(
       listingId: input.listingId ?? null,
       orderId: input.orderId ?? null,
       link: input.link ?? null,
-      read: false,
+      isRead: false,
     });
   } catch (err) {
     // Non-blocking — never fail main operation due to notification error

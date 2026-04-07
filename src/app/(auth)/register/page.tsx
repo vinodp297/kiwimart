@@ -27,7 +27,7 @@ export default function RegisterPage() {
   const [confirm, setConfirm] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
-  const [agreeMarketing, setAgreeMarketing] = useState(false);
+  const [hasMarketingConsent, setHasMarketingConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -96,7 +96,7 @@ export default function RegisterPage() {
         password,
         confirmPassword: confirm,
         agreeTerms: agreeTerms as true,
-        agreeMarketing,
+        hasMarketingConsent,
         turnstileToken,
       });
 
@@ -329,8 +329,8 @@ export default function RegisterPage() {
               <label className="flex items-start gap-2.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={agreeMarketing}
-                  onChange={(e) => setAgreeMarketing(e.target.checked)}
+                  checked={hasMarketingConsent}
+                  onChange={(e) => setHasMarketingConsent(e.target.checked)}
                   className="w-4 h-4 mt-0.5 rounded border-[#C9C5BC] accent-[#D4A843] cursor-pointer"
                 />
                 <span className="text-[12.5px] text-[#73706A] leading-relaxed">

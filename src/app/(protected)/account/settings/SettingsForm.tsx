@@ -35,7 +35,7 @@ interface UserProfile {
   emailVerified: Date | null;
   region: string | null;
   bio: string | null;
-  agreeMarketing: boolean;
+  hasMarketingConsent: boolean;
 }
 
 type Visibility = "public" | "buyers" | "private";
@@ -59,7 +59,9 @@ export default function SettingsForm({
   const [displayName, setDisplayName] = useState(user.displayName);
   const [region, setRegion] = useState(user.region ?? "");
   const [bio, setBio] = useState(user.bio ?? "");
-  const [marketingEmails, setMarketingEmails] = useState(user.agreeMarketing);
+  const [marketingEmails, setMarketingEmails] = useState(
+    user.hasMarketingConsent,
+  );
   const [orderEmails, setOrderEmails] = useState(true);
   const [offerEmails, setOfferEmails] = useState(true);
   const [watchlistEmails, setWatchlistEmails] = useState(true);

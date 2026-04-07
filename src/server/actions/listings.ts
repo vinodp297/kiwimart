@@ -75,7 +75,7 @@ export async function createListing(
   const result = await listingService.createListing(
     authedUser.id,
     authedUser.email,
-    authedUser.stripeOnboarded,
+    authedUser.isStripeOnboarded,
     parsed.data,
     ip,
   );
@@ -255,7 +255,7 @@ export async function getListingForEdit(listingId: string): Promise<
     title: string;
     description: string;
     priceNzd: number;
-    gstIncluded: boolean;
+    isGstIncluded: boolean;
     condition: string;
     status: string;
     moderationNote: string | null;
@@ -265,7 +265,7 @@ export async function getListingForEdit(listingId: string): Promise<
     suburb: string;
     shippingOption: string;
     shippingNzd: number | null;
-    offersEnabled: boolean;
+    isOffersEnabled: boolean;
     isUrgent: boolean;
     isNegotiable: boolean;
     shipsNationwide: boolean;

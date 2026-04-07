@@ -21,7 +21,7 @@ import { sendReturnRequestEmail } from "@/server/email";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { interactionRepository } from "./interaction.repository";
 
-type ServiceResult<T> = { ok: true; data: T } | { ok: false; error: string };
+import type { ServiceResult } from "@/shared/types/service-result";
 
 export class InteractionWorkflowService {
   // ── requestCancellation ─────────────────────────────────────────────────

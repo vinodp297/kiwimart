@@ -73,12 +73,12 @@ export const listingRepository = {
                 sellerOrders: { where: { status: "COMPLETED" } },
                 listings: { where: { status: "ACTIVE" } },
                 reviewsAbout: {
-                  where: { reviewerRole: "BUYER", approved: true },
+                  where: { reviewerRole: "BUYER", isApproved: true },
                 },
               },
             },
             reviewsAbout: {
-              where: { reviewerRole: "BUYER", approved: true },
+              where: { reviewerRole: "BUYER", isApproved: true },
               select: { rating: true },
             },
           },
@@ -226,8 +226,8 @@ export const listingRepository = {
       select: {
         id: true,
         r2Key: true,
-        safe: true,
-        scanned: true,
+        isSafe: true,
+        isScanned: true,
         thumbnailKey: true,
         order: true,
       },
@@ -238,7 +238,7 @@ export const listingRepository = {
     const client = tx ?? db;
     return client.listingImage.findMany({
       where: { r2Key: { in: r2Keys } },
-      select: { id: true, r2Key: true, scanned: true, safe: true },
+      select: { id: true, r2Key: true, isScanned: true, isSafe: true },
     });
   },
 
@@ -277,7 +277,7 @@ export const listingRepository = {
         sellerId: true,
         title: true,
         priceNzd: true,
-        offersEnabled: true,
+        isOffersEnabled: true,
         seller: { select: { email: true, displayName: true } },
       },
     });
@@ -342,7 +342,7 @@ export const listingRepository = {
         title: true,
         description: true,
         priceNzd: true,
-        gstIncluded: true,
+        isGstIncluded: true,
         condition: true,
         status: true,
         moderationNote: true,
@@ -352,7 +352,7 @@ export const listingRepository = {
         suburb: true,
         shippingOption: true,
         shippingNzd: true,
-        offersEnabled: true,
+        isOffersEnabled: true,
         isUrgent: true,
         isNegotiable: true,
         shipsNationwide: true,
@@ -371,7 +371,7 @@ export const listingRepository = {
     const client = tx ?? db;
     return client.user.update({
       where: { id: userId },
-      data: { sellerEnabled: true },
+      data: { isSellerEnabled: true },
     });
   },
 
@@ -398,7 +398,7 @@ export const listingRepository = {
   async findWatchersWithPriceAlert(listingId: string, tx?: DbClient) {
     const client = tx ?? db;
     return client.watchlistItem.findMany({
-      where: { listingId, priceAlertEnabled: true },
+      where: { listingId, isPriceAlertEnabled: true },
       select: {
         userId: true,
         user: { select: { email: true, displayName: true } },

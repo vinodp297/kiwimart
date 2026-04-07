@@ -21,7 +21,7 @@ export default async function WelcomePage() {
   const user = await db.user.findUnique({
     where: { id: session.user.id },
     select: {
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       displayName: true,
     },
   });
@@ -31,7 +31,7 @@ export default async function WelcomePage() {
   }
 
   // Already completed onboarding — skip straight to dashboard
-  if (user.onboardingCompleted) {
+  if (user.isOnboardingCompleted) {
     redirect("/dashboard/buyer");
   }
 

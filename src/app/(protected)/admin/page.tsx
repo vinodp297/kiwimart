@@ -30,9 +30,9 @@ export default async function AdminPage() {
   const results = await Promise.allSettled([
     db.user.count({ where: { isBanned: false } }),
     db.user.count({ where: { createdAt: { gte: todayStart } } }),
-    db.user.count({ where: { sellerEnabled: true, isBanned: false } }),
+    db.user.count({ where: { isSellerEnabled: true, isBanned: false } }),
     db.user.count({
-      where: { sellerEnabled: true, createdAt: { gte: weekStart } },
+      where: { isSellerEnabled: true, createdAt: { gte: weekStart } },
     }),
     db.order.aggregate({
       _sum: { totalNzd: true },

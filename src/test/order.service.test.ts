@@ -13,8 +13,8 @@ vi.mock("@/server/lib/requireUser", () => ({
     email: "buyer@test.com",
     isAdmin: false,
     isBanned: false,
-    sellerEnabled: false,
-    stripeOnboarded: false,
+    isSellerEnabled: false,
+    isStripeOnboarded: false,
   }),
 }));
 
@@ -231,7 +231,7 @@ describe("OrderService", () => {
       sellerId: "seller-1",
       seller: {
         stripeAccountId: "acct_1234567890123456",
-        stripeOnboarded: true,
+        isStripeOnboarded: true,
       },
     };
 

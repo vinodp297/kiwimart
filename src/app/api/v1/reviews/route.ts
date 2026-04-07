@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     const sellerId = searchParams.get("sellerId") ?? undefined;
     const buyerId = searchParams.get("buyerId") ?? undefined;
 
-    const where: Prisma.ReviewWhereInput = { approved: true };
+    const where: Prisma.ReviewWhereInput = { isApproved: true };
     if (sellerId) where.subjectId = sellerId;
     if (buyerId) where.authorId = buyerId;
 
@@ -49,7 +49,10 @@ export async function GET(request: Request) {
     const reviews = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (reviews.at(-1)?.id ?? null) : null;
 
-    const res = withCors(apiOk({ reviews, nextCursor, hasMore }));
+    const res = withCors(
+      apiOk({ reviews, nextCursor, hasMore }),
+      request.headers.get("origin"),
+    );
     res.headers.set("Cache-Control", "private, no-store");
     return res;
   } catch (e) {
@@ -57,7 +60,7 @@ export async function GET(request: Request) {
       path: "/api/v1/reviews GET",
       error: e instanceof Error ? e.message : String(e),
     });
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
@@ -73,6 +76,7 @@ export async function POST(request: Request) {
           429,
           "RATE_LIMITED",
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -80,21 +84,28 @@ export async function POST(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = createReviewSchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const result = await reviewService.createReview(parsed.data, user.id);
-    return withCors(apiOk(result, 201));
+    return withCors(apiOk(result, 201), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

@@ -54,7 +54,7 @@ export async function GET(): Promise<NextResponse> {
 
       await db.user.update({
         where: { id: session.user.id },
-        data: { stripeOnboarded: onboarded },
+        data: { isStripeOnboarded: onboarded },
       });
 
       logger.info("stripe.connect.return.synced", {

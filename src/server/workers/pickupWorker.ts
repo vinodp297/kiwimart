@@ -9,7 +9,7 @@
 // All jobs are idempotent — check order/request status before processing.
 
 import { Worker } from "bullmq";
-import { getRedisConnection } from "@/lib/queue";
+import { getQueueConnection } from "@/lib/queue";
 import type { PickupJobData } from "@/lib/queue";
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
@@ -52,7 +52,7 @@ export function startPickupWorker() {
     },
     {
       connection:
-        getRedisConnection() as unknown as import("bullmq").ConnectionOptions,
+        getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 2,
     },
   );
@@ -360,7 +360,7 @@ async function handleWindowExpired(orderId: string): Promise<void> {
 
 // ── OTP_EXPIRED (buyer no-show) ─────────────────────────────────────────────
 
-async function handleOtpExpired(orderId: string): Promise<void> {
+export async function handleOtpExpired(orderId: string): Promise<void> {
   const order = await db.order.findUnique({
     where: { id: orderId },
     select: {
@@ -387,7 +387,71 @@ async function handleOtpExpired(orderId: string): Promise<void> {
     return;
   }
 
-  // Buyer no-show — complete order and release payment to seller
+  // Buyer no-show — capture payment first (if online), then complete order.
+  // Capture MUST succeed before we mark the order COMPLETED and release the
+  // payout to the seller.  If capture fails the order goes to DISPUTED so a
+  // human can investigate rather than silently completing with no payment.
+
+  if (order.stripePaymentIntentId) {
+    try {
+      await paymentService.capturePayment({
+        paymentIntentId: order.stripePaymentIntentId,
+        orderId,
+      });
+    } catch (err) {
+      logger.error("pickup.otp_expired.capture_failed", {
+        orderId,
+        paymentIntentId: order.stripePaymentIntentId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+
+      // Capture failed — transition to DISPUTED for manual review instead
+      // of completing the order with no captured payment.
+      await db.$transaction(async (tx) => {
+        await transitionOrder(
+          orderId,
+          "DISPUTED",
+          {
+            pickupStatus: "BUYER_NO_SHOW",
+            otpCodeHash: null,
+            otpExpiresAt: null,
+          },
+          { tx, fromStatus: order.status },
+        );
+      });
+
+      orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.DISPUTE_OPENED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary:
+          "Payment capture failed after buyer no-show — requires manual review",
+        metadata: {
+          trigger: "BUYER_NO_SHOW_CAPTURE_FAILED",
+          paymentIntentId: order.stripePaymentIntentId,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+
+      audit({
+        userId: null,
+        action: "ORDER_STATUS_CHANGED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: {
+          trigger: "BUYER_NO_SHOW_CAPTURE_FAILED",
+          newStatus: "DISPUTED",
+        },
+      });
+
+      // Do NOT throw — the job should complete (not retry), since retrying
+      // a failed capture is dangerous.
+      return;
+    }
+  }
+
+  // Payment captured (or cash order with no PI) — safe to complete.
   await db.$transaction(async (tx) => {
     await transitionOrder(
       orderId,
@@ -430,21 +494,6 @@ async function handleOtpExpired(orderId: string): Promise<void> {
         .catch(() => {});
     }
   });
-
-  // Capture Stripe payment
-  if (order.stripePaymentIntentId) {
-    try {
-      await paymentService.capturePayment({
-        paymentIntentId: order.stripePaymentIntentId,
-        orderId,
-      });
-    } catch (err) {
-      logger.error("pickup.otp_expired.capture_failed", {
-        orderId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
 
   // Update buyer trust metrics
   await db.trustMetrics

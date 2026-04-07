@@ -39,7 +39,7 @@ export function MessagesTab({
       senderId: "me",
       senderName: "You",
       createdAt: new Date().toISOString(),
-      read: true,
+      isRead: true,
     };
     setThreads((prev) =>
       prev.map((t) =>

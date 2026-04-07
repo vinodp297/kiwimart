@@ -51,13 +51,13 @@ vi.mock("@/modules/users/user.repository", () => ({
       idSubmittedAt: new Date(),
     }),
     findOnboardingStatus: vi.fn().mockResolvedValue({
-      onboardingCompleted: false,
+      isOnboardingCompleted: false,
       onboardingIntent: null,
       region: null,
       bio: null,
       displayName: "Test User",
       emailVerified: new Date(),
-      stripeOnboarded: false,
+      isStripeOnboarded: false,
     }),
     findAdmins: vi.fn().mockResolvedValue([]),
   },
@@ -106,16 +106,16 @@ const mockSellerUser = {
   id: "user-1",
   email: "seller@test.com",
   isAdmin: false,
-  sellerEnabled: true,
-  stripeOnboarded: false,
+  isSellerEnabled: true,
+  isStripeOnboarded: false,
 };
 
 const mockNonSellerUser = {
   id: "user-2",
   email: "buyer@test.com",
   isAdmin: false,
-  sellerEnabled: false,
-  stripeOnboarded: false,
+  isSellerEnabled: false,
+  isStripeOnboarded: false,
 };
 
 describe("Seller Onboarding", () => {
@@ -443,7 +443,7 @@ describe("Seller Onboarding", () => {
       expect(userRepository.update).toHaveBeenCalledWith(
         "user-1",
         expect.objectContaining({
-          onboardingCompleted: true,
+          isOnboardingCompleted: true,
           onboardingIntent: "BOTH",
           region: "AUCKLAND",
         }),
@@ -461,7 +461,7 @@ describe("Seller Onboarding", () => {
       expect(userRepository.update).toHaveBeenCalledWith(
         "user-1",
         expect.objectContaining({
-          onboardingCompleted: true,
+          isOnboardingCompleted: true,
           onboardingIntent: "BUY",
         }),
       );
@@ -488,7 +488,7 @@ describe("Seller Onboarding", () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual(
         expect.objectContaining({
-          onboardingCompleted: false,
+          isOnboardingCompleted: false,
           displayName: "Test User",
         }),
       );

@@ -215,7 +215,7 @@ export default function ListsClient({
   async function handleToggleActive(item: ListItemRecord) {
     const result = await updateListItem({
       id: item.id,
-      active: !item.active,
+      isActive: !item.isActive,
     });
     if (result.success) {
       const refreshed = await getListItems(activeType);
@@ -395,7 +395,7 @@ export default function ListsClient({
                     <div
                       key={item.id}
                       className={`bg-white rounded-xl border border-[#E3E0D9] px-5 py-3 ${
-                        !item.active ? "opacity-50" : ""
+                        !item.isActive ? "opacity-50" : ""
                       }`}
                     >
                       {isEditing ? (
@@ -445,7 +445,7 @@ export default function ListsClient({
                                   {item.value}
                                 </span>
                               )}
-                              {!item.active && (
+                              {!item.isActive && (
                                 <span className="bg-red-100 text-red-700 text-[10px] font-semibold px-1.5 py-0.5 rounded">
                                   Inactive
                                 </span>
@@ -468,7 +468,7 @@ export default function ListsClient({
                               onClick={() => handleToggleActive(item)}
                               className="text-[12px] text-[#9E9A91] hover:text-[#73706A] px-2 py-1 transition-colors"
                             >
-                              {item.active ? "Disable" : "Enable"}
+                              {item.isActive ? "Disable" : "Enable"}
                             </button>
                             <button
                               onClick={() => handleDelete(item.id)}

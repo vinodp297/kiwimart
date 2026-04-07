@@ -162,10 +162,10 @@ export default function SellStep1Photos(props: Props) {
                   <>
                     <div
                       className={`absolute top-1 left-1 w-5 h-5 rounded-full flex items-center justify-center ${
-                        img.safe ? "bg-emerald-500" : "bg-amber-500"
+                        img.isSafe ? "bg-emerald-500" : "bg-amber-500"
                       }`}
                     >
-                      {img.safe ? (
+                      {img.isSafe ? (
                         <svg
                           width="10"
                           height="10"
@@ -182,12 +182,12 @@ export default function SellStep1Photos(props: Props) {
                         </span>
                       )}
                     </div>
-                    {!img.safe && (
+                    {!img.isSafe && (
                       <div className="absolute bottom-1 left-1 right-1 bg-amber-600/90 text-white text-[8px] px-1.5 py-0.5 rounded text-center font-medium">
                         Not verified
                       </div>
                     )}
-                    {img.safe && img.compressedSize && (
+                    {img.isSafe && img.compressedSize && (
                       <div
                         className="absolute bottom-1 right-1 bg-black/70 text-white
                       text-[8px] px-1.5 py-0.5 rounded-full font-medium"

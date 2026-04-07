@@ -474,7 +474,7 @@ const openApiSpec = {
           type: { type: "string" },
           title: { type: "string" },
           body: { type: "string" },
-          read: { type: "boolean" },
+          isRead: { type: "boolean" },
           link: { type: "string", nullable: true },
           createdAt: { type: "string", format: "date-time" },
         },

@@ -30,7 +30,7 @@ export default async function AdminLayout({
       adminRole: true,
       displayName: true,
       email: true,
-      mfaEnabled: true,
+      isMfaEnabled: true,
     },
   });
 
@@ -39,7 +39,7 @@ export default async function AdminLayout({
   }
 
   const role = user.adminRole as AdminRole;
-  const showMfaBanner = !user.mfaEnabled;
+  const showMfaBanner = !user.isMfaEnabled;
 
   return (
     <div className="min-h-screen bg-[#FAFAF8] flex">

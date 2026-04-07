@@ -28,7 +28,10 @@ export async function GET(request: Request) {
       query = threadsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+        return withCors(
+          apiError("Validation failed", 400, "VALIDATION_ERROR"),
+          request.headers.get("origin"),
+        );
       }
       throw err;
     }
@@ -37,11 +40,11 @@ export async function GET(request: Request) {
       cursor: query.cursor,
       limit: query.limit,
     });
-    const res = withCors(apiOk(result));
+    const res = withCors(apiOk(result), request.headers.get("origin"));
     res.headers.set("Cache-Control", "private, no-store");
     return res;
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
@@ -56,12 +59,16 @@ export async function POST(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = sendMessageSchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const result = await messageService.sendMessage(
@@ -69,12 +76,15 @@ export async function POST(request: Request) {
       user.id,
       user.email,
     );
-    return withCors(apiOk(result, 201));
+    return withCors(apiOk(result, 201), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

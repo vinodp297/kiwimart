@@ -69,11 +69,11 @@ async function getSellerByUsername(username: string) {
         select: {
           sellerOrders: { where: { status: "COMPLETED" } },
           listings: { where: { status: "ACTIVE", deletedAt: null } },
-          reviewsAbout: { where: { approved: true, reviewerRole: "BUYER" } },
+          reviewsAbout: { where: { isApproved: true, reviewerRole: "BUYER" } },
         },
       },
       reviewsAbout: {
-        where: { approved: true, reviewerRole: "BUYER" },
+        where: { isApproved: true, reviewerRole: "BUYER" },
         orderBy: { createdAt: "desc" },
         take: 5,
         select: {
@@ -225,13 +225,13 @@ export default async function SellerProfilePage({
         suburb: true,
         shippingOption: true,
         shippingNzd: true,
-        offersEnabled: true,
+        isOffersEnabled: true,
         status: true,
         viewCount: true,
         watcherCount: true,
         createdAt: true,
         images: {
-          where: { order: 0, safe: true },
+          where: { order: 0, isSafe: true },
           select: { r2Key: true },
           take: 1,
         },
@@ -267,7 +267,7 @@ export default async function SellerProfilePage({
       shippingOption:
         row.shippingOption.toLowerCase() as ListingCardType["shippingOption"],
       shippingPrice: row.shippingNzd != null ? row.shippingNzd / 100 : null,
-      offersEnabled: row.offersEnabled,
+      isOffersEnabled: row.isOffersEnabled,
     }));
   } catch {
     // Fallback to empty
@@ -548,14 +548,14 @@ export default async function SellerProfilePage({
             {seller.badges.length > 0 && (
               <div className="relative flex flex-wrap gap-2 mt-4">
                 {seller.badges.map((badge) => {
-                  const cfg = BADGE_CONFIG[badge];
+                  const config = BADGE_CONFIG[badge];
                   return (
                     <span
                       key={badge}
                       className={`inline-flex items-center px-2.5 py-1 rounded-full
-                        text-[11px] font-semibold ring-1 ${cfg.colour}`}
+                        text-[11px] font-semibold ring-1 ${config.colour}`}
                     >
-                      {cfg.label}
+                      {config.label}
                     </span>
                   );
                 })}
@@ -629,14 +629,14 @@ export default async function SellerProfilePage({
                 return topTags.length > 0 ? (
                   <div className="flex flex-wrap gap-2 mb-4">
                     {topTags.map(([tag, count]) => {
-                      const cfg = getTagConfig(tag as ReviewTagType);
-                      if (!cfg) return null;
+                      const config = getTagConfig(tag as ReviewTagType);
+                      if (!config) return null;
                       return (
                         <span
                           key={tag}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${cfg.colour}`}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${config.colour}`}
                         >
-                          {cfg.emoji} {cfg.label}
+                          {config.emoji} {config.label}
                           <span className="opacity-60">({count})</span>
                         </span>
                       );
@@ -689,14 +689,14 @@ export default async function SellerProfilePage({
                       {review.tags && review.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mb-2">
                           {review.tags.map((tag) => {
-                            const cfg = getTagConfig(tag as ReviewTagType);
-                            if (!cfg) return null;
+                            const config = getTagConfig(tag as ReviewTagType);
+                            if (!config) return null;
                             return (
                               <span
                                 key={tag}
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border ${cfg.colour}`}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border ${config.colour}`}
                               >
-                                {cfg.emoji} {cfg.label}
+                                {config.emoji} {config.label}
                               </span>
                             );
                           })}

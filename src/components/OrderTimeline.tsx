@@ -26,7 +26,7 @@ interface Props {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string): string {
+function formatDate(iso: string): string {
   const d = new Date(iso);
   const day = d.getDate();
   const month = d.toLocaleDateString("en-NZ", { month: "short" });
@@ -237,7 +237,7 @@ export default function OrderTimeline({
                 {/* Timestamp + actor */}
                 <div className="flex items-center gap-2 mt-1.5">
                   <span className="text-[11px] text-[#9E9A91]">
-                    {fmtDate(event.createdAt)}
+                    {formatDate(event.createdAt)}
                   </span>
                   <span className="text-[11px] text-[#C9C5BC]">·</span>
                   <span className="text-[10.5px] text-[#9E9A91] font-medium">

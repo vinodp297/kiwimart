@@ -35,7 +35,7 @@ export async function completeOnboarding(
     const validRegions = await getListValues("NZ_REGIONS");
 
     await userRepository.update(user.id, {
-      onboardingCompleted: true,
+      isOnboardingCompleted: true,
       onboardingIntent: intent,
       ...(region && validRegions.includes(region) ? { region } : {}),
     });
@@ -55,13 +55,13 @@ export async function completeOnboarding(
 // ── getOnboardingStatus ───────────────────────────────────────────────────────
 
 export interface OnboardingStatus {
-  onboardingCompleted: boolean;
+  isOnboardingCompleted: boolean;
   onboardingIntent: string | null;
   region: string | null;
   bio: string | null;
   displayName: string;
   emailVerified: Date | null;
-  stripeOnboarded: boolean;
+  isStripeOnboarded: boolean;
 }
 
 export async function getOnboardingStatus(): Promise<

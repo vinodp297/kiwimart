@@ -43,7 +43,7 @@ describe("NotificationService", () => {
         listingId: null,
         orderId: null,
         link: null,
-        read: false,
+        isRead: false,
       });
     });
 
@@ -111,8 +111,8 @@ describe("NotificationService", () => {
 
     it("findByUser returns paginated results with cursor", async () => {
       const mockNotifs = [
-        { id: "notif-1", type: "ORDER_PLACED", read: false },
-        { id: "notif-2", type: "MESSAGE_RECEIVED", read: true },
+        { id: "notif-1", type: "ORDER_PLACED", isRead: false },
+        { id: "notif-2", type: "MESSAGE_RECEIVED", isRead: true },
       ];
       vi.mocked(notificationRepository.findByUser).mockResolvedValue(
         mockNotifs as never,

@@ -40,6 +40,7 @@ import type {
   SellerBadge,
 } from "@/types";
 import { getImageUrl as r2Url } from "@/lib/image";
+import { headers } from "next/headers";
 
 export const revalidate = 60;
 
@@ -88,6 +89,7 @@ export default async function ListingDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const nonce = (await headers()).get("x-nonce") ?? "";
 
   const listing = await getListingById(id);
   if (!listing) notFound();
@@ -145,7 +147,7 @@ export default async function ListingDetailPage({
     db.user
       .findUnique({
         where: { id: listing.seller.id },
-        select: { nzbn: true, gstRegistered: true },
+        select: { nzbn: true, isGstRegistered: true },
       })
       .catch(() => null),
     getSellerResponseTime(listing.seller.id).then(
@@ -225,41 +227,51 @@ export default async function ListingDetailPage({
       listing.shippingOption.toLowerCase() as ListingDetail["shippingOption"],
     shippingPrice:
       listing.shippingNzd != null ? listing.shippingNzd / 100 : null,
-    offersEnabled: listing.offersEnabled,
+    isOffersEnabled: listing.isOffersEnabled,
     description: listing.description ?? "No description provided.",
     images,
     attributes,
     seller,
     relatedListings: [],
     offerCount: rawSocialProof.pendingOfferCount,
-    gstIncluded: listing.gstIncluded,
+    isGstIncluded: listing.isGstIncluded,
     pickupAddress: listing.pickupAddress,
   };
 
-  // Fetch recommendations + related listings
+  // Fetch supplementary recommendations — allSettled so a single failure
+  // does not suppress the other sections. Each section renders empty on reject.
   let relatedListings = detail.relatedListings;
   let moreFromSeller: typeof relatedListings = [];
   let similarListings: typeof relatedListings = [];
-  try {
-    const [related, fromSeller, similar] = await Promise.all([
+
+  const [relatedResult, fromSellerResult, similarResult] =
+    await Promise.allSettled([
       searchListings({
         category: listing.categoryId,
         pageSize: 5,
         sort: "most-watched",
       }),
-      getMoreFromSeller(listing.seller.id, listing.id).catch(() => []),
+      getMoreFromSeller(listing.seller.id, listing.id),
       getSimilarListings(
         listing.id,
         listing.categoryId,
         listing.priceNzd,
         listing.seller.id,
-      ).catch(() => []),
+      ),
     ]);
-    relatedListings = related.listings.filter((l) => l.id !== id).slice(0, 4);
-    moreFromSeller = fromSeller;
-    similarListings = similar.filter((l) => l.id !== id).slice(0, 4);
-  } catch {
-    // Fallback to empty
+
+  if (relatedResult.status === "fulfilled") {
+    relatedListings = relatedResult.value.listings
+      .filter((l) => l.id !== id)
+      .slice(0, 4);
+  }
+  if (fromSellerResult.status === "fulfilled") {
+    moreFromSeller = fromSellerResult.value;
+  }
+  if (similarResult.status === "fulfilled") {
+    similarListings = similarResult.value
+      .filter((l) => l.id !== id)
+      .slice(0, 4);
   }
 
   const breadcrumbs = [
@@ -306,6 +318,7 @@ export default async function ListingDetailPage({
     <>
       <script
         type="application/ld+json"
+        nonce={nonce}
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <NavBar />

@@ -26,7 +26,7 @@ export type ThreadWithLastMessage = Prisma.MessageThreadGetPayload<{
         body: true;
         senderId: true;
         createdAt: true;
-        read: true;
+        isRead: true;
       };
     };
   };
@@ -38,10 +38,10 @@ export type MessageRow = Prisma.MessageGetPayload<{
     threadId: true;
     senderId: true;
     body: true;
-    read: true;
+    isRead: true;
     readAt: true;
     createdAt: true;
-    flagged: true;
+    isFlagged: true;
   };
 }>;
 
@@ -159,7 +159,7 @@ export const messageRepository = {
             body: true,
             senderId: true,
             createdAt: true,
-            read: true,
+            isRead: true,
           },
         },
       },
@@ -177,7 +177,7 @@ export const messageRepository = {
       threadId: string;
       senderId: string;
       body: string;
-      flagged: boolean;
+      isFlagged: boolean;
       flagReason: string | null;
     },
     client: DbClient = db,
@@ -198,9 +198,9 @@ export const messageRepository = {
       where: {
         threadId,
         senderId: { not: readerId },
-        read: false,
+        isRead: false,
       },
-      data: { read: true, readAt: new Date() },
+      data: { isRead: true, readAt: new Date() },
     });
   },
 
@@ -236,7 +236,7 @@ export const messageRepository = {
         body: true,
         senderId: true,
         createdAt: true,
-        read: true,
+        isRead: true,
         sender: { select: { displayName: true } },
       },
     });

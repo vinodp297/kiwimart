@@ -70,6 +70,7 @@ export const cartRepository = {
             listingId: true,
             priceNzd: true,
             shippingNzd: true,
+            snapshotPriceNzd: true,
             listing: {
               select: {
                 id: true,
@@ -117,6 +118,7 @@ export const cartRepository = {
       listingId: string;
       priceNzd: number;
       shippingNzd: number;
+      snapshotPriceNzd: number;
     },
     tx?: DbClient,
   ) {
@@ -131,6 +133,7 @@ export const cartRepository = {
             listingId: data.listingId,
             priceNzd: data.priceNzd,
             shippingNzd: data.shippingNzd,
+            snapshotPriceNzd: data.snapshotPriceNzd,
           },
         },
       },
@@ -140,7 +143,12 @@ export const cartRepository = {
 
   async addItemToCart(
     cartId: string,
-    item: { listingId: string; priceNzd: number; shippingNzd: number },
+    item: {
+      listingId: string;
+      priceNzd: number;
+      shippingNzd: number;
+      snapshotPriceNzd: number;
+    },
     expiresAt: Date,
     tx?: DbClient,
   ) {
@@ -154,6 +162,7 @@ export const cartRepository = {
             listingId: item.listingId,
             priceNzd: item.priceNzd,
             shippingNzd: item.shippingNzd,
+            snapshotPriceNzd: item.snapshotPriceNzd,
           },
         },
       },
@@ -184,6 +193,25 @@ export const cartRepository = {
         data: { expiresAt },
       }),
     ]);
+  },
+
+  async updateItemSnapshots(
+    updates: Array<{
+      itemId: string;
+      snapshotPriceNzd: number;
+      priceNzd: number;
+    }>,
+    tx?: DbClient,
+  ) {
+    const client = tx ?? db;
+    return Promise.all(
+      updates.map((u) =>
+        client.cartItem.update({
+          where: { id: u.itemId },
+          data: { snapshotPriceNzd: u.snapshotPriceNzd, priceNzd: u.priceNzd },
+        }),
+      ),
+    );
   },
 
   // ── Checkout: order creation ──────────────────────────────────────────────

@@ -5,13 +5,13 @@ export interface UserProps {
   name: string | null;
   email: string;
   sellerTermsAcceptedAt: string | null;
-  phoneVerified: boolean;
+  isPhoneVerified: boolean;
   idVerified: boolean;
   idVerifiedAt: string | null;
   idSubmittedAt: string | null;
-  stripeOnboarded: boolean;
+  isStripeOnboarded: boolean;
   nzbn: string | null;
-  gstRegistered: boolean;
+  isGstRegistered: boolean;
   gstNumber: string | null;
 }
 

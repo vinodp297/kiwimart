@@ -1,14 +1,180 @@
+# .github/workflows/deploy.yml
+# ─── Production Deploy Pipeline ──────────────────────────────────────────────
+# Runs on push to main. Four jobs in strict sequence:
+#   validate → deploy → migrate → verify
+#
+# Why this order:
+#   1. validate: broken code never reaches production
+#   2. deploy:   push new code to Vercel
+#   3. migrate:  schema changes apply AFTER code is live so a failed deploy
+#                doesn't leave the DB ahead of the running application
+#   4. verify:   health check with automatic rollback on failure
+#
+# Required GitHub secrets:
+#   VERCEL_TOKEN            — Vercel personal access token (deploy + rollback API)
+#   DATABASE_URL            — Production Neon PostgreSQL connection string
+#   All secrets referenced in the ci.yml build step (Stripe, Pusher, R2, etc.)
+
 name: Deploy to Production
 
 on:
   push:
     branches: [main]
 
+# ─── JOB 1: VALIDATE ────────────────────────────────────────────────────────
+# Lint, type-check, test, and build must ALL pass before deploy proceeds.
+# Uses test env vars for tests — never production secrets.
 jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm run test:run
+        env:
+          NODE_ENV: test
+          NEXTAUTH_SECRET: test-secret-32-chars-minimum-x
+          NEXTAUTH_URL: http://localhost:3000
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_x
+          STRIPE_SECRET_KEY: sk_test_x
+          STRIPE_WEBHOOK_SECRET: whsec_test_x
+          PUSHER_APP_ID: test
+          PUSHER_KEY: test
+          PUSHER_SECRET: test
+          PUSHER_CLUSTER: us2
+          NEXT_PUBLIC_PUSHER_KEY: test
+          NEXT_PUBLIC_PUSHER_CLUSTER: us2
+          CLOUDFLARE_ACCOUNT_ID: test
+          R2_BUCKET_NAME: test
+          R2_ACCESS_KEY_ID: test
+          R2_SECRET_ACCESS_KEY: test
+          NEXT_PUBLIC_R2_PUBLIC_URL: https://test.r2.dev
+          UPSTASH_REDIS_REST_URL: https://test.upstash.io
+          UPSTASH_REDIS_REST_TOKEN: test
+          REDIS_URL: redis://localhost:6379
+          RESEND_API_KEY: re_placeholder
+          EMAIL_FROM: test@test.com
+          CRON_SECRET: test-cron-secret-32-chars-minx
+          WORKER_SECRET: test-worker-secret-32-chars-xx
+
+      - name: Build check
+        run: npm run build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_APP_URL: https://kiwimart.vercel.app
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          PUSHER_APP_ID: ${{ secrets.PUSHER_APP_ID }}
+          PUSHER_KEY: ${{ secrets.PUSHER_KEY }}
+          PUSHER_SECRET: ${{ secrets.PUSHER_SECRET }}
+          PUSHER_CLUSTER: ${{ secrets.PUSHER_CLUSTER }}
+          NEXT_PUBLIC_PUSHER_KEY: ${{ secrets.NEXT_PUBLIC_PUSHER_KEY }}
+          NEXT_PUBLIC_PUSHER_CLUSTER: ${{ secrets.NEXT_PUBLIC_PUSHER_CLUSTER }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          NEXT_PUBLIC_R2_PUBLIC_URL: ${{ secrets.NEXT_PUBLIC_R2_PUBLIC_URL }}
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+
+  # ─── JOB 2: DEPLOY ──────────────────────────────────────────────────────────
+  # Push to Vercel production. Captures the previous deployment ID so Job 4
+  # can rollback if the health check fails.
   deploy:
     name: Deploy to Vercel
     runs-on: ubuntu-latest
+    needs: [validate]
     timeout-minutes: 20
+    outputs:
+      deployment-url: ${{ steps.vercel-deploy.outputs.url }}
+      previous-deployment-id: ${{ steps.capture-previous.outputs.id }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Capture previous production deployment ID
+        id: capture-previous
+        run: |
+          PREV_ID=$(curl -sf -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+            "https://api.vercel.com/v6/deployments?app=kiwimart&target=production&limit=1&state=READY" \
+            | jq -r '.deployments[0].uid // empty')
+          echo "id=${PREV_ID}" >> "$GITHUB_OUTPUT"
+          echo "Previous production deployment: ${PREV_ID:-none}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Deploy to Production
+        id: vercel-deploy
+        run: |
+          DEPLOY_URL=$(vercel --prod \
+            --token=${{ secrets.VERCEL_TOKEN }} \
+            --name=kiwimart \
+            --yes 2>&1 | grep -oP 'https://[^\s]+' | tail -1)
+          echo "url=${DEPLOY_URL}" >> "$GITHUB_OUTPUT"
+          echo "Deployed to: ${DEPLOY_URL}"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+  # ─── JOB 3: MIGRATE ─────────────────────────────────────────────────────────
+  # Runs AFTER deploy so that a Vercel deploy failure does not leave the DB
+  # schema ahead of the running application code. If migration fails, the job
+  # fails visibly — do NOT auto-rollback migrations (dangerous). Fix forward.
+  migrate:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -28,25 +194,94 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Install Vercel CLI
-        run: npm install -g vercel@latest
-
-      - name: Deploy to Production
+      - name: Migration failure alert
+        if: failure()
         run: |
-          vercel --prod \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --name=kiwimart \
-            --yes
+          echo "## 🚨 MIGRATION FAILED — P0 INCIDENT" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Database migration failed AFTER code was deployed." >> "$GITHUB_STEP_SUMMARY"
+          echo "The production DB schema may be behind the running code." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Immediate actions:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. Check the migration error output above" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Fix the migration and re-run: \`npx prisma migrate deploy\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. See docs/RUNBOOK.md → Deploy pipeline → Migration failure" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── JOB 4: VERIFY ──────────────────────────────────────────────────────────
+  # Hit the health endpoint with retries. On failure, roll back by promoting
+  # the previous Vercel deployment back to the production alias.
+  # NOTE: Rollback reverts APPLICATION code only — DB migrations are NOT undone.
+  verify:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy, migrate]
+    timeout-minutes: 5
+
+    steps:
+      - name: Health check with retries
+        id: health
+        run: |
+          PROD_URL="https://kiwimart.vercel.app"
+          echo "Waiting 15s for deployment to initialize..."
+          sleep 15
+
+          for i in $(seq 1 5); do
+            echo "Health check attempt ${i}/5..."
+            RESPONSE=$(curl -sf -w "\n%{http_code}" "${PROD_URL}/api/health" 2>/dev/null || echo -e "\n000")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+            STATUS=$(echo "$BODY" | jq -r '.status // empty' 2>/dev/null || echo "")
+
+            if [ "$HTTP_CODE" = "200" ] && [ -n "$STATUS" ]; then
+              echo "Health check passed — status: ${STATUS}"
+              echo "## ✅ Deployment Verified" >> "$GITHUB_STEP_SUMMARY"
+              echo "" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **URL:** ${{ needs.deploy.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Health:** ${STATUS}" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Migrations:** completed" >> "$GITHUB_STEP_SUMMARY"
+              echo "- **Timestamp:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            echo "  Failed (HTTP ${HTTP_CODE}, status: ${STATUS:-unknown})"
+            if [ "$i" -lt 5 ]; then
+              echo "  Retrying in 10s..."
+              sleep 10
+            fi
+          done
+
+          echo "## ❌ Health Check Failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "5 attempts failed. Last: HTTP ${HTTP_CODE}, status: ${STATUS:-unknown}" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Rollback to previous deployment
+        if: failure() && needs.deploy.outputs.previous-deployment-id != ''
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-
-      - name: Verify deployment health
+          PREV_ID: ${{ needs.deploy.outputs.previous-deployment-id }}
         run: |
-          sleep 30
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://kiwimart.vercel.app/api/health)
-          if [ "$response" != "200" ]; then
-            echo "Health check failed with status $response"
-            exit 1
-          fi
-          echo "Deployment healthy — status $response"
+          echo "Rolling back to deployment: ${PREV_ID}"
+          RESULT=$(curl -sf -X POST \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"alias":"kiwimart.vercel.app"}' \
+            "https://api.vercel.com/v2/deployments/${PREV_ID}/aliases" 2>&1 || true)
+          echo "$RESULT" | jq . 2>/dev/null || echo "$RESULT"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## ⚠️ Automatic Rollback Triggered" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Previous deployment \`${PREV_ID}\` promoted back to production." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**⚠️ Database migrations are NOT reverted.**" >> "$GITHUB_STEP_SUMMARY"
+          echo "The schema may be ahead of the rolled-back code." >> "$GITHUB_STEP_SUMMARY"
+          echo "See docs/RUNBOOK.md for manual remediation." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Rollback skipped — no previous deployment
+        if: failure() && needs.deploy.outputs.previous-deployment-id == ''
+        run: |
+          echo "## ⚠️ Rollback Skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "No previous production deployment ID was captured." >> "$GITHUB_STEP_SUMMARY"
+          echo "Manual rollback required via Vercel dashboard." >> "$GITHUB_STEP_SUMMARY"

@@ -25,6 +25,7 @@ export async function PATCH(request: Request) {
           429,
           "RATE_LIMITED",
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -32,12 +33,16 @@ export async function PATCH(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = updateProfileSchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     await userRepository.update(user.id, {
@@ -46,12 +51,18 @@ export async function PATCH(request: Request) {
       bio: parsed.data.bio || null,
     });
 
-    return withCors(apiOk({ user: { id: user.id, ...parsed.data } }));
+    return withCors(
+      apiOk({ user: { id: user.id, ...parsed.data } }),
+      request.headers.get("origin"),
+    );
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

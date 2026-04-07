@@ -43,12 +43,10 @@ const nextConfig: NextConfig = {
       { key: "Access-Control-Allow-Credentials", value: "true" },
       { key: "Access-Control-Max-Age", value: "86400" },
     ];
+    // Content-Security-Policy is set per-request in src/proxy.ts with a
+    // cryptographic nonce — do not add a static CSP here or it will override
+    // the nonce-based header and break inline script allowance.
     const securityHeaders = [
-      {
-        key: "Content-Security-Policy",
-        value:
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://js.stripe.com https://app.posthog.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com https://*.r2.dev https://*.cloudflare.com https://images.unsplash.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com https://js.stripe.com; connect-src 'self' https://*.pusher.com wss://*.pusher.com https://app.posthog.com https://*.sentry.io; object-src 'none'; base-uri 'self'; form-action 'self';",
-      },
       { key: "X-Frame-Options", value: "DENY" },
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

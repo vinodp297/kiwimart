@@ -79,8 +79,8 @@ vi.mock("@/server/validators", () => {
       shippingOption: z.string(),
       imageKeys: z.array(z.string()),
       attributes: z.array(z.object({ label: z.string(), value: z.string() })),
-      gstIncluded: z.boolean().default(false),
-      offersEnabled: z.boolean().default(true),
+      isGstIncluded: z.boolean().default(false),
+      isOffersEnabled: z.boolean().default(true),
       isUrgent: z.boolean().default(false),
       isNegotiable: z.boolean().default(false),
       shipsNationwide: z.boolean().default(false),
@@ -141,8 +141,8 @@ const mockUser = {
   email: "user@test.com",
   isAdmin: false,
   isBanned: false,
-  sellerEnabled: true,
-  stripeOnboarded: true,
+  isSellerEnabled: true,
+  isStripeOnboarded: true,
 };
 
 describe("API Routes", () => {
@@ -316,8 +316,8 @@ describe("API Routes", () => {
       shippingOption: "NATIONWIDE",
       imageKeys: ["img-1"],
       attributes: [{ label: "Color", value: "Red" }],
-      gstIncluded: false,
-      offersEnabled: true,
+      isGstIncluded: false,
+      isOffersEnabled: true,
       isUrgent: false,
       isNegotiable: false,
       shipsNationwide: true,
@@ -329,7 +329,7 @@ describe("API Routes", () => {
       vi.mocked(db.user.findUnique).mockResolvedValue({
         emailVerified: new Date(),
         sellerTermsAcceptedAt: new Date(),
-        sellerEnabled: true,
+        isSellerEnabled: true,
       } as never);
 
       // Need to mock userRepository.findForListingAuth

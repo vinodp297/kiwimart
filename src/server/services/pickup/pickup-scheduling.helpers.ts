@@ -18,7 +18,7 @@ import type {
 // ── Config helper ─────────────────────────────────────────────────────────────
 
 export async function getPickupConfig() {
-  const cfg = await getConfigMany([
+  const config = await getConfigMany([
     CONFIG_KEYS.PICKUP_MIN_LEAD_TIME_HOURS,
     CONFIG_KEYS.PICKUP_MAX_HORIZON_DAYS,
     CONFIG_KEYS.PICKUP_WINDOW_MINUTES,
@@ -26,23 +26,23 @@ export async function getPickupConfig() {
     CONFIG_KEYS.PICKUP_RESCHEDULE_LIMIT,
   ]);
   const minLeadHours = parseInt(
-    cfg.get(CONFIG_KEYS.PICKUP_MIN_LEAD_TIME_HOURS) ?? "2",
+    config.get(CONFIG_KEYS.PICKUP_MIN_LEAD_TIME_HOURS) ?? "2",
     10,
   );
   const maxHorizonDays = parseInt(
-    cfg.get(CONFIG_KEYS.PICKUP_MAX_HORIZON_DAYS) ?? "30",
+    config.get(CONFIG_KEYS.PICKUP_MAX_HORIZON_DAYS) ?? "30",
     10,
   );
   const windowMinutes = parseInt(
-    cfg.get(CONFIG_KEYS.PICKUP_WINDOW_MINUTES) ?? "30",
+    config.get(CONFIG_KEYS.PICKUP_WINDOW_MINUTES) ?? "30",
     10,
   );
   const rescheduleResponseHours = parseInt(
-    cfg.get(CONFIG_KEYS.PICKUP_RESCHEDULE_RESPONSE_HOURS) ?? "12",
+    config.get(CONFIG_KEYS.PICKUP_RESCHEDULE_RESPONSE_HOURS) ?? "12",
     10,
   );
   const rescheduleLimit = parseInt(
-    cfg.get(CONFIG_KEYS.PICKUP_RESCHEDULE_LIMIT) ?? "3",
+    config.get(CONFIG_KEYS.PICKUP_RESCHEDULE_LIMIT) ?? "3",
     10,
   );
   return {

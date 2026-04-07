@@ -32,7 +32,10 @@ export async function GET(request: Request) {
       query = listingsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+        return withCors(
+          apiError("Validation failed", 400, "VALIDATION_ERROR"),
+          request.headers.get("origin"),
+        );
       }
       throw err;
     }
@@ -67,7 +70,7 @@ export async function GET(request: Request) {
         region: true,
         createdAt: true,
         images: {
-          where: { order: 0, safe: true },
+          where: { order: 0, isSafe: true },
           select: { thumbnailKey: true },
           take: 1,
         },
@@ -86,14 +89,17 @@ export async function GET(request: Request) {
     const listings = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (listings.at(-1)?.id ?? null) : null;
 
-    const response = withCors(apiOk({ listings, nextCursor, hasMore }));
+    const response = withCors(
+      apiOk({ listings, nextCursor, hasMore }),
+      request.headers.get("origin"),
+    );
     response.headers.set(
       "Cache-Control",
       "public, s-maxage=60, stale-while-revalidate=300",
     );
     return response;
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
@@ -113,6 +119,7 @@ export async function POST(request: Request) {
           403,
           "EMAIL_NOT_VERIFIED",
         ),
+        request.headers.get("origin"),
       );
     }
     if (!userDetails.sellerTermsAcceptedAt) {
@@ -122,15 +129,17 @@ export async function POST(request: Request) {
           403,
           "TERMS_NOT_ACCEPTED",
         ),
+        request.headers.get("origin"),
       );
     }
-    if (!user.stripeOnboarded) {
+    if (!user.isStripeOnboarded) {
       return withCors(
         apiError(
           "Please set up your payment account before listing items.",
           403,
           "STRIPE_NOT_ONBOARDED",
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -139,12 +148,16 @@ export async function POST(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = createListingSchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
     const data = parsed.data;
 
@@ -156,6 +169,7 @@ export async function POST(request: Request) {
           `Too many listings created. Try again in ${limit.retryAfter} seconds.`,
           429,
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -165,18 +179,21 @@ export async function POST(request: Request) {
       select: { id: true },
     });
     if (!category) {
-      return withCors(apiError("Invalid category", 400, "INVALID_CATEGORY"));
+      return withCors(
+        apiError("Invalid category", 400, "INVALID_CATEGORY"),
+        request.headers.get("origin"),
+      );
     }
 
     // Validate images
     const images = await db.listingImage.findMany({
       where: { r2Key: { in: data.imageKeys } },
-      select: { r2Key: true, scanned: true, safe: true },
+      select: { r2Key: true, isScanned: true, isSafe: true },
     });
     const missingKeys = data.imageKeys.filter(
       (key) => !images.some((img) => img.r2Key === key),
     );
-    const unsafeImages = images.filter((img) => !img.scanned || !img.safe);
+    const unsafeImages = images.filter((img) => !img.isScanned || !img.isSafe);
     if (missingKeys.length > 0 || unsafeImages.length > 0) {
       return withCors(
         apiError(
@@ -184,6 +201,7 @@ export async function POST(request: Request) {
           400,
           "IMAGE_VALIDATION_FAILED",
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -195,7 +213,7 @@ export async function POST(request: Request) {
           title: data.title,
           description: data.description,
           priceNzd: Math.round(data.price * 100),
-          gstIncluded: data.gstIncluded,
+          isGstIncluded: data.isGstIncluded,
           condition: data.condition,
           status: "PENDING_REVIEW",
           categoryId: data.categoryId,
@@ -208,7 +226,7 @@ export async function POST(request: Request) {
               ? Math.round(data.shippingPrice * 100)
               : null,
           pickupAddress: data.pickupAddress ?? null,
-          offersEnabled: data.offersEnabled,
+          isOffersEnabled: data.isOffersEnabled,
           isUrgent: data.isUrgent,
           isNegotiable: data.isNegotiable,
           shipsNationwide: data.shipsNationwide,
@@ -229,10 +247,10 @@ export async function POST(request: Request) {
         select: { id: true, status: true },
       });
 
-      if (!userDetails.sellerEnabled) {
+      if (!userDetails.isSellerEnabled) {
         await tx.user.update({
           where: { id: user.id },
-          data: { sellerEnabled: true },
+          data: { isSellerEnabled: true },
         });
       }
 
@@ -264,12 +282,15 @@ export async function POST(request: Request) {
       userId: user.id,
     });
 
-    return withCors(apiOk({ listing }, 201));
+    return withCors(apiOk({ listing }, 201), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

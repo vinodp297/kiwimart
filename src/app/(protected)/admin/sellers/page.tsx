@@ -37,30 +37,30 @@ export default async function SellersPage() {
         displayName: true,
         idSubmittedAt: true,
         sellerTermsAcceptedAt: true,
-        stripeOnboarded: true,
+        isStripeOnboarded: true,
         createdAt: true,
-        phoneVerified: true,
+        isPhoneVerified: true,
       },
       orderBy: { idSubmittedAt: "asc" },
     }),
     db.user.count({
       where: { idVerified: true, idSubmittedAt: { gte: todayStart } },
     }),
-    db.user.count({ where: { sellerEnabled: true, isBanned: false } }),
+    db.user.count({ where: { isSellerEnabled: true, isBanned: false } }),
     db.user.count({
-      where: { sellerEnabled: true, createdAt: { gte: weekStart } },
+      where: { isSellerEnabled: true, createdAt: { gte: weekStart } },
     }),
     db.user.findMany({
-      where: { sellerEnabled: true },
+      where: { isSellerEnabled: true },
       select: {
         id: true,
         email: true,
         displayName: true,
         idVerified: true,
-        phoneVerified: true,
-        stripeOnboarded: true,
+        isPhoneVerified: true,
+        isStripeOnboarded: true,
         createdAt: true,
-        sellerEnabled: true,
+        isSellerEnabled: true,
         _count: { select: { listings: true, sellerOrders: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -79,7 +79,7 @@ export default async function SellersPage() {
 
   function getTier(s: (typeof sellers)[0]) {
     if (s.idVerified) return "id_verified";
-    if (s.phoneVerified) return "phone_verified";
+    if (s.isPhoneVerified) return "phone_verified";
     return "basic";
   }
 
@@ -156,12 +156,12 @@ export default async function SellersPage() {
                     </p>
                     <p className="text-[12px] text-[#9E9A91]">{u.email}</p>
                     <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                      {u.phoneVerified && (
+                      {u.isPhoneVerified && (
                         <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full">
                           📱 Phone verified
                         </span>
                       )}
-                      {u.stripeOnboarded && (
+                      {u.isStripeOnboarded && (
                         <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                           💳 Stripe connected
                         </span>
@@ -251,9 +251,9 @@ export default async function SellersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${s.stripeOnboarded ? "bg-emerald-50 text-emerald-700" : "bg-[#F8F7F4] text-[#9E9A91]"}`}
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${s.isStripeOnboarded ? "bg-emerald-50 text-emerald-700" : "bg-[#F8F7F4] text-[#9E9A91]"}`}
                         >
-                          {s.stripeOnboarded ? "✓ Connected" : "Not set up"}
+                          {s.isStripeOnboarded ? "✓ Connected" : "Not set up"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-[#9E9A91] whitespace-nowrap">

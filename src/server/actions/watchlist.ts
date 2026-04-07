@@ -33,7 +33,7 @@ export async function togglePriceAlert(
 
     await db.watchlistItem.update({
       where: { id: item.id },
-      data: { priceAlertEnabled: enabled },
+      data: { isPriceAlertEnabled: enabled },
     });
 
     return { success: true, data: { enabled } };

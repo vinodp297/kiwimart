@@ -18,7 +18,7 @@ interface AdminUser {
   email: string;
   displayName: string;
   region: string | null;
-  sellerEnabled: boolean;
+  isSellerEnabled: boolean;
   idVerified: boolean;
   isBanned: boolean;
   createdAt: string;
@@ -180,12 +180,12 @@ export default function AdminUsersPage() {
                       <td className="px-4 py-3">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            u.sellerEnabled
+                            u.isSellerEnabled
                               ? "bg-emerald-50 text-emerald-700"
                               : "bg-[#F8F7F4] text-[#9E9A91]"
                           }`}
                         >
-                          {u.sellerEnabled ? "Yes" : "No"}
+                          {u.isSellerEnabled ? "Yes" : "No"}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -249,7 +249,7 @@ export default function AdminUsersPage() {
                           >
                             {actionLoading === u.id + "_seller"
                               ? "…"
-                              : u.sellerEnabled
+                              : u.isSellerEnabled
                                 ? "Disable seller"
                                 : "Enable seller"}
                           </button>

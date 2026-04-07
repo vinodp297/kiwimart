@@ -1,0 +1,12 @@
+-- Rename boolean: Notification.read → isRead
+-- Idempotent: skips if old column no longer exists (fresh install via initial migration).
+DO $$BEGIN
+  IF EXISTS (
+    SELECT FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name  = 'Notification'
+      AND column_name = 'read'
+  ) THEN
+    ALTER TABLE "Notification" RENAME COLUMN "read" TO "isRead";
+  END IF;
+END$$;

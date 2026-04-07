@@ -46,8 +46,11 @@ export {
 };
 
 // ── Mock Prisma ──────────────────────────────────────────────────────────────
-vi.mock("@/lib/db", () => ({
-  default: {
+// db.ts exports both `export const db` (named) and `export default db`.
+// Repositories use the named import `{ db }`, while services use the default.
+// Both must resolve to the same mock object.
+vi.mock("@/lib/db", () => {
+  const dbMock = {
     user: {
       findUnique: vi
         .fn()
@@ -136,6 +139,8 @@ vi.mock("@/lib/db", () => ({
     },
     orderInteraction: {
       findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
+      count: vi.fn().mockResolvedValue(0),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     message: {
@@ -150,6 +155,19 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+    },
+    cart: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+    cartItem: {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      delete: vi.fn(),
     },
     watchlistItem: {
       findUnique: vi.fn(),
@@ -186,8 +204,9 @@ vi.mock("@/lib/db", () => ({
       return [];
     }),
     $queryRaw: vi.fn(),
-  },
-}));
+  };
+  return { default: dbMock, db: dbMock };
+});
 
 // ── Mock platform-config ──────────────────────────────────────────────────────
 // Provides sensible defaults so tests that use platform config don't hit the DB.

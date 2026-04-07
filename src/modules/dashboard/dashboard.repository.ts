@@ -51,7 +51,7 @@ export const dashboardRepository = {
       select: {
         id: true,
         createdAt: true,
-        priceAlertEnabled: true,
+        isPriceAlertEnabled: true,
         listing: {
           select: {
             id: true,
@@ -62,7 +62,7 @@ export const dashboardRepository = {
             suburb: true,
             status: true,
             images: {
-              where: { order: 0, safe: true },
+              where: { order: 0, isSafe: true },
               select: { r2Key: true, thumbnailKey: true },
               take: 1,
             },
@@ -93,7 +93,7 @@ export const dashboardRepository = {
             id: true,
             body: true,
             senderId: true,
-            read: true,
+            isRead: true,
             createdAt: true,
             sender: { select: { displayName: true } },
           },
@@ -155,7 +155,7 @@ export const dashboardRepository = {
 
   async aggregateReviews(subjectId: string) {
     return db.review.aggregate({
-      where: { subjectId, reviewerRole: "BUYER", approved: true },
+      where: { subjectId, reviewerRole: "BUYER", isApproved: true },
       _avg: { rating: true },
       _count: true,
     });
@@ -190,14 +190,14 @@ export const dashboardRepository = {
         suburb: true,
         shippingOption: true,
         shippingNzd: true,
-        offersEnabled: true,
+        isOffersEnabled: true,
         viewCount: true,
         watcherCount: true,
         expiresAt: true,
         createdAt: true,
         status: true,
         images: {
-          where: { order: 0, safe: true },
+          where: { order: 0, isSafe: true },
           select: { r2Key: true, thumbnailKey: true },
           take: 1,
         },

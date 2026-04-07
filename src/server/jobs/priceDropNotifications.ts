@@ -1,6 +1,6 @@
 // src/server/jobs/priceDropNotifications.ts
 // ─── Price Drop Notification Job ───────────────────────────────────────────
-// Scans watchlist items where priceAlertEnabled is true and the listing's
+// Scans watchlist items where isPriceAlertEnabled is true and the listing's
 // current price has dropped below the watcher's recorded priceAtWatch.
 // Creates a notification per watcher and updates priceAtWatch to prevent
 // duplicate alerts on the same price drop.
@@ -16,7 +16,7 @@ export async function checkPriceDrops(): Promise<{
   // Fetch all watchlist items with alerts enabled that have a reference price
   const watchItems = await db.watchlistItem.findMany({
     where: {
-      priceAlertEnabled: true,
+      isPriceAlertEnabled: true,
       priceAtWatch: { not: null },
       listing: {
         status: "ACTIVE",

@@ -2,13 +2,13 @@
 // ─── Offer Domain Types ─────────────────────────────────────────────────────
 
 export interface CreateOfferInput {
-  listingId: string
-  amount: number
-  note?: string
+  listingId: string;
+  amount: number;
+  note?: string;
 }
 
 export interface RespondOfferInput {
-  offerId: string
-  action: 'ACCEPT' | 'DECLINE'
-  declineNote?: string
+  offerId: string;
+  action: "ACCEPT" | "DECLINE";
+  declineReason?: string;
 }

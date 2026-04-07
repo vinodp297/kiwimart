@@ -17,15 +17,15 @@ const dashboardSelect = {
   username: true,
   avatarKey: true,
   createdAt: true,
-  sellerEnabled: true,
+  isSellerEnabled: true,
   idVerified: true,
-  phoneVerified: true,
+  isPhoneVerified: true,
   emailVerified: true,
   region: true,
   bio: true,
   onboardingIntent: true,
-  onboardingCompleted: true,
-  stripeOnboarded: true,
+  isOnboardingCompleted: true,
+  isStripeOnboarded: true,
   sellerTermsAcceptedAt: true,
 } as const;
 
@@ -41,7 +41,7 @@ export type UserPublicProfile = Prisma.UserGetPayload<{
     avatarKey: true;
     region: true;
     bio: true;
-    sellerEnabled: true;
+    isSellerEnabled: true;
     createdAt: true;
     isBanned: true;
   };
@@ -54,7 +54,7 @@ export type UserForAuth = Prisma.UserGetPayload<{
     emailVerified: true;
     passwordHash: true;
     isBanned: true;
-    sellerEnabled: true;
+    isSellerEnabled: true;
     isAdmin: true;
   };
 }>;
@@ -62,10 +62,10 @@ export type UserForAuth = Prisma.UserGetPayload<{
 export type UserForSeller = Prisma.UserGetPayload<{
   select: {
     id: true;
-    sellerEnabled: true;
+    isSellerEnabled: true;
     sellerTermsAcceptedAt: true;
     stripeAccountId: true;
-    stripeOnboarded: true;
+    isStripeOnboarded: true;
     idVerified: true;
     idSubmittedAt: true;
     phone: true;
@@ -129,7 +129,7 @@ export const userRepository = {
    * @source src/server/actions/listings.ts — createListing */
   async findForListingAuth(id: string): Promise<{
     emailVerified: Date | null;
-    sellerEnabled: boolean;
+    isSellerEnabled: boolean;
     sellerTermsAcceptedAt: Date | null;
     displayName: string;
   } | null> {
@@ -137,7 +137,7 @@ export const userRepository = {
       where: { id },
       select: {
         emailVerified: true,
-        sellerEnabled: true,
+        isSellerEnabled: true,
         sellerTermsAcceptedAt: true,
         displayName: true,
       },
@@ -149,7 +149,7 @@ export const userRepository = {
   async findForAutoReview(id: string): Promise<{
     id: string;
     isBanned: boolean;
-    phoneVerified: boolean;
+    isPhoneVerified: boolean;
     idVerified: boolean;
     displayName: string;
   } | null> {
@@ -158,7 +158,7 @@ export const userRepository = {
       select: {
         id: true,
         isBanned: true,
-        phoneVerified: true,
+        isPhoneVerified: true,
         idVerified: true,
         displayName: true,
       },
@@ -201,7 +201,7 @@ export const userRepository = {
    * @source src/server/actions/cart.ts — cartCheckout */
   async findWithStripe(id: string): Promise<{
     stripeAccountId: string | null;
-    stripeOnboarded: boolean;
+    isStripeOnboarded: boolean;
     displayName: string;
     email: string;
   } | null> {
@@ -209,7 +209,7 @@ export const userRepository = {
       where: { id },
       select: {
         stripeAccountId: true,
-        stripeOnboarded: true,
+        isStripeOnboarded: true,
         displayName: true,
         email: true,
       },
@@ -404,20 +404,20 @@ export const userRepository = {
     });
   },
 
-  /** Fetch the current sellerEnabled flag.
+  /** Fetch the current isSellerEnabled flag.
    * @source src/modules/admin/admin.service.ts — toggleSellerEnabled */
   async findSellerEnabled(
     id: string,
     tx?: DbClient,
-  ): Promise<{ sellerEnabled: boolean } | null> {
+  ): Promise<{ isSellerEnabled: boolean } | null> {
     const client = tx ?? db;
     return client.user.findUnique({
       where: { id },
-      select: { sellerEnabled: true },
+      select: { isSellerEnabled: true },
     });
   },
 
-  /** Set the sellerEnabled flag.
+  /** Set the isSellerEnabled flag.
    * @source src/modules/admin/admin.service.ts — toggleSellerEnabled */
   async setSellerEnabled(
     id: string,
@@ -427,7 +427,7 @@ export const userRepository = {
     const client = tx ?? db;
     await client.user.update({
       where: { id },
-      data: { sellerEnabled: value },
+      data: { isSellerEnabled: value },
     });
   },
 
@@ -470,24 +470,24 @@ export const userRepository = {
   /** Fetch onboarding status fields.
    * @source src/server/actions/onboarding.ts — getOnboardingStatus */
   async findOnboardingStatus(id: string): Promise<{
-    onboardingCompleted: boolean;
+    isOnboardingCompleted: boolean;
     onboardingIntent: string | null;
     region: string | null;
     bio: string | null;
     displayName: string;
     emailVerified: Date | null;
-    stripeOnboarded: boolean;
+    isStripeOnboarded: boolean;
   } | null> {
     return db.user.findUnique({
       where: { id },
       select: {
-        onboardingCompleted: true,
+        isOnboardingCompleted: true,
         onboardingIntent: true,
         region: true,
         bio: true,
         displayName: true,
         emailVerified: true,
-        stripeOnboarded: true,
+        isStripeOnboarded: true,
       },
     });
   },
@@ -496,10 +496,10 @@ export const userRepository = {
    * @source src/server/actions/mfa.ts — initMfaSetup, getMfaStatus */
   async findMfaInfo(
     id: string,
-  ): Promise<{ mfaEnabled: boolean; email: string } | null> {
+  ): Promise<{ isMfaEnabled: boolean; email: string } | null> {
     return db.user.findUnique({
       where: { id },
-      select: { mfaEnabled: true, email: true },
+      select: { isMfaEnabled: true, email: true },
     });
   },
 
@@ -532,10 +532,10 @@ export const userRepository = {
         username: true,
         displayName: true,
         emailVerified: true,
-        phoneVerified: true,
+        isPhoneVerified: true,
         idVerified: true,
-        sellerEnabled: true,
-        stripeOnboarded: true,
+        isSellerEnabled: true,
+        isStripeOnboarded: true,
         isBanned: true,
         createdAt: true,
         region: true,
@@ -555,8 +555,8 @@ export const userRepository = {
   async findForStripeConnect(id: string): Promise<{
     id: string;
     stripeAccountId: string | null;
-    stripeOnboarded: boolean;
-    sellerEnabled: boolean;
+    isStripeOnboarded: boolean;
+    isSellerEnabled: boolean;
     email: string;
     displayName: string;
   } | null> {
@@ -565,8 +565,8 @@ export const userRepository = {
       select: {
         id: true,
         stripeAccountId: true,
-        stripeOnboarded: true,
-        sellerEnabled: true,
+        isStripeOnboarded: true,
+        isSellerEnabled: true,
         email: true,
         displayName: true,
       },
@@ -577,11 +577,11 @@ export const userRepository = {
    * @source src/server/actions/stripe.ts — getStripeOnboardingUrl, getStripeAccountStatus */
   async findStripeStatus(id: string): Promise<{
     stripeAccountId: string | null;
-    stripeOnboarded: boolean;
+    isStripeOnboarded: boolean;
   } | null> {
     return db.user.findUnique({
       where: { id },
-      select: { stripeAccountId: true, stripeOnboarded: true },
+      select: { stripeAccountId: true, isStripeOnboarded: true },
     });
   },
 
@@ -597,7 +597,9 @@ export const userRepository = {
         _count: {
           select: {
             sellerOrders: { where: { status: "COMPLETED" } },
-            reviewsAbout: { where: { reviewerRole: "BUYER", approved: true } },
+            reviewsAbout: {
+              where: { reviewerRole: "BUYER", isApproved: true },
+            },
           },
         },
       },
@@ -608,10 +610,10 @@ export const userRepository = {
    * @source src/server/actions/verification.documents.ts — submitIdVerification */
   async findVerificationDocStatus(
     id: string,
-  ): Promise<{ idVerified: boolean; sellerEnabled: boolean } | null> {
+  ): Promise<{ idVerified: boolean; isSellerEnabled: boolean } | null> {
     return db.user.findUnique({
       where: { id },
-      select: { idVerified: true, sellerEnabled: true },
+      select: { idVerified: true, isSellerEnabled: true },
     });
   },
 

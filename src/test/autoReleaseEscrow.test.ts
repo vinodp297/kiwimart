@@ -8,7 +8,29 @@ import {
   getAutoReleaseCountdown,
 } from "@/server/jobs/autoReleaseEscrow";
 import db from "@/lib/db";
+import { audit } from "@/server/lib/audit";
 import { mockStripeCapture } from "./setup";
+
+// ─── Mock order-event.service for cash release tests ────────────────────────
+vi.mock("@/modules/orders/order-event.service", () => ({
+  orderEventService: { recordEvent: vi.fn() },
+  ORDER_EVENT_TYPES: {
+    ORDER_CREATED: "ORDER_CREATED",
+    COMPLETED: "COMPLETED",
+    CANCELLED: "CANCELLED",
+    DISPUTE_OPENED: "DISPUTE_OPENED",
+  },
+  ACTOR_ROLES: {
+    BUYER: "BUYER",
+    SELLER: "SELLER",
+    SYSTEM: "SYSTEM",
+  },
+}));
+
+import {
+  orderEventService,
+  ORDER_EVENT_TYPES,
+} from "@/modules/orders/order-event.service";
 
 function makeOrder(overrides: Record<string, unknown> = {}) {
   return {
@@ -182,5 +204,119 @@ describe("getAutoReleaseCountdown", () => {
     const dispatchedAt = new Date("2026-03-16T10:00:00Z");
     const countdown = await getAutoReleaseCountdown(dispatchedAt);
     expect(countdown.daysRemaining).toBe(0);
+  });
+});
+
+// ── Cash pickup escrow release ────────────────────────────────────────────────
+
+function makeCashOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "cash-order-1",
+    sellerId: "seller-1",
+    completedAt: new Date("2026-03-16T10:00:00Z"), // Monday
+    payout: { id: "payout-1", status: "PENDING" },
+    ...overrides,
+  };
+}
+
+describe("processAutoReleases — cash pickup orders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("finalizes PENDING payout to PAID for cash order past escrow window", async () => {
+    vi.setSystemTime(new Date("2026-03-20T14:00:00Z")); // Friday — 4 biz days after Monday
+
+    // No dispatched orders
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([] as never) // dispatched query
+      .mockResolvedValueOnce([makeCashOrder()] as never); // cash query
+
+    vi.mocked(db.payout.updateMany).mockResolvedValue({ count: 1 } as never);
+
+    const result = await processAutoReleases();
+    expect(result.processed).toBe(1);
+    expect(result.errors).toBe(0);
+
+    expect(db.payout.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orderId: "cash-order-1", status: "PENDING" },
+        data: expect.objectContaining({ status: "PAID" }),
+      }),
+    );
+
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "PAYOUT_INITIATED",
+        metadata: expect.objectContaining({
+          trigger: "CASH_ESCROW_RELEASE",
+          newStatus: "PAID",
+        }),
+      }),
+    );
+
+    expect(orderEventService.recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: "cash-order-1",
+        type: ORDER_EVENT_TYPES.COMPLETED,
+        summary: expect.stringContaining("Cash pickup payout finalized"),
+      }),
+    );
+  });
+
+  it("does NOT finalize cash payout before escrow window elapses", async () => {
+    vi.setSystemTime(new Date("2026-03-18T10:00:00Z")); // Wednesday — only 2 biz days
+
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([makeCashOrder()] as never);
+
+    const result = await processAutoReleases();
+    expect(result.processed).toBe(0);
+    expect(db.payout.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("skips cash orders with no completedAt", async () => {
+    vi.setSystemTime(new Date("2026-03-25T10:00:00Z"));
+
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([makeCashOrder({ completedAt: null })] as never);
+
+    const result = await processAutoReleases();
+    expect(result.processed).toBe(0);
+    expect(db.payout.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not call Stripe for cash orders", async () => {
+    vi.setSystemTime(new Date("2026-03-20T14:00:00Z"));
+
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([makeCashOrder()] as never);
+    vi.mocked(db.payout.updateMany).mockResolvedValue({ count: 1 } as never);
+
+    await processAutoReleases();
+    expect(mockStripeCapture).not.toHaveBeenCalled();
+  });
+
+  it("handles payout update failure gracefully", async () => {
+    vi.setSystemTime(new Date("2026-03-20T14:00:00Z"));
+
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([] as never)
+      .mockResolvedValueOnce([makeCashOrder()] as never);
+    vi.mocked(db.payout.updateMany).mockRejectedValueOnce(
+      new Error("DB connection lost"),
+    );
+
+    const result = await processAutoReleases();
+    expect(result.errors).toBe(1);
+    expect(result.processed).toBe(0);
   });
 });

@@ -34,7 +34,7 @@ export async function acceptSellerTerms(): Promise<ActionResult<void>> {
   }
 
   // 2. Authorise — must have seller access
-  if (!user.sellerEnabled) {
+  if (!user.isSellerEnabled) {
     return {
       success: false,
       error: "Seller access is not enabled on your account.",
@@ -85,7 +85,7 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
   }
 
   // 2. Authorise
-  if (!user.sellerEnabled) {
+  if (!user.isSellerEnabled) {
     return {
       success: false,
       error: "Seller access is not enabled on your account.",

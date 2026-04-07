@@ -13,7 +13,7 @@
 // All jobs are idempotent — checks payout status before processing.
 
 import { Worker } from "bullmq";
-import { getRedisConnection } from "@/lib/queue";
+import { getQueueConnection } from "@/lib/queue";
 import type { PayoutJobData } from "@/lib/queue";
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
@@ -112,7 +112,7 @@ export function startPayoutWorker() {
     },
     {
       connection:
-        getRedisConnection() as unknown as import("bullmq").ConnectionOptions,
+        getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 2,
     },
   );

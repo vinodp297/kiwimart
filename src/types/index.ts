@@ -89,7 +89,7 @@ export interface ListingCard {
   status: ListingStatus;
   shippingOption: ShippingOption;
   shippingPrice: number | null; // null = free / pickup only
-  offersEnabled: boolean;
+  isOffersEnabled: boolean;
   // Quick-filter flags (default false when absent)
   isUrgent?: boolean;
   isNegotiable?: boolean;
@@ -107,7 +107,7 @@ export interface ListingDetail extends ListingCard {
   seller: SellerPublic;
   relatedListings: ListingCard[];
   offerCount: number;
-  gstIncluded: boolean;
+  isGstIncluded: boolean;
   pickupAddress: string | null;
 }
 
@@ -160,7 +160,7 @@ export interface SessionUser {
   email: string;
   avatarUrl: string | null;
   verified: boolean;
-  sellerEnabled: boolean;
+  isSellerEnabled: boolean;
 }
 
 // ─────────────────────────────── Auth Forms ──────────────────────────────────
@@ -178,7 +178,7 @@ export interface RegisterFormValues {
   password: string;
   confirmPassword: string;
   agreeTerms: boolean;
-  agreeMarketing: boolean;
+  hasMarketingConsent: boolean;
 }
 
 export interface ForgotPasswordFormValues {
@@ -199,8 +199,8 @@ export interface CreateListingFormValues {
   attributes: ListingAttribute[];
   // Step 3 — Pricing
   price: string;
-  offersEnabled: boolean;
-  gstIncluded: boolean;
+  isOffersEnabled: boolean;
+  isGstIncluded: boolean;
   // Step 4 — Shipping
   shippingOption: ShippingOption;
   shippingPrice: string;
@@ -263,7 +263,7 @@ export interface Message {
   senderId: string; // 'me' or other user id
   senderName: string;
   createdAt: string;
-  read: boolean;
+  isRead: boolean;
 }
 
 export interface SellerListing extends ListingCard {

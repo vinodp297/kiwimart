@@ -11,11 +11,126 @@ import {
   clearCart,
   checkoutCart,
 } from "@/server/actions/cart";
-import type { CartData } from "@/server/actions/cart";
+import type { CartData, DriftedItem } from "@/server/actions/cart";
 import { Alert, Button } from "@/components/ui/primitives";
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+// ── Price Change Modal ──────────────────────────────────────────────────────
+
+function PriceChangeModal({
+  driftedItems,
+  onAccept,
+  onCancel,
+  accepting,
+}: {
+  driftedItems: DriftedItem[];
+  onAccept: () => void;
+  onCancel: () => void;
+  accepting: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[500] flex items-center justify-center"
+      aria-modal="true"
+      role="dialog"
+    >
+      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b border-[#E3E0D9]">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#D4A843"
+                strokeWidth="2"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-[16px] font-bold text-[#141414]">
+                Prices have changed
+              </h2>
+              <p className="text-[13px] text-[#73706A]">
+                {driftedItems.length} item
+                {driftedItems.length !== 1 ? "s have" : " has"} a different
+                price since you added{" "}
+                {driftedItems.length !== 1 ? "them" : "it"} to your cart.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Drifted items list */}
+        <div className="px-6 py-4 max-h-64 overflow-y-auto space-y-3">
+          {driftedItems.map((item) => (
+            <div
+              key={item.listingId}
+              className="flex items-center justify-between gap-3 text-[13px]"
+            >
+              <span className="text-[#141414] font-medium truncate flex-1">
+                {item.title}
+              </span>
+              <div className="text-right shrink-0">
+                <span className="line-through text-[#9E9A91] mr-2">
+                  {formatPrice(item.oldPriceNzd)}
+                </span>
+                <span
+                  className={
+                    item.differenceNzd > 0
+                      ? "text-red-600 font-semibold"
+                      : "text-emerald-600 font-semibold"
+                  }
+                >
+                  {formatPrice(item.newPriceNzd)}
+                </span>
+                <p className="text-[11px] mt-0.5">
+                  {item.differenceNzd > 0 ? (
+                    <span className="text-red-500">
+                      +{formatPrice(item.differenceNzd)}
+                    </span>
+                  ) : (
+                    <span className="text-emerald-600">
+                      {formatPrice(item.differenceNzd)}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 py-4 border-t border-[#E3E0D9] flex gap-3">
+          <button
+            onClick={onCancel}
+            disabled={accepting}
+            className="flex-1 h-11 rounded-xl border border-[#E3E0D9] text-[14px] font-medium text-[#73706A]
+              hover:bg-[#F8F7F4] transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onAccept}
+            disabled={accepting}
+            className="flex-1 h-11 rounded-xl bg-[#D4A843] text-[#141414] text-[14px] font-semibold
+              hover:bg-[#B8912E] hover:text-white transition-colors disabled:opacity-50"
+          >
+            {accepting ? "Processing..." : "Accept & checkout"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function CartPage() {
@@ -26,6 +141,11 @@ export default function CartPage() {
   const [removing, setRemoving] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [priceModal, setPriceModal] = useState<{
+    driftedItems: DriftedItem[];
+    idempotencyKey: string;
+  } | null>(null);
+  const [acceptingPrices, setAcceptingPrices] = useState(false);
 
   const loadCart = useCallback(async () => {
     try {
@@ -84,26 +204,72 @@ export default function CartPage() {
     }
   }
 
-  async function handleCheckout() {
+  async function handleCheckout(confirmedPriceVersion?: boolean) {
     setCheckingOut(true);
     setError("");
     try {
       const idempotencyKey = `cart-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const result = await checkoutCart({ idempotencyKey });
+      const result = await checkoutCart({
+        idempotencyKey,
+        ...(confirmedPriceVersion ? { confirmedPriceVersion: true } : {}),
+      });
       if (result.success) {
-        // Redirect to the checkout/payment page with the order
+        setPriceModal(null);
         router.push(
           `/checkout/${result.data.orderId}?clientSecret=${result.data.clientSecret}`,
         );
+      } else if (
+        "requiresPriceConfirmation" in result &&
+        result.requiresPriceConfirmation &&
+        result.driftedItems
+      ) {
+        setPriceModal({ driftedItems: result.driftedItems, idempotencyKey });
+        await loadCart();
       } else {
         setError(result.error);
-        // Reload cart in case items became unavailable
         await loadCart();
       }
     } catch {
       setError("Checkout failed. Please try again.");
     } finally {
       setCheckingOut(false);
+    }
+  }
+
+  async function handleAcceptPrices() {
+    setAcceptingPrices(true);
+    setError("");
+    try {
+      const result = await checkoutCart({
+        idempotencyKey: priceModal?.idempotencyKey,
+        confirmedPriceVersion: true,
+      });
+      if (result.success) {
+        setPriceModal(null);
+        router.push(
+          `/checkout/${result.data.orderId}?clientSecret=${result.data.clientSecret}`,
+        );
+      } else if (
+        "requiresPriceConfirmation" in result &&
+        result.requiresPriceConfirmation &&
+        result.driftedItems
+      ) {
+        // Price changed again (race condition) — update modal
+        setPriceModal({
+          driftedItems: result.driftedItems,
+          idempotencyKey: priceModal?.idempotencyKey ?? "",
+        });
+        await loadCart();
+      } else {
+        setPriceModal(null);
+        setError(result.error);
+        await loadCart();
+      }
+    } catch {
+      setError("Checkout failed. Please try again.");
+      setPriceModal(null);
+    } finally {
+      setAcceptingPrices(false);
     }
   }
 
@@ -332,7 +498,7 @@ export default function CartPage() {
 
           {/* Checkout button */}
           <button
-            onClick={handleCheckout}
+            onClick={() => handleCheckout()}
             disabled={!canCheckout || checkingOut}
             className="w-full mt-4 min-h-[52px] bg-[#D4A843] hover:bg-[#B8912E]
               text-[#141414] font-semibold text-[15px] rounded-xl flex items-center
@@ -369,6 +535,16 @@ export default function CartPage() {
           </Link>
         </div>
       </div>
+
+      {/* Price change confirmation modal */}
+      {priceModal && (
+        <PriceChangeModal
+          driftedItems={priceModal.driftedItems}
+          onAccept={handleAcceptPrices}
+          onCancel={() => setPriceModal(null)}
+          accepting={acceptingPrices}
+        />
+      )}
     </div>
   );
 }

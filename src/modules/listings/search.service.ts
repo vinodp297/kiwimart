@@ -190,7 +190,7 @@ export class SearchService {
           suburb: true,
           shippingOption: true,
           shippingNzd: true,
-          offersEnabled: true,
+          isOffersEnabled: true,
           isUrgent: true,
           isNegotiable: true,
           shipsNationwide: true,
@@ -203,7 +203,7 @@ export class SearchService {
           locationLat: true,
           locationLng: true,
           images: {
-            where: { order: 0, safe: true },
+            where: { order: 0, isSafe: true },
             select: { r2Key: true, thumbnailKey: true },
             take: 1,
           },
@@ -247,7 +247,7 @@ export class SearchService {
           where: {
             subjectId: { in: sellerIds },
             reviewerRole: "BUYER",
-            approved: true,
+            isApproved: true,
           },
           _avg: { rating: true },
         })
@@ -291,7 +291,7 @@ export class SearchService {
       shippingOption:
         row.shippingOption.toLowerCase() as ListingCard["shippingOption"],
       shippingPrice: row.shippingNzd != null ? row.shippingNzd / 100 : null,
-      offersEnabled: row.offersEnabled,
+      isOffersEnabled: row.isOffersEnabled,
       isUrgent: row.isUrgent,
       isNegotiable: row.isNegotiable,
       shipsNationwide: row.shipsNationwide,

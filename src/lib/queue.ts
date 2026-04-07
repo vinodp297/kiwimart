@@ -12,26 +12,53 @@
 import { Queue } from "bullmq";
 import { getQueueConnection } from "@/infrastructure/queue/client";
 
-export { getQueueConnection as getRedisConnection };
+export { getQueueConnection };
+
+// ── Lazy queue factory ───────────────────────────────────────────────────────
+// Queue instances are created on first method access, not at module evaluation
+// time. This prevents `getQueueConnection()` (which throws when REDIS_URL is
+// absent) from running during Next.js build-time static page generation.
+//
+// The Proxy forwards every property access to the real Queue instance, which is
+// created exactly once per export. The exported API (`emailQueue.add(...)` etc.)
+// is identical to a plain Queue — callers need no changes.
+
+function lazyQueue(name: string): Queue {
+  let instance: Queue | null = null;
+  const getInstance = (): Queue => {
+    if (!instance) {
+      instance = new Queue(name, {
+        // BullMQ bundles its own ioredis types which conflict with the
+        // project's ioredis. The runtime connection works correctly — this
+        // cast bridges the type mismatch.
+        connection:
+          getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
+        defaultJobOptions: {
+          removeOnComplete: 100,
+          removeOnFail: 50,
+        },
+      });
+    }
+    return instance;
+  };
+  return new Proxy({} as Queue, {
+    get(_target, prop) {
+      const inst = getInstance();
+      const value = (inst as unknown as Record<string | symbol, unknown>)[prop];
+      return typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(inst)
+        : value;
+    },
+  });
+}
 
 // ── Queue instances ──────────────────────────────────────────────────────────
 
-const defaultOpts = {
-  // BullMQ bundles its own ioredis types which conflict with the project's ioredis.
-  // The runtime connection works correctly — this cast bridges the type mismatch.
-  connection:
-    getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
-  defaultJobOptions: {
-    removeOnComplete: 100,
-    removeOnFail: 50,
-  },
-};
-
-export const emailQueue = new Queue("email", defaultOpts);
-export const imageQueue = new Queue("image", defaultOpts);
-export const payoutQueue = new Queue("payout", defaultOpts);
-export const notificationQueue = new Queue("notification", defaultOpts);
-export const pickupQueue = new Queue("pickup", defaultOpts);
+export const emailQueue = lazyQueue("email");
+export const imageQueue = lazyQueue("image");
+export const payoutQueue = lazyQueue("payout");
+export const notificationQueue = lazyQueue("notification");
+export const pickupQueue = lazyQueue("pickup");
 
 // ── Job type definitions ─────────────────────────────────────────────────────
 

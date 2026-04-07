@@ -172,7 +172,7 @@ export class UserService {
       await userRepository.update(
         userId,
         {
-          phoneVerified: true,
+          isPhoneVerified: true,
           phoneVerifiedAt: new Date(),
           phone: encryptPhone(token.phone),
         },

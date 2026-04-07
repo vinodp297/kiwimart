@@ -88,7 +88,7 @@ export const reviewRepository = {
    * @source src/modules/reviews/review.service.ts — fetchSellerReviews */
   async findPublicSellerReviews(sellerId: string, take = 50) {
     return db.review.findMany({
-      where: { subjectId: sellerId, reviewerRole: "BUYER", approved: true },
+      where: { subjectId: sellerId, reviewerRole: "BUYER", isApproved: true },
       orderBy: { createdAt: "desc" },
       take,
       select: {
@@ -108,7 +108,7 @@ export const reviewRepository = {
    * @source src/modules/reviews/review.service.ts — fetchBuyerReviews */
   async findPublicBuyerReviews(buyerId: string, take = 50) {
     return db.review.findMany({
-      where: { subjectId: buyerId, reviewerRole: "SELLER", approved: true },
+      where: { subjectId: buyerId, reviewerRole: "SELLER", isApproved: true },
       orderBy: { createdAt: "desc" },
       take,
       select: {
@@ -132,7 +132,7 @@ export const reviewRepository = {
     cursor?: string,
   ): Promise<ReviewWithTags[]> {
     return db.review.findMany({
-      where: { subjectId, reviewerRole, approved: true },
+      where: { subjectId, reviewerRole, isApproved: true },
       orderBy: { createdAt: "desc" },
       take,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -157,7 +157,7 @@ export const reviewRepository = {
     reviewerRole: ReviewerRole,
   ): Promise<number> {
     return db.review.count({
-      where: { subjectId, reviewerRole, approved: true },
+      where: { subjectId, reviewerRole, isApproved: true },
     });
   },
 
@@ -168,7 +168,7 @@ export const reviewRepository = {
     reviewerRole: ReviewerRole,
   ): Promise<number | null> {
     const result = await db.review.aggregate({
-      where: { subjectId, reviewerRole, approved: true },
+      where: { subjectId, reviewerRole, isApproved: true },
       _avg: { rating: true },
     });
     return result._avg.rating;

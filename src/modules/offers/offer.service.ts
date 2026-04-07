@@ -24,7 +24,7 @@ export class OfferService {
     const listing = await listingRepository.findForOffer(input.listingId);
 
     if (!listing) throw AppError.notFound("Listing");
-    if (!listing.offersEnabled) {
+    if (!listing.isOffersEnabled) {
       throw AppError.validation("This seller is not accepting offers.");
     }
     if (listing.sellerId === userId) {
@@ -169,7 +169,7 @@ export class OfferService {
           lockErr.message.includes("temporarily unavailable")
         ) {
           throw new AppError(
-            "STRIPE_ERROR",
+            "PAYMENT_GATEWAY_ERROR",
             "Service temporarily unavailable. Please try again in a moment.",
             503,
           );
@@ -177,7 +177,7 @@ export class OfferService {
         throw lockErr;
       }
     } else {
-      await offerRepository.decline(input.offerId, input.declineNote);
+      await offerRepository.decline(input.offerId, input.declineReason);
     }
 
     // Notify buyer directly — BullMQ worker does not run on Vercel serverless

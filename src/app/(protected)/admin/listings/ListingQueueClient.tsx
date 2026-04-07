@@ -28,7 +28,7 @@ interface ListingRow {
     id: string;
     displayName: string | null;
     email: string | null;
-    phoneVerified: boolean | null;
+    isPhoneVerified: boolean | null;
     idVerified: boolean | null;
   };
   images: { r2Key: string; thumbnailKey: string | null }[];
@@ -63,7 +63,7 @@ function sellerVerificationBadge(seller: ListingRow["seller"]) {
         ID Verified
       </span>
     );
-  if (seller.phoneVerified)
+  if (seller.isPhoneVerified)
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-full">
         Phone Verified

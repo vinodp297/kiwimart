@@ -128,7 +128,7 @@ export class AutoResolutionService {
     const W = RESOLUTION_WEIGHTS;
 
     // ── Load platform config ──────────────────────────────────────────
-    const cfg = await getConfigMany([
+    const config = await getConfigMany([
       CONFIG_KEYS.AUTO_REFUND_SCORE_THRESHOLD,
       CONFIG_KEYS.AUTO_DISMISS_SCORE_THRESHOLD,
       CONFIG_KEYS.BUYER_FRAUD_DISPUTE_LIMIT,
@@ -145,9 +145,9 @@ export class AutoResolutionService {
     ]);
 
     const cfgInt = (k: ConfigKey, fallback: number) =>
-      parseInt(cfg.get(k) ?? String(fallback), 10);
+      parseInt(config.get(k) ?? String(fallback), 10);
     const cfgFloat = (k: ConfigKey, fallback: number) =>
-      parseFloat(cfg.get(k) ?? String(fallback));
+      parseFloat(config.get(k) ?? String(fallback));
 
     const autoRefundThreshold = cfgInt(
       CONFIG_KEYS.AUTO_REFUND_SCORE_THRESHOLD,

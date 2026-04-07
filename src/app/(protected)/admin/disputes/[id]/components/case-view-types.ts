@@ -150,7 +150,7 @@ export interface CaseData {
     displayName: string;
     idVerified: boolean;
     nzbn: string | null;
-    gstRegistered: boolean;
+    isGstRegistered: boolean;
     createdAt: string;
     metrics: {
       totalOrders: number;
@@ -239,7 +239,7 @@ export const SOP: Record<string, string> = {
 
 // ── Utility functions ─────────────────────────────────────────────────────────
 
-export function fmtDate(iso: string | null): string {
+export function formatDate(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-NZ", {
     day: "numeric",

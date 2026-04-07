@@ -22,7 +22,7 @@ export async function updateBusinessDetails(
       return { success: false, error: safeActionError(err, "Unauthorised.") };
     }
 
-    if (!user.sellerEnabled) {
+    if (!user.isSellerEnabled) {
       return {
         success: false,
         error: "Seller access is not enabled on your account.",
@@ -48,7 +48,7 @@ export async function updateBusinessDetails(
       };
     }
 
-    const { isBusinessSeller, nzbn, gstRegistered, gstNumber } = parsed.data;
+    const { isBusinessSeller, nzbn, isGstRegistered, gstNumber } = parsed.data;
 
     if (isBusinessSeller) {
       if (!nzbn) {
@@ -71,14 +71,14 @@ export async function updateBusinessDetails(
 
       await userRepository.update(user.id, {
         nzbn,
-        gstRegistered,
-        gstNumber: gstRegistered && gstNumber ? gstNumber : null,
+        isGstRegistered,
+        gstNumber: isGstRegistered && gstNumber ? gstNumber : null,
       });
     } else {
       // Clear business fields
       await userRepository.update(user.id, {
         nzbn: null,
-        gstRegistered: false,
+        isGstRegistered: false,
         gstNumber: null,
       });
     }
@@ -88,7 +88,7 @@ export async function updateBusinessDetails(
       action: "BUSINESS_DETAILS_UPDATED" as const,
       entityType: "User",
       entityId: user.id,
-      metadata: { isBusinessSeller, nzbn: nzbn || null, gstRegistered },
+      metadata: { isBusinessSeller, nzbn: nzbn || null, isGstRegistered },
       ip,
     });
 

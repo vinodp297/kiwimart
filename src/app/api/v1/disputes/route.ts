@@ -41,6 +41,7 @@ export async function POST(request: Request) {
           429,
           "RATE_LIMITED",
         ),
+        request.headers.get("origin"),
       );
     }
 
@@ -48,12 +49,16 @@ export async function POST(request: Request) {
     if (!body) {
       return withCors(
         apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
       );
     }
 
     const parsed = openDisputeSchema.safeParse(body);
     if (!parsed.success) {
-      return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
     }
 
     const { orderId, reason, buyerStatement } = parsed.data;
@@ -65,12 +70,18 @@ export async function POST(request: Request) {
       ip,
     );
 
-    return withCors(apiOk({ opened: true, orderId }, 201));
+    return withCors(
+      apiOk({ opened: true, orderId }, 201),
+      request.headers.get("origin"),
+    );
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

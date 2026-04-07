@@ -43,7 +43,7 @@ export interface PresignedUploadResult {
 }
 
 export interface ProcessedImageResult {
-  safe: boolean;
+  isSafe: boolean;
   r2Key?: string; // The processed full-size key (may differ from original)
   width?: number;
   height?: number;
@@ -100,8 +100,8 @@ export async function requestImageUpload(params: {
         where: {
           listingId: null,
           r2Key: { startsWith: `listings/${user.id}/` },
-          scanned: false,
-          safe: false,
+          isScanned: false,
+          isSafe: false,
           processedAt: null,
           // Use id-based heuristic: cuid() is roughly time-ordered.
           // For exact timing, we'd need a createdAt column.
@@ -148,8 +148,8 @@ export async function requestImageUpload(params: {
         r2Key,
         order: 0,
         sizeBytes: params.sizeBytes,
-        scanned: false,
-        safe: false,
+        isScanned: false,
+        isSafe: false,
       },
       select: { id: true },
     });
@@ -217,7 +217,7 @@ export async function confirmImageUpload(params: {
       return {
         success: true,
         data: {
-          safe: true,
+          isSafe: true,
           r2Key: result.fullKey, // Updated key after processing (e.g., uuid-full.webp)
           width: result.width,
           height: result.height,
@@ -259,12 +259,12 @@ export async function confirmImageUpload(params: {
         await db.listingImage.update({
           where: { id: params.imageId, r2Key: params.r2Key },
           data: {
-            scanned: true,
-            safe: true,
+            isScanned: true,
+            isSafe: true,
             scannedAt: new Date(),
           },
         });
-        return { success: true, data: { safe: true, r2Key: params.r2Key } };
+        return { success: true, data: { isSafe: true, r2Key: params.r2Key } };
       }
 
       // Real processing error (e.g. image too small, virus detected)

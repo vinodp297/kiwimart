@@ -131,7 +131,7 @@ export class TrustMetricsService {
         },
       }),
       db.review.findMany({
-        where: { subjectId: userId, reviewerRole: "BUYER", approved: true },
+        where: { subjectId: userId, reviewerRole: "BUYER", isApproved: true },
         select: { rating: true },
       }),
       db.order.count({

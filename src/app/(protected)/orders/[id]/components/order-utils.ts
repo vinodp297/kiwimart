@@ -26,7 +26,7 @@ export function getCourierUrl(trackingNumber: string): string {
 }
 
 // ── Format a date/time string for timeline display ───────────────────────────
-export function fmtDate(iso: string | null): string | null {
+export function formatDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   const day = d.getDate();

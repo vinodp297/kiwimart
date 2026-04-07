@@ -76,7 +76,23 @@ export interface CartItemData {
   isAvailable: boolean;
 }
 
-type ServiceResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export interface DriftedItem {
+  listingId: string;
+  title: string;
+  oldPriceNzd: number;
+  newPriceNzd: number;
+  differenceNzd: number;
+}
+
+import type { ServiceResult as BaseServiceResult } from "@/shared/types/service-result";
+
+// Extends the shared ServiceResult with cart-specific failure metadata
+type ServiceResult<T> =
+  | Extract<BaseServiceResult<T>, { ok: true }>
+  | (Extract<BaseServiceResult<T>, { ok: false }> & {
+      requiresPriceConfirmation?: true;
+      driftedItems?: DriftedItem[];
+    });
 
 function r2Url(key: string | null): string {
   return getImageUrl(key);
@@ -120,7 +136,12 @@ export class CartService {
 
       await cartRepository.addItemToCart(
         existingCart.id,
-        { listingId, priceNzd: listing.priceNzd, shippingNzd },
+        {
+          listingId,
+          priceNzd: listing.priceNzd,
+          shippingNzd,
+          snapshotPriceNzd: listing.priceNzd,
+        },
         new Date(Date.now() + CART_EXPIRY_MS),
       );
 
@@ -139,6 +160,7 @@ export class CartService {
       listingId,
       priceNzd: listing.priceNzd,
       shippingNzd,
+      snapshotPriceNzd: listing.priceNzd,
     });
 
     await safeRedisSet(`cart:active:${userId}`, newCart.id);
@@ -257,9 +279,10 @@ export class CartService {
         region: string;
         postcode: string;
       };
+      confirmedPriceVersion?: boolean;
     },
   ): Promise<ServiceResult<{ orderId: string; clientSecret: string }>> {
-    const { idempotencyKey, shippingAddress } = input;
+    const { idempotencyKey, shippingAddress, confirmedPriceVersion } = input;
 
     // Idempotency check
     if (idempotencyKey) {
@@ -320,9 +343,49 @@ export class CartService {
       };
     }
 
+    // ── Price drift detection ──────────────────────────────────────────────
+    // Compare snapshotPriceNzd (captured at add-time) with current listing price.
+    // If any item has drifted, update the snapshot to the current price and
+    // return a requiresPriceConfirmation response. On re-submit with
+    // confirmedPriceVersion=true, drift is re-checked to prevent race conditions.
+    const driftedItems: DriftedItem[] = [];
+    for (const item of cart.items) {
+      if (item.snapshotPriceNzd !== item.listing.priceNzd) {
+        driftedItems.push({
+          listingId: item.listingId,
+          title: item.listing.title,
+          oldPriceNzd: item.snapshotPriceNzd,
+          newPriceNzd: item.listing.priceNzd,
+          differenceNzd: item.listing.priceNzd - item.snapshotPriceNzd,
+        });
+      }
+    }
+
+    if (driftedItems.length > 0) {
+      // Update snapshots to current prices so the next confirmation check
+      // compares against the prices shown in the modal
+      await cartRepository.updateItemSnapshots(
+        driftedItems.map((d) => {
+          const cartItem = cart.items.find((i) => i.listingId === d.listingId)!;
+          return {
+            itemId: cartItem.id,
+            snapshotPriceNzd: d.newPriceNzd,
+            priceNzd: d.newPriceNzd,
+          };
+        }),
+      );
+
+      return {
+        ok: false,
+        error: "Prices have changed since you added items to your cart.",
+        requiresPriceConfirmation: true,
+        driftedItems,
+      };
+    }
+
     // Verify seller Stripe setup
     const seller = await userRepository.findWithStripe(cart.sellerId);
-    if (!seller?.stripeAccountId || !seller.stripeOnboarded) {
+    if (!seller?.stripeAccountId || !seller.isStripeOnboarded) {
       return {
         ok: false,
         error:
@@ -341,7 +404,7 @@ export class CartService {
       };
     }
 
-    // Calculate totals from current DB prices
+    // Calculate totals from snapshot prices (confirmed by buyer)
     let totalItemNzd = 0;
     let totalShippingNzd = 0;
     const orderItemsData: Array<{
@@ -356,11 +419,11 @@ export class CartService {
         item.listing.shippingOption === "PICKUP"
           ? 0
           : (item.listing.shippingNzd ?? 0);
-      totalItemNzd += item.listing.priceNzd;
+      totalItemNzd += item.snapshotPriceNzd;
       totalShippingNzd += currentShipping;
       orderItemsData.push({
         listingId: item.listing.id,
-        priceNzd: item.listing.priceNzd,
+        priceNzd: item.snapshotPriceNzd,
         shippingNzd: currentShipping,
         title: item.listing.title,
       });

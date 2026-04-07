@@ -127,14 +127,14 @@ export default function SellerDashboardReviews({ sellerId }: Props) {
           {review.tags && review.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {review.tags.map((tag) => {
-                const cfg = getTagConfig(tag as ReviewTagType);
-                if (!cfg) return null;
+                const config = getTagConfig(tag as ReviewTagType);
+                if (!config) return null;
                 return (
                   <span
                     key={tag}
-                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border ${cfg.colour}`}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-medium border ${config.colour}`}
                   >
-                    {cfg.emoji} {cfg.label}
+                    {config.emoji} {config.label}
                   </span>
                 );
               })}

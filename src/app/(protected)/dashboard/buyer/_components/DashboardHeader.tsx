@@ -149,7 +149,7 @@ export function ProfileHeader({
 export function SellerSetupPrompt({ user }: { user: DashboardUser }) {
   if (
     !(user.onboardingIntent === "SELL" || user.onboardingIntent === "BOTH") ||
-    user.stripeOnboarded
+    user.isStripeOnboarded
   ) {
     return null;
   }

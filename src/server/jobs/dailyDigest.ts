@@ -21,7 +21,7 @@ export async function sendDailyDigest() {
         _sum: { totalNzd: true },
       }),
       db.user.count({
-        where: { sellerEnabled: true, createdAt: { gte: yesterday } },
+        where: { isSellerEnabled: true, createdAt: { gte: yesterday } },
       }),
     ]);
 

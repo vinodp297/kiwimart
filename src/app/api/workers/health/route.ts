@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     try {
       await requirePermission("VIEW_SYSTEM_HEALTH");
     } catch {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
     }
   }
 

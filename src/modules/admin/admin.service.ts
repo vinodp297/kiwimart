@@ -69,14 +69,14 @@ export class AdminService {
     const user = await userRepository.findSellerEnabled(userId);
     if (!user) throw AppError.notFound("User");
 
-    await userRepository.setSellerEnabled(userId, !user.sellerEnabled);
+    await userRepository.setSellerEnabled(userId, !user.isSellerEnabled);
 
     audit({
       userId: adminUserId,
       action: "ADMIN_ACTION",
       entityType: "User",
       entityId: userId,
-      metadata: { action: "toggle_seller", newValue: !user.sellerEnabled },
+      metadata: { action: "toggle_seller", newValue: !user.isSellerEnabled },
     });
   }
 
@@ -224,7 +224,7 @@ export class AdminService {
         lockErr.message.includes("temporarily unavailable")
       ) {
         throw new AppError(
-          "STRIPE_ERROR",
+          "PAYMENT_GATEWAY_ERROR",
           "Service temporarily unavailable. Please try again in a moment.",
           503,
         );

@@ -46,7 +46,7 @@ export default async function CheckoutPage(props: {
           displayName: true,
           username: true,
           stripeAccountId: true,
-          stripeOnboarded: true,
+          isStripeOnboarded: true,
         },
       },
       images: {
@@ -119,7 +119,7 @@ export default async function CheckoutPage(props: {
   const regions = await getListValues("NZ_REGIONS");
 
   const sellerHasStripe =
-    listing.seller.stripeAccountId && listing.seller.stripeOnboarded;
+    listing.seller.stripeAccountId && listing.seller.isStripeOnboarded;
 
   return (
     <>

@@ -17,7 +17,7 @@ export function WatchlistCard({
   onRemove: () => void;
 }) {
   const isSold = item.status === "sold";
-  const [alertEnabled, setAlertEnabled] = useState(item.priceAlertEnabled);
+  const [alertEnabled, setAlertEnabled] = useState(item.isPriceAlertEnabled);
   const [alertLoading, setAlertLoading] = useState(false);
 
   async function handleToggleAlert() {

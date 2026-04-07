@@ -150,13 +150,13 @@ async function getHomePageData() {
           suburb: true,
           shippingOption: true,
           shippingNzd: true,
-          offersEnabled: true,
+          isOffersEnabled: true,
           status: true,
           viewCount: true,
           watcherCount: true,
           createdAt: true,
           images: {
-            where: { order: 0, safe: true },
+            where: { order: 0, isSafe: true },
             select: { r2Key: true },
             take: 1,
           },
@@ -310,7 +310,7 @@ export default async function HomePage() {
           | "pickup"
           | "both",
         shippingPrice: row.shippingNzd != null ? row.shippingNzd / 100 : null,
-        offersEnabled: row.offersEnabled,
+        isOffersEnabled: row.isOffersEnabled,
       }))
     : [...LISTINGS].sort((a, b) => b.watcherCount - a.watcherCount).slice(0, 8);
 

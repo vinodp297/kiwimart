@@ -4,7 +4,7 @@
 // ─── + H (Trust Profiles) + business seller notice ───────────────────────────
 
 import { Section } from "./case-view-shared";
-import { fmtDate } from "./case-view-types";
+import { formatDate } from "./case-view-types";
 import type {
   AutoResolution,
   Inconsistency,
@@ -188,7 +188,7 @@ export default function CaseViewHeader({
             label="Buyer"
             name={buyer.displayName}
             email={buyer.email}
-            memberSince={fmtDate(buyer.createdAt)}
+            memberSince={formatDate(buyer.createdAt)}
             stats={[
               { label: "Orders", value: buyer.metrics.totalOrders },
               { label: "Disputes", value: buyer.metrics.disputeCount },
@@ -209,7 +209,7 @@ export default function CaseViewHeader({
             label="Seller"
             name={seller.displayName}
             email={seller.email}
-            memberSince={fmtDate(seller.createdAt)}
+            memberSince={formatDate(seller.createdAt)}
             idVerified={seller.idVerified}
             stats={[
               { label: "Sales", value: seller.metrics.totalOrders },

@@ -52,7 +52,9 @@ export default function SellerDashboardPage() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [stripeOnboarded, setStripeOnboarded] = useState<boolean | null>(null);
+  const [isStripeOnboarded, setStripeOnboarded] = useState<boolean | null>(
+    null,
+  );
 
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [cropMode, setCropMode] = useState<CropMode>("avatar");
@@ -278,7 +280,7 @@ export default function SellerDashboardPage() {
       <main className="bg-[#FAFAF8] min-h-screen">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           {/* ── Stripe setup card (shown until onboarded) ──────────────── */}
-          {stripeOnboarded === false && (
+          {isStripeOnboarded === false && (
             <div className="bg-[#141414] text-white rounded-2xl p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <div className="flex-1 min-w-0">
                 <h3 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold mb-1">
@@ -300,7 +302,7 @@ export default function SellerDashboardPage() {
           )}
 
           {/* ── Phone verification banner ─────────────────────────────── */}
-          {!user.phoneVerified && !user.idVerified && (
+          {!user.isPhoneVerified && !user.idVerified && (
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 mb-6">
               <div className="flex-1 min-w-0">
                 <p className="text-[13.5px] font-semibold text-amber-900">
@@ -366,7 +368,9 @@ export default function SellerDashboardPage() {
           {activeTab === "overview" && (
             <div className="space-y-6" role="tabpanel" aria-label="Overview">
               <SellerDashboardStats stats={stats} />
-              <SellerDashboardQuickActions stripeOnboarded={stripeOnboarded} />
+              <SellerDashboardQuickActions
+                isStripeOnboarded={isStripeOnboarded}
+              />
               <SellerDashboardEarnings
                 orders={orders}
                 completedSales={stats.recentSales}

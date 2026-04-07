@@ -25,6 +25,7 @@ vi.mock("@/modules/cart/cart.repository", () => ({
     updateOrderStripePI: vi.fn(),
     findOrderStripePI: vi.fn(),
     findBuyerDisplayName: vi.fn(),
+    updateItemSnapshots: vi.fn(),
     $transaction: vi.fn(),
   },
 }));
@@ -66,7 +67,7 @@ vi.mock("@/modules/users/user.repository", () => ({
       .mockResolvedValue({ displayName: "Seller", username: "seller1" }),
     findWithStripe: vi.fn().mockResolvedValue({
       stripeAccountId: "acct_1234567890abcdef",
-      stripeOnboarded: true,
+      isStripeOnboarded: true,
       displayName: "Seller",
     }),
   },
@@ -444,6 +445,7 @@ describe("CartService", () => {
           listingId: "listing-1",
           priceNzd: 5000,
           shippingNzd: 500,
+          snapshotPriceNzd: 5000,
           listing: {
             id: "listing-1",
             title: "Vintage Lamp",
@@ -477,7 +479,7 @@ describe("CartService", () => {
       // Reset userRepository mocks (cleared by other tests)
       vi.mocked(userRepository.findWithStripe).mockResolvedValue({
         stripeAccountId: "acct_1234567890abcdef",
-        stripeOnboarded: true,
+        isStripeOnboarded: true,
         displayName: "Seller",
       } as never);
       // Reset paymentService mock
@@ -588,7 +590,7 @@ describe("CartService", () => {
     it("fails if seller has not completed Stripe setup", async () => {
       vi.mocked(userRepository.findWithStripe).mockResolvedValue({
         stripeAccountId: null,
-        stripeOnboarded: false,
+        isStripeOnboarded: false,
       } as never);
 
       const result = await cartService.checkoutCart(
@@ -681,6 +683,286 @@ describe("CartService", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.error).toContain("Payment setup failed");
       expect(cartRepository.releaseListings).toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 3. PRICE SNAPSHOTTING & DRIFT DETECTION
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe("price snapshotting", () => {
+    // Test 1: Adding item stores snapshotPriceNzd equal to current listing price
+    it("stores snapshotPriceNzd equal to current listing price on addToCart (new cart)", async () => {
+      vi.mocked(cartRepository.findListingForCart).mockResolvedValue(
+        validListing as never,
+      );
+      vi.mocked(cartRepository.findByUser).mockResolvedValue(null);
+      vi.mocked(cartRepository.createCart).mockResolvedValue({
+        items: [{ id: "item-1" }],
+      } as never);
+
+      await cartService.addToCart("buyer-1", "listing-1");
+
+      expect(cartRepository.createCart).toHaveBeenCalledWith(
+        expect.objectContaining({ snapshotPriceNzd: 5000 }),
+      );
+    });
+
+    // Test 2: Adding item to existing cart stores snapshotPriceNzd
+    it("stores snapshotPriceNzd equal to current listing price on addToCart (existing cart)", async () => {
+      vi.mocked(cartRepository.findListingForCart).mockResolvedValue(
+        validListing as never,
+      );
+      vi.mocked(cartRepository.findByUser).mockResolvedValue({
+        id: "cart-1",
+        sellerId: "seller-1",
+        items: [{ listingId: "listing-other" }],
+      } as never);
+      vi.mocked(cartRepository.addItemToCart).mockResolvedValue({} as never);
+
+      await cartService.addToCart("buyer-1", "listing-1");
+
+      expect(cartRepository.addItemToCart).toHaveBeenCalledWith(
+        "cart-1",
+        expect.objectContaining({ snapshotPriceNzd: 5000 }),
+        expect.any(Date),
+      );
+    });
+
+    // Test 3: Adding same item twice does NOT update snapshotPriceNzd (already rejected)
+    it("rejects duplicate item without updating snapshotPriceNzd", async () => {
+      vi.mocked(cartRepository.findListingForCart).mockResolvedValue(
+        validListing as never,
+      );
+      vi.mocked(cartRepository.findByUser).mockResolvedValue({
+        id: "cart-1",
+        sellerId: "seller-1",
+        items: [{ listingId: "listing-1" }],
+      } as never);
+
+      const result = await cartService.addToCart("buyer-1", "listing-1");
+
+      expect(result).toEqual({
+        ok: false,
+        error: "This item is already in your cart.",
+      });
+      expect(cartRepository.addItemToCart).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("price drift detection at checkout", () => {
+    const checkoutDataWithSnapshot = {
+      id: "cart-1",
+      sellerId: "seller-1",
+      expiresAt: new Date(Date.now() + 3600000),
+      items: [
+        {
+          id: "item-1",
+          listingId: "listing-1",
+          priceNzd: 5000,
+          shippingNzd: 500,
+          snapshotPriceNzd: 5000,
+          listing: {
+            id: "listing-1",
+            title: "Vintage Lamp",
+            priceNzd: 5000,
+            shippingNzd: 500,
+            shippingOption: "COURIER",
+            status: "ACTIVE",
+            sellerId: "seller-1",
+            deletedAt: null,
+          },
+        },
+      ],
+    };
+
+    beforeEach(() => {
+      vi.mocked(cartRepository.findByUserForCheckout).mockResolvedValue(
+        checkoutDataWithSnapshot as never,
+      );
+      vi.mocked(cartRepository.reserveListings).mockResolvedValue({
+        count: 1,
+      } as never);
+      vi.mocked(cartRepository.createOrder).mockResolvedValue({
+        id: "order-1",
+      } as never);
+      vi.mocked(cartRepository.updateOrderStripePI).mockResolvedValue(
+        undefined as never,
+      );
+      vi.mocked(cartRepository.findBuyerDisplayName).mockResolvedValue({
+        displayName: "Buyer",
+      } as never);
+      vi.mocked(cartRepository.updateItemSnapshots).mockResolvedValue(
+        undefined as never,
+      );
+      vi.mocked(userRepository.findWithStripe).mockResolvedValue({
+        stripeAccountId: "acct_1234567890abcdef",
+        isStripeOnboarded: true,
+        displayName: "Seller",
+      } as never);
+      vi.mocked(paymentService.createPaymentIntent).mockResolvedValue({
+        paymentIntentId: "pi_test_123",
+        clientSecret: "cs_test_secret",
+      } as never);
+    });
+
+    // Test 4: Checkout with no price drift proceeds normally
+    it("proceeds normally when snapshotPriceNzd matches current listing price", async () => {
+      const result = await cartService.checkoutCart(
+        "buyer-1",
+        "buyer@test.com",
+        {},
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.orderId).toBe("order-1");
+      }
+      expect(cartRepository.updateItemSnapshots).not.toHaveBeenCalled();
+    });
+
+    // Test 5: Checkout with price increase returns requiresPriceConfirmation
+    it("returns requiresPriceConfirmation when listing price increased", async () => {
+      vi.mocked(cartRepository.findByUserForCheckout).mockResolvedValue({
+        ...checkoutDataWithSnapshot,
+        items: [
+          {
+            ...checkoutDataWithSnapshot.items[0],
+            snapshotPriceNzd: 5000,
+            listing: {
+              ...checkoutDataWithSnapshot.items[0].listing,
+              priceNzd: 6000, // price increased from 5000 to 6000
+            },
+          },
+        ],
+      } as never);
+
+      const result = await cartService.checkoutCart(
+        "buyer-1",
+        "buyer@test.com",
+        {},
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.requiresPriceConfirmation).toBe(true);
+        expect(result.driftedItems).toHaveLength(1);
+        expect(result.driftedItems![0]).toEqual({
+          listingId: "listing-1",
+          title: "Vintage Lamp",
+          oldPriceNzd: 5000,
+          newPriceNzd: 6000,
+          differenceNzd: 1000,
+        });
+      }
+      expect(cartRepository.updateItemSnapshots).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ itemId: "item-1", snapshotPriceNzd: 6000 }),
+        ]),
+      );
+    });
+
+    // Test 6: Checkout with price decrease returns requiresPriceConfirmation with negative difference
+    it("returns requiresPriceConfirmation with negative difference when price decreased", async () => {
+      vi.mocked(cartRepository.findByUserForCheckout).mockResolvedValue({
+        ...checkoutDataWithSnapshot,
+        items: [
+          {
+            ...checkoutDataWithSnapshot.items[0],
+            snapshotPriceNzd: 5000,
+            listing: {
+              ...checkoutDataWithSnapshot.items[0].listing,
+              priceNzd: 3000, // price decreased from 5000 to 3000
+            },
+          },
+        ],
+      } as never);
+
+      const result = await cartService.checkoutCart(
+        "buyer-1",
+        "buyer@test.com",
+        {},
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.requiresPriceConfirmation).toBe(true);
+        expect(result.driftedItems![0].differenceNzd).toBe(-2000);
+      }
+    });
+
+    // Test 7: Checkout with confirmedPriceVersion=true and matching prices proceeds
+    it("proceeds when confirmedPriceVersion=true and prices now match snapshots", async () => {
+      // Snapshot was updated to 6000 in previous drift detection, now listing is 6000
+      vi.mocked(cartRepository.findByUserForCheckout).mockResolvedValue({
+        ...checkoutDataWithSnapshot,
+        items: [
+          {
+            ...checkoutDataWithSnapshot.items[0],
+            snapshotPriceNzd: 6000,
+            priceNzd: 6000,
+            listing: {
+              ...checkoutDataWithSnapshot.items[0].listing,
+              priceNzd: 6000,
+            },
+          },
+        ],
+      } as never);
+
+      const result = await cartService.checkoutCart(
+        "buyer-1",
+        "buyer@test.com",
+        { confirmedPriceVersion: true },
+      );
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.data.orderId).toBe("order-1");
+      }
+      expect(cartRepository.updateItemSnapshots).not.toHaveBeenCalled();
+    });
+
+    // Test 8: Checkout with confirmedPriceVersion=true but prices changed again (race condition)
+    it("returns requiresPriceConfirmation again when prices changed between confirmation and resubmit", async () => {
+      // Buyer confirmed 6000, but price moved to 7500 in the meantime
+      vi.mocked(cartRepository.findByUserForCheckout).mockResolvedValue({
+        ...checkoutDataWithSnapshot,
+        items: [
+          {
+            ...checkoutDataWithSnapshot.items[0],
+            snapshotPriceNzd: 6000, // updated to 6000 from previous drift
+            listing: {
+              ...checkoutDataWithSnapshot.items[0].listing,
+              priceNzd: 7500, // seller changed price again
+            },
+          },
+        ],
+      } as never);
+
+      const result = await cartService.checkoutCart(
+        "buyer-1",
+        "buyer@test.com",
+        { confirmedPriceVersion: true },
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.requiresPriceConfirmation).toBe(true);
+        expect(result.driftedItems).toHaveLength(1);
+        expect(result.driftedItems![0]).toEqual({
+          listingId: "listing-1",
+          title: "Vintage Lamp",
+          oldPriceNzd: 6000,
+          newPriceNzd: 7500,
+          differenceNzd: 1500,
+        });
+      }
+      // Snapshot should be updated to new price
+      expect(cartRepository.updateItemSnapshots).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ itemId: "item-1", snapshotPriceNzd: 7500 }),
+        ]),
+      );
     });
   });
 });

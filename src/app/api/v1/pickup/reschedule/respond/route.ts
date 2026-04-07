@@ -25,7 +25,10 @@ export async function POST(request: Request) {
       body = rescheduleRespondSchema.parse(await request.json());
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+        return withCors(
+          apiError("Validation failed", 400, "VALIDATION_ERROR"),
+          request.headers.get("origin"),
+        );
       }
       throw err;
     }
@@ -35,6 +38,7 @@ export async function POST(request: Request) {
       if (!body.alternativeTime) {
         return withCors(
           apiError("alternativeTime is required for PROPOSE_ALTERNATIVE.", 400),
+          request.headers.get("origin"),
         );
       }
       alternativeTime = new Date(body.alternativeTime);
@@ -50,15 +54,21 @@ export async function POST(request: Request) {
     });
 
     if (!result.success) {
-      return withCors(apiError(result.error!, 400));
+      return withCors(
+        apiError(result.error!, 400),
+        request.headers.get("origin"),
+      );
     }
 
-    return withCors(apiOk({ responded: true }));
+    return withCors(apiOk({ responded: true }), request.headers.get("origin"));
   } catch (e) {
-    return withCors(handleApiError(e));
+    return withCors(handleApiError(e), request.headers.get("origin"));
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }

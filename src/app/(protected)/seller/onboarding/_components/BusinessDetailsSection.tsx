@@ -8,7 +8,7 @@ import type { UserProps } from "./types";
 export function BusinessDetailsSection({ user }: { user: UserProps }) {
   const [isBusiness, setIsBusiness] = useState(!!user.nzbn);
   const [nzbn, setNzbn] = useState(user.nzbn ?? "");
-  const [gstRegistered, setGstRegistered] = useState(user.gstRegistered);
+  const [isGstRegistered, setIsGstRegistered] = useState(user.isGstRegistered);
   const [gstNumber, setGstNumber] = useState(user.gstNumber ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -21,8 +21,8 @@ export function BusinessDetailsSection({ user }: { user: UserProps }) {
     const result = await updateBusinessDetails({
       isBusinessSeller: isBusiness,
       nzbn: isBusiness ? nzbn : "",
-      gstRegistered: isBusiness ? gstRegistered : false,
-      gstNumber: isBusiness && gstRegistered ? gstNumber : "",
+      isGstRegistered: isBusiness ? isGstRegistered : false,
+      gstNumber: isBusiness && isGstRegistered ? gstNumber : "",
     });
     setSaving(false);
     if (result.success) {
@@ -110,15 +110,15 @@ export function BusinessDetailsSection({ user }: { user: UserProps }) {
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={gstRegistered}
-              onChange={(e) => setGstRegistered(e.target.checked)}
+              checked={isGstRegistered}
+              onChange={(e) => setIsGstRegistered(e.target.checked)}
               className="w-4 h-4 accent-[#D4A843]"
             />
             <span className="text-[13px] text-[#141414]">GST Registered</span>
           </label>
 
           {/* GST Number */}
-          {gstRegistered && (
+          {isGstRegistered && (
             <div>
               <label className="block text-[11px] font-medium text-[#73706A] mb-1">
                 GST Number

@@ -40,7 +40,7 @@ export async function getList(
   if (cached && cached.expiresAt > now) return cached.items;
 
   const rows = await db.dynamicListItem.findMany({
-    where: { listType, active: true },
+    where: { listType, isActive: true },
     orderBy: { sortOrder: "asc" },
     select: {
       value: true,

@@ -149,7 +149,7 @@ export interface DisputeCaseDetail {
     displayName: string;
     idVerified: boolean;
     nzbn: string | null;
-    gstRegistered: boolean;
+    isGstRegistered: boolean;
     createdAt: Date;
     metrics: {
       totalOrders: number;
@@ -266,7 +266,7 @@ const DISPUTE_SELECT = {
       displayName: true,
       idVerified: true,
       nzbn: true,
-      gstRegistered: true,
+      isGstRegistered: true,
     },
   },
 } satisfies Prisma.OrderSelect;
@@ -665,7 +665,7 @@ export class AdminDisputesService {
             displayName: true,
             idVerified: true,
             nzbn: true,
-            gstRegistered: true,
+            isGstRegistered: true,
             createdAt: true,
           },
         },
@@ -837,7 +837,7 @@ export class AdminDisputesService {
         displayName: order.seller.displayName,
         idVerified: order.seller.idVerified,
         nzbn: order.seller.nzbn,
-        gstRegistered: order.seller.gstRegistered,
+        isGstRegistered: order.seller.isGstRegistered,
         createdAt: order.seller.createdAt,
         metrics: {
           totalOrders: sellerMetricsRaw.totalOrders,

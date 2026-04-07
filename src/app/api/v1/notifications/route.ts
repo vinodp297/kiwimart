@@ -18,6 +18,7 @@ export async function GET(request: Request) {
     if (!session?.user?.id) {
       return withCors(
         apiOk({ notifications: [], nextCursor: null, hasMore: false }),
+        request.headers.get("origin"),
       );
     }
 
@@ -28,7 +29,10 @@ export async function GET(request: Request) {
       query = notificationsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return withCors(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+        return withCors(
+          apiError("Validation failed", 400, "VALIDATION_ERROR"),
+          request.headers.get("origin"),
+        );
       }
       throw err;
     }
@@ -45,7 +49,10 @@ export async function GET(request: Request) {
     const notifications = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (notifications.at(-1)?.id ?? null) : null;
 
-    const response = withCors(apiOk({ notifications, nextCursor, hasMore }));
+    const response = withCors(
+      apiOk({ notifications, nextCursor, hasMore }),
+      request.headers.get("origin"),
+    );
     response.headers.set("Cache-Control", "private, no-store");
     return response;
   } catch (e) {
@@ -55,6 +62,7 @@ export async function GET(request: Request) {
     });
     return withCors(
       apiError("We couldn't load your notifications. Please try again.", 500),
+      request.headers.get("origin"),
     );
   }
 }
@@ -63,17 +71,23 @@ export async function PATCH(request: Request) {
   try {
     const contentType = request.headers.get("content-type");
     if (contentType && !contentType.includes("application/json")) {
-      return withCors(apiError("Content-Type must be application/json", 415));
+      return withCors(
+        apiError("Content-Type must be application/json", 415),
+        request.headers.get("origin"),
+      );
     }
 
     const session = await auth();
     if (!session?.user?.id) {
-      return withCors(apiError("Unauthorised", 401));
+      return withCors(
+        apiError("Unauthorised", 401),
+        request.headers.get("origin"),
+      );
     }
 
     await notificationRepository.markAllRead(session.user.id);
 
-    return withCors(apiOk(null));
+    return withCors(apiOk(null), request.headers.get("origin"));
   } catch (e) {
     logger.error("api.error", {
       path: "/api/v1/notifications",
@@ -81,10 +95,14 @@ export async function PATCH(request: Request) {
     });
     return withCors(
       apiError("We couldn't update your notifications. Please try again.", 500),
+      request.headers.get("origin"),
     );
   }
 }
 
-export async function OPTIONS() {
-  return new Response(null, { status: 204, headers: getCorsHeaders() });
+export async function OPTIONS(request: Request) {
+  return new Response(null, {
+    status: 204,
+    headers: getCorsHeaders(request.headers.get("origin")),
+  });
 }
