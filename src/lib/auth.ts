@@ -1,5 +1,4 @@
 // src/lib/auth.ts
-// ─── Auth.js v5 Configuration ────────────────────────────────────────────────
 // Providers: Credentials (email + Argon2id) + Google OAuth
 // Session strategy: database sessions for instant revocation
 // Security extras:
@@ -59,7 +58,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   providers: [
-    // ── Credentials (email + password) ───────────────────────────────────────
     Credentials({
       credentials: {
         email: { type: "email" },
@@ -68,7 +66,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
 
       async authorize(credentials, request) {
-        // 0. Rate limit — prevent brute force attacks
         const ip = getClientIp(request.headers);
         const limitResult = await rateLimit("auth", ip || "unknown");
         if (!limitResult.success) {
@@ -77,7 +74,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           );
         }
 
-        // 1. Validate input shape with Zod
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) {
           logger.warn("authorize:fail", {
@@ -141,7 +137,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        // 5. Check bans
         if (user.isBanned) {
           logger.warn("authorize:fail", { reason: "banned", userId: user.id });
           audit({
@@ -161,7 +156,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
         }
 
-        // 7. Audit successful login
         audit({
           userId: user.id,
           action: "USER_LOGIN",
@@ -176,11 +170,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
 
-    // ── Google OAuth ──────────────────────────────────────────────────────────
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      // Auto-link Google accounts to existing email accounts
       allowDangerousEmailAccountLinking: false,
     }),
   ],
@@ -192,7 +184,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // 3. Assign a jti if the token doesn't have one yet (first issue).
     // 4. On initial sign-in: embed session version + custom DB fields.
     async jwt({ token, user, trigger: _trigger }) {
-      // ── Blocklist + session version checks (every request) ─────────────────
       // For admin tokens, fail CLOSED if Redis is unavailable — a Redis outage
       // must NOT grant admin access with a stolen/revoked JWT.
       const isAdminToken = !!token?.isAdmin;
@@ -221,12 +212,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       }
 
-      // ── Ensure unique jti ─────────────────────────────────────────────────────
       if (!token.jti) {
         token.jti = crypto.randomUUID();
       }
 
-      // ── Initial sign-in: embed session version + custom DB fields ─────────────
       if (user?.id) {
         // Stamp the current session version into the token so we can detect
         // subsequent sign-outs via the version-mismatch check above.
@@ -259,12 +248,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.avatarUrl = dbUser.avatarKey ?? null;
           token.emailVerified = dbUser.emailVerified?.toISOString() ?? null;
           token.idVerified = dbUser.idVerified;
-          // MFA: if user has TOTP enabled, mark session as pending verification
           token.mfaPending = dbUser.isMfaEnabled;
         }
       }
 
-      // On subsequent requests: if mfaPending, check if MFA was verified
       if (token.mfaPending && token.sub) {
         const verified = token.jti
           ? await isMfaVerified(token.jti as string)
@@ -332,7 +319,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
 
-    // Control sign-in flow
     async signIn({ user, account }) {
       // Block banned users at the OAuth level too
       if (account?.provider !== "credentials") {
@@ -376,8 +362,3 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
-
-// Turnstile verification is provided by the shared utility:
-// import { verifyTurnstile } from '@/server/lib/turnstile'
-// Removed local implementation to eliminate duplicate code with different
-// failure behaviour. The shared utility always fails CLOSED on network error.

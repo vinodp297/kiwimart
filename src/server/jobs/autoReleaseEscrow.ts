@@ -1,5 +1,4 @@
 // src/server/jobs/autoReleaseEscrow.ts
-// ─── Auto-Release Escrow Job ──────────────────────────────────────────────────
 // Captures Stripe payment and marks order COMPLETED for dispatched orders
 // that have not been confirmed by the buyer after 4 BUSINESS days.
 // Called daily at 2:00 AM UTC by Vercel Cron via /api/cron/auto-release
@@ -56,7 +55,7 @@ export async function processAutoReleases(): Promise<{
       status: "DISPATCHED",
       dispatchedAt: {
         not: null,
-        gte: cutoffDate, // Only orders dispatched in the last 30 days
+        gte: cutoffDate,
       },
     },
     take: 500, // Safety cap — prevents unbounded memory use
@@ -258,7 +257,6 @@ export async function processAutoReleases(): Promise<{
     }
   }
 
-  // ── Cash pickup orders: finalize PENDING payouts after escrow window ──────
   // CASH_ON_PICKUP orders are already COMPLETED at this point (the pickup
   // worker transitions them). A Payout record with status PENDING was created
   // at order-creation time. After the same business-day escrow window we mark

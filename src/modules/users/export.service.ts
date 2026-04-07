@@ -1,5 +1,4 @@
 // src/modules/users/export.service.ts
-// ─── PII Data Export — NZ Privacy Act 2020 ───────────────────────────────────
 // Collects all personal data for a user and sends it via email.
 // Rate limited: once per 30 days per user (tracked in Redis).
 
@@ -194,7 +193,6 @@ export async function exportUserData(
   userId: string,
   userEmail: string,
 ): Promise<void> {
-  // Rate limit check
   const isAllowed = await canRequestExport(userId);
   if (!isAllowed) {
     throw new AppError(
@@ -207,7 +205,6 @@ export async function exportUserData(
   const data = await collectUserData(userId);
   const jsonPayload = JSON.stringify(data, null, 2);
 
-  // Email queued — delivered asynchronously (non-blocking)
   await enqueueEmail({
     template: "dataExport",
     to: userEmail,

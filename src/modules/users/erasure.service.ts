@@ -1,5 +1,4 @@
 // src/modules/users/erasure.service.ts
-// ─── Account Erasure — NZ Privacy Act 2020 ───────────────────────────────────
 // Core logic for anonymising a user account and creating an immutable
 // ErasureLog record. Called by:
 //   • Self-service deletion (POST /api/v1/account/delete)
@@ -75,7 +74,6 @@ export async function performAccountErasure(
   const anonymisedEmail = `deleted_${userId}@buyzi.deleted`;
 
   const erasureLogId = await db.$transaction(async (tx) => {
-    // 1. Anonymise User record
     await userRepository.update(
       userId,
       {
@@ -102,10 +100,8 @@ export async function performAccountErasure(
       tx,
     );
 
-    // 2. Delete Messages sent by user
     await tx.message.deleteMany({ where: { senderId: userId } });
 
-    // 3. Delete Watchlist items
     await tx.watchlistItem.deleteMany({ where: { userId } });
 
     // 4. Anonymise Reviews — keep text for marketplace integrity
@@ -128,13 +124,11 @@ export async function performAccountErasure(
       },
     });
 
-    // 6. Withdraw pending offers
     await tx.offer.updateMany({
       where: { buyerId: userId, status: "PENDING" },
       data: { status: "WITHDRAWN" },
     });
 
-    // 7. Revoke all browser sessions
     await userRepository.deleteAllSessions(userId, tx);
 
     // 8. Create immutable ErasureLog
@@ -157,7 +151,6 @@ export async function performAccountErasure(
     logger.warn("erasure.session_invalidation.failed", { userId });
   }
 
-  // 10. Revoke all mobile tokens (Redis)
   try {
     await revokeAllMobileTokens(userId);
   } catch {
@@ -175,7 +168,6 @@ export async function performAccountErasure(
   // Must be sent AFTER the erasure succeeds so the confirmation is only sent
   // when the erasure was actually performed.
   if (originalUser) {
-    // Email queued — delivered asynchronously (non-blocking)
     await enqueueEmail({
       template: "erasureConfirmation",
       to: originalUser.email,

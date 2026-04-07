@@ -1,5 +1,4 @@
 // src/server/workers/pickupWorker.ts
-// ─── Pickup Processing Worker ───────────────────────────────────────────────
 // Processes pickupQueue jobs:
 //   1. PICKUP_SCHEDULE_DEADLINE — auto-cancel if no time agreed within 48h
 //   2. PICKUP_WINDOW_EXPIRED — seller no-show
@@ -77,8 +76,6 @@ export function startPickupWorker() {
   return worker;
 }
 
-// ── PICKUP_SCHEDULE_DEADLINE ────────────────────────────────────────────────
-
 async function handleScheduleDeadline(orderId: string): Promise<void> {
   const order = await db.order.findUnique({
     where: { id: orderId },
@@ -108,7 +105,6 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
     return;
   }
 
-  // Cancel order
   await db.$transaction(async (tx) => {
     await transitionOrder(
       orderId,
@@ -133,7 +129,6 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
     }
   });
 
-  // Refund buyer
   if (order.stripePaymentIntentId) {
     try {
       await paymentService.refundPayment({
@@ -148,7 +143,6 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
     }
   }
 
-  // Update seller trust metrics
   await db.trustMetrics
     .upsert({
       where: { userId: order.sellerId },
@@ -170,7 +164,6 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
     })
     .catch(() => {});
 
-  // Notifications
   createNotification({
     userId: order.buyerId,
     type: "SYSTEM",
@@ -207,8 +200,6 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
   });
 }
 
-// ── PICKUP_WINDOW_EXPIRED (seller no-show) ──────────────────────────────────
-
 async function handleWindowExpired(orderId: string): Promise<void> {
   const order = await db.order.findUnique({
     where: { id: orderId },
@@ -236,7 +227,6 @@ async function handleWindowExpired(orderId: string): Promise<void> {
     return;
   }
 
-  // Seller no-show — cancel and refund
   await db.$transaction(async (tx) => {
     await transitionOrder(
       orderId,
@@ -260,7 +250,6 @@ async function handleWindowExpired(orderId: string): Promise<void> {
     }
   });
 
-  // Refund buyer
   if (order.stripePaymentIntentId) {
     try {
       await paymentService.refundPayment({
@@ -300,7 +289,6 @@ async function handleWindowExpired(orderId: string): Promise<void> {
     })
     .catch(() => {});
 
-  // Notifications
   createNotification({
     userId: order.buyerId,
     type: "SYSTEM",
@@ -319,7 +307,6 @@ async function handleWindowExpired(orderId: string): Promise<void> {
     link: `/orders/${orderId}`,
   }).catch(() => {});
 
-  // Send dispute resolved email to buyer
   db.user
     .findUnique({
       where: { id: order.buyerId },
@@ -357,8 +344,6 @@ async function handleWindowExpired(orderId: string): Promise<void> {
     metadata: { trigger: "SELLER_NO_SHOW_AUTO_CANCELLED" },
   });
 }
-
-// ── OTP_EXPIRED (buyer no-show) ─────────────────────────────────────────────
 
 export async function handleOtpExpired(orderId: string): Promise<void> {
   const order = await db.order.findUnique({
@@ -466,7 +451,6 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
       { tx, fromStatus: order.status },
     );
 
-    // Create payout
     await tx.payout.upsert({
       where: { orderId },
       create: {
@@ -484,7 +468,6 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
       },
     });
 
-    // Mark listing as SOLD
     if (order.listingId) {
       await tx.listing
         .update({
@@ -495,7 +478,6 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
     }
   });
 
-  // Update buyer trust metrics
   await db.trustMetrics
     .upsert({
       where: { userId: order.buyerId },
@@ -520,7 +502,6 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
     })
     .catch(() => {});
 
-  // Notifications
   createNotification({
     userId: order.buyerId,
     type: "SYSTEM",
@@ -559,8 +540,6 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
     },
   });
 }
-
-// ── RESCHEDULE_RESPONSE_EXPIRED ─────────────────────────────────────────────
 
 async function handleRescheduleExpired(
   orderId: string,
@@ -612,7 +591,6 @@ async function handleRescheduleExpired(
     return;
   }
 
-  // Expire the request and cancel the order
   await db.$transaction(async (tx) => {
     await tx.pickupRescheduleRequest.update({
       where: { id: rescheduleRequestId },
@@ -642,7 +620,6 @@ async function handleRescheduleExpired(
     }
   });
 
-  // Refund buyer
   if (order.stripePaymentIntentId) {
     try {
       await paymentService.refundPayment({
@@ -657,14 +634,11 @@ async function handleRescheduleExpired(
     }
   }
 
-  // Determine parties
   const innocentPartyId =
     request.requestedById === order.buyerId ? order.sellerId : order.buyerId;
   const requesterRoleLabel =
     request.requestedByRole === "BUYER" ? "buyer" : "seller";
 
-  // Update trust metrics for the non-responder (innocent party didn't respond)
-  // Actually the requester caused the issue — flag them
   await db.trustMetrics
     .upsert({
       where: { userId: request.requestedById },
@@ -686,7 +660,6 @@ async function handleRescheduleExpired(
     })
     .catch(() => {});
 
-  // Notifications
   createNotification({
     userId: innocentPartyId,
     type: "SYSTEM",

@@ -1,6 +1,5 @@
 "use server";
 // src/server/actions/auth.ts
-// ─── Auth Server Actions ──────────────────────────────────────────────────────
 // Every action follows the 7-step security pattern:
 //   1. Authenticate   — verify session exists (where required)
 //   2. Authorise      — check permissions
@@ -29,8 +28,6 @@ import {
 } from "@/server/validators";
 import type { ActionResult } from "@/types";
 
-// ── registerUser ──────────────────────────────────────────────────────────────
-
 export async function registerUser(
   raw: unknown,
 ): Promise<ActionResult<{ userId: string }>> {
@@ -38,7 +35,6 @@ export async function registerUser(
   const ip = getClientIp(reqHeaders);
   const ua = reqHeaders.get("user-agent") ?? undefined;
 
-  // 3. Validate
   const parsed = registerSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -91,7 +87,6 @@ export async function registerUser(
     logger.warn("auth.register.breach_check_failed", {
       error: err instanceof Error ? err.message : String(err),
     });
-    // Fail-open: proceed with registration
   }
   if (isCompromised) {
     return {
@@ -106,7 +101,6 @@ export async function registerUser(
     };
   }
 
-  // 5c. Check email uniqueness
   const emailTaken = await userRepository.existsByEmail(normalizedEmail);
   if (emailTaken) {
     // Return the same error for email/username to prevent enumeration
@@ -117,21 +111,17 @@ export async function registerUser(
     };
   }
 
-  // 5d. Check username uniqueness
   const username = generateUsername(data.firstName, data.lastName);
   const usernameTaken = await userRepository.existsByUsername(username);
   const finalUsername = usernameTaken
     ? `${username}${Math.floor(Math.random() * 9000) + 1000}`
     : username;
 
-  // 5e. Hash password with Argon2id
   const passwordHash = await hashPassword(data.password);
 
-  // 5f. Generate email verification token (24-hour expiry)
   const verifyToken = crypto.randomBytes(32).toString("hex");
   const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  // 5g. Create user with verification token
   const user = await userRepository.create({
     email: normalizedEmail,
     username: finalUsername,
@@ -143,7 +133,6 @@ export async function registerUser(
     emailVerifyExpires: verifyExpires,
   });
 
-  // 5g. Queue verification email — delivered asynchronously (non-blocking)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const verifyUrl = `${appUrl}/api/verify-email?token=${verifyToken}`;
   await enqueueEmail({
@@ -157,7 +146,6 @@ export async function registerUser(
     });
   });
 
-  // 6. Audit
   audit({
     userId: user.id,
     action: "USER_REGISTER",
@@ -169,15 +157,12 @@ export async function registerUser(
   return { success: true, data: { userId: user.id } };
 }
 
-// ── forgotPassword ────────────────────────────────────────────────────────────
-
 export async function requestPasswordReset(
   raw: unknown,
 ): Promise<ActionResult<void>> {
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders);
 
-  // 3. Validate
   const parsed = forgotPasswordSchema.safeParse(raw);
   if (!parsed.success) {
     return { success: false, error: "Please enter a valid email address." };
@@ -208,7 +193,6 @@ export async function requestPasswordReset(
 
   // Always return success to prevent user enumeration
   if (user) {
-    // 5c. Generate a cryptographically secure token
     const rawToken = crypto.randomBytes(32).toString("hex"); // 64 hex chars
     const tokenHash = crypto
       .createHash("sha256")
@@ -216,13 +200,11 @@ export async function requestPasswordReset(
       .digest("hex");
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    // Invalidate any existing tokens for this user
     await db.passwordResetToken.updateMany({
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },
     });
 
-    // 5d. Store hashed token
     await db.passwordResetToken.create({
       data: {
         userId: user.id,
@@ -233,9 +215,7 @@ export async function requestPasswordReset(
       },
     });
 
-    // 5e. Queue password reset email — delivered asynchronously (non-blocking)
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`;
-    // Email queued — delivered asynchronously
     await enqueueEmail({
       template: "passwordReset",
       to: user.email,
@@ -248,7 +228,6 @@ export async function requestPasswordReset(
       });
     });
 
-    // 6. Audit
     audit({
       userId: user.id,
       action: "USER_PASSWORD_CHANGED",
@@ -257,17 +236,13 @@ export async function requestPasswordReset(
     });
   }
 
-  // Always return success (user enumeration prevention)
   return { success: true, data: undefined };
 }
-
-// ── resetPassword ─────────────────────────────────────────────────────────────
 
 export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
   const reqHeaders = await headers();
   const ip = getClientIp(reqHeaders);
 
-  // 3. Validate
   const parsed = resetPasswordSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -278,7 +253,6 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
   }
   const { token, password } = parsed.data;
 
-  // 4. Rate limit
   const limit = await rateLimit("auth", ip);
   if (!limit.success) {
     return {
@@ -287,7 +261,6 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
     };
   }
 
-  // 5a. Hash the raw token to look up in DB
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
   const resetRecord = await db.passwordResetToken.findUnique({
@@ -295,7 +268,6 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
     include: { user: { select: { id: true, email: true, displayName: true } } },
   });
 
-  // 5b. Validate token
   const GENERIC_ERROR =
     "Invalid or expired reset link. Please request a new one.";
   if (!resetRecord) return { success: false, error: GENERIC_ERROR };
@@ -303,7 +275,6 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
   if (resetRecord.expiresAt < new Date())
     return { success: false, error: GENERIC_ERROR };
 
-  // 5c. Hash new password and update user
   const newHash = await hashPassword(password);
   await db.$transaction(async (tx) => {
     await userRepository.update(
@@ -315,11 +286,9 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
       where: { id: resetRecord.id },
       data: { usedAt: new Date() },
     });
-    // Invalidate all active sessions for security
     await userRepository.deleteAllSessions(resetRecord.userId, tx);
   });
 
-  // 6. Audit
   audit({
     userId: resetRecord.userId,
     action: "USER_PASSWORD_CHANGED",
@@ -329,8 +298,6 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
 
   return { success: true, data: undefined };
 }
-
-// ── resendVerificationEmail ──────────────────────────────────────────────────
 
 export async function resendVerificationEmail(): Promise<ActionResult<void>> {
   const reqHeaders = await headers();
@@ -363,7 +330,6 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
     return { success: false, error: "Email is already verified." };
   }
 
-  // Generate new token (24-hour expiry)
   const token = crypto.randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -375,7 +341,6 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const verifyUrl = `${appUrl}/api/verify-email?token=${token}`;
 
-  // Email queued — delivered asynchronously (non-blocking)
   await enqueueEmail({
     template: "verification",
     to: user.email,
@@ -397,8 +362,6 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
   return { success: true, data: undefined };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function generateUsername(firstName: string, lastName: string): string {
   const base = `${firstName}${lastName}`
     .toLowerCase()
@@ -406,7 +369,3 @@ function generateUsername(firstName: string, lastName: string): string {
     .slice(0, 20);
   return base || "user";
 }
-
-// Turnstile verification delegated to shared utility: @/server/lib/turnstile
-// Removed local implementation — the shared version has consistent fail-closed
-// behaviour and a 5-second timeout. Import is at the top of this file.

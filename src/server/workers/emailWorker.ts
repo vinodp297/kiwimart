@@ -1,5 +1,4 @@
 // src/server/workers/emailWorker.ts
-// ─── Email Worker ────────────────────────────────────────────────────────────
 //
 // Processes email jobs from the BullMQ email queue.
 // Runs on a separate persistent process (Railway/Render/VPS) — NOT on Vercel
@@ -160,7 +159,6 @@ export function startEmailWorker() {
         jobId: job.id,
       });
 
-      // Audit successful send
       audit({
         action: "ADMIN_ACTION",
         metadata: {
