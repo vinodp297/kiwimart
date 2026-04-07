@@ -95,6 +95,15 @@ vi.mock("@/modules/users/user.repository", () => ({
     update: vi.fn().mockResolvedValue(undefined),
     deleteAllSessions: vi.fn().mockResolvedValue(undefined),
     findForEmailVerification: vi.fn().mockResolvedValue(null),
+    // Password reset methods added after password.ts refactoring
+    invalidatePendingResetTokens: vi.fn().mockResolvedValue(undefined),
+    createResetToken: vi.fn().mockResolvedValue(undefined),
+    findResetTokenWithUser: vi.fn().mockResolvedValue(null),
+    transaction: vi
+      .fn()
+      .mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(db),
+      ),
   },
 }));
 
@@ -528,11 +537,10 @@ describe("requestPasswordReset", () => {
 
     await requestPasswordReset({ email: "user@test.com" });
 
-    const createCall = vi.mocked(db.passwordResetToken.create).mock
+    const createCall = vi.mocked(userRepository.createResetToken).mock
       .calls[0]?.[0];
     expect(createCall).toBeDefined();
-    const tokenHash = (createCall as { data: { tokenHash: string } }).data
-      .tokenHash;
+    const tokenHash = (createCall as { tokenHash: string }).tokenHash;
     // tokenHash is a SHA-256 hex string (64 chars) — not the 64-char raw token itself
     // (raw token == 32 bytes hex == 64 chars; hash also 64 chars but different value)
     expect(tokenHash).toMatch(/^[0-9a-f]{64}$/);
@@ -550,6 +558,9 @@ describe("resetPassword", () => {
     });
     vi.mocked(isPasswordBreached).mockResolvedValue(false);
     vi.mocked(hashPassword).mockResolvedValue("$argon2id$new-hashed-password");
+    // Reset to null so "invalid token" tests pass even after a previous test
+    // overrode this mock to return a valid record.
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue(null);
   });
 
   const validResetInput = {
@@ -570,7 +581,7 @@ describe("resetPassword", () => {
   });
 
   it("rejects already-used token", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "tok-1",
       userId: "user-1",
       tokenHash: "hash",
@@ -588,7 +599,7 @@ describe("resetPassword", () => {
   });
 
   it("updates password after presenting a valid token", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "tok-1",
       userId: "user-1",
       tokenHash: "hash",
@@ -618,7 +629,7 @@ describe("resetPassword", () => {
   });
 
   it("marks reset token as used after successful reset", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "tok-1",
       userId: "user-1",
       tokenHash: "hash",
@@ -646,7 +657,7 @@ describe("resetPassword", () => {
   });
 
   it("invalidates all sessions for security after password reset", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "tok-1",
       userId: "user-1",
       tokenHash: "hash",

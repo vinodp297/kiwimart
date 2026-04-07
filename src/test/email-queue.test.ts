@@ -49,6 +49,19 @@ vi.mock("@/modules/users/user.repository", () => ({
     }),
     update: vi.fn().mockResolvedValue(undefined),
     deleteAllSessions: vi.fn().mockResolvedValue(undefined),
+    findEmailAndDisplayName: vi.fn().mockResolvedValue({
+      email: "original@buyzi.test",
+      displayName: "Original User",
+    }),
+    invalidatePendingResetTokens: vi.fn().mockResolvedValue(undefined),
+    createResetToken: vi.fn().mockResolvedValue(undefined),
+    findResetTokenWithUser: vi.fn().mockResolvedValue(null),
+    transaction: vi
+      .fn()
+      .mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const { default: dbClient } = await import("@/lib/db");
+        return fn(dbClient);
+      }),
   },
 }));
 

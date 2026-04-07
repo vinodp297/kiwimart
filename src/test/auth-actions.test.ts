@@ -62,6 +62,14 @@ vi.mock("@/modules/users/user.repository", () => ({
     }),
     findForEmailVerification: vi.fn().mockResolvedValue(null),
     findEmailVerified: vi.fn().mockResolvedValue({ emailVerified: new Date() }),
+    invalidatePendingResetTokens: vi.fn().mockResolvedValue(undefined),
+    createResetToken: vi.fn().mockResolvedValue(undefined),
+    findResetTokenWithUser: vi.fn().mockResolvedValue(null),
+    transaction: vi
+      .fn()
+      .mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(db),
+      ),
   },
 }));
 
@@ -258,7 +266,7 @@ describe("requestPasswordReset", () => {
     });
     expect(result.success).toBe(true);
     // No token created for non-existent user
-    expect(db.passwordResetToken.create).not.toHaveBeenCalled();
+    expect(userRepository.createResetToken).not.toHaveBeenCalled();
   });
 
   it("creates reset token when user exists", async () => {
@@ -274,17 +282,13 @@ describe("requestPasswordReset", () => {
     });
 
     expect(result.success).toBe(true);
-    expect(db.passwordResetToken.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ userId: "user-1" }),
-      }),
+    expect(userRepository.invalidatePendingResetTokens).toHaveBeenCalledWith(
+      "user-1",
     );
-    expect(db.passwordResetToken.create).toHaveBeenCalledWith(
+    expect(userRepository.createResetToken).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          userId: "user-1",
-          tokenHash: expect.any(String),
-        }),
+        userId: "user-1",
+        tokenHash: expect.any(String),
       }),
     );
   });
@@ -348,12 +352,9 @@ describe("requestPasswordReset", () => {
       turnstileToken: "",
     });
 
-    // updateMany called before create — invalidates old tokens
-    expect(db.passwordResetToken.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ userId: "user-1", usedAt: null }),
-        data: expect.objectContaining({ usedAt: expect.any(Date) }),
-      }),
+    // invalidatePendingResetTokens called before createResetToken — invalidates old tokens
+    expect(userRepository.invalidatePendingResetTokens).toHaveBeenCalledWith(
+      "user-1",
     );
   });
 });
@@ -370,10 +371,11 @@ describe("resetPassword", () => {
       retryAfter: 0,
     });
     mockHashPassword.mockResolvedValue("$argon2id$new-hash");
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue(null);
   });
 
   it("resets password with valid token", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "token-1",
       userId: "user-1",
       tokenHash: expect.any(String),
@@ -390,11 +392,11 @@ describe("resetPassword", () => {
 
     expect(result.success).toBe(true);
     // Transaction should execute (password update + token mark used + session delete)
-    expect(db.$transaction).toHaveBeenCalled();
+    expect(userRepository.transaction).toHaveBeenCalled();
   });
 
   it("rejects expired token", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "token-1",
       userId: "user-1",
       tokenHash: "hash",
@@ -416,7 +418,7 @@ describe("resetPassword", () => {
   });
 
   it("rejects already-used token", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "token-1",
       userId: "user-1",
       tokenHash: "hash",
@@ -438,7 +440,8 @@ describe("resetPassword", () => {
   });
 
   it("rejects non-existent token", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue(null);
+    // beforeEach already sets findResetTokenWithUser → null; explicit for clarity
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue(null);
 
     const result = await resetPassword({
       token: validToken,
@@ -466,7 +469,7 @@ describe("resetPassword", () => {
   });
 
   it("invalidates all sessions after reset", async () => {
-    vi.mocked(db.passwordResetToken.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findResetTokenWithUser).mockResolvedValue({
       id: "token-1",
       userId: "user-1",
       tokenHash: "hash",
