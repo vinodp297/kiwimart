@@ -23,6 +23,8 @@ import {
   requestProfileImageUpload,
   confirmProfileImageUpload,
 } from "@/server/actions/profile-images";
+import { deleteListing } from "@/server/actions/listings";
+import { toast } from "sonner";
 
 import SellerDashboardHeader from "./components/SellerDashboardHeader";
 import SellerDashboardStats from "./components/SellerDashboardStats";
@@ -176,12 +178,24 @@ export default function SellerDashboardPage() {
   }
 
   async function handleDeleteListing(id: string) {
-    setActionLoading(id);
-    // Sprint 5: await deleteListing(id) — server action with ownership check
-    await new Promise((r) => setTimeout(r, 600));
+    // Optimistically remove the listing for immediate feedback
+    const previousListings = listings;
     setListings((prev) => prev.filter((l) => l.id !== id));
     setDeleteConfirm(null);
+    setActionLoading(id);
+
+    const result = await deleteListing(id);
     setActionLoading(null);
+
+    if (!result.success) {
+      // Rollback — restore the listing in the UI
+      setListings(previousListings);
+      toast.error(
+        result.error ?? "We couldn't delete this listing. Please try again.",
+      );
+    } else {
+      toast.success("Listing deleted.");
+    }
   }
 
   // ── Loading skeleton ───────────────────────────────────────────────────────
