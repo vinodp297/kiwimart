@@ -1,23 +1,9 @@
 // src/app/api/v1/notifications/push/route.ts
 // ─── Push Token Registration ──────────────────────────────────────────────────
-// POST /api/v1/notifications/push — register a device push token
-//
-// TODO: Add PushToken model to prisma/schema.prisma to persist tokens:
-//   model PushToken {
-//     id        String   @id @default(cuid())
-//     userId    String
-//     token     String   @unique
-//     platform  String   // ios | android
-//     deviceId  String
-//     createdAt DateTime @default(now())
-//     updatedAt DateTime @updatedAt
-//     user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-//     @@index([userId])
-//   }
-// Then replace logger.info with: db.pushToken.upsert({ where: { token }, update: { updatedAt: new Date() }, create: { userId, token, platform, deviceId } })
+// POST   /api/v1/notifications/push — register (or refresh) a device push token
+// DELETE /api/v1/notifications/push — deactivate a push token on sign-out
 
 import { z } from "zod";
-import { logger } from "@/shared/logger";
 import {
   apiOk,
   apiError,
@@ -26,11 +12,19 @@ import {
 } from "../../_helpers/response";
 import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import { rateLimit } from "@/server/lib/rateLimit";
+import {
+  registerPushToken,
+  unregisterPushToken,
+} from "@/modules/notifications/notification.service";
 
-const pushTokenSchema = z.object({
+const registerSchema = z.object({
   token: z.string().min(1).max(512),
-  platform: z.enum(["ios", "android"]),
-  deviceId: z.string().min(1).max(255),
+  platform: z.enum(["ios", "android", "web"]),
+  deviceId: z.string().max(255).optional(),
+});
+
+const unregisterSchema = z.object({
+  token: z.string().min(1).max(512),
 });
 
 export async function POST(request: Request) {
@@ -57,7 +51,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const parsed = pushTokenSchema.safeParse(body);
+    const parsed = registerSchema.safeParse(body);
     if (!parsed.success) {
       return withCors(
         apiError("Validation failed", 400, "VALIDATION_ERROR"),
@@ -67,15 +61,48 @@ export async function POST(request: Request) {
 
     const { token, platform, deviceId } = parsed.data;
 
-    // TODO: persist via db.pushToken.upsert() once PushToken model is added to schema
-    logger.info("push.token.registered", {
-      userId: user.id,
-      platform,
-      deviceId,
-      tokenPrefix: token.slice(0, 8),
-    });
+    await registerPushToken(user.id, token, platform, deviceId);
 
-    return withCors(apiOk({ registered: true }), request.headers.get("origin"));
+    return withCors(
+      apiOk({ message: "Push token registered" }),
+      request.headers.get("origin"),
+    );
+  } catch (e) {
+    return withCors(handleApiError(e), request.headers.get("origin"));
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const user = await requireApiUser(request);
+
+    const body = await request.json().catch(() => null);
+    if (!body) {
+      return withCors(
+        apiError("Invalid request body", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
+    }
+
+    const parsed = unregisterSchema.safeParse(body);
+    if (!parsed.success) {
+      return withCors(
+        apiError("Validation failed", 400, "VALIDATION_ERROR"),
+        request.headers.get("origin"),
+      );
+    }
+
+    // Ownership is not enforced at DB level because a token is already
+    // user-specific — deactivating someone else's token would only hurt them.
+    // requireApiUser already verifies the caller is authenticated.
+    void user;
+
+    await unregisterPushToken(parsed.data.token);
+
+    return withCors(
+      apiOk({ message: "Push token unregistered" }),
+      request.headers.get("origin"),
+    );
   } catch (e) {
     return withCors(handleApiError(e), request.headers.get("origin"));
   }

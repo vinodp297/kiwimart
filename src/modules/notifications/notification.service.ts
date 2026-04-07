@@ -4,7 +4,10 @@
 // All callers must wrap this in fire-and-forget (non-blocking):
 //   createNotification({...}).catch(() => {})
 
-import { notificationRepository } from "./notification.repository";
+import {
+  notificationRepository,
+  type PushPlatform,
+} from "./notification.repository";
 import { logger } from "@/shared/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -86,4 +89,52 @@ export async function createNotification(
       error: err,
     });
   }
+}
+
+// ── Push token registration ───────────────────────────────────────────────────
+
+/**
+ * Register (or re-activate) a device push token for a user.
+ * Uses upsert — safe to call on every app launch even if the token hasn't
+ * changed. Tokens are never logged in full; only the first 8 characters
+ * appear in diagnostics.
+ */
+export async function registerPushToken(
+  userId: string,
+  token: string,
+  platform: PushPlatform,
+  deviceId?: string,
+): Promise<{ success: true }> {
+  await notificationRepository.upsertPushToken(
+    userId,
+    token,
+    platform,
+    deviceId,
+  );
+
+  logger.info("push.token.registered", {
+    userId,
+    platform,
+    deviceId,
+    tokenPrefix: token.slice(0, 8),
+  });
+
+  return { success: true };
+}
+
+/**
+ * Deactivate a push token (soft delete).
+ * Called on sign-out or when the device unregisters.
+ * The token row is retained for 90 days then purged by the cleanup job.
+ */
+export async function unregisterPushToken(
+  token: string,
+): Promise<{ success: true }> {
+  await notificationRepository.deactivatePushToken(token);
+
+  logger.info("push.token.unregistered", {
+    tokenPrefix: token.slice(0, 8),
+  });
+
+  return { success: true };
 }

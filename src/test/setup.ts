@@ -202,6 +202,12 @@ vi.mock("@/lib/db", () => {
       findMany: vi.fn().mockResolvedValue([]),
       findUnique: vi.fn().mockResolvedValue(null),
     },
+    pushToken: {
+      upsert: vi.fn().mockResolvedValue({ id: "pt-1" }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     $transaction: vi.fn().mockImplementation(async (fnOrArray: unknown) => {
       if (typeof fnOrArray === "function") {
         // Execute the callback with the db mock as the transaction client

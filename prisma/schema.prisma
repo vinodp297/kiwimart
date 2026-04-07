@@ -406,6 +406,9 @@ model User {
   sellerTierOverrideAt     DateTime?
   sellerTierOverrideBy     String?
 
+  // Push notifications
+  pushTokens               PushToken[]
+
   @@index([email])
   @@index([username])
   @@index([createdAt])
@@ -1484,6 +1487,31 @@ model DynamicListItem {
 
   @@unique([listType, value])
   @@index([listType, isActive, sortOrder])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Push Tokens — device push notification registration
+// ─────────────────────────────────────────────────────────────────────────────
+// Stores FCM/APNs/Web Push tokens for mobile and web clients.
+// Soft-deleted via isActive flag — hard-deleted by the weekly cleanup job
+// after 90 days of inactivity.
+
+model PushToken {
+  id         String    @id @default(cuid())
+  userId     String
+  token      String    @unique   // FCM/APNs/Web Push token — unique per device
+  platform   String              // "ios" | "android" | "web"
+  deviceId   String?             // optional device identifier for deduplication
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastUsedAt DateTime?
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([isActive, lastUsedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

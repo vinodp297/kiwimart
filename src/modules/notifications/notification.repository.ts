@@ -2,6 +2,22 @@ import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { userRepository } from "@/modules/users/user.repository";
 
+// ── Push token types ────────────────────────────────────────────────────────
+
+export type PushPlatform = "ios" | "android" | "web";
+
+export interface PushTokenRow {
+  id: string;
+  userId: string;
+  token: string;
+  platform: string;
+  deviceId: string | null;
+  isActive: boolean;
+  lastUsedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // ---------------------------------------------------------------------------
 // Notification repository — data access only, no business logic.
 // ---------------------------------------------------------------------------
@@ -147,5 +163,79 @@ export const notificationRepository = {
         }),
       ),
     );
+  },
+
+  // ── Push token methods ────────────────────────────────────────────────────
+
+  /**
+   * Upsert a push token for a user.
+   * If the token already exists (e.g. after app reinstall with the same token),
+   * update lastUsedAt and re-activate it. If new, create it.
+   * Token is never logged — only the first 8 characters for diagnostics.
+   */
+  async upsertPushToken(
+    userId: string,
+    token: string,
+    platform: PushPlatform,
+    deviceId?: string,
+  ): Promise<PushTokenRow> {
+    return db.pushToken.upsert({
+      where: { token },
+      update: {
+        userId,
+        platform,
+        deviceId: deviceId ?? null,
+        isActive: true,
+        lastUsedAt: new Date(),
+      },
+      create: {
+        userId,
+        token,
+        platform,
+        deviceId: deviceId ?? null,
+        isActive: true,
+        lastUsedAt: new Date(),
+      },
+    });
+  },
+
+  /**
+   * Soft-delete a push token by marking it inactive.
+   * Called on sign-out or when the device explicitly unregisters.
+   * Preserves the row for audit purposes — the weekly cleanup job
+   * hard-deletes tokens that have been inactive for 90+ days.
+   */
+  async deactivatePushToken(token: string): Promise<void> {
+    await db.pushToken.updateMany({
+      where: { token },
+      data: { isActive: false },
+    });
+  },
+
+  /**
+   * Return all active push tokens for a user.
+   * Used by the notification sender to fan out to all devices.
+   */
+  async getActivePushTokensByUserId(userId: string): Promise<PushTokenRow[]> {
+    return db.pushToken.findMany({
+      where: { userId, isActive: true },
+      orderBy: { lastUsedAt: "desc" },
+    });
+  },
+
+  /**
+   * Hard-delete push tokens that have been inactive for 90+ days.
+   * Intended to be called by the weekly cleanup cron job.
+   * Returns the count of deleted rows for logging.
+   */
+  async deleteInactivePushTokens(): Promise<number> {
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const result = await db.pushToken.deleteMany({
+      where: {
+        isActive: false,
+        updatedAt: { lt: cutoff },
+      },
+    });
+    return result.count;
   },
 };
