@@ -71,6 +71,8 @@ const { registerUser, requestPasswordReset, resetPassword } =
 const { changePassword } = await import("@/server/actions/account");
 const { userRepository } = await import("@/modules/users/user.repository");
 const { rateLimit } = await import("@/server/lib/rateLimit");
+// enqueueEmail is mocked globally by setup.ts; import for assertion
+const { enqueueEmail } = await import("@/lib/email-queue");
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -199,10 +201,10 @@ describe("registerUser", () => {
 
   it("sends verification email after successful registration", async () => {
     await registerUser(validRegisterInput);
-    // Wait for fire-and-forget email
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(mockSendVerificationEmail).toHaveBeenCalledWith(
+    // enqueueEmail is awaited inside the action so no setTimeout needed
+    expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
       expect.objectContaining({
+        template: "verification",
         to: "john@example.com",
         verifyUrl: expect.stringContaining("verify-email?token="),
       }),
@@ -299,10 +301,9 @@ describe("requestPasswordReset", () => {
       turnstileToken: "",
     });
 
-    // Wait for fire-and-forget
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(mockSendPasswordResetEmail).toHaveBeenCalledWith(
+    expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
       expect.objectContaining({
+        template: "passwordReset",
         to: "user@example.com",
         resetUrl: expect.stringContaining("reset-password?token="),
         expiresInMinutes: 60,

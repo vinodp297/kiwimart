@@ -786,3 +786,82 @@ export async function sendDataExportEmail(params: {
     html,
   });
 }
+
+// ── Account Erasure Confirmation (NZ Privacy Act 2020) ───────────────────────
+
+export async function sendErasureConfirmationEmail(params: {
+  to: string;
+  displayName: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Your account has been deleted</h1>
+    <p>Kia ora ${esc(params.displayName)},</p>
+    <p>
+      Your ${esc(APP_NAME)} account has been permanently deleted as requested.
+      All personal data has been removed in accordance with the
+      <strong>NZ Privacy Act 2020</strong>.
+    </p>
+    <p>
+      The following data has been deleted or anonymised:
+    </p>
+    <ul style="font-size:14px; line-height:1.7; color:#73706A; margin:0 0 16px; padding-left:20px;">
+      <li>Profile information (name, email, bio, phone)</li>
+      <li>Messages and watchlist items</li>
+      <li>Payment and payout details</li>
+      <li>Login sessions and security credentials</li>
+    </ul>
+    <p>
+      Order history is retained for financial record-keeping as required by NZ law.
+      If you have questions, contact us at
+      <a href="mailto:privacy@buyzi.co.nz" style="color:#D4A843;">privacy@buyzi.co.nz</a>.
+    </p>
+    <hr class="divider">
+    <p style="font-size:12px; color:#9E9A91;">
+      This confirmation was sent to your registered email address before deletion.
+      You will not receive further emails from ${esc(APP_NAME)}.
+    </p>`,
+    `Your ${APP_NAME} account has been deleted`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Your ${APP_NAME} account has been deleted`,
+    html,
+  });
+}
+
+// ── Admin: ID Verification Notification ──────────────────────────────────────
+
+export async function sendAdminIdVerificationEmail(params: {
+  to: string;
+  userId: string;
+  userEmail: string;
+  submittedAt: string;
+  adminUrl: string;
+}): Promise<void> {
+  const appName = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
+  const html = baseTemplate(
+    `<h1>New ID Verification Request</h1>
+    <p>A seller has submitted their ID for verification.</p>
+    <table style="width:100%; border-collapse:collapse; font-size:14px; margin:16px 0;">
+      <tr>
+        <td style="padding:8px 0; color:#9E9A91; width:140px;">User ID</td>
+        <td style="padding:8px 0; font-weight:600;">${esc(params.userId)}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0; color:#9E9A91;">Email</td>
+        <td style="padding:8px 0; font-weight:600;">${esc(params.userEmail)}</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0; color:#9E9A91;">Submitted at</td>
+        <td style="padding:8px 0;">${esc(params.submittedAt)}</td>
+      </tr>
+    </table>
+    <a href="${esc(params.adminUrl)}" class="btn">Review in Admin Dashboard →</a>`,
+    `[${appName}] New ID Verification Request`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `[${appName}] New ID Verification Request`,
+    html,
+  });
+}

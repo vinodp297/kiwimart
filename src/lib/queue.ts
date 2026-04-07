@@ -91,17 +91,87 @@ export { DEFAULT_JOB_OPTIONS };
 
 // ── Job type definitions ─────────────────────────────────────────────────────
 
-export interface EmailJobData {
-  type:
-    | "welcome"
-    | "passwordReset"
-    | "offerReceived"
-    | "offerResponse"
-    | "orderDispatched"
-    | "orderComplete"
-    | "disputeOpened";
-  payload: Record<string, unknown>;
-}
+// ── Email job data — discriminated union on `template` ───────────────────────
+// Each variant carries exactly the fields needed to render that template.
+// `correlationId` and `enqueuedAt` are injected by enqueueEmail().
+// NEVER include passwords, tokens, or secret keys in job payloads.
+
+export type EmailJobData = {
+  correlationId?: string;
+  enqueuedAt?: string;
+} & (
+  | {
+      template: "verification";
+      to: string;
+      displayName: string;
+      verifyUrl: string;
+    }
+  | { template: "welcome"; to: string; displayName: string }
+  | {
+      template: "passwordReset";
+      to: string;
+      displayName: string;
+      resetUrl: string;
+      expiresInMinutes: number;
+    }
+  | {
+      template: "dataExport";
+      to: string;
+      displayName: string;
+      jsonPayload: string;
+    }
+  | { template: "erasureConfirmation"; to: string; displayName: string }
+  | {
+      template: "adminIdVerification";
+      to: string;
+      userId: string;
+      userEmail: string;
+      submittedAt: string;
+      adminUrl: string;
+    }
+  | {
+      template: "offerReceived";
+      to: string;
+      sellerName: string;
+      buyerName: string;
+      listingTitle: string;
+      offerAmount: number;
+      listingUrl: string;
+    }
+  | {
+      template: "offerResponse";
+      to: string;
+      buyerName: string;
+      listingTitle: string;
+      accepted: boolean;
+      listingUrl: string;
+    }
+  | {
+      template: "orderDispatched";
+      to: string;
+      buyerName: string;
+      listingTitle: string;
+      trackingNumber?: string;
+      trackingUrl?: string;
+      orderUrl: string;
+    }
+  | {
+      template: "orderComplete";
+      to: string;
+      buyerName: string;
+      listingTitle: string;
+    }
+  | {
+      template: "disputeOpened";
+      to: string;
+      sellerName: string;
+      buyerName: string;
+      listingTitle: string;
+      orderId: string;
+      reason: string;
+      description: string;
+    }
+);
 
 export interface ImageJobData {
   imageId: string;

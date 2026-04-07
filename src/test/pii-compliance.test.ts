@@ -120,6 +120,8 @@ import {
   exportUserData,
   canRequestExport,
 } from "@/modules/users/export.service";
+// enqueueEmail is mocked globally by setup.ts (via setupFiles); import for assertion
+const { enqueueEmail } = await import("@/lib/email-queue");
 import { performAccountErasure } from "@/modules/users/erasure.service";
 import { POST as postDeleteAccount } from "@/app/api/v1/account/delete/route";
 import { POST as postAdminErase } from "@/app/api/admin/users/[userId]/erase/route";
@@ -221,8 +223,11 @@ describe("PII data export", () => {
   it("emails the data to the user after export", async () => {
     await exportUserData(TEST_USER.id, TEST_USER.email);
 
-    expect(mockSendDataExportEmail).toHaveBeenCalledWith(
+    // export.service now queues via enqueueEmail instead of calling
+    // sendDataExportEmail directly — assert on the queue job payload
+    expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
       expect.objectContaining({
+        template: "dataExport",
         to: TEST_USER.email,
         displayName: "Test User",
         jsonPayload: expect.any(String),

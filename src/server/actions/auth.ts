@@ -21,6 +21,7 @@ import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
+import { enqueueEmail } from "@/lib/email-queue";
 import {
   registerSchema,
   forgotPasswordSchema,
@@ -142,20 +143,19 @@ export async function registerUser(
     emailVerifyExpires: verifyExpires,
   });
 
-  // 5g. Send verification email (non-blocking; welcome email sent after verification)
+  // 5g. Queue verification email — delivered asynchronously (non-blocking)
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const verifyUrl = `${appUrl}/api/verify-email?token=${verifyToken}`;
-  try {
-    const { sendVerificationEmail } = await import("@/server/email");
-    sendVerificationEmail({
-      to: user.email,
-      displayName: user.displayName,
-      verifyUrl,
-    }).catch(() => {});
-  } catch {
-    // Non-fatal — user can request resend later
-    logger.error("auth.verification_email.failed", { email: user.email });
-  }
+  await enqueueEmail({
+    template: "verification",
+    to: user.email,
+    displayName: user.displayName,
+    verifyUrl,
+  }).catch((err) => {
+    logger.warn("auth.register.email_queue.failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   // 6. Audit
   audit({
@@ -233,26 +233,20 @@ export async function requestPasswordReset(
       },
     });
 
-    // 5e. Send reset email — fire-and-forget to avoid blocking the response.
-    // Always return success to prevent user enumeration regardless of email delivery.
+    // 5e. Queue password reset email — delivered asynchronously (non-blocking)
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`;
-    try {
-      const { sendPasswordResetEmail } = await import("@/server/email");
-      sendPasswordResetEmail({
-        to: user.email,
-        displayName: user.displayName,
-        resetUrl,
-        expiresInMinutes: 60,
-      }).catch((err: unknown) => {
-        logger.error("auth.password_reset.email.failed", {
-          error: err instanceof Error ? err.message : String(err),
-          to: `***@${user.email.split("@")[1]}`,
-        });
+    // Email queued — delivered asynchronously
+    await enqueueEmail({
+      template: "passwordReset",
+      to: user.email,
+      displayName: user.displayName,
+      resetUrl,
+      expiresInMinutes: 60,
+    }).catch((err) => {
+      logger.warn("auth.password_reset.email_queue.failed", {
+        error: err instanceof Error ? err.message : String(err),
       });
-    } catch {
-      // Import failure — non-fatal, log and continue
-      logger.warn("auth.password_reset.email.import_failed");
-    }
+    });
 
     // 6. Audit
     audit({
@@ -381,21 +375,17 @@ export async function resendVerificationEmail(): Promise<ActionResult<void>> {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
   const verifyUrl = `${appUrl}/api/verify-email?token=${token}`;
 
-  try {
-    const { sendVerificationEmail } = await import("@/server/email");
-    await sendVerificationEmail({
-      to: user.email,
-      displayName: user.displayName ?? "there",
-      verifyUrl,
+  // Email queued — delivered asynchronously (non-blocking)
+  await enqueueEmail({
+    template: "verification",
+    to: user.email,
+    displayName: user.displayName ?? "there",
+    verifyUrl,
+  }).catch((err) => {
+    logger.warn("auth.resend_verification.email_queue.failed", {
+      error: err instanceof Error ? err.message : String(err),
     });
-  } catch {
-    logger.error("auth.resend_verification.failed", { email: user.email });
-    return {
-      success: false,
-      error:
-        "We couldn't resend the verification email. Please wait a moment and try again.",
-    };
-  }
+  });
 
   audit({
     userId: user.id,

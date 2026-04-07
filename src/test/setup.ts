@@ -332,11 +332,23 @@ vi.mock("@/lib/pusher", () => ({
   }),
 }));
 
+// ── Mock email queue helper ───────────────────────────────────────────────────
+vi.mock("@/lib/email-queue", () => ({
+  enqueueEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ── Mock server email ────────────────────────────────────────────────────────
 vi.mock("@/server/email", () => ({
+  sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+  sendWelcomeEmail: vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
   sendOrderDispatchedEmail: vi.fn().mockResolvedValue(undefined),
   sendOfferReceivedEmail: vi.fn().mockResolvedValue(undefined),
   sendOfferResponseEmail: vi.fn().mockResolvedValue(undefined),
+  sendDataExportEmail: vi.fn().mockResolvedValue(undefined),
+  sendErasureConfirmationEmail: vi.fn().mockResolvedValue(undefined),
+  sendAdminIdVerificationEmail: vi.fn().mockResolvedValue(undefined),
+  sendDisputeOpenedEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ── Mock password ────────────────────────────────────────────────────────────

@@ -96,6 +96,8 @@ const {
   approveIdVerification,
   rejectIdVerification,
 } = await import("@/server/actions/seller");
+// enqueueEmail is mocked globally by setup.ts; import for assertion
+const { enqueueEmail } = await import("@/lib/email-queue");
 
 const { completeOnboarding, getOnboardingStatus } =
   await import("@/server/actions/onboarding");
@@ -222,13 +224,11 @@ describe("Seller Onboarding", () => {
 
       await submitIdVerification();
 
-      // Wait for fire-and-forget
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(mockEmailSend).toHaveBeenCalledWith(
+      // seller.ts now queues via enqueueEmail — assert on the queue job payload
+      expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
         expect.objectContaining({
+          template: "adminIdVerification",
           to: "admin@test.com",
-          subject: expect.stringContaining("ID Verification"),
         }),
       );
 
@@ -269,13 +269,11 @@ describe("Seller Onboarding", () => {
 
       await approveIdVerification("user-1");
 
-      // Wait for fire-and-forget
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      expect(mockEmailSend).toHaveBeenCalledWith(
+      // seller.ts now queues via enqueueEmail — assert on the queue job payload
+      expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
         expect.objectContaining({
+          template: "adminIdVerification",
           to: "seller@test.com",
-          subject: expect.stringContaining("approved"),
         }),
       );
     });

@@ -155,6 +155,8 @@ const { verifyTurnstile } = await import("@/server/lib/turnstile");
 const { sendVerificationEmail, sendPasswordResetEmail } =
   await import("@/server/email");
 const { rateLimit } = await import("@/server/lib/rateLimit");
+// enqueueEmail is mocked globally by setup.ts; import for assertion
+const { enqueueEmail } = await import("@/lib/email-queue");
 
 // ── Shared valid registration data ────────────────────────────────────────────
 
@@ -317,10 +319,10 @@ describe("registerUser", () => {
   it("sends verification email after successful registration", async () => {
     await registerUser(validRegisterInput);
 
-    // sendVerificationEmail is dynamically imported inside registerUser — allow event loop tick
-    await new Promise((r) => setTimeout(r, 0));
-    expect(sendVerificationEmail).toHaveBeenCalledWith(
+    // enqueueEmail is awaited inside the action — called before action returns
+    expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
       expect.objectContaining({
+        template: "verification",
         to: "john@example.com",
         verifyUrl: expect.stringContaining("/api/verify-email?token="),
       }),
@@ -494,9 +496,9 @@ describe("requestPasswordReset", () => {
     const result = await requestPasswordReset({ email: "user@test.com" });
 
     expect(result.success).toBe(true);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(sendPasswordResetEmail).toHaveBeenCalledWith(
+    expect(vi.mocked(enqueueEmail)).toHaveBeenCalledWith(
       expect.objectContaining({
+        template: "passwordReset",
         to: "user@test.com",
         resetUrl: expect.stringContaining("/reset-password?token="),
       }),

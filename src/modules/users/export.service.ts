@@ -5,7 +5,7 @@
 
 import db from "@/lib/db";
 import { getRedisClient } from "@/infrastructure/redis/client";
-import { sendDataExportEmail } from "@/server/email";
+import { enqueueEmail } from "@/lib/email-queue";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 
@@ -207,10 +207,17 @@ export async function exportUserData(
   const data = await collectUserData(userId);
   const jsonPayload = JSON.stringify(data, null, 2);
 
-  await sendDataExportEmail({
+  // Email queued — delivered asynchronously (non-blocking)
+  await enqueueEmail({
+    template: "dataExport",
     to: userEmail,
     displayName: data.profile?.displayName ?? "User",
     jsonPayload,
+  }).catch((err) => {
+    logger.warn("export.email_queue.failed", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
 
   await markExportRequested(userId);

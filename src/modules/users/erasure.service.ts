@@ -11,6 +11,7 @@ import { userRepository } from "./user.repository";
 import { logger } from "@/shared/logger";
 import { invalidateAllSessions } from "@/server/lib/sessionStore";
 import { revokeAllMobileTokens } from "@/lib/mobile-auth";
+import { enqueueEmail } from "@/lib/email-queue";
 import { AppError } from "@/shared/errors";
 
 export interface ErasureOptions {
@@ -45,6 +46,13 @@ export async function performAccountErasure(
   options: ErasureOptions,
 ): Promise<ErasureResult> {
   const { userId, operatorId, scope = "full" } = options;
+
+  // Capture original email + display name BEFORE anonymisation so we can
+  // send the erasure confirmation to the correct address.
+  const originalUser = await db.user.findUnique({
+    where: { id: userId },
+    select: { email: true, displayName: true },
+  });
 
   // Pre-flight: reject if user has orders in active escrow
   const activeOrderCount = await db.order.count({
@@ -162,6 +170,23 @@ export async function performAccountErasure(
     scope,
     erasureLogId,
   });
+
+  // Send erasure confirmation to the original email address — queued asynchronously.
+  // Must be sent AFTER the erasure succeeds so the confirmation is only sent
+  // when the erasure was actually performed.
+  if (originalUser) {
+    // Email queued — delivered asynchronously (non-blocking)
+    await enqueueEmail({
+      template: "erasureConfirmation",
+      to: originalUser.email,
+      displayName: originalUser.displayName ?? "User",
+    }).catch((err) => {
+      logger.warn("erasure.email_queue.failed", {
+        userId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
 
   return { erasureLogId, anonymisedEmail };
 }

@@ -9,6 +9,7 @@ import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { passwordSchema } from "@/server/validators";
+import { enqueueEmail } from "@/lib/email-queue";
 import crypto from "crypto";
 import type { RegisterInput, ResetPasswordInput } from "./user.types";
 
@@ -74,17 +75,17 @@ export class AuthService {
       select: { id: true, email: true, displayName: true },
     });
 
-    // Send welcome email directly — BullMQ worker does not run on Vercel serverless
-    try {
-      const { sendWelcomeEmail } = await import("@/server/email");
-      await sendWelcomeEmail({ to: user.email, displayName: user.displayName });
-    } catch (err) {
-      // Non-blocking — user is already registered; log for ops visibility
-      logger.warn("user.register.welcome_email.failed", {
+    // Email queued — delivered asynchronously (non-blocking)
+    await enqueueEmail({
+      template: "welcome",
+      to: user.email,
+      displayName: user.displayName,
+    }).catch((err) => {
+      logger.warn("user.register.email_queue.failed", {
         userId: user.id,
         error: err instanceof Error ? err.message : String(err),
       });
-    }
+    });
 
     audit({
       userId: user.id,
@@ -138,22 +139,19 @@ export class AuthService {
     });
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`;
-    // Send password-reset email directly — BullMQ worker does not run on Vercel serverless
-    try {
-      const { sendPasswordResetEmail } = await import("@/server/email");
-      await sendPasswordResetEmail({
-        to: user.email,
-        displayName: user.displayName,
-        resetUrl,
-        expiresInMinutes: 60,
-      });
-    } catch (err) {
-      // Log but do not rethrow — caller always returns success to prevent user enumeration
-      logger.warn("user.password_reset.email.failed", {
+    // Email queued — delivered asynchronously (non-blocking)
+    await enqueueEmail({
+      template: "passwordReset",
+      to: user.email,
+      displayName: user.displayName,
+      resetUrl,
+      expiresInMinutes: 60,
+    }).catch((err) => {
+      logger.warn("user.password_reset.email_queue.failed", {
         userId: user.id,
         error: err instanceof Error ? err.message : String(err),
       });
-    }
+    });
 
     audit({
       userId: user.id,

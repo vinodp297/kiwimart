@@ -10,7 +10,7 @@ import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { audit } from "@/server/lib/audit";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
-import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
+import { enqueueEmail } from "@/lib/email-queue";
 import { createNotification } from "@/modules/notifications/notification.service";
 import type { ActionResult } from "@/types";
 import {
@@ -128,30 +128,18 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
     ip,
   });
 
-  // 7. Notify admin by email (non-blocking)
+  // 7. Notify admin by email — queued asynchronously
   const adminEmail = process.env.ADMIN_EMAIL;
-  const emailClient = getEmailClient();
-  if (emailClient && adminEmail) {
-    emailClient.emails
-      .send({
-        from: EMAIL_FROM,
-        to: adminEmail,
-        subject: `[${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}] New ID Verification Request`,
-        html: `
-          <p>A seller has submitted their ID for verification.</p>
-          <ul>
-            <li><strong>User ID:</strong> ${user.id}</li>
-            <li><strong>Email:</strong> ${user.email}</li>
-            <li><strong>Submitted at:</strong> ${now.toISOString()}</li>
-          </ul>
-          <p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/admin">
-              Review in Admin Dashboard →
-            </a>
-          </p>
-        `,
-      })
-      .catch(() => {}); // non-fatal
+  if (adminEmail) {
+    // Email queued — delivered asynchronously (non-blocking)
+    await enqueueEmail({
+      template: "adminIdVerification",
+      to: adminEmail,
+      userId: user.id,
+      userEmail: user.email,
+      submittedAt: now.toISOString(),
+      adminUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/admin`,
+    }).catch(() => {}); // non-fatal — admin is notified via in-app notification too
   }
 
   return { success: true, data: undefined };
@@ -209,29 +197,15 @@ export async function approveIdVerification(
     metadata: { approvedBy: guard.userId },
   });
 
-  // 6. Notify the seller via email (non-blocking)
-  const emailClient = getEmailClient();
-  if (emailClient) {
-    emailClient.emails
-      .send({
-        from: EMAIL_FROM,
-        to: target.email,
-        subject: `Your ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} ID verification has been approved!`,
-        html: `
-          <p>Great news! Your identity verification has been approved.</p>
-          <p>
-            You now have <strong>ID-Verified Seller</strong> status on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"},
-            which unlocks unlimited listings and next-day payouts.
-          </p>
-          <p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/seller/onboarding">
-              View your Seller Hub →
-            </a>
-          </p>
-        `,
-      })
-      .catch(() => {}); // non-fatal
-  }
+  // 6. Notify the seller via email — queued asynchronously (non-blocking)
+  await enqueueEmail({
+    template: "adminIdVerification",
+    to: target.email,
+    userId: target.id,
+    userEmail: target.email,
+    submittedAt: new Date().toISOString(),
+    adminUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/seller/onboarding`,
+  }).catch(() => {}); // non-fatal
 
   // 7. In-app notification (fire-and-forget)
   createNotification({

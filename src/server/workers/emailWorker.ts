@@ -1,22 +1,25 @@
 // src/server/workers/emailWorker.ts
 // ─── Email Worker ────────────────────────────────────────────────────────────
 //
-// STATUS: INACTIVE on production Vercel.
-// BullMQ workers require a persistent process and do NOT run on Vercel serverless.
-// All emails are currently sent directly via Resend in server actions
-// (see src/server/email/transport.ts).
+// Processes email jobs from the BullMQ email queue.
+// Runs on a separate persistent process (Railway/Render/VPS) — NOT on Vercel
+// serverless. Start with: node src/worker.ts
 //
-// To activate: Deploy a separate worker process (Railway, Render, or VPS)
-// that runs: node src/worker.ts
-//
-// Future: Consider Vercel Queues or Inngest for serverless-compatible queuing.
+// Each job switches on `template` and calls the corresponding email function.
+// Failures are logged at error level; BullMQ handles retries automatically
+// (3 attempts, exponential backoff). Persistent failures go to the dead-letter
+// set (removeOnFail: false).
 
 import { Worker } from "bullmq";
 import { getQueueConnection } from "@/lib/queue";
 import type { EmailJobData } from "@/lib/queue";
 import {
+  sendVerificationEmail,
   sendWelcomeEmail,
   sendPasswordResetEmail,
+  sendDataExportEmail,
+  sendErasureConfirmationEmail,
+  sendAdminIdVerificationEmail,
   sendOfferReceivedEmail,
   sendOfferResponseEmail,
   sendOrderDispatchedEmail,
@@ -28,68 +31,143 @@ import { logger } from "@/shared/logger";
 export function startEmailWorker() {
   if (process.env.VERCEL) {
     logger.error(
-      "worker.email: BullMQ workers cannot run on Vercel serverless. Use direct Resend calls instead.",
+      "worker.email: BullMQ workers cannot run on Vercel serverless. Deploy a separate worker process.",
     );
     return;
   }
+
   const worker = new Worker<EmailJobData>(
     "email",
     async (job) => {
-      const { type, payload } = job.data;
+      const data = job.data;
+      const { template, correlationId } = data;
 
-      switch (type) {
+      switch (template) {
+        case "verification":
+          await sendVerificationEmail({
+            to: data.to,
+            displayName: data.displayName,
+            verifyUrl: data.verifyUrl,
+          });
+          break;
+
         case "welcome":
-          await sendWelcomeEmail(
-            payload as Parameters<typeof sendWelcomeEmail>[0],
-          );
+          await sendWelcomeEmail({
+            to: data.to,
+            displayName: data.displayName,
+          });
           break;
 
         case "passwordReset":
-          await sendPasswordResetEmail(
-            payload as Parameters<typeof sendPasswordResetEmail>[0],
-          );
+          await sendPasswordResetEmail({
+            to: data.to,
+            displayName: data.displayName,
+            resetUrl: data.resetUrl,
+            expiresInMinutes: data.expiresInMinutes,
+          });
+          break;
+
+        case "dataExport":
+          await sendDataExportEmail({
+            to: data.to,
+            displayName: data.displayName,
+            jsonPayload: data.jsonPayload,
+          });
+          break;
+
+        case "erasureConfirmation":
+          await sendErasureConfirmationEmail({
+            to: data.to,
+            displayName: data.displayName,
+          });
+          break;
+
+        case "adminIdVerification":
+          await sendAdminIdVerificationEmail({
+            to: data.to,
+            userId: data.userId,
+            userEmail: data.userEmail,
+            submittedAt: data.submittedAt,
+            adminUrl: data.adminUrl,
+          });
           break;
 
         case "offerReceived":
-          await sendOfferReceivedEmail(
-            payload as Parameters<typeof sendOfferReceivedEmail>[0],
-          );
+          await sendOfferReceivedEmail({
+            to: data.to,
+            sellerName: data.sellerName,
+            buyerName: data.buyerName,
+            listingTitle: data.listingTitle,
+            offerAmount: data.offerAmount,
+            listingUrl: data.listingUrl,
+          });
           break;
 
         case "offerResponse":
-          await sendOfferResponseEmail(
-            payload as Parameters<typeof sendOfferResponseEmail>[0],
-          );
+          await sendOfferResponseEmail({
+            to: data.to,
+            buyerName: data.buyerName,
+            listingTitle: data.listingTitle,
+            accepted: data.accepted,
+            listingUrl: data.listingUrl,
+          });
           break;
 
         case "orderDispatched":
-          await sendOrderDispatchedEmail(
-            payload as Parameters<typeof sendOrderDispatchedEmail>[0],
-          );
+          await sendOrderDispatchedEmail({
+            to: data.to,
+            buyerName: data.buyerName,
+            listingTitle: data.listingTitle,
+            trackingNumber: data.trackingNumber,
+            trackingUrl: data.trackingUrl,
+            orderUrl: data.orderUrl,
+          });
           break;
 
         case "orderComplete":
-          // Sprint 5: sendOrderCompleteEmail
-          logger.info("email.worker.order_complete_stub", { payload });
+          // Sprint 5: implement sendOrderCompleteEmail
+          logger.info("email.worker.order_complete_stub", {
+            to: data.to,
+            correlationId,
+          });
           break;
 
         case "disputeOpened":
-          await sendDisputeOpenedEmail(
-            payload as Parameters<typeof sendDisputeOpenedEmail>[0],
-          );
+          await sendDisputeOpenedEmail({
+            to: data.to,
+            sellerName: data.sellerName,
+            buyerName: data.buyerName,
+            listingTitle: data.listingTitle,
+            orderId: data.orderId,
+            reason: data.reason,
+            description: data.description,
+          });
           break;
 
-        default:
-          logger.warn("email.worker.unknown_type", { type });
+        default: {
+          const _exhaustive: never = data;
+          logger.warn("email.worker.unknown_template", {
+            template: (_exhaustive as EmailJobData).template,
+            jobId: job.id,
+          });
+        }
       }
+
+      logger.info("email.sent", {
+        template,
+        to: data.to,
+        correlationId,
+        jobId: job.id,
+      });
 
       // Audit successful send
       audit({
         action: "ADMIN_ACTION",
         metadata: {
           worker: "email",
-          jobType: type,
+          template,
           jobId: job.id,
+          correlationId,
           status: "sent",
         },
       });
@@ -98,14 +176,14 @@ export function startEmailWorker() {
       connection:
         getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 5,
-      limiter: { max: 10, duration: 1000 }, // Max 10 emails/sec (Resend limit)
+      limiter: { max: 10, duration: 1000 }, // 10 emails/sec (Resend limit)
     },
   );
 
   worker.on("failed", (job, err) => {
     logger.error("email.worker.job_failed", {
       jobId: job?.id,
-      jobType: job?.data?.type,
+      template: job?.data?.template,
       error: err.message,
     });
     audit({
@@ -113,7 +191,7 @@ export function startEmailWorker() {
       metadata: {
         worker: "email",
         jobId: job?.id,
-        jobType: job?.data?.type,
+        template: job?.data?.template,
         error: err.message,
         status: "failed",
       },
@@ -123,7 +201,7 @@ export function startEmailWorker() {
   worker.on("completed", (job) => {
     logger.info("email.worker.job_completed", {
       jobId: job.id,
-      type: job.data.type,
+      template: job.data.template,
     });
   });
 
