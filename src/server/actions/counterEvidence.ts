@@ -6,7 +6,7 @@
 
 import { safeActionError } from "@/shared/errors";
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 import { logger } from "@/shared/logger";
 import {
   orderEventService,
@@ -38,16 +38,7 @@ export async function submitCounterEvidence(
 
     const { orderId, description, evidenceKeys } = parsed.data;
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        listing: { select: { title: true } },
-      },
-    });
+    const order = await orderRepository.findForCounterEvidence(orderId);
 
     if (!order) return { success: false, error: "Order not found." };
 
@@ -65,14 +56,8 @@ export async function submitCounterEvidence(
     }
 
     // Check there is a queued auto-resolution
-    const queuedEvent = await db.orderEvent.findFirst({
-      where: {
-        orderId,
-        type: "AUTO_RESOLVED",
-        metadata: { path: ["status"], equals: "QUEUED" },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const queuedEvent =
+      await orderRepository.findQueuedAutoResolutionEvent(orderId);
 
     if (!queuedEvent) {
       return {

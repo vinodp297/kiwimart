@@ -20,7 +20,7 @@ import { safeActionError } from "@/shared/errors";
 //   • Max 8MB file size, min 200×200 dimensions, max 10 images per listing
 
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { listingImageRepository } from "@/modules/listings/listing-image.repository";
 import { rateLimit } from "@/server/lib/rateLimit";
 import type { ActionResult } from "@/types";
 import crypto from "crypto";
@@ -81,9 +81,9 @@ export async function requestImageUpload(params: {
 
     // 4. Check max images per listing
     if (params.listingId) {
-      const existingCount = await db.listingImage.count({
-        where: { listingId: params.listingId },
-      });
+      const existingCount = await listingImageRepository.countByListing(
+        params.listingId,
+      );
       if (existingCount >= MAX_IMAGES_PER_LISTING) {
         return {
           success: false,
@@ -96,25 +96,11 @@ export async function requestImageUpload(params: {
       // Clean up stale orphans first: delete unprocessed images older than 1 hour
       // that were never associated with a listing (leftover from failed uploads).
       const _oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      await db.listingImage.deleteMany({
-        where: {
-          listingId: null,
-          r2Key: { startsWith: `listings/${user.id}/` },
-          isScanned: false,
-          isSafe: false,
-          processedAt: null,
-          // Use id-based heuristic: cuid() is roughly time-ordered.
-          // For exact timing, we'd need a createdAt column.
-          // Instead, just delete all unprocessed orphans — they're useless anyway.
-        },
-      });
+      await listingImageRepository.deleteOrphansByUser(user.id);
 
-      const pendingCount = await db.listingImage.count({
-        where: {
-          listingId: null,
-          r2Key: { startsWith: `listings/${user.id}/` },
-        },
-      });
+      const pendingCount = await listingImageRepository.countPendingByUser(
+        user.id,
+      );
       if (pendingCount >= MAX_IMAGES_PER_LISTING) {
         return {
           success: false,
@@ -142,16 +128,13 @@ export async function requestImageUpload(params: {
     const r2Key = `listings/${user.id}/${uuid}.${ext}`;
 
     // 7. Create a DB record (status: pending/not-scanned)
-    const image = await db.listingImage.create({
-      data: {
-        listingId: params.listingId ?? null,
-        r2Key,
-        order: 0,
-        sizeBytes: params.sizeBytes,
-        isScanned: false,
-        isSafe: false,
-      },
-      select: { id: true },
+    const image = await listingImageRepository.create({
+      listingId: params.listingId ?? null,
+      r2Key,
+      order: 0,
+      sizeBytes: params.sizeBytes,
+      isScanned: false,
+      isSafe: false,
     });
 
     // 8. Generate real presigned upload URL via R2
@@ -256,14 +239,7 @@ export async function confirmImageUpload(params: {
 
       if (isStorageUnavailable) {
         // Dev/test only — allow bypass for local development without R2
-        await db.listingImage.update({
-          where: { id: params.imageId, r2Key: params.r2Key },
-          data: {
-            isScanned: true,
-            isSafe: true,
-            scannedAt: new Date(),
-          },
-        });
+        await listingImageRepository.markSafe(params.imageId, params.r2Key);
         return { success: true, data: { isSafe: true, r2Key: params.r2Key } };
       }
 
@@ -307,13 +283,9 @@ export async function cleanupOrphanedImages(): Promise<
     // Note: ListingImage has no createdAt column, so we can only filter
     // on processedAt. We keep processed orphans since they may belong
     // to a draft being resumed in the same session.
-    const result = await db.listingImage.deleteMany({
-      where: {
-        listingId: null,
-        r2Key: { startsWith: `listings/${user.id}/` },
-        processedAt: null, // Only delete unprocessed orphans
-      },
-    });
+    const result = await listingImageRepository.deleteUnprocessedOrphansByUser(
+      user.id,
+    );
 
     if (result.count > 0) {
       logger.info("image:orphan-cleanup", {
@@ -362,10 +334,9 @@ export async function deleteListingImage(params: {
     const user = await requireUser();
 
     // Verify listing ownership
-    const listing = await db.listing.findUnique({
-      where: { id: params.listingId },
-      select: { sellerId: true, _count: { select: { images: true } } },
-    });
+    const listing = await listingImageRepository.findListingOwnerAndCount(
+      params.listingId,
+    );
 
     if (!listing || (listing.sellerId !== user.id && !user.isAdmin)) {
       return { success: false, error: "Not authorised." };
@@ -379,25 +350,22 @@ export async function deleteListingImage(params: {
     }
 
     // Delete the image record
-    const image = await db.listingImage.findFirst({
-      where: { id: params.imageId, listingId: params.listingId },
-    });
+    const image = await listingImageRepository.findByIdAndListing(
+      params.imageId,
+      params.listingId,
+    );
     if (!image) {
       return { success: false, error: "Image not found." };
     }
 
-    await db.listingImage.delete({ where: { id: params.imageId } });
+    await listingImageRepository.deleteById(params.imageId);
 
     // Re-order remaining images
-    const remaining = await db.listingImage.findMany({
-      where: { listingId: params.listingId },
-      orderBy: { order: "asc" },
-      select: { id: true },
-    });
+    const remaining = await listingImageRepository.findOrderedByListing(
+      params.listingId,
+    );
     await Promise.all(
-      remaining.map((img, i) =>
-        db.listingImage.update({ where: { id: img.id }, data: { order: i } }),
-      ),
+      remaining.map((img, i) => listingImageRepository.updateOrder(img.id, i)),
     );
 
     logger.info("image:deleted", {
@@ -421,10 +389,9 @@ export async function reorderListingImages(params: {
   try {
     const user = await requireUser();
 
-    const listing = await db.listing.findUnique({
-      where: { id: params.listingId },
-      select: { sellerId: true },
-    });
+    const listing = await listingImageRepository.findListingOwner(
+      params.listingId,
+    );
 
     if (!listing || (listing.sellerId !== user.id && !user.isAdmin)) {
       return { success: false, error: "Not authorised." };
@@ -432,10 +399,7 @@ export async function reorderListingImages(params: {
 
     await Promise.all(
       params.imageIds.map((id, order) =>
-        db.listingImage.update({
-          where: { id },
-          data: { order },
-        }),
+        listingImageRepository.updateOrder(id, order),
       ),
     );
 

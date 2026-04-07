@@ -19,7 +19,7 @@
 
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import db from "@/lib/db";
+import { exportRepository } from "./export.repository";
 import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 import { getRedisClient } from "@/infrastructure/redis/client";
 import { enqueueEmail } from "@/lib/email-queue";
@@ -83,114 +83,14 @@ export async function collectUserData(userId: string) {
     offersReceived,
     watchlist,
   ] = await Promise.all([
-    db.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        username: true,
-        displayName: true,
-        bio: true,
-        phone: true,
-        isPhoneVerified: true,
-        region: true,
-        suburb: true,
-        dateOfBirth: true,
-        idVerified: true,
-        nzbn: true,
-        gstNumber: true,
-        isSellerEnabled: true,
-        hasMarketingConsent: true,
-        createdAt: true,
-        updatedAt: true,
-        // NEVER: passwordHash, mfaSecret, mfaBackupCodes
-      },
-    }),
-    db.order.findMany({
-      where: { OR: [{ buyerId: userId }, { sellerId: userId }] },
-      select: {
-        id: true,
-        status: true,
-        itemNzd: true,
-        shippingNzd: true,
-        totalNzd: true,
-        fulfillmentType: true,
-        shippingName: true,
-        shippingLine1: true,
-        shippingLine2: true,
-        shippingCity: true,
-        shippingRegion: true,
-        shippingPostcode: true,
-        trackingNumber: true,
-        createdAt: true,
-        completedAt: true,
-        cancelledAt: true,
-        cancelReason: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.message.findMany({
-      where: { senderId: userId },
-      select: {
-        id: true,
-        body: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.review.findMany({
-      where: { authorId: userId },
-      select: {
-        id: true,
-        rating: true,
-        comment: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.listing.findMany({
-      where: { sellerId: userId },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        priceNzd: true,
-        condition: true,
-        status: true,
-        region: true,
-        suburb: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.offer.findMany({
-      where: { buyerId: userId },
-      select: {
-        id: true,
-        amountNzd: true,
-        status: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.offer.findMany({
-      where: { sellerId: userId },
-      select: {
-        id: true,
-        amountNzd: true,
-        status: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    db.watchlistItem.findMany({
-      where: { userId },
-      select: {
-        id: true,
-        listingId: true,
-        createdAt: true,
-      },
-    }),
+    exportRepository.findProfile(userId),
+    exportRepository.findOrders(userId),
+    exportRepository.findMessages(userId),
+    exportRepository.findReviews(userId),
+    exportRepository.findListings(userId),
+    exportRepository.findOffersMade(userId),
+    exportRepository.findOffersReceived(userId),
+    exportRepository.findWatchlist(userId),
   ]);
 
   return {

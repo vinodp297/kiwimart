@@ -1,9 +1,10 @@
 // src/modules/listings/recommendations.service.ts
 // ─── Smart Recommendations — rules-based, cached ────────────────────────────
 
-import db from "@/lib/db";
 import { unstable_cache } from "next/cache";
 import { getImageUrl } from "@/lib/image";
+import { listingRepository } from "./listing.repository";
+import type { RecommendationRow } from "./listing.repository";
 import type { ListingCard, NZRegion } from "@/types";
 
 const CONDITION_MAP: Record<string, ListingCard["condition"]> = {
@@ -14,25 +15,7 @@ const CONDITION_MAP: Record<string, ListingCard["condition"]> = {
   PARTS: "parts",
 };
 
-function mapListingRow(row: {
-  id: string;
-  title: string;
-  priceNzd: number;
-  condition: string;
-  categoryId: string;
-  subcategoryName: string | null;
-  region: string;
-  suburb: string;
-  shippingOption: string;
-  shippingNzd: number | null;
-  isOffersEnabled: boolean;
-  status: string;
-  viewCount: number;
-  watcherCount: number;
-  createdAt: Date;
-  images: { r2Key: string }[];
-  seller: { displayName: string; username: string; idVerified: boolean };
-}): ListingCard {
+function mapListingRow(row: RecommendationRow): ListingCard {
   return {
     id: row.id,
     title: row.title,
@@ -58,30 +41,6 @@ function mapListingRow(row: {
   };
 }
 
-const LISTING_SELECT = {
-  id: true,
-  title: true,
-  priceNzd: true,
-  condition: true,
-  categoryId: true,
-  subcategoryName: true,
-  region: true,
-  suburb: true,
-  shippingOption: true,
-  shippingNzd: true,
-  isOffersEnabled: true,
-  status: true,
-  viewCount: true,
-  watcherCount: true,
-  createdAt: true,
-  images: {
-    where: { order: 0, isSafe: true },
-    select: { r2Key: true },
-    take: 1,
-  },
-  seller: { select: { displayName: true, username: true, idVerified: true } },
-} as const;
-
 /**
  * A — "More from this seller" (listing detail page)
  */
@@ -90,17 +49,10 @@ export const getMoreFromSeller = unstable_cache(
     sellerId: string,
     excludeListingId: string,
   ): Promise<ListingCard[]> => {
-    const rows = await db.listing.findMany({
-      where: {
-        sellerId,
-        status: "ACTIVE",
-        deletedAt: null,
-        id: { not: excludeListingId },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 4,
-      select: LISTING_SELECT,
-    });
+    const rows = await listingRepository.findMoreFromSeller(
+      sellerId,
+      excludeListingId,
+    );
     return rows.map(mapListingRow);
   },
   ["more-from-seller"],
@@ -117,22 +69,12 @@ export const getSimilarListings = unstable_cache(
     priceNzd: number,
     sellerId: string,
   ): Promise<ListingCard[]> => {
-    const minPrice = Math.round(priceNzd * 0.5);
-    const maxPrice = Math.round(priceNzd * 1.5);
-
-    const rows = await db.listing.findMany({
-      where: {
-        categoryId,
-        status: "ACTIVE",
-        deletedAt: null,
-        id: { not: listingId },
-        sellerId: { not: sellerId },
-        priceNzd: { gte: minPrice, lte: maxPrice },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      select: LISTING_SELECT,
-    });
+    const rows = await listingRepository.findSimilarListings(
+      listingId,
+      categoryId,
+      priceNzd,
+      sellerId,
+    );
     return rows.map(mapListingRow);
   },
   ["similar-listings"],
@@ -144,12 +86,7 @@ export const getSimilarListings = unstable_cache(
  */
 export const getFeaturedListings = unstable_cache(
   async (): Promise<ListingCard[]> => {
-    const rows = await db.listing.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      orderBy: { watcherCount: "desc" },
-      take: 12,
-      select: LISTING_SELECT,
-    });
+    const rows = await listingRepository.findFeaturedListings();
     return rows.map(mapListingRow);
   },
   ["featured-listings"],

@@ -10,7 +10,7 @@ import { requireAdmin } from "@/server/lib/requireAdmin";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
-import db from "@/lib/db";
+import { verificationRepository } from "@/modules/sellers/verification.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import crypto from "crypto";
@@ -136,10 +136,7 @@ export async function submitIdVerification(
       return { success: false, error: "Seller account is not enabled." };
 
     // Check for existing pending application
-    const existing = await db.verificationApplication.findUnique({
-      where: { sellerId: user.id },
-      select: { status: true },
-    });
+    const existing = await verificationRepository.findStatusBySeller(user.id);
     if (existing?.status === "PENDING") {
       return {
         success: false,
@@ -148,27 +145,11 @@ export async function submitIdVerification(
     }
 
     // Upsert application with document keys
-    await db.verificationApplication.upsert({
-      where: { sellerId: user.id },
-      create: {
-        sellerId: user.id,
-        status: "PENDING",
-        documentType,
-        documentFrontKey,
-        documentBackKey: documentBackKey ?? null,
-        selfieKey: selfieKey ?? null,
-      },
-      update: {
-        status: "PENDING",
-        appliedAt: new Date(),
-        reviewedAt: null,
-        reviewedBy: null,
-        adminNotes: null,
-        documentType,
-        documentFrontKey,
-        documentBackKey: documentBackKey ?? null,
-        selfieKey: selfieKey ?? null,
-      },
+    await verificationRepository.upsertWithDocuments(user.id, {
+      documentType,
+      documentFrontKey,
+      documentBackKey: documentBackKey ?? null,
+      selfieKey: selfieKey ?? null,
     });
 
     // Set user.idSubmittedAt

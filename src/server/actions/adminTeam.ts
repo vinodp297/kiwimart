@@ -4,7 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // ─── Admin Team Management Actions ───────────────────────────────────────────
 
 import { requireSuperAdmin } from "@/shared/auth/requirePermission";
-import db from "@/lib/db";
+import { adminTeamRepository } from "@/modules/admin/admin-team.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
@@ -35,22 +35,12 @@ export async function inviteAdmin(
 
     // Upsert — replace any existing pending invitation for this email.
     // Store SHA-256 hash of the token; raw token sent in email only, never persisted.
-    await db.adminInvitation.upsert({
-      where: { email },
-      create: {
-        email,
-        adminRole: role,
-        invitedById: admin.id,
-        tokenHash,
-        expiresAt,
-      },
-      update: {
-        adminRole: role,
-        invitedById: admin.id,
-        tokenHash,
-        expiresAt,
-        acceptedAt: null,
-      },
+    await adminTeamRepository.upsertInvitation({
+      email,
+      adminRole: role,
+      invitedById: admin.id,
+      tokenHash,
+      expiresAt,
     });
 
     // Send invitation email (non-blocking) — raw token in the URL, never stored in DB

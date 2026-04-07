@@ -1,8 +1,8 @@
 // src/modules/sellers/trust-score.service.ts
 // ─── Seller Trust Score — computed, cached 1hr ─────────────────────────────
 
-import db from "@/lib/db";
 import { unstable_cache } from "next/cache";
+import { sellerRepository } from "./seller.repository";
 
 export interface TrustScoreData {
   score: number; // 0–100
@@ -55,34 +55,11 @@ async function fetchSellerTrustProfile(
 
   const [user, orderStats, reviewStats, recentCompletedSales] =
     await Promise.all([
-      db.user.findUnique({
-        where: { id: sellerId },
-        select: {
-          createdAt: true,
-          isVerifiedSeller: true,
-          idVerified: true,
-          responseRate: true,
-          sellerTierOverride: true,
-        },
-      }),
-      db.order.groupBy({
-        by: ["status"],
-        where: { sellerId },
-        _count: { id: true },
-      }),
-      db.review.aggregate({
-        where: { subjectId: sellerId, reviewerRole: "BUYER", isApproved: true },
-        _avg: { rating: true },
-        _count: { id: true },
-      }),
+      sellerRepository.findForTrustProfile(sellerId),
+      sellerRepository.groupOrdersByStatus(sellerId),
+      sellerRepository.aggregateSellerReviews(sellerId),
       // Tier calculation uses only recent sales (last 12 months)
-      db.order.count({
-        where: {
-          sellerId,
-          status: "COMPLETED",
-          completedAt: { gte: twelveMonthsAgo },
-        },
-      }),
+      sellerRepository.countRecentCompletedSales(sellerId, twelveMonthsAgo),
     ]);
 
   if (!user) {

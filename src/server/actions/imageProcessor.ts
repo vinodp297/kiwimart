@@ -26,7 +26,7 @@ import {
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import sharp from "sharp";
-import db from "@/lib/db";
+import { listingImageRepository } from "@/modules/listings/listing-image.repository";
 import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 
 export interface ProcessImageParams {
@@ -55,10 +55,7 @@ export async function processImage(
   // Verify image ownership — the image record must belong to the claimed user.
   // For new listings, listingId is null (images uploaded before listing is created),
   // so we verify via the r2Key prefix which is scoped to listings/{userId}/.
-  const imageRecord = await db.listingImage.findUnique({
-    where: { id: imageId },
-    select: { r2Key: true, listing: { select: { sellerId: true } } },
-  });
+  const imageRecord = await listingImageRepository.findWithListing(imageId);
   if (!imageRecord) {
     throw new Error(`Image ${imageId} not found`);
   }
@@ -99,10 +96,7 @@ export async function processImage(
     origWidth = meta.width ?? 0;
     origHeight = meta.height ?? 0;
   } catch {
-    await db.listingImage.update({
-      where: { id: imageId },
-      data: { isScanned: true, isSafe: false, scannedAt: new Date() },
-    });
+    await listingImageRepository.markUnsafe(imageId);
     throw new Error(
       "Image failed decode check — file appears to be corrupt or is not a valid image.",
     );
@@ -113,10 +107,7 @@ export async function processImage(
   // It does NOT imply a full antivirus scan was performed.
   const scanResult = await scanForMalware(originalBuffer, r2Key);
   if (!scanResult.isSafe) {
-    await db.listingImage.update({
-      where: { id: imageId },
-      data: { isScanned: true, isSafe: false, scannedAt: new Date() },
-    });
+    await listingImageRepository.markUnsafe(imageId);
     throw new Error(
       `Image failed security check: ${scanResult.reason ?? "unknown reason"}`,
     );
@@ -124,10 +115,7 @@ export async function processImage(
 
   // Step 4: Validate minimum dimensions
   if (origWidth < 200 || origHeight < 200) {
-    await db.listingImage.update({
-      where: { id: imageId },
-      data: { isScanned: true, isSafe: false, scannedAt: new Date() },
-    });
+    await listingImageRepository.markUnsafe(imageId);
     throw new Error(
       `Image too small: ${origWidth}×${origHeight} (min 200×200)`,
     );
@@ -178,20 +166,13 @@ export async function processImage(
   // isScanned: true — passed validation pipeline (magic bytes at upload + decodability here)
   // isSafe: true    — passed validation pipeline AND scanForMalware() returned safe
   // Neither flag implies a full antivirus scan was performed.
-  await db.listingImage.update({
-    where: { id: imageId },
-    data: {
-      r2Key: fullKey, // Point to processed full-size version
-      thumbnailKey: thumbKey,
-      width: fullImage.info.width,
-      height: fullImage.info.height,
-      sizeBytes: fullImage.info.size,
-      originalSizeBytes: originalBuffer.length,
-      processedAt: new Date(),
-      isScanned: true,
-      isSafe: true,
-      scannedAt: new Date(),
-    },
+  await listingImageRepository.markProcessed(imageId, {
+    r2Key: fullKey,
+    thumbnailKey: thumbKey,
+    width: fullImage.info.width,
+    height: fullImage.info.height,
+    sizeBytes: fullImage.info.size,
+    originalSizeBytes: originalBuffer.length,
   });
 
   // Step 10: Delete original unprocessed file from R2

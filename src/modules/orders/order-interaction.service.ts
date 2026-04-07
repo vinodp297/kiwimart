@@ -3,7 +3,7 @@
 // Manages buyer-seller negotiations (cancellation requests, returns, etc.)
 // Each interaction follows: request → response (accept/reject) → resolution.
 
-import db from "@/lib/db";
+import { interactionRepository } from "./interaction.repository";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import type { Prisma } from "@prisma/client";
@@ -54,10 +54,9 @@ export interface CreateInteractionInput {
 export class OrderInteractionService {
   async createInteraction(input: CreateInteractionInput) {
     // Validate order exists and user is a party
-    const order = await db.order.findUnique({
-      where: { id: input.orderId },
-      select: { id: true, buyerId: true, sellerId: true, status: true },
-    });
+    const order = await interactionRepository.findOrderForInteraction(
+      input.orderId,
+    );
 
     if (!order) throw AppError.notFound("Order");
 
@@ -71,13 +70,10 @@ export class OrderInteractionService {
     }
 
     // Check for duplicate active interaction of same type
-    const existing = await db.orderInteraction.findFirst({
-      where: {
-        orderId: input.orderId,
-        type: input.type,
-        status: INTERACTION_STATUSES.PENDING,
-      },
-    });
+    const existing = await interactionRepository.findPendingByTypeAndOrder(
+      input.orderId,
+      input.type,
+    );
 
     if (existing) {
       throw new AppError(
@@ -87,19 +83,17 @@ export class OrderInteractionService {
       );
     }
 
-    const interaction = await db.orderInteraction.create({
-      data: {
-        orderId: input.orderId,
-        type: input.type,
-        initiatedById: input.initiatedById,
-        initiatorRole: input.initiatorRole,
-        reason: input.reason,
-        details: (input.details ?? undefined) as
-          | Prisma.InputJsonValue
-          | undefined,
-        expiresAt: input.expiresAt,
-        autoAction: input.autoAction,
-      },
+    const interaction = await interactionRepository.createInteraction({
+      orderId: input.orderId,
+      type: input.type,
+      initiatedById: input.initiatedById,
+      initiatorRole: input.initiatorRole,
+      reason: input.reason,
+      details: (input.details ?? undefined) as
+        | Prisma.InputJsonValue
+        | undefined,
+      expiresAt: input.expiresAt,
+      autoAction: input.autoAction,
     });
 
     logger.info("interaction.created", {
@@ -118,14 +112,8 @@ export class OrderInteractionService {
     action: "ACCEPT" | "REJECT",
     responseNote?: string,
   ) {
-    const interaction = await db.orderInteraction.findUnique({
-      where: { id: interactionId },
-      include: {
-        order: {
-          select: { id: true, buyerId: true, sellerId: true, status: true },
-        },
-      },
-    });
+    const interaction =
+      await interactionRepository.findByIdWithOrder(interactionId);
 
     if (!interaction) throw AppError.notFound("Interaction");
 
@@ -154,17 +142,14 @@ export class OrderInteractionService {
         ? INTERACTION_STATUSES.ACCEPTED
         : INTERACTION_STATUSES.REJECTED;
 
-    await db.orderInteraction.update({
-      where: { id: interactionId },
-      data: {
-        status: newStatus,
-        responseById: responderId,
-        responseNote: responseNote ?? null,
-        respondedAt: new Date(),
-        ...(action === "ACCEPT"
-          ? { resolvedAt: new Date(), resolution: "CANCELLED" }
-          : {}),
-      },
+    await interactionRepository.updateInteraction(interactionId, {
+      status: newStatus,
+      responseById: responderId,
+      responseNote: responseNote ?? null,
+      respondedAt: new Date(),
+      ...(action === "ACCEPT"
+        ? { resolvedAt: new Date(), resolution: "CANCELLED" }
+        : {}),
     });
 
     logger.info("interaction.responded", {
@@ -178,38 +163,11 @@ export class OrderInteractionService {
   }
 
   async getActiveInteractions(orderId: string) {
-    return db.orderInteraction.findMany({
-      where: {
-        orderId,
-        status: {
-          in: [INTERACTION_STATUSES.PENDING],
-        },
-      },
-      orderBy: { createdAt: "desc" },
-      include: {
-        initiator: {
-          select: { id: true, displayName: true, username: true },
-        },
-        responder: {
-          select: { id: true, displayName: true, username: true },
-        },
-      },
-    });
+    return interactionRepository.findActiveByOrder(orderId);
   }
 
   async getInteractionsByOrder(orderId: string) {
-    return db.orderInteraction.findMany({
-      where: { orderId },
-      orderBy: { createdAt: "desc" },
-      include: {
-        initiator: {
-          select: { id: true, displayName: true, username: true },
-        },
-        responder: {
-          select: { id: true, displayName: true, username: true },
-        },
-      },
-    });
+    return interactionRepository.findAllByOrder(orderId);
   }
 }
 

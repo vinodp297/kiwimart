@@ -3,11 +3,12 @@
 // Full-text search using Postgres tsvector. Framework-free.
 // Review aggregate now computed at DB level via groupBy (Sprint 3).
 
-import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getThumbUrl } from "@/lib/image";
 import { haversineKm } from "@/lib/geocoding";
+import { listingRepository } from "./listing.repository";
+import { reviewRepository } from "@/modules/reviews/review.repository";
 import type { ListingCard } from "@/types";
 import type { SearchParams, SearchResult } from "./listing.types";
 
@@ -120,13 +121,7 @@ export class SearchService {
 
     if (useFts) {
       try {
-        const ftsIds = await db.$queryRaw<{ id: string }[]>`
-          SELECT id FROM "Listing"
-          WHERE "searchVector" @@ plainto_tsquery('english', ${trimmedQuery})
-            AND status = 'ACTIVE'
-            AND "deletedAt" IS NULL
-          LIMIT 500
-        `;
+        const ftsIds = await listingRepository.searchByVector(trimmedQuery);
         const idList = ftsIds.map((r) => r.id);
         if (idList.length === 0) {
           return {
@@ -173,50 +168,13 @@ export class SearchService {
     const fetchLimit = useRadiusFilter ? Math.min(pageSize * 5, 200) : pageSize;
 
     const [totalCountRaw, rowsRaw] = await Promise.all([
-      db.listing.count({ where }),
-      db.listing.findMany({
+      listingRepository.countSearch(where),
+      listingRepository.findSearchResults(
         where,
         orderBy,
-        skip: useRadiusFilter ? 0 : skip,
-        take: useRadiusFilter ? fetchLimit : pageSize,
-        select: {
-          id: true,
-          title: true,
-          priceNzd: true,
-          condition: true,
-          categoryId: true,
-          subcategoryName: true,
-          region: true,
-          suburb: true,
-          shippingOption: true,
-          shippingNzd: true,
-          isOffersEnabled: true,
-          isUrgent: true,
-          isNegotiable: true,
-          shipsNationwide: true,
-          previousPriceNzd: true,
-          priceDroppedAt: true,
-          status: true,
-          viewCount: true,
-          watcherCount: true,
-          createdAt: true,
-          locationLat: true,
-          locationLng: true,
-          images: {
-            where: { order: 0, isSafe: true },
-            select: { r2Key: true, thumbnailKey: true },
-            take: 1,
-          },
-          seller: {
-            select: {
-              id: true,
-              username: true,
-              displayName: true,
-              idVerified: true,
-            },
-          },
-        },
-      }),
+        useRadiusFilter ? 0 : skip,
+        useRadiusFilter ? fetchLimit : pageSize,
+      ),
     ]);
 
     // Apply Haversine distance filter if radius search is active
@@ -242,15 +200,7 @@ export class SearchService {
     // Batch-compute seller review stats at DB level (no N+1)
     const sellerIds = [...new Set(rows.map((r) => r.seller.id))];
     const sellerRatings = sellerIds.length
-      ? await db.review.groupBy({
-          by: ["subjectId"],
-          where: {
-            subjectId: { in: sellerIds },
-            reviewerRole: "BUYER",
-            isApproved: true,
-          },
-          _avg: { rating: true },
-        })
+      ? await reviewRepository.groupBySellerRating(sellerIds)
       : [];
     const sellerRatingMap = new Map(
       sellerRatings.map((r) => [r.subjectId, r._avg.rating ?? 0]),

@@ -3,7 +3,7 @@
 // Scans dispute evidence for contradictions and red flags.
 // Returns an array of alerts the admin can use to guide their decision.
 
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 import { trustMetricsService } from "@/modules/trust/trust-metrics.service";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -19,40 +19,15 @@ export interface InconsistencyAlert {
 export async function analyzeInconsistencies(
   orderId: string,
 ): Promise<InconsistencyAlert[]> {
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      trackingNumber: true,
-      dispatchedAt: true,
-      completedAt: true,
-      dispute: {
-        select: {
-          reason: true,
-          buyerStatement: true,
-          openedAt: true,
-          sellerStatement: true,
-          sellerRespondedAt: true,
-        },
-      },
-      listing: {
-        select: {
-          title: true,
-          condition: true,
-          description: true,
-        },
-      },
-    },
-  });
+  const order = await orderRepository.findWithInconsistencyContext(orderId);
 
   if (!order) return [];
 
   const alerts: InconsistencyAlert[] = [];
 
   // Fetch events and metrics in parallel
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
   const [
     deliveryOkEvent,
     dispatchEvent,
@@ -60,26 +35,11 @@ export async function analyzeInconsistencies(
     sellerMetrics,
     recentBuyerDisputes,
   ] = await Promise.all([
-    db.orderEvent.findFirst({
-      where: { orderId, type: "DELIVERY_CONFIRMED_OK" },
-      select: { createdAt: true, metadata: true },
-    }),
-    db.orderEvent.findFirst({
-      where: { orderId, type: "DISPATCHED" },
-      select: { metadata: true },
-    }),
+    orderRepository.findDeliveryOkEvent(orderId),
+    orderRepository.findDispatchEvent(orderId),
     trustMetricsService.getMetrics(order.buyerId),
     trustMetricsService.getMetrics(order.sellerId),
-    db.order.count({
-      where: {
-        buyerId: order.buyerId,
-        dispute: {
-          openedAt: {
-            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-          },
-        },
-      },
-    }),
+    orderRepository.countRecentBuyerDisputes(order.buyerId, thirtyDaysAgo),
   ]);
 
   const dispatchMeta = (dispatchEvent?.metadata ?? {}) as Record<

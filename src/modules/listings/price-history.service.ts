@@ -1,26 +1,23 @@
 // src/modules/listings/price-history.service.ts
 // ─── Listing Price History ──────────────────────────────────────────────────
 
-import db from '@/lib/db'
-import { unstable_cache } from 'next/cache'
+import { unstable_cache } from "next/cache";
+import { listingRepository } from "./listing.repository";
 
 export interface PriceHistoryPoint {
-  priceNzd: number  // cents
-  changedAt: string // ISO date
+  priceNzd: number; // cents
+  changedAt: string; // ISO date
 }
 
-async function fetchPriceHistory(listingId: string): Promise<PriceHistoryPoint[]> {
-  const rows = await db.listingPriceHistory.findMany({
-    where: { listingId },
-    orderBy: { changedAt: 'asc' },
-    take: 50,
-    select: { priceNzd: true, changedAt: true },
-  })
+async function fetchPriceHistory(
+  listingId: string,
+): Promise<PriceHistoryPoint[]> {
+  const rows = await listingRepository.findPriceHistory(listingId);
 
   return rows.map((r) => ({
     priceNzd: r.priceNzd,
     changedAt: r.changedAt.toISOString(),
-  }))
+  }));
 }
 
 /**
@@ -28,6 +25,6 @@ async function fetchPriceHistory(listingId: string): Promise<PriceHistoryPoint[]
  */
 export const getListingPriceHistory = unstable_cache(
   fetchPriceHistory,
-  ['listing-price-history'],
-  { revalidate: 1800 }
-)
+  ["listing-price-history"],
+  { revalidate: 1800 },
+);

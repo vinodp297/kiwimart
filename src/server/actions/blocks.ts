@@ -4,7 +4,6 @@ import { safeActionError } from "@/shared/errors";
 // ─── Block User Actions ───────────────────────────────────────────────────────
 
 import { revalidatePath } from "next/cache";
-import db from "@/lib/db";
 import { userRepository } from "@/modules/users/user.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import type { ActionResult } from "@/types";
@@ -32,13 +31,7 @@ export async function blockUser(
     return { success: false, error: "User not found." };
   }
 
-  await db.blockedUser.upsert({
-    where: {
-      blockerId_blockedId: { blockerId: user.id, blockedId: targetUserId },
-    },
-    create: { blockerId: user.id, blockedId: targetUserId },
-    update: {},
-  });
+  await userRepository.upsertBlock(user.id, targetUserId);
 
   revalidatePath("/account/settings");
   return { success: true, data: { message: `${target.displayName} blocked.` } };
@@ -57,9 +50,7 @@ export async function unblockUser(
     };
   }
 
-  await db.blockedUser.deleteMany({
-    where: { blockerId: user.id, blockedId: targetUserId },
-  });
+  await userRepository.removeBlock(user.id, targetUserId);
 
   revalidatePath("/account/settings");
   return { success: true, data: undefined };

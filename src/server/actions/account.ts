@@ -13,7 +13,6 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/server/lib/requireUser";
 import { getClientIp } from "@/server/lib/rateLimit";
-import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { userRepository } from "@/modules/users/user.repository";
 import { logger } from "@/shared/logger";
@@ -77,7 +76,7 @@ export async function changePassword(
 
     const newHash = await hashPassword(newPassword);
 
-    await db.$transaction(async (tx) => {
+    await userRepository.transaction(async (tx) => {
       await userRepository.update(authedUser.id, { passwordHash: newHash }, tx);
       await userRepository.deleteAllSessions(authedUser.id, tx);
     });

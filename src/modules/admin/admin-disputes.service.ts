@@ -2,8 +2,8 @@
 // ─── Admin Dispute Data Service ──────────────────────────────────────────
 // Fetches categorised dispute queues and detailed case views for admin.
 
-import db from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { adminDisputesRepository } from "./admin-disputes.repository";
 import { trustMetricsService } from "@/modules/trust/trust-metrics.service";
 import { analyzeInconsistencies } from "@/modules/disputes/inconsistency-analysis.service";
 
@@ -226,51 +226,6 @@ export interface DisputeCaseDetail {
   } | null;
 }
 
-// ── Shared select for dispute queue ──────────────────────────────────────
-
-const DISPUTE_SELECT = {
-  id: true,
-  totalNzd: true,
-  updatedAt: true,
-  fulfillmentType: true,
-  dispute: {
-    select: {
-      id: true,
-      reason: true,
-      status: true,
-      source: true,
-      buyerStatement: true,
-      sellerStatement: true,
-      openedAt: true,
-      sellerRespondedAt: true,
-      resolvedAt: true,
-    },
-  },
-  listing: {
-    select: {
-      id: true,
-      title: true,
-      priceNzd: true,
-      images: {
-        where: { order: 0 },
-        select: { r2Key: true, thumbnailKey: true },
-        take: 1,
-      },
-    },
-  },
-  buyer: { select: { id: true, email: true, displayName: true } },
-  seller: {
-    select: {
-      id: true,
-      email: true,
-      displayName: true,
-      idVerified: true,
-      nzbn: true,
-      isGstRegistered: true,
-    },
-  },
-} satisfies Prisma.OrderSelect;
-
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function daysAgo(date: Date): number {
@@ -300,15 +255,8 @@ function parseAutoResolutionMeta(
 }
 
 async function getAutoResolutionEvent(orderId: string) {
-  const event = await db.orderEvent.findFirst({
-    where: {
-      orderId,
-      type: { in: ["AUTO_RESOLVED", "DISPUTE_RESPONDED", "FRAUD_FLAGGED"] },
-      metadata: { path: ["decision"], not: Prisma.JsonNull },
-    },
-    orderBy: { createdAt: "desc" },
-    select: { metadata: true },
-  });
+  const event =
+    await adminDisputesRepository.findLatestAutoResolutionEvent(orderId);
   return parseAutoResolutionMeta(event?.metadata);
 }
 
@@ -317,15 +265,8 @@ async function batchAutoResolutionEvents(
   orderIds: string[],
 ): Promise<Map<string, DisputeQueueItem["autoResolution"]>> {
   if (orderIds.length === 0) return new Map();
-  const events = await db.orderEvent.findMany({
-    where: {
-      orderId: { in: orderIds },
-      type: { in: ["AUTO_RESOLVED", "DISPUTE_RESPONDED", "FRAUD_FLAGGED"] },
-      metadata: { path: ["decision"], not: Prisma.JsonNull },
-    },
-    orderBy: { createdAt: "desc" },
-    select: { orderId: true, metadata: true },
-  });
+  const events =
+    await adminDisputesRepository.findAutoResolutionEventsBatch(orderIds);
   // Keep only the newest event per order
   const map = new Map<string, DisputeQueueItem["autoResolution"]>();
   for (const ev of events) {
@@ -353,37 +294,11 @@ export class AdminDisputesService {
       autoResolvedThisMonth,
       pickupOrders,
     ] = await Promise.all([
-      db.order.count({ where: { status: "DISPUTED" } }),
-      db.orderEvent.findMany({
-        where: {
-          order: { status: "DISPUTED" },
-          type: { in: ["AUTO_RESOLVED", "DISPUTE_RESPONDED", "FRAUD_FLAGGED"] },
-          metadata: {
-            path: ["decision"],
-            not: Prisma.JsonNull,
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { orderId: true, metadata: true },
-      }),
-      db.dispute.count({
-        where: {
-          resolvedAt: { not: null, gte: monthStart },
-        },
-      }),
-      db.orderEvent.count({
-        where: {
-          type: "AUTO_RESOLVED",
-          metadata: { path: ["status"], equals: "EXECUTED" },
-          createdAt: { gte: monthStart },
-        },
-      }),
-      db.order.count({
-        where: {
-          status: "DISPUTED",
-          fulfillmentType: { not: "SHIPPED" },
-        },
-      }),
+      adminDisputesRepository.countOpenDisputes(),
+      adminDisputesRepository.findAllAutoResolutionEvents(),
+      adminDisputesRepository.countResolvedSince(monthStart),
+      adminDisputesRepository.countAutoResolvedSince(monthStart),
+      adminDisputesRepository.countPickupDisputes(),
     ]);
 
     // Categorize disputes by scanning their latest auto-resolution event
@@ -416,10 +331,7 @@ export class AdminDisputesService {
 
     // Any open disputes without auto-resolution events also need decisions
     const disputesWithEvents = new Set(disputeCategories.keys());
-    const allOpenDisputes = await db.order.findMany({
-      where: { status: "DISPUTED" },
-      select: { id: true },
-    });
+    const allOpenDisputes = await adminDisputesRepository.findOpenDisputeIds();
     for (const d of allOpenDisputes) {
       if (!disputesWithEvents.has(d.id)) {
         needsDecision++;
@@ -427,14 +339,7 @@ export class AdminDisputesService {
     }
 
     // Average resolution time (from Dispute model)
-    const recentResolved = await db.dispute.findMany({
-      where: {
-        resolvedAt: { not: null },
-      },
-      select: { openedAt: true, resolvedAt: true },
-      take: 50,
-      orderBy: { resolvedAt: "desc" },
-    });
+    const recentResolved = await adminDisputesRepository.findRecentResolved(50);
 
     let avgResolutionHours = 0;
     if (recentResolved.length > 0) {
@@ -481,30 +386,13 @@ export class AdminDisputesService {
 
     if (tab === "auto_resolved") {
       // Show resolved disputes with auto-resolution
-      disputes = await db.order.findMany({
-        where: {
-          dispute: { resolvedAt: { not: null } },
-          status: { in: ["COMPLETED", "REFUNDED"] },
-        },
-        select: DISPUTE_SELECT,
-        orderBy: { updatedAt: "desc" },
-        take: 50,
-      });
+      disputes = await adminDisputesRepository.findAutoResolvedQueue();
     } else if (tab === "all") {
       // All disputes (open + resolved)
-      disputes = await db.order.findMany({
-        where: { dispute: { isNot: null } },
-        select: DISPUTE_SELECT,
-        orderBy: { updatedAt: "desc" },
-        take: 100,
-      });
+      disputes = await adminDisputesRepository.findAllDisputeQueue();
     } else {
       // Open disputes only
-      disputes = await db.order.findMany({
-        where: { status: "DISPUTED" },
-        select: DISPUTE_SELECT,
-        orderBy: [{ dispute: { openedAt: "asc" } }, { updatedAt: "asc" }],
-      });
+      disputes = await adminDisputesRepository.findOpenDisputeQueue();
     }
 
     // Batch-fetch auto-resolution data for all disputes (no N+1)
@@ -559,118 +447,7 @@ export class AdminDisputesService {
    * Fetch detailed case view for a single dispute.
    */
   async getCaseDetail(orderId: string): Promise<DisputeCaseDetail | null> {
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        totalNzd: true,
-        status: true,
-        createdAt: true,
-        dispatchedAt: true,
-        completedAt: true,
-        trackingNumber: true,
-        stripePaymentIntentId: true,
-        fulfillmentType: true,
-        dispute: {
-          select: {
-            id: true,
-            reason: true,
-            status: true,
-            source: true,
-            buyerStatement: true,
-            sellerStatement: true,
-            adminNotes: true,
-            resolution: true,
-            refundAmount: true,
-            autoResolutionScore: true,
-            autoResolutionReason: true,
-            openedAt: true,
-            sellerRespondedAt: true,
-            resolvedAt: true,
-            evidence: {
-              select: {
-                id: true,
-                r2Key: true,
-                uploadedBy: true,
-                label: true,
-                createdAt: true,
-              },
-              orderBy: { createdAt: "asc" as const },
-            },
-          },
-        },
-        pickupStatus: true,
-        pickupScheduledAt: true,
-        otpInitiatedAt: true,
-        pickupConfirmedAt: true,
-        pickupRejectedAt: true,
-        rescheduleCount: true,
-        pickupRescheduleRequests: {
-          orderBy: { createdAt: "asc" as const },
-          select: {
-            id: true,
-            requestedByRole: true,
-            sellerReason: true,
-            buyerReason: true,
-            reasonNote: true,
-            proposedTime: true,
-            status: true,
-            responseNote: true,
-            respondedAt: true,
-            createdAt: true,
-            requestedBy: { select: { displayName: true } },
-          },
-        },
-        listing: {
-          select: {
-            id: true,
-            title: true,
-            description: true,
-            condition: true,
-            priceNzd: true,
-            images: {
-              select: { r2Key: true, thumbnailKey: true },
-              orderBy: { order: "asc" },
-            },
-          },
-        },
-        snapshot: {
-          select: {
-            title: true,
-            description: true,
-            condition: true,
-            priceNzd: true,
-            shippingNzd: true,
-            categoryName: true,
-            subcategoryName: true,
-            shippingOption: true,
-            isNegotiable: true,
-            images: true,
-            attributes: true,
-            capturedAt: true,
-          },
-        },
-        buyer: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true,
-            createdAt: true,
-          },
-        },
-        seller: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true,
-            idVerified: true,
-            nzbn: true,
-            isGstRegistered: true,
-            createdAt: true,
-          },
-        },
-      },
-    });
+    const order = await adminDisputesRepository.findCaseOrder(orderId);
 
     if (!order) return null;
 
@@ -685,64 +462,10 @@ export class AdminDisputesService {
       inconsistencies,
       counterEvidenceEvents,
     ] = await Promise.all([
-      db.orderEvent.findMany({
-        where: { orderId },
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          type: true,
-          actorRole: true,
-          summary: true,
-          metadata: true,
-          createdAt: true,
-          actor: {
-            select: { id: true, displayName: true, username: true },
-          },
-        },
-      }),
-      db.orderInteraction.findMany({
-        where: { orderId },
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          type: true,
-          status: true,
-          reason: true,
-          responseNote: true,
-          createdAt: true,
-          expiresAt: true,
-          initiator: { select: { displayName: true } },
-          responder: { select: { displayName: true } },
-        },
-      }),
-      // Get message thread between buyer and seller about this order
-      db.messageThread
-        .findFirst({
-          where: {
-            OR: [
-              {
-                participant1Id: order.buyer.id,
-                participant2Id: order.seller.id,
-              },
-              {
-                participant1Id: order.seller.id,
-                participant2Id: order.buyer.id,
-              },
-            ],
-          },
-          select: {
-            messages: {
-              orderBy: { createdAt: "asc" },
-              take: 50,
-              select: {
-                id: true,
-                body: true,
-                createdAt: true,
-                sender: { select: { displayName: true } },
-              },
-            },
-          },
-        })
+      adminDisputesRepository.findCaseTimeline(orderId),
+      adminDisputesRepository.findCaseInteractions(orderId),
+      adminDisputesRepository
+        .findCaseMessageThread(order.buyer.id, order.seller.id)
         .then((t) =>
           (t?.messages ?? []).map((m) => ({
             id: m.id,
@@ -755,26 +478,7 @@ export class AdminDisputesService {
       trustMetricsService.getMetrics(order.seller.id),
       getAutoResolutionEvent(orderId),
       analyzeInconsistencies(orderId),
-      // Counter-evidence events
-      db.orderEvent.findMany({
-        where: {
-          orderId,
-          type: "DISPUTE_RESPONDED",
-          metadata: {
-            path: ["counterEvidenceFor"],
-            not: Prisma.JsonNull,
-          },
-        },
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          actorRole: true,
-          summary: true,
-          metadata: true,
-          createdAt: true,
-          actor: { select: { displayName: true } },
-        },
-      }),
+      adminDisputesRepository.findCaseCounterEvidence(orderId),
     ]);
 
     return {

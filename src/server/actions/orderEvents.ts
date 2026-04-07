@@ -5,7 +5,7 @@
 
 import { requireUser } from "@/server/lib/requireUser";
 import { orderEventService } from "@/modules/orders/order-event.service";
-import db from "@/lib/db";
+import { interactionRepository } from "@/modules/orders/interaction.repository";
 import type { ActionResult } from "@/types";
 
 export interface TimelineEventData {
@@ -25,10 +25,7 @@ export async function getOrderTimeline(
     const user = await requireUser();
 
     // Authorization: only buyer, seller, or admin can view the timeline
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: { buyerId: true, sellerId: true },
-    });
+    const order = await interactionRepository.findOrderParties(orderId);
 
     if (!order) {
       return { success: false, error: "Order not found." };

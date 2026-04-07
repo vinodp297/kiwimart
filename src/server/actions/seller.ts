@@ -4,7 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // ─── Seller Onboarding Actions ────────────────────────────────────────────────
 
 import { headers } from "next/headers";
-import db from "@/lib/db";
+import { verificationRepository } from "@/modules/sellers/verification.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
@@ -296,15 +296,11 @@ export async function rejectIdVerification(
     const rejectionMessage = reasonLabels[reason] ?? reason;
 
     // Update VerificationApplication
-    await db.verificationApplication.updateMany({
-      where: { sellerId: userId, status: "PENDING" },
-      data: {
-        status: "REJECTED",
-        reviewedAt: new Date(),
-        reviewedBy: guard.userId,
-        adminNotes: `${reason}: ${rejectionMessage}`,
-      },
-    });
+    await verificationRepository.rejectPendingByUser(
+      userId,
+      guard.userId,
+      `${reason}: ${rejectionMessage}`,
+    );
 
     // Clear idSubmittedAt so user can resubmit
     await userRepository.update(userId, { idSubmittedAt: null });

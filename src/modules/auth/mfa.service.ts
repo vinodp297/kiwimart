@@ -3,7 +3,7 @@
 
 import { TOTP, Secret } from "otpauth";
 import crypto from "crypto";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { encrypt, decrypt } from "@/lib/encryption";
 
 const MFA_ISSUER = "KiwiMart";
@@ -57,13 +57,9 @@ export async function setupMfa(
   const qrCodeUrl = totp.toString(); // otpauth:// URL
 
   // Encrypt and store (not yet enabled)
-  await db.user.update({
-    where: { id: userId },
-    data: {
-      mfaSecret: encrypt(base32Secret),
-      mfaBackupCodes: encrypt(JSON.stringify(backupCodes)),
-      isMfaEnabled: false, // not enabled until verified
-    },
+  await userRepository.storeMfaSetup(userId, {
+    mfaSecret: encrypt(base32Secret),
+    mfaBackupCodes: encrypt(JSON.stringify(backupCodes)),
   });
 
   return { secret: base32Secret, qrCodeUrl, backupCodes };
@@ -76,10 +72,7 @@ export async function verifyMfaSetup(
   userId: string,
   code: string,
 ): Promise<{ verified: boolean }> {
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { mfaSecret: true, email: true },
-  });
+  const user = await userRepository.findForMfaVerify(userId);
 
   if (!user?.mfaSecret) {
     return { verified: false };
@@ -93,10 +86,7 @@ export async function verifyMfaSetup(
     return { verified: false };
   }
 
-  await db.user.update({
-    where: { id: userId },
-    data: { isMfaEnabled: true },
-  });
+  await userRepository.enableMfa(userId);
 
   return { verified: true };
 }
@@ -108,10 +98,7 @@ export async function verifyMfaLogin(
   userId: string,
   code: string,
 ): Promise<{ verified: boolean; backupCodeUsed: boolean }> {
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { mfaSecret: true, mfaBackupCodes: true, email: true },
-  });
+  const user = await userRepository.findForMfaLogin(userId);
 
   if (!user?.mfaSecret) {
     return { verified: false, backupCodeUsed: false };
@@ -134,10 +121,10 @@ export async function verifyMfaLogin(
     if (index !== -1) {
       // Remove used backup code
       backupCodes.splice(index, 1);
-      await db.user.update({
-        where: { id: userId },
-        data: { mfaBackupCodes: encrypt(JSON.stringify(backupCodes)) },
-      });
+      await userRepository.updateMfaBackupCodes(
+        userId,
+        encrypt(JSON.stringify(backupCodes)),
+      );
       return { verified: true, backupCodeUsed: true };
     }
   }
@@ -152,10 +139,7 @@ export async function disableMfa(
   userId: string,
   code: string,
 ): Promise<{ success: boolean }> {
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { mfaSecret: true, email: true },
-  });
+  const user = await userRepository.findForMfaVerify(userId);
 
   if (!user?.mfaSecret) {
     return { success: false };
@@ -169,14 +153,7 @@ export async function disableMfa(
     return { success: false };
   }
 
-  await db.user.update({
-    where: { id: userId },
-    data: {
-      mfaSecret: null,
-      isMfaEnabled: false,
-      mfaBackupCodes: null,
-    },
-  });
+  await userRepository.clearMfa(userId);
 
   return { success: true };
 }
@@ -185,21 +162,14 @@ export async function disableMfa(
  * Check if a user has MFA enabled.
  */
 export async function hasMfaEnabled(userId: string): Promise<boolean> {
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { isMfaEnabled: true },
-  });
-  return user?.isMfaEnabled ?? false;
+  return userRepository.findIsMfaEnabled(userId);
 }
 
 /**
  * Get the count of remaining backup codes.
  */
 export async function getBackupCodeCount(userId: string): Promise<number> {
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: { mfaBackupCodes: true },
-  });
+  const user = await userRepository.findMfaBackupCodes(userId);
   if (!user?.mfaBackupCodes) return 0;
   const codes: string[] = JSON.parse(decrypt(user.mfaBackupCodes));
   return codes.length;

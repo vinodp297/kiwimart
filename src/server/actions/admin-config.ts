@@ -1,7 +1,7 @@
 "use server";
 
 import { requirePermission } from "@/shared/auth/requirePermission";
-import db from "@/lib/db";
+import { adminConfigRepository } from "@/modules/admin/admin-config.repository";
 import { audit } from "@/server/lib/audit";
 import { getClientIp } from "@/server/lib/rateLimit";
 import { headers } from "next/headers";
@@ -37,12 +37,7 @@ export async function getAllConfigs(): Promise<
   try {
     await requirePermission("VIEW_PLATFORM_CONFIG");
 
-    const records = await db.platformConfig.findMany({
-      orderBy: [{ category: "asc" }, { key: "asc" }],
-      include: {
-        updater: { select: { displayName: true } },
-      },
-    });
+    const records = await adminConfigRepository.findAll();
 
     const grouped: Record<string, ConfigRecord[]> = {};
     for (const r of records) {
@@ -86,9 +81,7 @@ export async function updateConfig(
     const ip = getClientIp(await headers());
 
     // Fetch current record
-    const existing = await db.platformConfig.findUnique({
-      where: { key },
-    });
+    const existing = await adminConfigRepository.findByKey(key);
 
     if (!existing) {
       return { success: false, error: `Config key not found: ${key}` };
@@ -164,13 +157,7 @@ export async function updateConfig(
     const oldValue = existing.value;
 
     // Update DB
-    await db.platformConfig.update({
-      where: { key },
-      data: {
-        value: trimmed,
-        updatedById: admin.id,
-      },
-    });
+    await adminConfigRepository.updateValue(key, trimmed, admin.id);
 
     // Invalidate cache immediately on this instance
     invalidateConfig(key as ConfigKey);

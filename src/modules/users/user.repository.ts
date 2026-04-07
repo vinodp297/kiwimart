@@ -710,6 +710,177 @@ export const userRepository = {
     });
   },
 
+  // ── Stripe Connect helpers ────────────────────────────────────────────────
+
+  /** Update Stripe onboarding fields for a user identified by their Stripe account ID.
+   * @source src/modules/payments/webhook.service.ts — handleAccountUpdated */
+  async updateByStripeAccountId(
+    stripeAccountId: string,
+    data: Prisma.UserUpdateInput,
+  ): Promise<void> {
+    await db.user.updateMany({ where: { stripeAccountId }, data });
+  },
+
+  // ── Erasure helpers ──────────────────────────────────────────────────────
+
+  /** Fetch email and display name before account erasure (capture before anonymisation).
+   * @source src/modules/users/erasure.service.ts — performAccountErasure */
+  async findEmailAndDisplayName(
+    id: string,
+  ): Promise<{ email: string; displayName: string | null } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { email: true, displayName: true },
+    });
+  },
+
+  // ── Password-reset token helpers ─────────────────────────────────────────
+
+  /** Invalidate all unused password-reset tokens for a user (prevents token reuse).
+   * @source src/modules/users/auth.service.ts — requestPasswordReset */
+  async invalidatePendingResetTokens(userId: string): Promise<void> {
+    await db.passwordResetToken.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+  },
+
+  /** Create a new password-reset token record.
+   * @source src/modules/users/auth.service.ts — requestPasswordReset */
+  async createResetToken(data: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    requestIp: string | null;
+    userAgent: string | null;
+  }): Promise<void> {
+    await db.passwordResetToken.create({ data });
+  },
+
+  /** Fetch a password-reset token with its associated user (for reset validation).
+   * @source src/modules/users/auth.service.ts — resetPassword */
+  async findResetTokenWithUser(tokenHash: string): Promise<{
+    id: string;
+    userId: string;
+    usedAt: Date | null;
+    expiresAt: Date;
+    user: { id: string; email: string; displayName: string | null };
+  } | null> {
+    return db.passwordResetToken.findUnique({
+      where: { tokenHash },
+      include: {
+        user: { select: { id: true, email: true, displayName: true } },
+      },
+    });
+  },
+
+  // ── MFA helpers ───────────────────────────────────────────────────────────
+
+  /** Store encrypted MFA secret and backup codes during setup (MFA not yet enabled).
+   * @source src/modules/auth/mfa.service.ts — setupMfa */
+  async storeMfaSetup(
+    userId: string,
+    data: { mfaSecret: string; mfaBackupCodes: string },
+  ): Promise<void> {
+    await db.user.update({
+      where: { id: userId },
+      data: { ...data, isMfaEnabled: false },
+    });
+  },
+
+  /** Fetch MFA secret and email for TOTP verification during setup or disable.
+   * @source src/modules/auth/mfa.service.ts — verifyMfaSetup, disableMfa */
+  async findForMfaVerify(
+    userId: string,
+  ): Promise<{ mfaSecret: string | null; email: string } | null> {
+    return db.user.findUnique({
+      where: { id: userId },
+      select: { mfaSecret: true, email: true },
+    });
+  },
+
+  /** Enable MFA after successful TOTP verification.
+   * @source src/modules/auth/mfa.service.ts — verifyMfaSetup */
+  async enableMfa(userId: string): Promise<void> {
+    await db.user.update({
+      where: { id: userId },
+      data: { isMfaEnabled: true },
+    });
+  },
+
+  /** Fetch MFA fields needed to verify a login attempt.
+   * @source src/modules/auth/mfa.service.ts — verifyMfaLogin */
+  async findForMfaLogin(userId: string): Promise<{
+    mfaSecret: string | null;
+    mfaBackupCodes: string | null;
+    email: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { id: userId },
+      select: { mfaSecret: true, mfaBackupCodes: true, email: true },
+    });
+  },
+
+  /** Persist updated backup codes after one has been consumed during login.
+   * @source src/modules/auth/mfa.service.ts — verifyMfaLogin */
+  async updateMfaBackupCodes(
+    userId: string,
+    encryptedCodes: string,
+  ): Promise<void> {
+    await db.user.update({
+      where: { id: userId },
+      data: { mfaBackupCodes: encryptedCodes },
+    });
+  },
+
+  /** Clear all MFA fields when MFA is disabled.
+   * @source src/modules/auth/mfa.service.ts — disableMfa */
+  async clearMfa(userId: string): Promise<void> {
+    await db.user.update({
+      where: { id: userId },
+      data: { mfaSecret: null, isMfaEnabled: false, mfaBackupCodes: null },
+    });
+  },
+
+  /** Check whether MFA is enabled for a user.
+   * @source src/modules/auth/mfa.service.ts — hasMfaEnabled */
+  async findIsMfaEnabled(userId: string): Promise<boolean> {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { isMfaEnabled: true },
+    });
+    return user?.isMfaEnabled ?? false;
+  },
+
+  /** Fetch encrypted backup codes to count remaining uses.
+   * @source src/modules/auth/mfa.service.ts — getBackupCodeCount */
+  async findMfaBackupCodes(
+    userId: string,
+  ): Promise<{ mfaBackupCodes: string | null } | null> {
+    return db.user.findUnique({
+      where: { id: userId },
+      select: { mfaBackupCodes: true },
+    });
+  },
+
+  /** Upsert a block relationship (idempotent).
+   * @source src/server/actions/blocks.ts — blockUser */
+  async upsertBlock(blockerId: string, blockedId: string): Promise<void> {
+    await db.blockedUser.upsert({
+      where: { blockerId_blockedId: { blockerId, blockedId } },
+      create: { blockerId, blockedId },
+      update: {},
+    });
+  },
+
+  /** Remove a block relationship.
+   * @source src/server/actions/blocks.ts — unblockUser */
+  async removeBlock(blockerId: string, blockedId: string): Promise<void> {
+    await db.blockedUser.deleteMany({
+      where: { blockerId, blockedId },
+    });
+  },
+
   /** Run an array of operations inside a transaction.
    * @source src/modules/users/user.service.ts — changePassword, verifyPhoneCode */
   async transaction<T>(

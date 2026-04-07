@@ -3,7 +3,7 @@
 // ─── Support Admin Search Actions ────────────────────────────────────────────
 
 import { requirePermission } from "@/shared/auth/requirePermission";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 import { userRepository } from "@/modules/users/user.repository";
 
 export async function lookupUser(query: string) {
@@ -19,12 +19,5 @@ export async function lookupOrder(orderId: string) {
 
   if (!orderId.trim()) return null;
 
-  return db.order.findUnique({
-    where: { id: orderId },
-    include: {
-      listing: { select: { title: true, priceNzd: true } },
-      buyer: { select: { displayName: true, email: true } },
-      seller: { select: { displayName: true, email: true } },
-    },
-  });
+  return orderRepository.findForSupportLookup(orderId);
 }

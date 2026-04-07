@@ -6,7 +6,8 @@
 import { safeActionError } from "@/shared/errors";
 import { getRequestContext } from "@/lib/request-context";
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { userRepository } from "@/modules/users/user.repository";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
 import { createNotification } from "@/modules/notifications/notification.service";
@@ -37,22 +38,7 @@ export async function initiatePickupOTP(
   try {
     const user = await requireUser();
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        fulfillmentType: true,
-        pickupStatus: true,
-        pickupScheduledAt: true,
-        pickupWindowExpiresAt: true,
-        buyer: {
-          select: { phone: true, displayName: true },
-        },
-        listing: { select: { title: true } },
-      },
-    });
+    const order = await orderRepository.findForInitiateOTP(orderId);
 
     if (!order) return { success: false, error: "Order not found." };
 
@@ -111,7 +97,7 @@ export async function initiatePickupOTP(
     }
 
     // Run in transaction
-    await db.$transaction(async (tx) => {
+    await orderRepository.$transaction(async (tx) => {
       await generateAndSendOTP({
         orderId: order.id,
         buyerPhone,
@@ -169,12 +155,7 @@ export async function initiatePickupOTP(
       });
 
     // Store job ID
-    await db.order
-      .update({
-        where: { id: orderId },
-        data: { otpJobId },
-      })
-      .catch(() => {});
+    await orderRepository.updateOtpJobId(orderId, otpJobId).catch(() => {});
 
     // Notify buyer
     createNotification({
@@ -207,24 +188,7 @@ export async function confirmPickupOTP(
   try {
     const user = await requireUser();
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        fulfillmentType: true,
-        pickupStatus: true,
-        stripePaymentIntentId: true,
-        totalNzd: true,
-        listingId: true,
-        otpJobId: true,
-        pickupWindowJobId: true,
-        listing: { select: { title: true } },
-        seller: { select: { stripeAccountId: true } },
-      },
-    });
+    const order = await orderRepository.findForConfirmOTP(orderId);
 
     if (!order) return { success: false, error: "Order not found." };
 
@@ -249,7 +213,7 @@ export async function confirmPickupOTP(
     }
 
     // Run in transaction
-    await db.$transaction(async (tx) => {
+    await orderRepository.$transaction(async (tx) => {
       // Verify OTP
       const otpResult = await verifyOTP({ orderId, enteredCode, tx });
       if (!otpResult.valid) {
@@ -353,11 +317,8 @@ export async function confirmPickupOTP(
     }).catch(() => {});
 
     // Send payout email to seller (fire-and-forget)
-    db.user
-      .findUnique({
-        where: { id: order.sellerId },
-        select: { email: true, displayName: true },
-      })
+    userRepository
+      .findEmailAndDisplayName(order.sellerId)
       .then((seller) => {
         if (!seller) return;
         sendPayoutInitiatedEmail({
@@ -422,20 +383,7 @@ export async function rejectItemAtPickup(
   try {
     const user = await requireUser();
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        fulfillmentType: true,
-        pickupStatus: true,
-        otpJobId: true,
-        listingId: true,
-        listing: { select: { title: true } },
-      },
-    });
+    const order = await orderRepository.findForRejectAtPickup(orderId);
 
     if (!order) return { success: false, error: "Order not found." };
 
@@ -474,7 +422,7 @@ export async function rejectItemAtPickup(
     const disputeReason = PICKUP_TO_DISPUTE_REASON[params.reason];
 
     // Update order in transaction + create Dispute record
-    await db.$transaction(async (tx) => {
+    await orderRepository.$transaction(async (tx) => {
       await tx.order.update({
         where: { id: orderId },
         data: {

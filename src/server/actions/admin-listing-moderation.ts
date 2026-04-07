@@ -5,7 +5,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import db from "@/lib/db";
+import { listingRepository } from "@/modules/listings/listing.repository";
 import { audit } from "@/server/lib/audit";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
@@ -50,17 +50,7 @@ export async function approveListing(
     const reqHeaders = await headers();
     const ip = getClientIp(reqHeaders);
 
-    const listing = await db.listing.findUnique({
-      where: { id: listingId },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        sellerId: true,
-        deletedAt: true,
-        seller: { select: { email: true, displayName: true } },
-      },
-    });
+    const listing = await listingRepository.findForModeration(listingId);
 
     if (!listing || listing.deletedAt) {
       return { success: false, error: "Listing not found." };
@@ -84,17 +74,7 @@ export async function approveListing(
       };
     }
 
-    await db.listing.update({
-      where: { id: listingId },
-      data: {
-        status: "ACTIVE",
-        publishedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        moderatedBy: admin.id,
-        moderatedAt: new Date(),
-        moderationNote: null,
-      },
-    });
+    await listingRepository.approveListing(listingId, admin.id);
 
     audit({
       userId: admin.id,
@@ -179,17 +159,7 @@ export async function requestListingChanges(
       return { success: false, error: "A moderation note is required." };
     }
 
-    const listing = await db.listing.findUnique({
-      where: { id: listingId },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        sellerId: true,
-        deletedAt: true,
-        seller: { select: { email: true, displayName: true } },
-      },
-    });
+    const listing = await listingRepository.findForModeration(listingId);
 
     if (!listing || listing.deletedAt) {
       return { success: false, error: "Listing not found." };
@@ -210,15 +180,7 @@ export async function requestListingChanges(
       };
     }
 
-    await db.listing.update({
-      where: { id: listingId },
-      data: {
-        status: "NEEDS_CHANGES",
-        moderatedBy: admin.id,
-        moderatedAt: new Date(),
-        moderationNote: note.trim(),
-      },
-    });
+    await listingRepository.requestChanges(listingId, admin.id, note.trim());
 
     audit({
       userId: admin.id,
@@ -302,17 +264,7 @@ export async function rejectListing(
       return { success: false, error: "A rejection reason is required." };
     }
 
-    const listing = await db.listing.findUnique({
-      where: { id: listingId },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        sellerId: true,
-        deletedAt: true,
-        seller: { select: { email: true, displayName: true } },
-      },
-    });
+    const listing = await listingRepository.findForModeration(listingId);
 
     if (!listing || listing.deletedAt) {
       return { success: false, error: "Listing not found." };
@@ -336,15 +288,7 @@ export async function rejectListing(
       };
     }
 
-    await db.listing.update({
-      where: { id: listingId },
-      data: {
-        status: "REMOVED",
-        moderatedBy: admin.id,
-        moderatedAt: new Date(),
-        moderationNote: reason.trim(),
-      },
-    });
+    await listingRepository.rejectListing(listingId, admin.id, reason.trim());
 
     audit({
       userId: admin.id,
@@ -395,82 +339,12 @@ export async function getPendingListings() {
   await requirePermission("MODERATE_CONTENT");
 
   const [pendingReview, needsChanges, stats] = await Promise.all([
-    db.listing.findMany({
-      where: { status: "PENDING_REVIEW", deletedAt: null },
-      orderBy: [{ autoRiskScore: "desc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        title: true,
-        priceNzd: true,
-        autoRiskScore: true,
-        autoRiskFlags: true,
-        resubmissionCount: true,
-        createdAt: true,
-        status: true,
-        seller: {
-          select: {
-            id: true,
-            displayName: true,
-            email: true,
-            isPhoneVerified: true,
-            idVerified: true,
-          },
-        },
-        images: {
-          orderBy: { order: "asc" },
-          take: 1,
-          select: { r2Key: true, thumbnailKey: true },
-        },
-      },
-    }),
-    db.listing.findMany({
-      where: { status: "NEEDS_CHANGES", deletedAt: null },
-      orderBy: { moderatedAt: "desc" },
-      select: {
-        id: true,
-        title: true,
-        priceNzd: true,
-        autoRiskScore: true,
-        autoRiskFlags: true,
-        moderationNote: true,
-        moderatedAt: true,
-        createdAt: true,
-        status: true,
-        seller: {
-          select: {
-            id: true,
-            displayName: true,
-            email: true,
-            isPhoneVerified: true,
-            idVerified: true,
-          },
-        },
-        images: {
-          orderBy: { order: "asc" },
-          take: 1,
-          select: { r2Key: true, thumbnailKey: true },
-        },
-      },
-    }),
+    listingRepository.findPendingReview(),
+    listingRepository.findNeedsChanges(),
     Promise.all([
-      db.listing.count({
-        where: { status: "PENDING_REVIEW", deletedAt: null },
-      }),
-      db.listing.count({ where: { status: "NEEDS_CHANGES", deletedAt: null } }),
-      db.listing.count({
-        where: {
-          status: "ACTIVE",
-          deletedAt: null,
-          OR: [
-            {
-              moderatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-            },
-            {
-              publishedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-            },
-          ],
-        },
-      }),
+      listingRepository.countPendingReview(),
+      listingRepository.countNeedsChanges(),
+      listingRepository.countApprovedToday(),
     ]),
   ]);
 

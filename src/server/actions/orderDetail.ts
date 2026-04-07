@@ -4,7 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // ─── Order Detail Server Action ─────────────────────────────────────────────
 
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 import { getImageUrl } from "@/lib/image";
 import type { ActionResult } from "@/types";
 
@@ -75,56 +75,7 @@ export async function fetchOrderDetail(
   try {
     const user = await requireUser();
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        listingId: true,
-        itemNzd: true,
-        shippingNzd: true,
-        totalNzd: true,
-        status: true,
-        createdAt: true,
-        dispatchedAt: true,
-        deliveredAt: true,
-        completedAt: true,
-        trackingNumber: true,
-        trackingUrl: true,
-        dispute: {
-          select: {
-            reason: true,
-            status: true,
-            buyerStatement: true,
-            sellerStatement: true,
-            openedAt: true,
-            sellerRespondedAt: true,
-            resolvedAt: true,
-          },
-        },
-        cancelledBy: true,
-        cancelReason: true,
-        cancelledAt: true,
-        fulfillmentType: true,
-        pickupStatus: true,
-        pickupScheduledAt: true,
-        pickupWindowExpiresAt: true,
-        otpExpiresAt: true,
-        rescheduleCount: true,
-        listing: {
-          select: {
-            title: true,
-            images: { where: { order: 0 }, select: { r2Key: true }, take: 1 },
-          },
-        },
-        buyer: { select: { displayName: true, username: true } },
-        seller: { select: { displayName: true, username: true } },
-        reviews: {
-          select: { id: true, reviewerRole: true },
-        },
-      },
-    });
+    const order = await orderRepository.findForOrderDetail(orderId);
 
     if (!order) return { success: false, error: "Order not found." };
 

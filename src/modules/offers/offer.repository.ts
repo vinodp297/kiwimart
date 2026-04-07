@@ -110,6 +110,14 @@ export const offerRepository = {
     });
   },
 
+  /** Count pending offers on a listing (for social-proof display).
+   * @source src/modules/listings/social-proof.service.ts */
+  async countPendingByListing(listingId: string): Promise<number> {
+    return db.offer.count({
+      where: { listingId, status: "PENDING" },
+    });
+  },
+
   /** Decline all competing offers on the same listing (inside a transaction).
    * @source src/modules/offers/offer.service.ts */
   async declineCompetitors(

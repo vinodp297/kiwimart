@@ -23,7 +23,6 @@ import { userRepository } from "@/modules/users/user.repository";
 import { orderRepository } from "@/modules/orders/order.repository";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { adminRepository } from "./admin.repository";
-import db from "@/lib/db";
 import type { ReportAction, DisputeFavour } from "./admin.types";
 
 export class AdminService {
@@ -32,7 +31,7 @@ export class AdminService {
     reason: string,
     adminUserId: string,
   ): Promise<void> {
-    await db.$transaction(async (tx) => {
+    await userRepository.transaction(async (tx) => {
       await userRepository.setBanState(userId, true, reason, tx);
       await userRepository.deleteAllSessions(userId, tx);
     });
@@ -89,7 +88,7 @@ export class AdminService {
     if (!report) throw AppError.notFound("Report");
 
     // Wrap all DB mutations in a transaction for atomicity
-    await db.$transaction(async (tx) => {
+    await orderRepository.$transaction(async (tx) => {
       await adminRepository.resolveReport(reportId, adminUserId, tx);
 
       if (action === "remove" && report.listingId) {
@@ -147,7 +146,7 @@ export class AdminService {
       await withLock(`dispute:${orderId}`, async () => {
         if (favour === "buyer") {
           // DB first (optimistic) — then Stripe refund.
-          await db.$transaction(async (tx) => {
+          await orderRepository.$transaction(async (tx) => {
             await transitionOrder(
               orderId,
               "REFUNDED",
@@ -192,7 +191,7 @@ export class AdminService {
             orderId,
           });
 
-          await db.$transaction(async (tx) => {
+          await orderRepository.$transaction(async (tx) => {
             await transitionOrder(
               orderId,
               "COMPLETED",
@@ -348,7 +347,7 @@ export class AdminService {
     const dispute = await getDisputeByOrderId(orderId);
 
     await withLock(`dispute:${orderId}`, async () => {
-      await db.$transaction(async (tx) => {
+      await orderRepository.$transaction(async (tx) => {
         await transitionOrder(
           orderId,
           "COMPLETED",

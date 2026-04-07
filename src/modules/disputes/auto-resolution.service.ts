@@ -4,7 +4,10 @@
 // Supports a 24-hour cooling period before execution so the other party can
 // submit counter-evidence.
 
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { interactionRepository } from "@/modules/orders/interaction.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { userRepository } from "@/modules/users/user.repository";
 import { CONFIG_KEYS, getConfigMany } from "@/lib/platform-config";
 import type { ConfigKey } from "@/lib/platform-config";
 import { logger } from "@/shared/logger";
@@ -93,20 +96,7 @@ export class AutoResolutionService {
    * Evaluate a disputed order and return a resolution recommendation.
    */
   async evaluateDispute(orderId: string): Promise<DisputeEvaluation> {
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        totalNzd: true,
-        trackingNumber: true,
-        dispatchedAt: true,
-        completedAt: true,
-        stripePaymentIntentId: true,
-      },
-    });
+    const order = await orderRepository.findForAutoResolutionEvaluate(orderId);
 
     if (!order) throw new Error(`Order ${orderId} not found`);
 
@@ -248,10 +238,7 @@ export class AutoResolutionService {
     }
 
     // Check dispatch photos
-    const dispatchEvent = await db.orderEvent.findFirst({
-      where: { orderId, type: "DISPATCHED" },
-      select: { metadata: true },
-    });
+    const dispatchEvent = await orderRepository.findDispatchEvent(orderId);
     const dispatchMeta = (dispatchEvent?.metadata ?? {}) as Record<
       string,
       unknown
@@ -303,13 +290,12 @@ export class AutoResolutionService {
       });
     }
 
-    const priorInteractions = await db.orderInteraction.count({
-      where: {
+    const priorInteractions =
+      await interactionRepository.countPriorBuyerInteractions(
         orderId,
-        initiatedById: order.buyerId,
-        createdAt: { lt: disputeOpenedAt ?? new Date() },
-      },
-    });
+        order.buyerId,
+        disputeOpenedAt ?? new Date(),
+      );
     if (priorInteractions > 0) {
       score += W.BUYER_ATTEMPTED_RESOLUTION;
       factors.push({
@@ -319,14 +305,11 @@ export class AutoResolutionService {
       });
     }
 
-    const rejectedInteraction = await db.orderInteraction.findFirst({
-      where: {
+    const rejectedInteraction =
+      await interactionRepository.findRejectedByResponder(
         orderId,
-        status: "REJECTED",
-        responseById: order.sellerId,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+        order.sellerId,
+      );
     if (rejectedInteraction) {
       score += W.SELLER_REJECTED_WITHOUT_COUNTER;
       factors.push({
@@ -339,9 +322,7 @@ export class AutoResolutionService {
 
     // ── Factors that FAVOUR SELLER (decrease score) ─────────────────
 
-    const deliveryOkEvent = await db.orderEvent.findFirst({
-      where: { orderId, type: "DELIVERY_CONFIRMED_OK" },
-    });
+    const deliveryOkEvent = await orderRepository.findDeliveryOkEvent(orderId);
     if (deliveryOkEvent) {
       score += W.BUYER_CONFIRMED_DELIVERY_OK;
       factors.push({
@@ -506,14 +487,7 @@ export class AutoResolutionService {
   async queueAutoResolution(orderId: string): Promise<DisputeEvaluation> {
     const evaluation = await this.evaluateDispute(orderId);
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        buyerId: true,
-        sellerId: true,
-        listing: { select: { title: true } },
-      },
-    });
+    const order = await orderRepository.findForAutoResolutionExecute(orderId);
 
     if (!order) throw new Error(`Order ${orderId} not found`);
 
@@ -617,18 +591,7 @@ export class AutoResolutionService {
     orderId: string,
     evaluation: DisputeEvaluation,
   ): Promise<void> {
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        totalNzd: true,
-        stripePaymentIntentId: true,
-        listing: { select: { title: true, id: true } },
-      },
-    });
+    const order = await orderRepository.findForAutoResolutionExecute(orderId);
 
     if (!order) throw new Error(`Order ${orderId} not found`);
 
@@ -653,7 +616,7 @@ export class AutoResolutionService {
       }
 
       try {
-        await db.$transaction(async (tx) => {
+        await orderRepository.$transaction(async (tx) => {
           await transitionOrder(
             orderId,
             "REFUNDED",
@@ -678,11 +641,8 @@ export class AutoResolutionService {
 
       // Restore listing
       if (order.listing) {
-        await db.listing
-          .updateMany({
-            where: { id: order.listing.id, status: "SOLD" },
-            data: { status: "ACTIVE" },
-          })
+        await listingRepository
+          .restoreFromSold(order.listing.id)
           .catch(() => {});
       }
 
@@ -719,11 +679,8 @@ export class AutoResolutionService {
       }).catch(() => {});
 
       // Fire-and-forget AUTO_REFUND emails to both parties
-      db.user
-        .findMany({
-          where: { id: { in: [order.buyerId, order.sellerId] } },
-          select: { id: true, email: true, displayName: true },
-        })
+      userRepository
+        .findManyEmailContactsByIds([order.buyerId, order.sellerId])
         .then((users) => {
           const buyer = users.find((u) => u.id === order.buyerId);
           const seller = users.find((u) => u.id === order.sellerId);
@@ -767,7 +724,7 @@ export class AutoResolutionService {
       });
     } else if (evaluation.decision === "AUTO_DISMISS") {
       try {
-        await db.$transaction(async (tx) => {
+        await orderRepository.$transaction(async (tx) => {
           await transitionOrder(
             orderId,
             "COMPLETED",
@@ -834,11 +791,8 @@ export class AutoResolutionService {
       }).catch(() => {});
 
       // Fire-and-forget AUTO_DISMISS emails to both parties
-      db.user
-        .findMany({
-          where: { id: { in: [order.buyerId, order.sellerId] } },
-          select: { id: true, email: true, displayName: true },
-        })
+      userRepository
+        .findManyEmailContactsByIds([order.buyerId, order.sellerId])
         .then((users) => {
           const buyer = users.find((u) => u.id === order.buyerId);
           const seller = users.find((u) => u.id === order.sellerId);

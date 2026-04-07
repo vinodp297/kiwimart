@@ -40,5 +40,26 @@ export default tseslint.config(
       // Downgrade to warn — existing code has this pattern in image processing
       'no-useless-assignment': 'warn',
     },
-  }
+  },
+  // ── Architecture: services and actions must not import db directly ──────────
+  // All DB access must go through repositories (services → repositories → db).
+  // Repositories themselves are excluded from this rule.
+  {
+    files: ['src/modules/**/*.ts', 'src/server/actions/**/*.ts'],
+    ignores: ['src/modules/**/*.repository.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@/lib/db',
+              message:
+                'Services and actions must not import db directly. Use a repository instead.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

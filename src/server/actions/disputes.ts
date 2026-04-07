@@ -15,7 +15,8 @@ import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 import { logger } from "@/shared/logger";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { disputeRepository } from "@/modules/disputes/dispute.repository";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
@@ -48,12 +49,10 @@ export async function openDispute(raw: unknown): Promise<ActionResult<void>> {
 
     // Abuse detection — log warning if user has 5+ disputes in 30 days
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const recentDisputeCount = await db.dispute.count({
-      where: {
-        order: { buyerId: user.id },
-        openedAt: { gte: thirtyDaysAgo },
-      },
-    });
+    const recentDisputeCount = await disputeRepository.countRecentByBuyer(
+      user.id,
+      thirtyDaysAgo,
+    );
     if (recentDisputeCount >= 5) {
       logger.warn("dispute.abuse_detected", {
         userId: user.id,
@@ -226,17 +225,9 @@ export async function respondToDispute(
       };
     }
 
-    const order = await db.order.findUnique({
-      where: { id: parsed.data.orderId },
-      select: {
-        id: true,
-        sellerId: true,
-        buyerId: true,
-        status: true,
-        listing: { select: { title: true } },
-        seller: { select: { displayName: true } },
-      },
-    });
+    const order = await orderRepository.findForDisputeResponse(
+      parsed.data.orderId,
+    );
 
     if (!order) {
       return { success: false, error: "Order not found." };

@@ -12,7 +12,6 @@ import { sendOfferReceivedEmail, sendOfferResponseEmail } from "@/server/email";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { offerRepository } from "./offer.repository";
-import db from "@/lib/db";
 import type { CreateOfferInput, RespondOfferInput } from "./offer.types";
 
 export class OfferService {
@@ -148,7 +147,7 @@ export class OfferService {
       try {
         await withLock(`listing:purchase:${offer.listingId}`, async () => {
           // Atomic: accept offer + reserve listing + decline competing offers
-          await db.$transaction(async (tx) => {
+          await listingRepository.$transaction(async (tx) => {
             // Optimistic lock: WHERE status='PENDING' ensures only one winner
             // in a true concurrent race that both passed the pre-check above.
             const acceptResult = await offerRepository.accept(

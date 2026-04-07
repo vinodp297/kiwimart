@@ -2,7 +2,7 @@
 // src/server/actions/recentlyViewed.ts
 // ─── Recently Viewed — DB persistence for authenticated users ─────────────────
 
-import db from "@/lib/db";
+import { recentlyViewedRepository } from "@/modules/listings/recently-viewed.repository";
 import { getImageUrl } from "@/lib/image";
 import { requireUser } from "@/server/lib/requireUser";
 import { logger } from "@/shared/logger";
@@ -22,26 +22,16 @@ export async function recordListingView(
     const user = await requireUser();
 
     // Upsert the view record
-    await db.recentlyViewed.upsert({
-      where: {
-        userId_listingId: { userId: user.id, listingId },
-      },
-      update: { viewedAt: new Date() },
-      create: { userId: user.id, listingId },
-    });
+    await recentlyViewedRepository.upsertView(user.id, listingId);
 
     // Trim old views beyond the cap (keep newest MAX_PER_USER)
-    const oldest = await db.recentlyViewed.findMany({
-      where: { userId: user.id },
-      orderBy: { viewedAt: "desc" },
-      skip: MAX_PER_USER,
-      select: { id: true },
-    });
+    const oldest = await recentlyViewedRepository.findOlderThanCap(
+      user.id,
+      MAX_PER_USER,
+    );
 
     if (oldest.length > 0) {
-      await db.recentlyViewed.deleteMany({
-        where: { id: { in: oldest.map((r) => r.id) } },
-      });
+      await recentlyViewedRepository.deleteManyByIds(oldest.map((r) => r.id));
     }
 
     return { success: true, data: undefined };
@@ -73,29 +63,7 @@ export async function getRecentlyViewedFromDB(
   try {
     const user = await requireUser();
 
-    const rows = await db.recentlyViewed.findMany({
-      where: { userId: user.id },
-      orderBy: { viewedAt: "desc" },
-      take: limit,
-      select: {
-        viewedAt: true,
-        listing: {
-          select: {
-            id: true,
-            title: true,
-            priceNzd: true,
-            condition: true,
-            status: true,
-            deletedAt: true,
-            images: {
-              where: { order: 0, isSafe: true },
-              select: { r2Key: true, thumbnailKey: true },
-              take: 1,
-            },
-          },
-        },
-      },
-    });
+    const rows = await recentlyViewedRepository.findByUser(user.id, limit);
 
     // Filter out deleted/inactive listings
     const data: RecentlyViewedRow[] = rows

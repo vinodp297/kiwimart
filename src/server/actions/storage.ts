@@ -4,7 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // ─── Storage Monitoring ─────────────────────────────────────────────────────
 
 import { requireUser } from "@/server/lib/requireUser";
-import db from "@/lib/db";
+import { listingImageRepository } from "@/modules/listings/listing-image.repository";
 import type { ActionResult } from "@/types";
 
 export interface StorageStats {
@@ -28,22 +28,14 @@ export async function getStorageStats(): Promise<ActionResult<StorageStats>> {
 
     const [totalImages, processedImages, pendingImages, thumbnailCount] =
       await Promise.all([
-        db.listingImage.count(),
-        db.listingImage.count({ where: { processedAt: { not: null } } }),
-        db.listingImage.count({ where: { isScanned: false } }),
-        db.listingImage.count({ where: { thumbnailKey: { not: null } } }),
+        listingImageRepository.countAll(),
+        listingImageRepository.countProcessed(),
+        listingImageRepository.countPending(),
+        listingImageRepository.countWithThumbnails(),
       ]);
 
     // Aggregate sizes
-    const sizeAgg = await db.listingImage.aggregate({
-      _sum: {
-        sizeBytes: true,
-        originalSizeBytes: true,
-      },
-      _avg: {
-        sizeBytes: true,
-      },
-    });
+    const sizeAgg = await listingImageRepository.aggregateSizes();
 
     const totalSizeBytes = sizeAgg._sum.sizeBytes ?? 0;
     const totalOriginalSizeBytes = sizeAgg._sum.originalSizeBytes ?? 0;

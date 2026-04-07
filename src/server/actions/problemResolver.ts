@@ -8,7 +8,7 @@ import { safeActionError } from "@/shared/errors";
 import { requireUser } from "@/server/lib/requireUser";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { headers } from "next/headers";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 import { logger } from "@/shared/logger";
 import { orderService } from "@/modules/orders/order.service";
 import {
@@ -52,21 +52,7 @@ export async function submitProblem(raw: unknown): Promise<
     const { orderId, problemType, description, evidenceKeys, refundAmount } =
       parsed.data;
 
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        totalNzd: true,
-        createdAt: true,
-        stripePaymentIntentId: true,
-        dispute: { select: { openedAt: true } },
-        listing: { select: { title: true } },
-        seller: { select: { displayName: true, email: true } },
-      },
-    });
+    const order = await orderRepository.findForProblemResolver(orderId);
 
     if (!order) return { success: false, error: "Order not found." };
     if (order.buyerId !== user.id) {

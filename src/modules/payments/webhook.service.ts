@@ -16,7 +16,9 @@
 import type { Stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 import { audit } from "@/server/lib/audit";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { userRepository } from "@/modules/users/user.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
 import { transitionOrder } from "@/modules/orders/order.transitions";
 import {
   orderEventService,
@@ -31,9 +33,7 @@ export class WebhookService {
    */
   async markEventProcessed(eventId: string, type: string): Promise<boolean> {
     try {
-      await db.stripeEvent.create({
-        data: { id: eventId, type },
-      });
+      await orderRepository.createStripeEvent(eventId, type);
       return true;
     } catch (err: unknown) {
       if (
@@ -87,7 +87,7 @@ export class WebhookService {
       // blocked by the idempotency check. The handler is idempotent so
       // re-processing on retry is safe.
       try {
-        await db.stripeEvent.delete({ where: { id: event.id } });
+        await orderRepository.deleteStripeEvent(event.id);
       } catch {
         // If delete also fails, the event is stuck as "processed".
         // The daily reconciliation cron will detect the mismatch.
@@ -116,10 +116,7 @@ export class WebhookService {
 
     // Only transition from AWAITING_PAYMENT — prevents replayed webhooks from
     // reverting orders already past the escrow stage.
-    const currentOrder = await db.order.findUnique({
-      where: { id: orderId },
-      select: { status: true, fulfillmentType: true },
-    });
+    const currentOrder = await orderRepository.findForWebhookStatus(orderId);
 
     if (currentOrder?.status !== "AWAITING_PAYMENT") {
       logger.info(
@@ -141,7 +138,7 @@ export class WebhookService {
       currentOrder.fulfillmentType === "ONLINE_PAYMENT_PICKUP";
     const targetStatus = isPickupOrder ? "AWAITING_PICKUP" : "PAYMENT_HELD";
 
-    await db.$transaction(async (tx) => {
+    await orderRepository.$transaction(async (tx) => {
       await transitionOrder(
         orderId,
         targetStatus,
@@ -214,10 +211,7 @@ export class WebhookService {
 
     // State validation: only transition from AWAITING_PAYMENT to PAYMENT_HELD.
     // Prevents replayed webhooks from reverting completed/refunded orders.
-    const currentOrder = await db.order.findUnique({
-      where: { id: orderId },
-      select: { status: true },
-    });
+    const currentOrder = await orderRepository.findForWebhookStatus(orderId);
 
     if (currentOrder?.status !== "AWAITING_PAYMENT") {
       logger.warn("webhook.payment_intent_succeeded: unexpected order state", {
@@ -229,7 +223,7 @@ export class WebhookService {
       return; // Return without error — Stripe should not retry this
     }
 
-    await db.$transaction(async (tx) => {
+    await orderRepository.$transaction(async (tx) => {
       await transitionOrder(
         orderId,
         "PAYMENT_HELD",
@@ -279,10 +273,7 @@ export class WebhookService {
 
     // Fetch current status — only cancel AWAITING_PAYMENT orders.
     // Guards against replayed webhooks reverting orders already past payment.
-    const currentOrder = await db.order.findUnique({
-      where: { id: orderId },
-      select: { status: true },
-    });
+    const currentOrder = await orderRepository.findForWebhookStatus(orderId);
 
     if (!currentOrder || currentOrder.status !== "AWAITING_PAYMENT") {
       logger.warn("webhook.payment_intent_failed: unexpected order state", {
@@ -304,10 +295,7 @@ export class WebhookService {
     // Guard: only release if still RESERVED — never overwrite SOLD/ACTIVE.
     const listingId = pi.metadata?.listingId;
     if (listingId) {
-      await db.listing.updateMany({
-        where: { id: listingId, status: "RESERVED" },
-        data: { status: "ACTIVE" },
-      });
+      await listingRepository.releaseReservation(listingId);
     }
 
     audit({
@@ -340,22 +328,16 @@ export class WebhookService {
       account.charges_enabled === true &&
       account.payouts_enabled === true;
 
-    await db.user.updateMany({
-      where: { stripeAccountId: account.id },
-      data: {
-        isStripeOnboarded: onboarded,
-        isStripeChargesEnabled: account.charges_enabled ?? false,
-        isStripePayoutsEnabled: account.payouts_enabled ?? false,
-      },
+    await userRepository.updateByStripeAccountId(account.id, {
+      isStripeOnboarded: onboarded,
+      isStripeChargesEnabled: account.charges_enabled ?? false,
+      isStripePayoutsEnabled: account.payouts_enabled ?? false,
     });
   }
 
   private async handleTransferCreated(event: Stripe.Event): Promise<void> {
     const transfer = event.data.object as Stripe.Transfer;
-    await db.payout.updateMany({
-      where: { stripeTransferId: transfer.id },
-      data: { status: "PROCESSING" },
-    });
+    await orderRepository.updatePayoutByTransferId(transfer.id);
   }
 }
 

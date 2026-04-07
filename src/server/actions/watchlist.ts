@@ -3,7 +3,7 @@ import { safeActionError } from "@/shared/errors";
 // src/server/actions/watchlist.ts
 // ─── Watchlist Actions ──────────────────────────────────────────────────────
 
-import db from "@/lib/db";
+import { watchlistRepository } from "@/modules/listings/watchlist.repository";
 import { requireUser } from "@/server/lib/requireUser";
 import type { ActionResult } from "@/types";
 import { togglePriceAlertSchema as TogglePriceAlertSchema } from "@/server/validators";
@@ -24,17 +24,14 @@ export async function togglePriceAlert(
 
     const { listingId, enabled } = parsed.data;
 
-    const item = await db.watchlistItem.findFirst({
-      where: { userId: user.id, listingId },
-      select: { id: true },
-    });
+    const item = await watchlistRepository.findByUserAndListing(
+      user.id,
+      listingId,
+    );
 
     if (!item) return { success: false, error: "Item not in your watchlist." };
 
-    await db.watchlistItem.update({
-      where: { id: item.id },
-      data: { isPriceAlertEnabled: enabled },
-    });
+    await watchlistRepository.updatePriceAlert(item.id, enabled);
 
     return { success: true, data: { enabled } };
   } catch (err) {

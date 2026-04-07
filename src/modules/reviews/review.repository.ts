@@ -173,4 +173,27 @@ export const reviewRepository = {
     });
     return result._avg.rating;
   },
+
+  /** Aggregate average buyer rating for a seller (for verification eligibility check).
+   * @source src/server/actions/verification.application.ts — applyForVerification */
+  async aggregateBuyerRatings(subjectId: string) {
+    return db.review.aggregate({
+      where: { subjectId, reviewerRole: "BUYER", isApproved: true },
+      _avg: { rating: true },
+    });
+  },
+
+  /** Group average buyer ratings by seller ID for a set of sellers.
+   * @source src/modules/listings/search.service.ts — searchListings */
+  async groupBySellerRating(sellerIds: string[]) {
+    return db.review.groupBy({
+      by: ["subjectId"],
+      where: {
+        subjectId: { in: sellerIds },
+        reviewerRole: "BUYER",
+        isApproved: true,
+      },
+      _avg: { rating: true },
+    });
+  },
 };

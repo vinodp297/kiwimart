@@ -1,7 +1,7 @@
 "use server";
 
 import { requirePermission } from "@/shared/auth/requirePermission";
-import db from "@/lib/db";
+import { dynamicListRepository } from "@/modules/admin/dynamic-list.repository";
 import { audit } from "@/server/lib/audit";
 import { invalidateList } from "@/lib/dynamic-lists";
 import { safeActionError } from "@/shared/errors";
@@ -33,13 +33,7 @@ export async function getListItems(
   try {
     await requirePermission("VIEW_DYNAMIC_LISTS");
 
-    const items = await db.dynamicListItem.findMany({
-      where: { listType },
-      orderBy: { sortOrder: "asc" },
-      include: {
-        updater: { select: { displayName: true } },
-      },
-    });
+    const items = await dynamicListRepository.findByType(listType);
 
     const records: ListItemRecord[] = items.map((i) => ({
       id: i.id,
@@ -71,10 +65,7 @@ export async function getListTypeCounts(): Promise<
   try {
     await requirePermission("VIEW_DYNAMIC_LISTS");
 
-    const counts = await db.dynamicListItem.groupBy({
-      by: ["listType"],
-      _count: { id: true },
-    });
+    const counts = await dynamicListRepository.countByType();
 
     const result: Record<string, number> = {};
     for (const row of counts) {
@@ -108,25 +99,19 @@ export async function createListItem(params: {
     }
 
     // Get highest sort order for this list type
-    const maxSort = await db.dynamicListItem.findFirst({
-      where: { listType },
-      orderBy: { sortOrder: "desc" },
-      select: { sortOrder: true },
-    });
+    const maxSort = await dynamicListRepository.findMaxSortOrder(listType);
 
-    const item = await db.dynamicListItem.create({
-      data: {
-        listType,
-        value: value.trim(),
-        label: label?.trim() || null,
-        description: description?.trim() || null,
-        metadata:
-          metadata !== undefined && metadata !== null
-            ? (metadata as Prisma.InputJsonValue)
-            : Prisma.JsonNull,
-        sortOrder: (maxSort?.sortOrder ?? -1) + 1,
-        updatedById: admin.id,
-      },
+    const item = await dynamicListRepository.create({
+      listType,
+      value: value.trim(),
+      label: label?.trim() || null,
+      description: description?.trim() || null,
+      metadata:
+        metadata !== undefined && metadata !== null
+          ? (metadata as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+      sortOrder: (maxSort?.sortOrder ?? -1) + 1,
+      updatedById: admin.id,
     });
 
     invalidateList(listType);
@@ -162,10 +147,7 @@ export async function updateListItem(params: {
     const admin = await requirePermission("MANAGE_DYNAMIC_LISTS");
     const { id, value, label, description, metadata, isActive } = params;
 
-    const existing = await db.dynamicListItem.findUnique({
-      where: { id },
-      select: { listType: true, value: true },
-    });
+    const existing = await dynamicListRepository.findById(id);
     if (!existing) return { success: false, error: "Item not found." };
 
     const data: Record<string, unknown> = { updatedById: admin.id };
@@ -180,7 +162,7 @@ export async function updateListItem(params: {
           : (metadata as Prisma.InputJsonValue);
     if (isActive !== undefined) data.isActive = isActive;
 
-    await db.dynamicListItem.update({ where: { id }, data });
+    await dynamicListRepository.update(id, data);
 
     invalidateList(existing.listType);
 
@@ -207,13 +189,10 @@ export async function deleteListItem(id: string): Promise<ActionResult<void>> {
   try {
     const admin = await requirePermission("MANAGE_DYNAMIC_LISTS");
 
-    const existing = await db.dynamicListItem.findUnique({
-      where: { id },
-      select: { listType: true, value: true },
-    });
+    const existing = await dynamicListRepository.findById(id);
     if (!existing) return { success: false, error: "Item not found." };
 
-    await db.dynamicListItem.delete({ where: { id } });
+    await dynamicListRepository.delete(id);
 
     invalidateList(existing.listType);
 
@@ -247,14 +226,7 @@ export async function reorderListItems(params: {
     const admin = await requirePermission("MANAGE_DYNAMIC_LISTS");
     const { listType, orderedIds } = params;
 
-    await db.$transaction(
-      orderedIds.map((id, index) =>
-        db.dynamicListItem.update({
-          where: { id },
-          data: { sortOrder: index },
-        }),
-      ),
-    );
+    await dynamicListRepository.reorderItems(orderedIds);
 
     invalidateList(listType);
 

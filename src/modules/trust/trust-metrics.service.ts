@@ -4,7 +4,7 @@
 // Metrics are recomputed when stale (>24h) or on-demand.
 // Used by the auto-resolution engine and admin dispute panels.
 
-import db from "@/lib/db";
+import { trustMetricsRepository } from "./trust-metrics.repository";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { logger } from "@/shared/logger";
 
@@ -57,9 +57,7 @@ export class TrustMetricsService {
     );
     const CACHE_TTL_MS = cacheHours * 60 * 60 * 1000;
 
-    const cached = await db.trustMetrics.findUnique({
-      where: { userId },
-    });
+    const cached = await trustMetricsRepository.findCached(userId);
 
     if (cached && Date.now() - cached.lastComputedAt.getTime() < CACHE_TTL_MS) {
       return {
@@ -104,46 +102,21 @@ export class TrustMetricsService {
       dispatchedOrders,
       dispatchedWithPhotos,
     ] = await Promise.all([
-      db.user.findUnique({
-        where: { id: userId },
-        select: { createdAt: true },
-      }),
-      db.order.count({ where: { buyerId: userId } }),
-      db.order.count({ where: { sellerId: userId } }),
-      db.order.count({ where: { buyerId: userId, status: "COMPLETED" } }),
-      db.order.count({ where: { sellerId: userId, status: "COMPLETED" } }),
-      db.order.count({
-        where: { buyerId: userId, dispute: { isNot: null } },
-      }),
-      db.order.count({
-        where: { sellerId: userId, dispute: { isNot: null } },
-      }),
-      db.order.count({
-        where: {
-          buyerId: userId,
-          dispute: { openedAt: { gte: rollingWindowAgo } },
-        },
-      }),
-      db.order.count({
-        where: {
-          sellerId: userId,
-          dispute: { openedAt: { gte: rollingWindowAgo } },
-        },
-      }),
-      db.review.findMany({
-        where: { subjectId: userId, reviewerRole: "BUYER", isApproved: true },
-        select: { rating: true },
-      }),
-      db.order.count({
-        where: { sellerId: userId, dispatchedAt: { not: null } },
-      }),
-      db.orderEvent.count({
-        where: {
-          type: "DISPATCHED",
-          order: { sellerId: userId },
-          metadata: { path: ["dispatchPhotos"], not: { equals: null } },
-        },
-      }),
+      trustMetricsRepository.findCreatedAt(userId),
+      trustMetricsRepository.countBuyerOrders(userId),
+      trustMetricsRepository.countSellerOrders(userId),
+      trustMetricsRepository.countCompletedBuyerOrders(userId),
+      trustMetricsRepository.countCompletedSellerOrders(userId),
+      trustMetricsRepository.countBuyerDisputes(userId),
+      trustMetricsRepository.countSellerDisputes(userId),
+      trustMetricsRepository.countRecentBuyerDisputes(userId, rollingWindowAgo),
+      trustMetricsRepository.countRecentSellerDisputes(
+        userId,
+        rollingWindowAgo,
+      ),
+      trustMetricsRepository.findApprovedReviewRatings(userId),
+      trustMetricsRepository.countDispatchedSellerOrders(userId),
+      trustMetricsRepository.countDispatchedWithPhotos(userId),
     ]);
 
     const totalOrders = totalBuyerOrders + totalSellerOrders;
@@ -173,13 +146,8 @@ export class TrustMetricsService {
         : null;
 
     // Average response time to disputes (from Dispute model)
-    const respondedDisputes = await db.dispute.findMany({
-      where: {
-        order: { sellerId: userId },
-        sellerRespondedAt: { not: null },
-      },
-      select: { openedAt: true, sellerRespondedAt: true },
-    });
+    const respondedDisputes =
+      await trustMetricsRepository.findRespondedDisputes(userId);
 
     let averageResponseHours: number | null = null;
     if (respondedDisputes.length > 0) {
@@ -226,11 +194,7 @@ export class TrustMetricsService {
       lastComputedAt: new Date(),
     };
 
-    await db.trustMetrics.upsert({
-      where: { userId },
-      create: { userId, ...metrics },
-      update: metrics,
-    });
+    await trustMetricsRepository.upsertMetrics(userId, metrics);
 
     logger.info("trust.metrics.computed", { userId, totalOrders, disputeRate });
 
@@ -244,11 +208,7 @@ export class TrustMetricsService {
     let computed = 0;
     let errors = 0;
 
-    const users = await db.user.findMany({
-      where: { isBanned: false, deletedAt: null },
-      select: { id: true },
-      take: 1000,
-    });
+    const users = await trustMetricsRepository.findAllActiveUserIds();
 
     for (const user of users) {
       try {

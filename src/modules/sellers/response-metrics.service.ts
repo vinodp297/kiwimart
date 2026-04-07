@@ -1,7 +1,7 @@
 // src/modules/sellers/response-metrics.service.ts
 // ─── Seller Response Metrics — fire-and-forget background calculation ────────
 
-import db from "@/lib/db";
+import { sellerRepository } from "./seller.repository";
 import { logger } from "@/shared/logger";
 
 /**
@@ -12,19 +12,8 @@ export async function updateSellerResponseMetrics(
   sellerId: string,
 ): Promise<void> {
   try {
-    const threads = await db.messageThread.findMany({
-      where: {
-        OR: [{ participant1Id: sellerId }, { participant2Id: sellerId }],
-      },
-      select: {
-        messages: {
-          orderBy: { createdAt: "asc" },
-          select: { senderId: true, createdAt: true },
-          take: 10,
-        },
-      },
-      take: 50,
-    });
+    const threads =
+      await sellerRepository.findMessageThreadsForMetrics(sellerId);
 
     const replyMs: number[] = [];
     let repliedWithin24h = 0;
@@ -67,14 +56,11 @@ export async function updateSellerResponseMetrics(
     const responseRate =
       totalBuyerThreads > 0 ? (repliedWithin24h / totalBuyerThreads) * 100 : 0;
 
-    await db.user.update({
-      where: { id: sellerId },
-      data: {
-        avgResponseTimeMinutes: avgMinutes,
-        responseRate: Math.round(responseRate * 10) / 10,
-        lastResponseCalcAt: new Date(),
-      },
-    });
+    await sellerRepository.updateResponseMetrics(
+      sellerId,
+      avgMinutes,
+      responseRate,
+    );
   } catch (err) {
     logger.warn("seller.response_metrics.update_failed", {
       sellerId,

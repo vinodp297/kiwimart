@@ -12,7 +12,7 @@ import { safeActionError } from "@/shared/errors";
 //   • Rate limited to prevent abuse
 
 import { headers } from "next/headers";
-import db from "@/lib/db";
+import { reportRepository } from "@/modules/listings/report.repository";
 import { audit } from "@/server/lib/audit";
 import { requireUser } from "@/server/lib/requireUser";
 import { getClientIp } from "@/server/lib/rateLimit";
@@ -73,10 +73,7 @@ export async function createReport(
   // If reporting a listing, get the seller ID
   let resolvedTargetUserId = targetUserId;
   if (listingId && !targetUserId) {
-    const listing = await db.listing.findUnique({
-      where: { id: listingId },
-      select: { sellerId: true },
-    });
+    const listing = await reportRepository.findListingSellerId(listingId);
     if (!listing) {
       return { success: false, error: "Listing not found." };
     }
@@ -92,13 +89,11 @@ export async function createReport(
 
   // 5b. Check for duplicate reports (same reporter + same target within 24h)
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const existingReport = await db.report.findFirst({
-    where: {
-      reporterId: user.id,
-      ...(listingId ? { listingId } : { targetUserId: resolvedTargetUserId }),
-      createdAt: { gte: oneDayAgo },
-    },
-  });
+  const existingReport = await reportRepository.findRecentByReporter(
+    user.id,
+    listingId ? { listingId } : { targetUserId: resolvedTargetUserId },
+    oneDayAgo,
+  );
 
   if (existingReport) {
     return {
@@ -108,16 +103,13 @@ export async function createReport(
   }
 
   // 5c. Create report
-  const report = await db.report.create({
-    data: {
-      reporterId: user.id,
-      targetUserId: resolvedTargetUserId,
-      listingId,
-      reason,
-      description,
-      status: "OPEN",
-    },
-    select: { id: true },
+  const report = await reportRepository.create({
+    reporterId: user.id,
+    targetUserId: resolvedTargetUserId,
+    listingId,
+    reason,
+    description,
+    status: "OPEN",
   });
 
   // 6. Audit

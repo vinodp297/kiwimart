@@ -3,7 +3,8 @@ import { safeActionError } from "@/shared/errors";
 // src/server/actions/verification.application.ts
 // ─── Seller Verification Application Actions ─────────────────────────────────
 
-import db from "@/lib/db";
+import { verificationRepository } from "@/modules/sellers/verification.repository";
+import { reviewRepository } from "@/modules/reviews/review.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { requireUser } from "@/server/lib/requireUser";
@@ -41,10 +42,7 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
     }
 
     // Check avg rating >= 4.0 (ratings are stored as 1-50 in DB)
-    const reviewAgg = await db.review.aggregate({
-      where: { subjectId: user.id, reviewerRole: "BUYER", isApproved: true },
-      _avg: { rating: true },
-    });
+    const reviewAgg = await reviewRepository.aggregateBuyerRatings(user.id);
     const avgRating = reviewAgg._avg.rating ? reviewAgg._avg.rating / 10 : 0;
     if (avgRating < 4.0 && dbUser._count.reviewsAbout > 0) {
       return {
@@ -61,20 +59,7 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
     }
 
     // Create or update application
-    await db.verificationApplication.upsert({
-      where: { sellerId: user.id },
-      create: {
-        sellerId: user.id,
-        status: "PENDING",
-      },
-      update: {
-        status: "PENDING",
-        appliedAt: new Date(),
-        reviewedAt: null,
-        reviewedBy: null,
-        adminNotes: null,
-      },
-    });
+    await verificationRepository.upsertApplication(user.id);
 
     // Notify admins
     notificationRepository
@@ -125,23 +110,17 @@ export async function reviewVerificationApplication(
 
     const { sellerId, decision, notes } = parsed.data;
 
-    const app = await db.verificationApplication.findUnique({
-      where: { sellerId },
-      select: { id: true, status: true },
-    });
+    const app = await verificationRepository.findForReview(sellerId);
     if (!app) return { success: false, error: "Application not found." };
     if (app.status !== "PENDING")
       return { success: false, error: "Application already reviewed." };
 
     // Update application
-    await db.verificationApplication.update({
-      where: { sellerId },
-      data: {
-        status: decision,
-        reviewedAt: new Date(),
-        reviewedBy: guard.userId,
-        adminNotes: notes,
-      },
+    await verificationRepository.updateDecision(sellerId, {
+      status: decision,
+      reviewedAt: new Date(),
+      reviewedBy: guard.userId,
+      adminNotes: notes,
     });
 
     // If approved, mark user as verified seller

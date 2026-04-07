@@ -2,7 +2,7 @@
 // ─── Auth Service ────────────────────────────────────────────────────────────
 // Registration and password reset flows. Framework-free.
 
-import db from "@/lib/db";
+import { userRepository } from "./user.repository";
 import { hashPassword } from "@/server/lib/password";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
@@ -41,20 +41,14 @@ export class AuthService {
     }
 
     // Check email uniqueness
-    const existingEmail = await db.user.findUnique({
-      where: { email: input.email },
-      select: { id: true },
-    });
+    const existingEmail = await userRepository.existsByEmail(input.email);
     if (existingEmail) {
       throw AppError.validation("An account with this email already exists.");
     }
 
     // Generate username
     const username = generateUsername(input.firstName, input.lastName);
-    const existingUsername = await db.user.findUnique({
-      where: { username },
-      select: { id: true },
-    });
+    const existingUsername = await userRepository.existsByUsername(username);
     const finalUsername = existingUsername
       ? `${username}${Math.floor(Math.random() * 9000) + 1000}`
       : username;
@@ -63,16 +57,13 @@ export class AuthService {
     const passwordHash = await hashPassword(input.password);
 
     // Create user
-    const user = await db.user.create({
-      data: {
-        email: input.email,
-        username: finalUsername,
-        displayName: `${input.firstName} ${input.lastName}`,
-        passwordHash,
-        hasMarketingConsent: input.hasMarketingConsent,
-        agreedTermsAt: new Date(),
-      },
-      select: { id: true, email: true, displayName: true },
+    const user = await userRepository.create({
+      email: input.email,
+      username: finalUsername,
+      displayName: `${input.firstName} ${input.lastName}`,
+      passwordHash,
+      hasMarketingConsent: input.hasMarketingConsent,
+      agreedTermsAt: new Date(),
     });
 
     // Email queued — delivered asynchronously (non-blocking)
@@ -108,10 +99,7 @@ export class AuthService {
     ip: string,
     userAgent: string | null,
   ): Promise<void> {
-    const user = await db.user.findUnique({
-      where: { email },
-      select: { id: true, email: true, displayName: true },
-    });
+    const user = await userRepository.findByEmail(email);
 
     // Always succeed to prevent user enumeration
     if (!user) return;
@@ -123,19 +111,14 @@ export class AuthService {
       .digest("hex");
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-    await db.passwordResetToken.updateMany({
-      where: { userId: user.id, usedAt: null },
-      data: { usedAt: new Date() },
-    });
+    await userRepository.invalidatePendingResetTokens(user.id);
 
-    await db.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        expiresAt,
-        requestIp: ip,
-        userAgent,
-      },
+    await userRepository.createResetToken({
+      userId: user.id,
+      tokenHash,
+      expiresAt,
+      requestIp: ip,
+      userAgent,
     });
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`;
@@ -167,12 +150,7 @@ export class AuthService {
       .update(input.token)
       .digest("hex");
 
-    const resetRecord = await db.passwordResetToken.findUnique({
-      where: { tokenHash },
-      include: {
-        user: { select: { id: true, email: true, displayName: true } },
-      },
-    });
+    const resetRecord = await userRepository.findResetTokenWithUser(tokenHash);
 
     const GENERIC_ERROR =
       "Invalid or expired reset link. Please request a new one.";
@@ -192,17 +170,17 @@ export class AuthService {
     }
 
     const newHash = await hashPassword(input.password);
-    await db.$transaction([
-      db.user.update({
+    await userRepository.transaction(async (tx) => {
+      await tx.user.update({
         where: { id: resetRecord.userId },
         data: { passwordHash: newHash },
-      }),
-      db.passwordResetToken.update({
+      });
+      await tx.passwordResetToken.update({
         where: { id: resetRecord.id },
         data: { usedAt: new Date() },
-      }),
-      db.session.deleteMany({ where: { userId: resetRecord.userId } }),
-    ]);
+      });
+      await tx.session.deleteMany({ where: { userId: resetRecord.userId } });
+    });
 
     audit({
       userId: resetRecord.userId,

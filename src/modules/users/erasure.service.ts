@@ -5,8 +5,8 @@
 //   • Admin-initiated erasure (POST /api/admin/users/:userId/erase)
 //   • Legacy deleteAccount() server action
 
-import db from "@/lib/db";
 import { userRepository } from "./user.repository";
+import { orderRepository } from "@/modules/orders/order.repository";
 import { logger } from "@/shared/logger";
 import { invalidateAllSessions } from "@/server/lib/sessionStore";
 import { revokeAllMobileTokens } from "@/lib/mobile-auth";
@@ -48,20 +48,11 @@ export async function performAccountErasure(
 
   // Capture original email + display name BEFORE anonymisation so we can
   // send the erasure confirmation to the correct address.
-  const originalUser = await db.user.findUnique({
-    where: { id: userId },
-    select: { email: true, displayName: true },
-  });
+  const originalUser = await userRepository.findEmailAndDisplayName(userId);
 
   // Pre-flight: reject if user has orders in active escrow
-  const activeOrderCount = await db.order.count({
-    where: {
-      OR: [{ buyerId: userId }, { sellerId: userId }],
-      status: {
-        in: ["AWAITING_PAYMENT", "PAYMENT_HELD", "DISPATCHED", "DISPUTED"],
-      },
-    },
-  });
+  const activeOrderCount =
+    await orderRepository.countActiveOrdersForUser(userId);
 
   if (activeOrderCount > 0) {
     throw new AppError(
@@ -73,7 +64,7 @@ export async function performAccountErasure(
 
   const anonymisedEmail = `deleted_${userId}@buyzi.deleted`;
 
-  const erasureLogId = await db.$transaction(async (tx) => {
+  const erasureLogId = await userRepository.transaction(async (tx) => {
     await userRepository.update(
       userId,
       {

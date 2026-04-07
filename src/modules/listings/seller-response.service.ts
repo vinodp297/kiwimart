@@ -3,8 +3,8 @@
 // Computes the median time a seller takes to reply to a message thread.
 // Cached with a 1-hour TTL per seller to avoid expensive repeated DB queries.
 
-import db from "@/lib/db";
 import { unstable_cache } from "next/cache";
+import { sellerRepository } from "@/modules/sellers/seller.repository";
 
 const LABELS: [number, string][] = [
   [1, "Usually replies within 1 hour"],
@@ -20,19 +20,8 @@ const LABELS: [number, string][] = [
 export const getSellerResponseTime = unstable_cache(
   async (sellerId: string): Promise<string | null> => {
     // Find all threads where this user is a participant
-    const threads = await db.messageThread.findMany({
-      where: {
-        OR: [{ participant1Id: sellerId }, { participant2Id: sellerId }],
-      },
-      select: {
-        messages: {
-          orderBy: { createdAt: "asc" },
-          select: { senderId: true, createdAt: true },
-          take: 10, // only need first few messages per thread
-        },
-      },
-      take: 50, // last 50 threads is enough to compute a median
-    });
+    const threads =
+      await sellerRepository.findMessageThreadsForMetrics(sellerId);
 
     // For each thread, find the first reply FROM the seller after a buyer message
     const replyMs: number[] = [];

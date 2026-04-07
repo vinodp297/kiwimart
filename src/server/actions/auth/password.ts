@@ -4,7 +4,6 @@
 
 import { headers } from "next/headers";
 import crypto from "crypto";
-import db from "@/lib/db";
 import { userRepository } from "@/modules/users/user.repository";
 import { hashPassword } from "@/server/lib/password";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
@@ -57,19 +56,14 @@ export async function requestPasswordReset(
       .digest("hex");
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    await db.passwordResetToken.updateMany({
-      where: { userId: user.id, usedAt: null },
-      data: { usedAt: new Date() },
-    });
+    await userRepository.invalidatePendingResetTokens(user.id);
 
-    await db.passwordResetToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        expiresAt,
-        requestIp: ip,
-        userAgent: reqHeaders.get("user-agent"),
-      },
+    await userRepository.createResetToken({
+      userId: user.id,
+      tokenHash,
+      expiresAt,
+      requestIp: ip,
+      userAgent: reqHeaders.get("user-agent"),
     });
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`;
@@ -120,10 +114,7 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
 
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-  const resetRecord = await db.passwordResetToken.findUnique({
-    where: { tokenHash },
-    include: { user: { select: { id: true, email: true, displayName: true } } },
-  });
+  const resetRecord = await userRepository.findResetTokenWithUser(tokenHash);
 
   const GENERIC_ERROR =
     "Invalid or expired reset link. Please request a new one.";
@@ -133,7 +124,7 @@ export async function resetPassword(raw: unknown): Promise<ActionResult<void>> {
     return { success: false, error: GENERIC_ERROR };
 
   const newHash = await hashPassword(password);
-  await db.$transaction(async (tx) => {
+  await userRepository.transaction(async (tx) => {
     await userRepository.update(
       resetRecord.userId,
       { passwordHash: newHash },
