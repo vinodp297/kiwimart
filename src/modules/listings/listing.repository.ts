@@ -432,6 +432,66 @@ export const listingRepository = {
     });
   },
 
+  // ── Browse listings (public paginated feed) ───────────────────────────────
+
+  async findBrowseListings(params: {
+    q?: string;
+    category?: string;
+    cursor?: string;
+    limit: number;
+  }) {
+    const { q, category, cursor, limit } = params;
+
+    const where: Prisma.ListingWhereInput = {
+      status: "ACTIVE",
+      deletedAt: null,
+      ...(q
+        ? {
+            OR: [
+              { title: { contains: q, mode: "insensitive" as const } },
+              { description: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+      ...(category ? { categoryId: category } : {}),
+    };
+
+    const raw = await db.listing.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        title: true,
+        priceNzd: true,
+        condition: true,
+        categoryId: true,
+        region: true,
+        createdAt: true,
+        images: {
+          where: { order: 0, isSafe: true },
+          select: { thumbnailKey: true },
+          take: 1,
+        },
+        seller: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            idVerified: true,
+          },
+        },
+      },
+    });
+
+    const hasMore = raw.length > limit;
+    const listings = hasMore ? raw.slice(0, limit) : raw;
+    const nextCursor = hasMore ? (listings.at(-1)?.id ?? null) : null;
+
+    return { listings, nextCursor, hasMore };
+  },
+
   // ── Transaction ───────────────────────────────────────────────────────────
 
   async $transaction<T>(

@@ -2,13 +2,8 @@
 // ─── Listings API ────────────────────────────────────────────────────────────
 
 import { z } from "zod";
-import { Prisma } from "@prisma/client";
-import db from "@/lib/db";
-import { userRepository } from "@/modules/users/user.repository";
 import { createListingSchema } from "@/server/validators";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
-import { audit } from "@/server/lib/audit";
-import { logger } from "@/shared/logger";
 import {
   apiOk,
   apiError,
@@ -18,6 +13,7 @@ import {
 } from "../_helpers/response";
 import { getCorsHeaders, withCors } from "../_helpers/cors";
 import { listingsQuerySchema } from "@/modules/listings/listing.schema";
+import { listingService } from "@/modules/listings/listing.service";
 
 export async function GET(request: Request) {
   // Rate limit: reuse listing limiter (10/hr matches server action)
@@ -40,54 +36,8 @@ export async function GET(request: Request) {
       throw err;
     }
 
-    const { q, category, cursor, limit } = query;
-
-    const where: Prisma.ListingWhereInput = {
-      status: "ACTIVE",
-      deletedAt: null,
-      ...(q
-        ? {
-            OR: [
-              { title: { contains: q, mode: "insensitive" as const } },
-              { description: { contains: q, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
-      ...(category ? { categoryId: category } : {}),
-    };
-
-    const raw = await db.listing.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: {
-        id: true,
-        title: true,
-        priceNzd: true,
-        condition: true,
-        categoryId: true,
-        region: true,
-        createdAt: true,
-        images: {
-          where: { order: 0, isSafe: true },
-          select: { thumbnailKey: true },
-          take: 1,
-        },
-        seller: {
-          select: {
-            id: true,
-            username: true,
-            displayName: true,
-            idVerified: true,
-          },
-        },
-      },
-    });
-
-    const hasMore = raw.length > limit;
-    const listings = hasMore ? raw.slice(0, limit) : raw;
-    const nextCursor = hasMore ? (listings.at(-1)?.id ?? null) : null;
+    const { listings, nextCursor, hasMore } =
+      await listingService.getBrowseListings(query);
 
     const response = withCors(
       apiOk({ listings, nextCursor, hasMore }),
@@ -109,39 +59,6 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireApiUser(request);
-
-    // Check seller prerequisites
-    const userDetails = await userRepository.findForListingAuth(user.id);
-    if (!userDetails?.emailVerified) {
-      return withCors(
-        apiError(
-          "Please verify your email address before creating a listing.",
-          403,
-          "EMAIL_NOT_VERIFIED",
-        ),
-        request.headers.get("origin"),
-      );
-    }
-    if (!userDetails.sellerTermsAcceptedAt) {
-      return withCors(
-        apiError(
-          "Please accept seller terms before listing items.",
-          403,
-          "TERMS_NOT_ACCEPTED",
-        ),
-        request.headers.get("origin"),
-      );
-    }
-    if (!user.isStripeOnboarded) {
-      return withCors(
-        apiError(
-          "Please set up your payment account before listing items.",
-          403,
-          "STRIPE_NOT_ONBOARDED",
-        ),
-        request.headers.get("origin"),
-      );
-    }
 
     // Parse body
     const body = await request.json().catch(() => null);
@@ -173,116 +90,25 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate category
-    const category = await db.category.findUnique({
-      where: { id: data.categoryId },
-      select: { id: true },
-    });
-    if (!category) {
-      return withCors(
-        apiError("Invalid category", 400, "INVALID_CATEGORY"),
-        request.headers.get("origin"),
-      );
-    }
-
-    // Validate images
-    const images = await db.listingImage.findMany({
-      where: { r2Key: { in: data.imageKeys } },
-      select: { r2Key: true, isScanned: true, isSafe: true },
-    });
-    const missingKeys = data.imageKeys.filter(
-      (key) => !images.some((img) => img.r2Key === key),
-    );
-    const unsafeImages = images.filter((img) => !img.isScanned || !img.isSafe);
-    if (missingKeys.length > 0 || unsafeImages.length > 0) {
-      return withCors(
-        apiError(
-          "One or more photos could not be verified. Please re-upload.",
-          400,
-          "IMAGE_VALIDATION_FAILED",
-        ),
-        request.headers.get("origin"),
-      );
-    }
-
-    // Create listing in transaction
-    const listing = await db.$transaction(async (tx) => {
-      const created = await tx.listing.create({
-        data: {
-          sellerId: user.id,
-          title: data.title,
-          description: data.description,
-          priceNzd: Math.round(data.price * 100),
-          isGstIncluded: data.isGstIncluded,
-          condition: data.condition,
-          status: "PENDING_REVIEW",
-          categoryId: data.categoryId,
-          subcategoryName: data.subcategoryName ?? null,
-          region: data.region,
-          suburb: data.suburb,
-          shippingOption: data.shippingOption,
-          shippingNzd:
-            data.shippingPrice != null
-              ? Math.round(data.shippingPrice * 100)
-              : null,
-          pickupAddress: data.pickupAddress ?? null,
-          isOffersEnabled: data.isOffersEnabled,
-          isUrgent: data.isUrgent,
-          isNegotiable: data.isNegotiable,
-          shipsNationwide: data.shipsNationwide,
-          images: {
-            create: data.imageKeys.map((key, i) => ({
-              r2Key: key,
-              order: i,
-            })),
-          },
-          attrs: {
-            create: data.attributes.map((attr, i) => ({
-              label: attr.label,
-              value: attr.value,
-              order: i,
-            })),
-          },
-        },
-        select: { id: true, status: true },
-      });
-
-      if (!userDetails.isSellerEnabled) {
-        await tx.user.update({
-          where: { id: user.id },
-          data: { isSellerEnabled: true },
-        });
-      }
-
-      return created;
-    });
-
-    // Price history (fire-and-forget)
-    db.listingPriceHistory
-      .create({
-        data: {
-          listingId: listing.id,
-          priceNzd: Math.round(data.price * 100),
-        },
-      })
-      .catch(() => {});
-
     const ip = getClientIp(new Headers(request.headers)) || "unknown";
-    audit({
-      userId: user.id,
-      action: "LISTING_CREATED",
-      entityType: "Listing",
-      entityId: listing.id,
-      metadata: { title: data.title, channel: "api" },
+    const result = await listingService.createListingViaApi(
+      user.id,
+      user.isStripeOnboarded,
+      data,
       ip,
-    });
+    );
 
-    logger.info("listing.created.api", {
-      listingId: listing.id,
-      userId: user.id,
-    });
+    if (!result.ok) {
+      return withCors(
+        apiError(result.error, result.statusCode, result.code),
+        request.headers.get("origin"),
+      );
+    }
 
-    return withCors(apiOk({ listing }, 201), request.headers.get("origin"));
+    return withCors(
+      apiOk({ listing: result.listing }, 201),
+      request.headers.get("origin"),
+    );
   } catch (e) {
     return withCors(handleApiError(e), request.headers.get("origin"));
   }

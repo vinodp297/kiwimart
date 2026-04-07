@@ -729,6 +729,153 @@ export class ListingService {
     return { ok: true, listingId };
   }
 
+  // ── getBrowseListings ─────────────────────────────────────────────────────
+
+  async getBrowseListings(params: {
+    q?: string;
+    category?: string;
+    cursor?: string;
+    limit: number;
+  }) {
+    return listingRepository.findBrowseListings(params);
+  }
+
+  // ── createListingViaApi ───────────────────────────────────────────────────
+  // Like createListing but skips auto-review and returns { listing: { id, status } }.
+
+  async createListingViaApi(
+    userId: string,
+    isStripeOnboarded: boolean,
+    data: CreateListingInput,
+    ip: string,
+  ): Promise<
+    | { ok: true; listing: { id: string; status: string } }
+    | { ok: false; error: string; code: string; statusCode: number }
+  > {
+    // 1. Auth checks
+    const userDetails = await userRepository.findForListingAuth(userId);
+    if (!userDetails?.emailVerified) {
+      return {
+        ok: false,
+        error: "Please verify your email address before creating a listing.",
+        code: "EMAIL_NOT_VERIFIED",
+        statusCode: 403,
+      };
+    }
+    if (!userDetails.sellerTermsAcceptedAt) {
+      return {
+        ok: false,
+        error: "Please accept seller terms before listing items.",
+        code: "TERMS_NOT_ACCEPTED",
+        statusCode: 403,
+      };
+    }
+    if (!isStripeOnboarded) {
+      return {
+        ok: false,
+        error: "Please set up your payment account before listing items.",
+        code: "STRIPE_NOT_ONBOARDED",
+        statusCode: 403,
+      };
+    }
+
+    // 2. Validate category
+    const category = await listingRepository.findCategoryById(data.categoryId);
+    if (!category) {
+      return {
+        ok: false,
+        error: "Invalid category",
+        code: "INVALID_CATEGORY",
+        statusCode: 400,
+      };
+    }
+
+    // 3. Validate images
+    const images = await listingRepository.findImagesByKeys(data.imageKeys);
+    const missingKeys = data.imageKeys.filter(
+      (key) => !images.some((img) => img.r2Key === key),
+    );
+    const unsafeImages = images.filter((img) => !img.isScanned || !img.isSafe);
+    if (missingKeys.length > 0 || unsafeImages.length > 0) {
+      return {
+        ok: false,
+        error: "One or more photos could not be verified. Please re-upload.",
+        code: "IMAGE_VALIDATION_FAILED",
+        statusCode: 400,
+      };
+    }
+
+    // 4. Create listing in transaction
+    const priceNzd = Math.round(data.price * 100);
+    const created = await listingRepository.$transaction(async (tx) => {
+      const listing = await listingRepository.create(
+        {
+          sellerId: userId,
+          title: data.title,
+          description: data.description,
+          priceNzd,
+          isGstIncluded: data.isGstIncluded,
+          condition: data.condition,
+          status: "PENDING_REVIEW",
+          categoryId: data.categoryId,
+          subcategoryName: data.subcategoryName ?? null,
+          region: data.region,
+          suburb: data.suburb,
+          shippingOption: data.shippingOption,
+          shippingNzd:
+            data.shippingPrice != null
+              ? Math.round(data.shippingPrice * 100)
+              : null,
+          pickupAddress: data.pickupAddress ?? null,
+          isOffersEnabled: data.isOffersEnabled,
+          isUrgent: data.isUrgent,
+          isNegotiable: data.isNegotiable,
+          shipsNationwide: data.shipsNationwide,
+          images: {
+            create: data.imageKeys.map((key, i) => ({
+              r2Key: key,
+              order: i,
+            })),
+          },
+          attrs: {
+            create: data.attributes.map((attr, i) => ({
+              label: attr.label,
+              value: attr.value,
+              order: i,
+            })),
+          },
+        } as Parameters<typeof listingRepository.create>[0],
+        tx,
+      );
+
+      if (!userDetails.isSellerEnabled) {
+        await listingRepository.enableSeller(userId, tx);
+      }
+
+      return listing;
+    });
+
+    // 5. Price history (fire-and-forget)
+    listingRepository.createPriceHistory(created.id, priceNzd);
+
+    // 6. Audit + log
+    audit({
+      userId,
+      action: "LISTING_CREATED",
+      entityType: "Listing",
+      entityId: created.id,
+      metadata: { title: data.title, channel: "api" },
+      ip,
+    });
+
+    logger.info("listing.created.api", {
+      listingId: created.id,
+      userId,
+    });
+
+    return { ok: true, listing: { id: created.id, status: "PENDING_REVIEW" } };
+  }
+
   // ── getListingForEdit ─────────────────────────────────────────────────────
 
   async getListingForEdit(listingId: string, userId: string, isAdmin: boolean) {

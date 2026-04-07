@@ -42,6 +42,14 @@ vi.mock("@/modules/reviews/review.service", () => ({
   },
 }));
 
+// Mock listing service — GET and POST routes delegate to this
+vi.mock("@/modules/listings/listing.service", () => ({
+  listingService: {
+    getBrowseListings: vi.fn(),
+    createListingViaApi: vi.fn(),
+  },
+}));
+
 // Need to mock listing schema and order schema
 vi.mock("@/modules/listings/listing.schema", () => {
   const { z } = require("zod");
@@ -114,6 +122,7 @@ const { POST: reviewsPOST } = await import("@/app/api/v1/reviews/route");
 const { POST: tokenPOST } = await import("@/app/api/v1/auth/token/route");
 
 import { reviewService } from "@/modules/reviews/review.service";
+import { listingService } from "@/modules/listings/listing.service";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { verifyPassword } from "@/server/lib/password";
 import { rateLimit } from "@/server/lib/rateLimit";
@@ -154,26 +163,31 @@ describe("API Routes", () => {
   // ── GET /api/v1/listings ────────────────────────────────────────────────
 
   describe("GET /api/v1/listings", () => {
-    it("returns paginated listings with cursor", async () => {
-      const mockListings = [
-        {
-          id: "listing-1",
-          title: "iPhone 15",
-          priceNzd: 100000,
-          condition: "LIKE_NEW",
-          categoryId: "cat-1",
-          region: "AUCKLAND",
-          createdAt: new Date(),
-          images: [],
-          seller: {
-            id: "seller-1",
-            username: "seller1",
-            displayName: "Seller",
-            idVerified: true,
-          },
+    const mockListings = [
+      {
+        id: "listing-1",
+        title: "iPhone 15",
+        priceNzd: 100000,
+        condition: "LIKE_NEW",
+        categoryId: "cat-1",
+        region: "AUCKLAND",
+        createdAt: new Date(),
+        images: [],
+        seller: {
+          id: "seller-1",
+          username: "seller1",
+          displayName: "Seller",
+          idVerified: true,
         },
-      ];
-      vi.mocked(db.listing.findMany).mockResolvedValue(mockListings as never);
+      },
+    ];
+
+    it("returns paginated listings via service", async () => {
+      vi.mocked(listingService.getBrowseListings).mockResolvedValue({
+        listings: mockListings,
+        nextCursor: null,
+        hasMore: false,
+      } as never);
 
       const req = makeRequest("http://localhost/api/v1/listings?limit=24");
       const res = await listingsGET(req);
@@ -186,25 +200,29 @@ describe("API Routes", () => {
       expect(body.timestamp).toBeDefined();
     });
 
-    it("filters by category correctly", async () => {
-      vi.mocked(db.listing.findMany).mockResolvedValue([] as never);
+    it("delegates category filter to service", async () => {
+      vi.mocked(listingService.getBrowseListings).mockResolvedValue({
+        listings: [],
+        nextCursor: null,
+        hasMore: false,
+      } as never);
 
       const req = makeRequest(
         "http://localhost/api/v1/listings?category=electronics",
       );
       await listingsGET(req);
 
-      expect(db.listing.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            categoryId: "electronics",
-          }),
-        }),
+      expect(listingService.getBrowseListings).toHaveBeenCalledWith(
+        expect.objectContaining({ category: "electronics" }),
       );
     });
 
     it("returns correct response envelope { success, data, timestamp }", async () => {
-      vi.mocked(db.listing.findMany).mockResolvedValue([] as never);
+      vi.mocked(listingService.getBrowseListings).mockResolvedValue({
+        listings: [],
+        nextCursor: null,
+        hasMore: false,
+      } as never);
 
       const req = makeRequest("http://localhost/api/v1/listings");
       const res = await listingsGET(req);
@@ -218,9 +236,8 @@ describe("API Routes", () => {
       expect(body.data).toHaveProperty("hasMore");
     });
 
-    it("returns hasMore=true and nextCursor when more results exist", async () => {
-      // Return limit+1 items to trigger hasMore
-      const items = Array.from({ length: 25 }, (_, i) => ({
+    it("returns hasMore=true and nextCursor from service result", async () => {
+      const pagedListings = Array.from({ length: 24 }, (_, i) => ({
         id: `listing-${i}`,
         title: `Item ${i}`,
         priceNzd: 1000,
@@ -236,7 +253,12 @@ describe("API Routes", () => {
           idVerified: false,
         },
       }));
-      vi.mocked(db.listing.findMany).mockResolvedValue(items as never);
+
+      vi.mocked(listingService.getBrowseListings).mockResolvedValue({
+        listings: pagedListings,
+        nextCursor: "listing-23",
+        hasMore: true,
+      } as never);
 
       const req = makeRequest("http://localhost/api/v1/listings?limit=24");
       const res = await listingsGET(req);
@@ -245,6 +267,23 @@ describe("API Routes", () => {
       expect(body.data.hasMore).toBe(true);
       expect(body.data.nextCursor).toBe("listing-23");
       expect(body.data.listings).toHaveLength(24);
+    });
+
+    it("passes q and cursor params to service", async () => {
+      vi.mocked(listingService.getBrowseListings).mockResolvedValue({
+        listings: [],
+        nextCursor: null,
+        hasMore: false,
+      } as never);
+
+      const req = makeRequest(
+        "http://localhost/api/v1/listings?q=camera&cursor=cuid123&limit=10",
+      );
+      await listingsGET(req);
+
+      expect(listingService.getBrowseListings).toHaveBeenCalledWith(
+        expect.objectContaining({ q: "camera", limit: 10 }),
+      );
     });
   });
 
@@ -323,39 +362,70 @@ describe("API Routes", () => {
       shipsNationwide: true,
     };
 
-    it("creates listing for authenticated seller", async () => {
+    it("delegates to listingService.createListingViaApi and returns 201", async () => {
       mockRequireApiUser.mockResolvedValue(mockUser);
-      // findForListingAuth
-      vi.mocked(db.user.findUnique).mockResolvedValue({
-        emailVerified: new Date(),
-        sellerTermsAcceptedAt: new Date(),
-        isSellerEnabled: true,
-      } as never);
+      vi.mocked(listingService.createListingViaApi).mockResolvedValue({
+        ok: true,
+        listing: { id: "listing-new", status: "PENDING_REVIEW" },
+      });
 
-      // Need to mock userRepository.findForListingAuth
-      const { userRepository } =
-        await import("@/modules/users/user.repository");
-      vi.mocked(userRepository.findEmailVerified).mockResolvedValue({
-        emailVerified: new Date(),
-      } as never);
-
-      // Mock category validation
-      vi.mocked(db.listing.findMany).mockResolvedValue([] as never);
-
-      // We can't easily test the full POST flow without mocking many internals
-      // So let's test that authentication is enforced
       const req = makeRequest("http://localhost/api/v1/listings", {
         method: "POST",
         body: JSON.stringify(validListingBody),
       });
-
-      // The route will call requireApiUser which returns our mock user
-      // Then it calls userRepository.findForListingAuth which we need to mock
-      // For now, test the auth path
       const res = await listingsPOST(req);
+      const body = await parseJson(res);
 
-      // It may fail on category validation etc. but it should NOT be 401
-      expect(res.status).not.toBe(401);
+      expect(res.status).toBe(201);
+      expect(body.success).toBe(true);
+      expect(body.data.listing.id).toBe("listing-new");
+      expect(body.data.listing.status).toBe("PENDING_REVIEW");
+      expect(listingService.createListingViaApi).toHaveBeenCalledWith(
+        "user-1",
+        true, // isStripeOnboarded from mockUser
+        expect.objectContaining({ title: "Test Listing" }),
+        expect.any(String),
+      );
+    });
+
+    it("returns 403 when service returns EMAIL_NOT_VERIFIED", async () => {
+      mockRequireApiUser.mockResolvedValue(mockUser);
+      vi.mocked(listingService.createListingViaApi).mockResolvedValue({
+        ok: false,
+        error: "Please verify your email address before creating a listing.",
+        code: "EMAIL_NOT_VERIFIED",
+        statusCode: 403,
+      });
+
+      const req = makeRequest("http://localhost/api/v1/listings", {
+        method: "POST",
+        body: JSON.stringify(validListingBody),
+      });
+      const res = await listingsPOST(req);
+      const body = await parseJson(res);
+
+      expect(res.status).toBe(403);
+      expect(body.success).toBe(false);
+    });
+
+    it("returns 400 when service returns INVALID_CATEGORY", async () => {
+      mockRequireApiUser.mockResolvedValue(mockUser);
+      vi.mocked(listingService.createListingViaApi).mockResolvedValue({
+        ok: false,
+        error: "Invalid category",
+        code: "INVALID_CATEGORY",
+        statusCode: 400,
+      });
+
+      const req = makeRequest("http://localhost/api/v1/listings", {
+        method: "POST",
+        body: JSON.stringify(validListingBody),
+      });
+      const res = await listingsPOST(req);
+      const body = await parseJson(res);
+
+      expect(res.status).toBe(400);
+      expect(body.success).toBe(false);
     });
 
     it("returns 401 for unauthenticated request", async () => {
@@ -376,14 +446,25 @@ describe("API Routes", () => {
     it("returns 400 for invalid body", async () => {
       mockRequireApiUser.mockResolvedValue(mockUser);
 
-      // findForListingAuth
-      await import("@/modules/users/user.repository");
-
       const req = makeRequest("http://localhost/api/v1/listings", {
         method: "POST",
         body: "not-json",
       });
 
+      const res = await listingsPOST(req);
+      const body = await parseJson(res);
+
+      expect(res.status).toBe(400);
+      expect(body.success).toBe(false);
+    });
+
+    it("returns 400 for schema validation failure", async () => {
+      mockRequireApiUser.mockResolvedValue(mockUser);
+
+      const req = makeRequest("http://localhost/api/v1/listings", {
+        method: "POST",
+        body: JSON.stringify({ title: "" }), // missing required fields
+      });
       const res = await listingsPOST(req);
       const body = await parseJson(res);
 
