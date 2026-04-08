@@ -2,7 +2,7 @@
 // ─── Verification Repository — data access for seller verification ────────────
 
 import db from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { Prisma, VerificationStatus } from "@prisma/client";
 
 type DbClient = Prisma.TransactionClient | typeof db;
 
@@ -69,7 +69,7 @@ export const verificationRepository = {
   async updateDecision(
     sellerId: string,
     data: {
-      status: string;
+      status: VerificationStatus;
       reviewedAt: Date;
       reviewedBy: string;
       adminNotes: string | null | undefined;

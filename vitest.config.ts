@@ -30,10 +30,10 @@ export default defineConfig({
         "src/infrastructure/config/**",
       ],
       thresholds: {
-        lines: 32,
+        lines: 35,
         functions: 29,
-        branches: 25,
-        statements: 32,
+        branches: 26,
+        statements: 35,
       },
     },
   },

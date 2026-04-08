@@ -2,7 +2,7 @@
 // ─── Report Repository — data access for content reports ─────────────────────
 
 import db from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { Prisma, ReportReason, ReportStatus } from "@prisma/client";
 
 type DbClient = Prisma.TransactionClient | typeof db;
 
@@ -47,9 +47,9 @@ export const reportRepository = {
       reporterId: string;
       targetUserId: string | null | undefined;
       listingId: string | undefined;
-      reason: string;
+      reason: ReportReason;
       description: string;
-      status: string;
+      status: ReportStatus;
     },
     tx?: DbClient,
   ) {

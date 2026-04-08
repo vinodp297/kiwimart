@@ -469,7 +469,7 @@ describe("Seller Onboarding", () => {
       mockRequireUser.mockRejectedValue(new Error("Unauthorised"));
 
       const result = await completeOnboarding({
-        intent: "BUY_AND_SELL",
+        intent: "BOTH",
         region: "AUCKLAND",
       });
 

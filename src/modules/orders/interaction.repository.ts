@@ -190,7 +190,7 @@ export const interactionRepository = {
    * @source src/modules/orders/order-interaction.service.ts — respondToInteraction */
   async updateInteraction(
     id: string,
-    data: Prisma.OrderInteractionUpdateInput,
+    data: Prisma.OrderInteractionUncheckedUpdateInput,
     tx?: DbClient,
   ) {
     const client = tx ?? db;
