@@ -861,6 +861,19 @@ export const orderRepository = {
     return dispatched + cash;
   },
 
+  /**
+   * Returns true if userId is the buyer or seller for the given order.
+   * Single efficient query — used by the image proxy auth layer.
+   */
+  async isUserPartyToOrder(orderId: string, userId: string): Promise<boolean> {
+    const order = await db.order.findUnique({
+      where: { id: orderId },
+      select: { buyerId: true, sellerId: true },
+    });
+    if (!order) return false;
+    return order.buyerId === userId || order.sellerId === userId;
+  },
+
   /** Cursor-paginated buyer order list for /api/v1/orders. */
   async findByBuyerCursor(
     buyerId: string,

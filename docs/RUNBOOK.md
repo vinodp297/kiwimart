@@ -216,6 +216,61 @@ curl -X POST \
 vercel rollback --token=$VERCEL_TOKEN
 ```
 
+### Migration Safety Check
+
+Before deploying any migration to production, run the safety script:
+
+```bash
+DATABASE_URL="postgresql://user:pass@host/db?sslmode=require" npm run db:migrate:safe
+```
+
+**What it does:** Diffs the current DB state (reconstructed by replaying all committed
+migration files) against the target `schema.prisma`. If the diff contains destructive
+operations it prompts before proceeding.
+
+**Why `--from-migrations`, not `--from-schema-datamodel`:**
+
+```bash
+# ✅ CORRECT — compares current DB state → target schema
+npx prisma migrate diff \
+  --from-migrations ./prisma/migrations \
+  --to-schema-datamodel ./prisma/schema.prisma \
+  --shadow-database-url "$DATABASE_URL" \
+  --script
+
+# ❌ WRONG — compares schema.prisma against itself, always shows no changes
+npx prisma migrate diff \
+  --from-schema-datasource prisma/schema.prisma \
+  --to-schema-datamodel prisma/schema.prisma \
+  --script
+```
+
+The `--from-schema-datasource ... same-file` pattern is a no-op — it compares the schema
+against itself and always reports zero changes. It cannot detect destructive operations
+because it never examines what the actual database contains.
+
+`--from-migrations` tells Prisma to replay all migration files against a shadow database
+to reconstruct the current DB state, then diff that against the target schema. This is
+the only approach that correctly identifies:
+
+| Change                  | Detection                                          |
+| ----------------------- | -------------------------------------------------- |
+| New table               | ✓ Detected (safe — no data loss)                   |
+| New column with default | ✓ Detected (safe)                                  |
+| Column rename           | ✓ Detected as DROP + ADD (destructive — data loss) |
+| Column deletion         | ✓ Detected (destructive — data loss)               |
+| Table deletion          | ✓ Detected (destructive — data loss)               |
+
+**`--shadow-database-url` is required** — without it, Prisma cannot replay the migration
+files to reconstruct the current state.
+
+**If a destructive change is detected:**
+
+1. Review the diff output carefully — is the change intentional?
+2. If intentional (e.g. removing an unused column after a code deploy): proceed and type `yes`
+3. If unintentional: cancel, fix the migration SQL, and re-run the check
+4. Always back up the database before applying any destructive migration
+
 ### Manual migration
 
 To run Prisma migrations manually against production:

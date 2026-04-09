@@ -217,8 +217,8 @@ export async function submitIdVerification(
         };
       }
       const chunks: Uint8Array[] = [];
-      for await (const chunk of response.Body) {
-        chunks.push(chunk as Uint8Array);
+      for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+        chunks.push(chunk);
       }
       const buffer = Buffer.concat(chunks);
 

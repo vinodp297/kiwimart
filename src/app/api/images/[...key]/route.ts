@@ -1,27 +1,75 @@
 // src/app/api/images/[...key]/route.ts
-// ─── R2 Image Proxy ─────────────────────────────────────────────────────────
-// Serves images from Cloudflare R2 without requiring public bucket access.
-// This route acts as a proxy: browser → Next.js API → R2 → response.
+// ─── R2 Image Proxy with Prefix-Based Authorisation ─────────────────────────
+// Serves files from Cloudflare R2. File access is gated by the R2 key prefix:
+//
+//   PUBLIC — no authentication required:
+//     listings/   Listing images — buyers must be able to see them.
+//     profiles/   User profile / avatar photos.
+//
+//   PROTECTED — requires authentication and authorisation:
+//     disputes/  ORDER_PARTY_OR_ADMIN  Dispute evidence photos.
+//     dispatch/  ORDER_PARTY_OR_ADMIN  Dispatch confirmation photos.
+//     delivery/  ORDER_PARTY_OR_ADMIN  Delivery confirmation photos.
+//     exports/   OWNER_ONLY           Personal data export files.
+//     verification/ ADMIN_ONLY        KYC identity documents.
+//
+//   UNKNOWN prefix → 404 (fail closed — do not reveal that the path exists).
+//
+// Key path structure:
+//   {prefix}/{resourceId}/{filename}
+//   For ORDER_PARTY_OR_ADMIN: resourceId is the orderId.
+//   For OWNER_ONLY:           resourceId is the userId.
+//   For ADMIN_ONLY:           resourceId is the userId (admin sees all).
 //
 // URL format: /api/images/listings/user123/uuid-full.webp
-// The [...key] catch-all param captures the full R2 key path.
-//
-// Caching: 1 hour browser cache, 24 hour CDN cache (Vercel Edge).
-// This is safe because processed images are immutable (content-addressed).
 
 import { NextRequest, NextResponse } from "next/server";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
+import { auth } from "@/lib/auth";
+import { orderRepository } from "@/modules/orders/order.repository";
 
-// MIME types for common image extensions
+// ── Prefix classifications ────────────────────────────────────────────────────
+
+const PUBLIC_PREFIXES = new Set(["listings/", "profiles/"]);
+
+type AuthType = "ORDER_PARTY_OR_ADMIN" | "OWNER_ONLY" | "ADMIN_ONLY";
+
+const PROTECTED_PREFIXES: Record<string, AuthType> = {
+  "disputes/": "ORDER_PARTY_OR_ADMIN",
+  "dispatch/": "ORDER_PARTY_OR_ADMIN",
+  "delivery/": "ORDER_PARTY_OR_ADMIN",
+  "exports/": "OWNER_ONLY",
+  "verification/": "ADMIN_ONLY",
+};
+
+// ── MIME types for common extensions ─────────────────────────────────────────
+
 const MIME_TYPES: Record<string, string> = {
   webp: "image/webp",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   png: "image/png",
   gif: "image/gif",
-  svg: "image/svg+xml",
+  json: "application/json",
+  pdf: "application/pdf",
 };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function unauthorized(): NextResponse {
+  return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+}
+
+function forbidden(): NextResponse {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
+
+function notFound(): NextResponse {
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
+}
+
+// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function GET(
   _request: NextRequest,
@@ -31,24 +79,75 @@ export async function GET(
     const { key } = await params;
     const r2Key = key.join("/");
 
-    // Basic validation: prevent path traversal, limit to known prefixes.
-    // listings/{userId}/{filename}            — listing images
-    // profiles/{userId}/{type}/{filename}     — avatar / cover images
-    // dispatch/{userId}/{filename}            — dispatch evidence photos
-    // delivery/{userId}/{filename}            — delivery evidence photos
-    // disputes/{userId}/{filename}            — dispute evidence photos
-    if (
-      r2Key.includes("..") ||
-      !r2Key.match(
-        /^(listings|profiles|dispatch|delivery|disputes)\/[a-zA-Z0-9_-]+(\/[a-zA-Z0-9._-]+)+$/,
-      )
-    ) {
-      return NextResponse.json(
-        { error: "Invalid image path" },
-        { status: 400 },
-      );
+    // Path traversal guard — must come before any prefix check.
+    if (r2Key.includes("..")) {
+      return notFound();
     }
 
+    // ── Determine prefix ──────────────────────────────────────────────────
+    const prefix = Object.keys(PROTECTED_PREFIXES).find((p) =>
+      r2Key.startsWith(p),
+    );
+    const isPublic = [...PUBLIC_PREFIXES].some((p) => r2Key.startsWith(p));
+
+    if (!isPublic && !prefix) {
+      // Unknown prefix — fail closed. Do not reveal existence of the path.
+      return notFound();
+    }
+
+    // ── Authorisation for protected prefixes ──────────────────────────────
+    if (prefix) {
+      const authType = PROTECTED_PREFIXES[prefix]!;
+      const session = await auth();
+
+      if (!session?.user?.id) {
+        return unauthorized();
+      }
+
+      const userId = session.user.id;
+      const isAdmin = !!(session.user as { isAdmin?: boolean }).isAdmin;
+
+      // Segments: [prefix-without-slash, resourceId, ...rest]
+      // key is already split by '/' so segments = key array
+      // e.g. disputes/order-abc/evidence.jpg → segments[1] = "order-abc"
+      const resourceId = key[1];
+
+      if (!resourceId) {
+        return notFound();
+      }
+
+      switch (authType) {
+        case "ORDER_PARTY_OR_ADMIN": {
+          if (!isAdmin) {
+            const isParty = await orderRepository.isUserPartyToOrder(
+              resourceId,
+              userId,
+            );
+            if (!isParty) {
+              return forbidden();
+            }
+          }
+          break;
+        }
+
+        case "OWNER_ONLY": {
+          // resourceId is the userId of the export owner
+          if (userId !== resourceId) {
+            return forbidden();
+          }
+          break;
+        }
+
+        case "ADMIN_ONLY": {
+          if (!isAdmin) {
+            return forbidden();
+          }
+          break;
+        }
+      }
+    }
+
+    // ── Serve the file from R2 ────────────────────────────────────────────
     const command = new GetObjectCommand({
       Bucket: R2_BUCKET,
       Key: r2Key,
@@ -57,45 +156,44 @@ export async function GET(
     const response = await r2.send(command);
 
     if (!response.Body) {
-      return NextResponse.json({ error: "Image not found" }, { status: 404 });
+      return notFound();
     }
 
-    // Convert stream to buffer — cast Body to AsyncIterable for Node.js iteration
     const chunks: Uint8Array[] = [];
     for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
       chunks.push(chunk);
     }
     const buffer = Buffer.concat(chunks);
 
-    // Determine content type from extension or R2 metadata
     const ext = r2Key.split(".").pop()?.toLowerCase() ?? "";
     const contentType =
       response.ContentType ?? MIME_TYPES[ext] ?? "application/octet-stream";
+
+    // Public files get long-lived cache headers; protected files must not be cached.
+    const isPublicServe = isPublic;
+    const cacheControl = isPublicServe
+      ? "public, max-age=3600, s-maxage=86400, immutable"
+      : "private, no-store";
 
     return new NextResponse(buffer, {
       status: 200,
       headers: {
         "Content-Type": contentType,
         "Content-Length": String(buffer.length),
-        // Cache: 1 hour browser, 24 hours CDN (immutable processed images)
-        "Cache-Control": "public, max-age=3600, s-maxage=86400, immutable",
-        // Security: prevent sniffing
+        "Cache-Control": cacheControl,
         "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // NoSuchKey = image doesn't exist in R2
     if (
       msg.includes("NoSuchKey") ||
       msg.includes("The specified key does not exist")
     ) {
-      return NextResponse.json({ error: "Image not found" }, { status: 404 });
+      return notFound();
     }
-    console.error("[Image Proxy] Error:", msg);
-    return NextResponse.json(
-      { error: "Failed to load image" },
-      { status: 500 },
-    );
+    // Never log the key value — it may contain user IDs or order IDs
+    console.error("[Image Proxy] Error fetching file from R2");
+    return NextResponse.json({ error: "Failed to load file" }, { status: 500 });
   }
 }

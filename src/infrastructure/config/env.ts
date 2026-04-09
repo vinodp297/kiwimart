@@ -58,6 +58,21 @@ const envSchema = z.object({
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
   NEXT_PUBLIC_POSTHOG_HOST: z.string().optional(),
+  // ── ENCRYPTION_KEY ──────────────────────────────────────────────────────────
+  // AES-256-GCM field-level encryption key for phone numbers, TOTP secrets, etc.
+  // Must be exactly 64 hex characters (32 bytes = 256-bit key).
+  // Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ENCRYPTION_KEY: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]+$/,
+      "ENCRYPTION_KEY must be a hex string (characters 0-9 and a-f only)",
+    )
+    .refine(
+      (val) => val.length === 64,
+      "ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes for AES-256)",
+    )
+    .optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -131,6 +146,30 @@ function validateEnv(): Env {
         "\n❌ PRODUCTION DEPLOYMENT BLOCKED: MOBILE_JWT_SECRET is weak or uses a known default value!\n" +
           "   The secret must be randomly generated and unpredictable.\n" +
           "   Generate a secure secret with: openssl rand -base64 32\n",
+      );
+    }
+
+    // ── ENCRYPTION_KEY production enforcement ────────────────────────────────
+    // Sensitive data (phone numbers, TOTP secrets) is encrypted at rest using
+    // AES-256-GCM. A missing or invalid key in production means every encryption
+    // call will throw at runtime — fail fast at startup instead.
+    const encryptionKey = result.data.ENCRYPTION_KEY ?? "";
+    if (!encryptionKey) {
+      throw new Error(
+        "\n❌ PRODUCTION DEPLOYMENT BLOCKED: ENCRYPTION_KEY is not set!\n" +
+          "   Phone numbers and TOTP secrets cannot be encrypted without it.\n" +
+          "   Generate a key with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"\n" +
+          "   Set ENCRYPTION_KEY in your Vercel environment settings.\n",
+      );
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(encryptionKey)) {
+      throw new Error(
+        "\n❌ PRODUCTION DEPLOYMENT BLOCKED: ENCRYPTION_KEY is invalid!\n" +
+          "   It must be exactly 64 hex characters (32 bytes for AES-256-GCM).\n" +
+          "   Current length: " +
+          encryptionKey.length +
+          " characters.\n" +
+          "   Generate a valid key with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"\n",
       );
     }
   }
