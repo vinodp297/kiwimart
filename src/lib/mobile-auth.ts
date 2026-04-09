@@ -13,6 +13,9 @@ import { logger } from "@/shared/logger";
 
 const getSecret = () => new TextEncoder().encode(process.env.MOBILE_JWT_SECRET);
 
+// 7-day TTL balances security with UX — weekly re-authentication is acceptable
+// for a marketplace mobile app. Shorter than 30 days to limit exposure if a
+// token is compromised. The OpenAPI spec (api/docs/route.ts) must match this.
 const EXPIRY = "7d";
 const EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 const EXPIRY_SECONDS = 7 * 24 * 60 * 60; // TTL for Redis key

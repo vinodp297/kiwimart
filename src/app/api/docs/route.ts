@@ -25,7 +25,7 @@ const openApiSpec = {
       "with each same-origin request. No `Authorization` header is required.",
       "",
       "### Bearer Token (mobile clients)",
-      "Mobile clients exchange credentials for a 30-day JWT via",
+      "Mobile clients exchange credentials for a 7-day JWT via",
       "`POST /api/v1/auth/token`, then pass it as `Authorization: Bearer <token>`.",
       "Tokens can be refreshed before expiry via `POST /api/v1/auth/refresh` and",
       "revoked on sign-out via `POST /api/v1/auth/logout`.",
@@ -79,7 +79,7 @@ const openApiSpec = {
       post: {
         summary: "Exchange credentials for a Bearer token (mobile)",
         description:
-          "Authenticates with email and password and returns a 30-day JWT for use" +
+          "Authenticates with email and password and returns a 7-day JWT for use" +
           " as a Bearer token on all subsequent API requests. Rate limited per IP.",
         tags: ["Auth"],
         requestBody: {
@@ -108,7 +108,7 @@ const openApiSpec = {
                     data: {
                       type: "object",
                       properties: {
-                        token: { type: "string", description: "30-day JWT" },
+                        token: { type: "string", description: "7-day JWT" },
                         expiresAt: { type: "string", format: "date-time" },
                         user: {
                           type: "object",
@@ -138,7 +138,7 @@ const openApiSpec = {
         summary: "Refresh a Bearer token (mobile)",
         description:
           "Validates the current Bearer token and issues a new one with a fresh" +
-          " 30-day expiry. The old token remains valid until its original expiry.",
+          " 7-day expiry. The old token remains valid until its original expiry.",
         tags: ["Auth"],
         security: [{ mobileBearer: [] }],
         responses: {
@@ -1703,7 +1703,8 @@ const openApiSpec = {
         scheme: "bearer",
         bearerFormat: "JWT",
         description:
-          "30-day JWT issued by POST /api/v1/auth/token (mobile clients)." +
+          "7-day JWT issued by POST /api/v1/auth/token (mobile clients)." +
+          " 7-day TTL balances security with UX — weekly re-authentication is acceptable for a marketplace mobile app." +
           " Pass as `Authorization: Bearer <token>`.",
       },
     },

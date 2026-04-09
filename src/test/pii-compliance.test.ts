@@ -384,4 +384,64 @@ describe("account erasure", () => {
       1,
     );
   });
+
+  // Test 11 — Review anonymisation: authorId nulled out (not a no-op)
+  it("anonymises review authorId to null — breaking the identity link", async () => {
+    await performAccountErasure({
+      userId: TEST_USER.id,
+      operatorId: "self-service",
+    });
+
+    expect(vi.mocked(db.review.updateMany)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { authorId: TEST_USER.id },
+        data: { authorId: null },
+      }),
+    );
+  });
+
+  // Test 12 — Must NOT be a no-op (data.authorId must not equal userId)
+  it("review anonymisation data is NOT the same as the original userId", async () => {
+    await performAccountErasure({
+      userId: TEST_USER.id,
+      operatorId: "self-service",
+    });
+
+    const calls = vi.mocked(db.review.updateMany).mock.calls;
+    const reviewCall = calls.find(
+      (c) =>
+        typeof c[0] === "object" &&
+        c[0] !== null &&
+        "where" in c[0] &&
+        (c[0] as { where: { authorId?: string } }).where?.authorId ===
+          TEST_USER.id,
+    );
+    expect(reviewCall).toBeDefined();
+    // data.authorId must NOT equal the original userId — that would be a no-op
+    const data = (reviewCall![0] as { data: { authorId?: string | null } })
+      .data;
+    expect(data.authorId).not.toBe(TEST_USER.id);
+    expect(data.authorId).toBeNull();
+  });
+
+  // Test 13 — Review comment must be preserved (marketplace integrity)
+  it("review comment text is preserved during erasure", async () => {
+    await performAccountErasure({
+      userId: TEST_USER.id,
+      operatorId: "self-service",
+    });
+
+    const calls = vi.mocked(db.review.updateMany).mock.calls;
+    const reviewCall = calls.find(
+      (c) =>
+        typeof c[0] === "object" &&
+        c[0] !== null &&
+        "data" in c[0] &&
+        "authorId" in (c[0] as { data: object }).data,
+    );
+    // comment must NOT appear in the update data — it is preserved as-is
+    const data = (reviewCall![0] as { data: Record<string, unknown> }).data;
+    expect(data).not.toHaveProperty("comment");
+    expect(data).not.toHaveProperty("rating");
+  });
 });

@@ -6,6 +6,7 @@
 import { performAccountErasure } from "@/modules/users/erasure.service";
 import { userRepository } from "@/modules/users/user.repository";
 import { verifyPassword } from "@/server/lib/password";
+import { rateLimit } from "@/server/lib/rateLimit";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError, requireApiUser } from "../../_helpers/response";
@@ -16,6 +17,34 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     const user = await requireApiUser(request);
+
+    // Rate limit: 5 attempts per hour keyed by user ID (not IP).
+    // User-ID key ensures the limit applies regardless of which IP the
+    // request comes from, preventing distributed password-guessing.
+    try {
+      const limit = await rateLimit(
+        "accountDelete",
+        `account-delete:${user.id}`,
+      );
+      if (!limit.success) {
+        return withCors(
+          apiError(
+            "Too many attempts. Please try again later.",
+            429,
+            "RATE_LIMITED",
+          ),
+          request.headers.get("origin"),
+        );
+      }
+    } catch (rlErr) {
+      logger.warn("account-delete:rate-limit-unavailable", {
+        userId: user.id,
+        error: rlErr instanceof Error ? rlErr.message : String(rlErr),
+      });
+      // Fail open — allow the request if rate limiter is unavailable so users
+      // retain their right to erasure (NZ Privacy Act 2020) even during
+      // Redis outages.
+    }
 
     // Parse and validate body
     const body = await request.json().catch(() => null);

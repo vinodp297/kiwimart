@@ -95,10 +95,12 @@ export async function performAccountErasure(
 
     await tx.watchlistItem.deleteMany({ where: { userId } });
 
-    // 4. Anonymise Reviews — keep text for marketplace integrity
+    // 4. Anonymise Reviews — null out authorId to break the identity link.
+    //    Comment text is preserved for marketplace integrity (seller reputation).
+    //    authorId is nullable specifically to support this erasure path.
     await tx.review.updateMany({
       where: { authorId: userId },
-      data: { authorId: userId }, // Keep FK but display as "Anonymous" via UI logic
+      data: { authorId: null },
     });
 
     // 5. Cancel PENDING orders (no payment captured yet)

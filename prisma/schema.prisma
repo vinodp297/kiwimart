@@ -919,7 +919,7 @@ model Review {
   orderId      String
   reviewerRole ReviewerRole @default(BUYER)
   subjectId    String       // The user being reviewed
-  authorId     String       // The user writing the review
+  authorId     String?      // The user writing the review (null after account erasure)
 
   // Rating stored as integer 1–50 (represents 1.0–5.0 in 0.1 increments)
   rating     Int
@@ -936,9 +936,9 @@ model Review {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order   Order @relation(fields: [orderId], references: [id])
-  subject User  @relation("ReviewSubject", fields: [subjectId], references: [id])
-  author  User  @relation("ReviewAuthor", fields: [authorId], references: [id])
+  order   Order  @relation(fields: [orderId], references: [id])
+  subject User   @relation("ReviewSubject", fields: [subjectId], references: [id])
+  author  User?  @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   tags    ReviewTag[]
 
   @@unique([orderId, reviewerRole])

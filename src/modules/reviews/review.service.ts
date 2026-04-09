@@ -139,7 +139,7 @@ export class ReviewService {
 
     return reviews.map((r) => ({
       id: r.id,
-      buyerName: r.author.displayName,
+      buyerName: r.author?.displayName ?? "Anonymous",
       rating: Math.round(r.rating / 10),
       comment: r.comment,
       listingTitle: r.order.listing.title,
@@ -154,7 +154,7 @@ export class ReviewService {
 
     return reviews.map((r) => ({
       id: r.id,
-      sellerName: r.author.displayName,
+      sellerName: r.author?.displayName ?? "Anonymous",
       rating: Math.round(r.rating / 10),
       comment: r.comment,
       listingTitle: r.order.listing.title,

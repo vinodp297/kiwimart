@@ -158,6 +158,21 @@ const pushTokenLimiter = () =>
     analytics: true,
   });
 
+/**
+ * 5 account deletion attempts per hour per user.
+ * Keyed by user ID — not IP — so multiple requests from the same user across
+ * different IPs are counted together. Stricter than most endpoints because
+ * account deletion is irreversible and the password confirmation step makes
+ * this a password-guessing surface.
+ */
+const accountDeleteLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(5, "1 h"),
+    prefix: "km:rl:account-delete",
+    analytics: true,
+  });
+
 // ── Admin rate limiters — keyed by admin user ID, not IP ──────────────────────
 
 /** 20 ID verification approve/reject actions per hour per admin */
@@ -220,6 +235,7 @@ export type RateLimitKey =
   | "watch"
   | "offerRespond"
   | "accountUpdate"
+  | "accountDelete"
   | "pushToken"
   // Public read — IP-based, fail-open when Redis is unavailable
   | "publicRead"
@@ -282,6 +298,7 @@ export async function rateLimit(
     watch: watchLimiter,
     offerRespond: offerRespondLimiter,
     accountUpdate: accountUpdateLimiter,
+    accountDelete: accountDeleteLimiter,
     pushToken: pushTokenLimiter,
     publicRead: publicReadLimiter,
     publicSearch: publicSearchLimiter,

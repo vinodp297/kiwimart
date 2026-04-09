@@ -1,9 +1,11 @@
 // src/app/api/metrics/route.ts
 // ─── Business Metrics Endpoint ───────────────────────────────────────────────
 // Admin-only endpoint returning business health metrics for the internal
-// dashboard. Requires an active admin session.
+// dashboard. Requires VIEW_ALL_METRICS permission — DB-backed check, not a
+// stale JWT claim. This prevents a revoked admin from accessing metrics via a
+// still-valid session token.
 
-import { auth } from "@/lib/auth";
+import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminService } from "@/modules/admin/admin.service";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
@@ -21,18 +23,18 @@ function dep<T extends Response>(res: T): T {
 }
 
 export async function GET() {
+  // Auth guard — requires VIEW_ALL_METRICS permission (DB-backed, not JWT claim)
+  let admin;
   try {
-    // Admin only
-    const session = await auth();
-    const user = session?.user as { id: string; isAdmin?: boolean } | undefined;
+    admin = await requirePermission("VIEW_ALL_METRICS");
+  } catch {
+    return dep(apiError("Unauthorised", 403));
+  }
 
-    if (!user?.isAdmin) {
-      return apiError("Unauthorised", 403);
-    }
-
+  try {
     const metrics = await adminService.getBusinessMetrics();
 
-    logger.info("metrics.requested", { requestedBy: user.id });
+    logger.info("metrics.requested", { requestedBy: admin.id });
 
     return dep(apiOk(metrics));
   } catch (e) {
