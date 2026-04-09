@@ -8,11 +8,9 @@ import {
   formatCentsAsNzd,
   formatNzd,
   calculateStripeFee,
-  calculatePlatformFee,
-  calculateSellerPayout,
   STRIPE_FEE_RATE,
   STRIPE_FEE_FIXED_CENTS,
-  PLATFORM_FEE_RATE,
+  DEFAULT_PLATFORM_FEE_RATE,
 } from "@/lib/currency";
 
 // ── toCents ───────────────────────────────────────────────────────────────────
@@ -117,30 +115,8 @@ describe("calculateStripeFee", () => {
   });
 });
 
-describe("calculatePlatformFee", () => {
-  it("calculatePlatformFee(10000) === 500 (5%)", () => {
-    expect(calculatePlatformFee(10000)).toBe(500);
-  });
-
-  it("PLATFORM_FEE_RATE is 0.05 (5%)", () => {
-    expect(PLATFORM_FEE_RATE).toBe(0.05);
-  });
-
-  it("rounds to nearest cent", () => {
-    // 333 * 0.05 = 16.65 → Math.round → 17
-    expect(calculatePlatformFee(333)).toBe(17);
-  });
-});
-
-describe("calculateSellerPayout", () => {
-  it("calculateSellerPayout(10000) === 9500 (amount minus 5% fee)", () => {
-    expect(calculateSellerPayout(10000)).toBe(9500);
-  });
-
-  it("equals amountCents minus calculatePlatformFee(amountCents)", () => {
-    const amount = 7599;
-    expect(calculateSellerPayout(amount)).toBe(
-      amount - calculatePlatformFee(amount),
-    );
+describe("DEFAULT_PLATFORM_FEE_RATE", () => {
+  it("DEFAULT_PLATFORM_FEE_RATE is 0.035 (3.5%)", () => {
+    expect(DEFAULT_PLATFORM_FEE_RATE).toBe(0.035);
   });
 });

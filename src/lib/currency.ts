@@ -7,13 +7,17 @@
 //   • fromCents()        — cents  → dollar number (never divide inline)
 //   • formatCentsAsNzd() — server-side display: emails, logs, notifications
 //   • formatNzd()        — UI display: React components
-//   • calculateStripeFee / calculatePlatformFee — never hardcode 0.019 or 0.30
+//   • calculateStripeFee — never hardcode 0.019 or 0.30
+//   • For platform fees  — use fee-calculator.ts (tier-aware, config-backed)
 
 // ── Stripe / platform fee constants ──────────────────────────────────────────
 
 export const STRIPE_FEE_RATE = 0.019; // 1.9% per-transaction fee
 export const STRIPE_FEE_FIXED_CENTS = 30; // 30-cent fixed component
-export const PLATFORM_FEE_RATE = 0.05; // 5% platform fee
+
+/** Default platform fee rate (3.5% for Standard tier).
+ *  For tier-aware fees, use calculateFees() from fee-calculator.ts. */
+export const DEFAULT_PLATFORM_FEE_RATE = 0.035;
 
 // ── Core conversions ──────────────────────────────────────────────────────────
 
@@ -55,17 +59,4 @@ export function formatNzd(cents: number): string {
 /** Stripe processing fee for a given amount (cents). */
 export function calculateStripeFee(amountCents: number): number {
   return Math.round(amountCents * STRIPE_FEE_RATE + STRIPE_FEE_FIXED_CENTS);
-}
-
-/** Platform fee (5%) for a given amount (cents). */
-export function calculatePlatformFee(amountCents: number): number {
-  return Math.round(amountCents * PLATFORM_FEE_RATE);
-}
-
-/**
- * Seller payout after platform fee.
- * Does NOT deduct Stripe fees — those are handled by Stripe Connect.
- */
-export function calculateSellerPayout(amountCents: number): number {
-  return amountCents - calculatePlatformFee(amountCents);
 }

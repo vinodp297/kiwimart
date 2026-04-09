@@ -29,6 +29,13 @@ export const CONFIG_KEYS = {
   PLATFORM_MAX_PRICE_CENTS: "financial.listing.max_price_cents",
   ESCROW_RELEASE_BUSINESS_DAYS: "financial.escrow.release_business_days",
   OFFER_MIN_PERCENTAGE: "financial.offer.min_percentage",
+  PLATFORM_FEE_STANDARD_RATE: "financial.fee.platform_standard_rate",
+  PLATFORM_FEE_SILVER_RATE: "financial.fee.platform_silver_rate",
+  PLATFORM_FEE_GOLD_RATE: "financial.fee.platform_gold_rate",
+  PLATFORM_FEE_MINIMUM_CENTS: "financial.fee.platform_minimum_cents",
+  PLATFORM_FEE_MAXIMUM_CENTS: "financial.fee.platform_maximum_cents",
+  STRIPE_FEE_RATE: "financial.fee.stripe_rate",
+  STRIPE_FEE_FIXED_CENTS: "financial.fee.stripe_fixed_cents",
 
   // ── TIME_LIMITS ────────────────────────────────────────────────────────────
   FREE_CANCEL_WINDOW_MINUTES: "time.order.free_cancel_window_minutes",

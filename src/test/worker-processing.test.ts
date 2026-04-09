@@ -91,6 +91,25 @@ vi.mock("@/infrastructure/stripe/client", () => ({
   },
 }));
 
+// ── Mock fee calculator (for payout worker) ─────────────────────────────────
+// calculateFees reads from PlatformConfig; mock it here so payout tests are
+// deterministic and don't depend on the config mock's return values.
+const mockCalculateFees = vi.fn();
+vi.mock("@/modules/payments/fee-calculator", () => ({
+  calculateFees: (...a: unknown[]) => mockCalculateFees(...a),
+  calculateFeesSync: vi.fn(),
+}));
+
+const PAYOUT_FEES = {
+  grossAmountCents: 5000,
+  stripeFee: 125,
+  platformFee: 175,
+  platformFeeRate: 0.035,
+  totalFees: 300,
+  sellerPayout: 4700,
+  tier: "STANDARD" as const,
+};
+
 // ── Import workers AFTER mocks ─────────────────────────────────────────────────
 import { startEmailWorker } from "@/server/workers/emailWorker";
 import { startImageWorker } from "@/server/workers/imageWorker";
@@ -291,18 +310,21 @@ describe("payoutWorker", () => {
   beforeEach(() => {
     if (!payoutMock.findUnique) payoutMock.findUnique = vi.fn();
     if (!payoutMock.update) payoutMock.update = vi.fn();
+    mockCalculateFees.mockResolvedValue(PAYOUT_FEES);
   });
 
   it("processes a pending payout end-to-end", async () => {
     payoutMock.findUnique.mockResolvedValue({
       id: "payout-1",
       status: "PENDING",
+      amountNzd: 5000,
     });
     mockStripeTransfersCreate.mockResolvedValue({ id: "tr_123" });
     payoutMock.update.mockResolvedValue({});
     (db.user.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       email: "seller@test.nz",
       displayName: "Dave",
+      sellerTierOverride: null,
     });
     (db.order.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue({
       listing: { title: "Widget" },
@@ -310,18 +332,20 @@ describe("payoutWorker", () => {
 
     const result = await payoutHandler(payoutJob());
     expect(result).toEqual({ transferId: "tr_123" });
+    // Transfer uses fees.sellerPayout (4700), not the gross amount (5000)
     expect(mockStripeTransfersCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: 5000,
+        amount: PAYOUT_FEES.sellerPayout,
         currency: "nzd",
         destination: "acct_123",
       }),
+      expect.objectContaining({ idempotencyKey: "transfer-payout-1" }),
     );
     expect(mockSendPayoutInitiatedEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "seller@test.nz",
         sellerName: "Dave",
-        amountNzd: 5000,
+        amountNzd: PAYOUT_FEES.sellerPayout,
       }),
     );
   });
@@ -352,6 +376,7 @@ describe("payoutWorker", () => {
     payoutMock.findUnique.mockResolvedValue({
       id: "payout-1",
       status: "PENDING",
+      amountNzd: 5000,
     });
     mockStripeTransfersCreate.mockResolvedValue({ id: "tr_456" });
     payoutMock.update.mockResolvedValue({});

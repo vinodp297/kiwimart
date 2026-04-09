@@ -148,14 +148,17 @@ export class WebhookService {
       if (!isPickupOrder) {
         // Payout created immediately for shipped orders;
         // for pickup orders, payout is created on OTP confirmation.
+        // Store the gross order amount as the payout base. The payout worker
+        // will deduct platform + Stripe fees when it initiates the transfer.
+        // application_fee_amount is 0 in our current implementation because we
+        // use manual transfers (Model B) rather than destination charges — Stripe
+        // does not collect a fee on our behalf.
         await tx.payout.upsert({
           where: { orderId },
           create: {
             orderId,
             userId: sellerId,
-            amountNzd: Math.round(
-              (pi.amount - (pi.application_fee_amount ?? 0)) * 1,
-            ),
+            amountNzd: pi.amount - (pi.application_fee_amount ?? 0),
             platformFeeNzd: pi.application_fee_amount ?? 0,
             stripeFeeNzd: 0,
             status: "PENDING",
@@ -230,14 +233,14 @@ export class WebhookService {
         { updatedAt: new Date() },
         { tx, fromStatus: currentOrder.status },
       );
+      // Gross order amount stored as payout base. Fee deduction happens in
+      // the payout worker when the Stripe transfer is initiated.
       await tx.payout.upsert({
         where: { orderId },
         create: {
           orderId,
           userId: sellerId,
-          amountNzd: Math.round(
-            (pi.amount - (pi.application_fee_amount ?? 0)) * 1,
-          ),
+          amountNzd: pi.amount - (pi.application_fee_amount ?? 0),
           platformFeeNzd: pi.application_fee_amount ?? 0,
           stripeFeeNzd: 0,
           status: "PENDING",

@@ -1043,5 +1043,96 @@ export async function seedPlatformConfig(dbOverride?: DbClient) {
     maxValue: "60",
   });
 
-  console.log("[PlatformConfig] Seeded 76 configuration keys");
+  // ── PLATFORM FEES ────────────────────────────────────────────────────────────
+
+  await seed({
+    key: CONFIG_KEYS.PLATFORM_FEE_STANDARD_RATE,
+    value: "3.5",
+    type: "DECIMAL",
+    category: "FINANCIAL",
+    label: "Platform fee — Standard tier rate",
+    description:
+      "Platform fee percentage for Standard (untiered) sellers. Buyer pays listed price; fee is deducted from seller payout.",
+    unit: "%",
+    minValue: "0",
+    maxValue: "20",
+  });
+
+  await seed({
+    key: CONFIG_KEYS.PLATFORM_FEE_SILVER_RATE,
+    value: "3.0",
+    type: "DECIMAL",
+    category: "FINANCIAL",
+    label: "Platform fee — Silver tier rate",
+    description: "Platform fee percentage for Silver performance-tier sellers.",
+    unit: "%",
+    minValue: "0",
+    maxValue: "20",
+  });
+
+  await seed({
+    key: CONFIG_KEYS.PLATFORM_FEE_GOLD_RATE,
+    value: "2.5",
+    type: "DECIMAL",
+    category: "FINANCIAL",
+    label: "Platform fee — Gold tier rate",
+    description: "Platform fee percentage for Gold performance-tier sellers.",
+    unit: "%",
+    minValue: "0",
+    maxValue: "20",
+  });
+
+  await seed({
+    key: CONFIG_KEYS.PLATFORM_FEE_MINIMUM_CENTS,
+    value: "50",
+    type: "INTEGER",
+    category: "FINANCIAL",
+    label: "Platform fee — minimum",
+    description:
+      "Minimum platform fee in NZD cents. Fee will never be less than this.",
+    unit: "cents",
+    minValue: "0",
+    maxValue: "500",
+  });
+
+  await seed({
+    key: CONFIG_KEYS.PLATFORM_FEE_MAXIMUM_CENTS,
+    value: "5000",
+    type: "INTEGER",
+    category: "FINANCIAL",
+    label: "Platform fee — maximum",
+    description:
+      "Maximum platform fee in NZD cents. Fee will never exceed this.",
+    unit: "cents",
+    minValue: "100",
+    maxValue: "100000",
+  });
+
+  await seed({
+    key: CONFIG_KEYS.STRIPE_FEE_RATE,
+    value: "1.9",
+    type: "DECIMAL",
+    category: "FINANCIAL",
+    label: "Stripe fee — percentage rate",
+    description:
+      "Stripe per-transaction percentage rate (NZ domestic cards). Used for seller fee breakdown display.",
+    unit: "%",
+    minValue: "0",
+    maxValue: "10",
+  });
+
+  await seed({
+    key: CONFIG_KEYS.STRIPE_FEE_FIXED_CENTS,
+    value: "30",
+    type: "INTEGER",
+    category: "FINANCIAL",
+    label: "Stripe fee — fixed component",
+    description:
+      "Stripe per-transaction fixed fee in NZD cents (NZ domestic cards).",
+    unit: "cents",
+    minValue: "0",
+    maxValue: "200",
+  });
+
+  console.log("[PlatformConfig] Seeded 83 configuration keys");
 }
