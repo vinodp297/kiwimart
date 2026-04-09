@@ -94,6 +94,9 @@ describe("processAutoReleases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // countEligibleForAutoRelease calls db.order.count twice (dispatched + cash).
+    // Return 0 so adaptive batch size falls back to BATCH_SIZE_DEFAULT (100).
+    vi.mocked(db.order.count).mockResolvedValue(0 as never);
   });
 
   afterEach(() => {
@@ -223,6 +226,7 @@ describe("processAutoReleases — cash pickup orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    vi.mocked(db.order.count).mockResolvedValue(0 as never);
   });
 
   afterEach(() => {

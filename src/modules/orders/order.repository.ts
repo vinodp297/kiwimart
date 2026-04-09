@@ -836,6 +836,31 @@ export const orderRepository = {
     });
   },
 
+  /** Count orders in the DISPATCHED + cash-completed backlog potentially eligible
+   * for auto-release. Used by autoReleaseEscrow to size the batch fetch adaptively.
+   * Applies the same 30-day pre-filter as the main query. */
+  async countEligibleForAutoRelease(): Promise<number> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 30);
+    const [dispatched, cash] = await Promise.all([
+      db.order.count({
+        where: {
+          status: "DISPATCHED",
+          dispatchedAt: { not: null, gte: cutoffDate },
+        },
+      }),
+      db.order.count({
+        where: {
+          status: "COMPLETED",
+          fulfillmentType: "CASH_ON_PICKUP",
+          completedAt: { not: null, gte: cutoffDate },
+          payout: { status: "PENDING" },
+        },
+      }),
+    ]);
+    return dispatched + cash;
+  },
+
   /** Cursor-paginated buyer order list for /api/v1/orders. */
   async findByBuyerCursor(
     buyerId: string,

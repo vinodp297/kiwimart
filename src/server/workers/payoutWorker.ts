@@ -1,8 +1,7 @@
 // src/server/workers/payoutWorker.ts
 // ─── Payout Processing Worker ────────────────────────────────────────────────
-// STATUS: INACTIVE on production Vercel. Requires persistent process.
-// Payouts are currently handled by auto-release cron + Stripe webhooks.
-// To activate: Deploy separately — see emailWorker.ts header for details.
+// Runs as a persistent background service on Render.com — started via
+// src/server/workers/index.ts. See docs/RUNBOOK.md → "Worker Deployment".
 //
 // Processes payoutQueue jobs:
 //   After order.completedAt + 3 business days:
@@ -25,7 +24,7 @@ import { runWithRequestContext } from "@/lib/request-context";
 export function startPayoutWorker() {
   if (process.env.VERCEL) {
     console.error(
-      "worker.payout: BullMQ workers cannot run on Vercel serverless.",
+      "worker.payout: workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
     );
     return;
   }

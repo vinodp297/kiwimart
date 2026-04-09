@@ -1,8 +1,7 @@
 // src/server/workers/imageWorker.ts
 // ─── Image Processing Worker ─────────────────────────────────────────────────
-// STATUS: INACTIVE on production Vercel. Requires persistent process.
-// Images are currently processed inline via processImage() server action.
-// To activate: Deploy separately — see emailWorker.ts header for details.
+// Runs as a persistent background service on Render.com — started via
+// src/server/workers/index.ts. See docs/RUNBOOK.md → "Worker Deployment".
 //
 // Processes imageQueue jobs:
 //   1. Download from R2
@@ -27,7 +26,7 @@ import { runWithRequestContext } from "@/lib/request-context";
 export function startImageWorker() {
   if (process.env.VERCEL) {
     console.error(
-      "worker.image: BullMQ workers cannot run on Vercel serverless.",
+      "worker.image: workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
     );
     return;
   }

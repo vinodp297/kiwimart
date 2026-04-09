@@ -1,0 +1,128 @@
+# render.yaml
+# ─── Render.com Worker Service Configuration ──────────────────────────────────
+# Deploys the Buyzi BullMQ worker process as a persistent background service.
+# Render.com restarts the service automatically on failure and on new deploys.
+#
+# Setup:
+#   1. Connect your GitHub repository at render.com
+#   2. Render will detect this file automatically
+#   3. Set all envVars marked sync: false in the Render dashboard
+#   4. Deploy
+#
+# See docs/RUNBOOK.md → "Worker Deployment (Render.com)" for full instructions.
+
+services:
+  - type: worker
+    name: buyzi-worker
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm run worker
+    healthCheckPath: /health
+
+    envVars:
+      # ── Runtime ────────────────────────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+
+      # Port for the health check HTTP server (must differ from Next.js on 3000)
+      - key: PORT
+        value: "3001"
+
+      # ── Database (Prisma) ─────────────────────────────────────────────────
+      # Use direct URL (not Prisma Accelerate) for the worker — no pooling needed
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Redis / BullMQ ────────────────────────────────────────────────────
+      # TCP Redis URL required by BullMQ (ioredis) — not the Upstash REST URL
+      # Format: rediss://default:<password>@<host>:<port> (TLS) or redis://...
+      - key: REDIS_URL
+        sync: false
+
+      # ── Stripe ────────────────────────────────────────────────────────────
+      - key: STRIPE_SECRET_KEY
+        sync: false
+
+      # ── Resend (transactional email) ──────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+
+      - key: EMAIL_FROM
+        sync: false
+
+      # ── Cloudflare R2 (image storage) ────────────────────────────────────
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+
+      - key: R2_BUCKET_NAME
+        sync: false
+
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+
+      - key: NEXT_PUBLIC_R2_PUBLIC_URL
+        sync: false
+
+      # ── Encryption (phone numbers at rest) ───────────────────────────────
+      - key: ENCRYPTION_KEY
+        sync: false
+
+      # ── Twilio (SMS — pickup OTP notifications) ───────────────────────────
+      # Leave unset to use dev/log mode (no real SMS sent)
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+
+      # ── App identity (used in email templates) ────────────────────────────
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+
+      - key: NEXT_PUBLIC_APP_NAME
+        value: Buyzi
+
+      - key: COMPANY_LEGAL_NAME
+        value: Buyzi Limited
+
+      - key: COMPANY_ADDRESS
+        value: Auckland, New Zealand
+
+      - key: NEXT_PUBLIC_SUPPORT_EMAIL
+        value: support@buyzi.co.nz
+
+      - key: NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY
+        value: "$3,000"
+
+      # ── Order / payout business rules (used in email copy) ────────────────
+      - key: PAYOUT_PROCESSING_DAYS_MIN
+        value: "2"
+
+      - key: PAYOUT_PROCESSING_DAYS_MAX
+        value: "3"
+
+      - key: REFUND_PROCESSING_DAYS_MIN
+        value: "5"
+
+      - key: REFUND_PROCESSING_DAYS_MAX
+        value: "10"
+
+      - key: RETURN_SHIPPING_WINDOW_DAYS
+        value: "7"
+
+      - key: OFFER_EXPIRY_HOURS
+        value: "72"
+
+      - key: OFFER_PURCHASE_WINDOW_HOURS
+        value: "24"
+
+      - key: LISTING_POLICY_PATH
+        value: /policies/listing-guidelines

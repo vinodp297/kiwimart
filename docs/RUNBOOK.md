@@ -113,9 +113,9 @@ To trace a failed job back to its origin: search structured logs for the job's `
 
 ### Workers Not Processing
 
-- Check Railway dashboard for worker status
+- Check Render.com dashboard for worker service status
 - Check Upstash Redis dashboard for queue depth
-- Restart worker service in Railway if needed
+- Restart worker service in Render.com if needed
 
 ### High Error Rate
 
@@ -331,6 +331,93 @@ isSafe:    true  = passed validation pipeline AND scanForMalware() returned safe
 
 Neither flag implies a full antivirus scan. Both flags are set together by the
 `processImage()` pipeline in `src/server/actions/imageProcessor.ts`.
+
+---
+
+## Worker Deployment (Render.com)
+
+BullMQ workers run on Render.com as a persistent background service, separate
+from the Vercel web deployment. Render.com keeps the Node.js process alive
+indefinitely and restarts it automatically on failure or new deploys.
+
+The four workers managed by this service:
+
+| Worker | Queue    | Responsibility                                                 |
+| ------ | -------- | -------------------------------------------------------------- |
+| email  | `email`  | Sends transactional emails via Resend (offers, dispatch, etc.) |
+| image  | `image`  | Resize + EXIF strip + WebP conversion via sharp                |
+| payout | `payout` | Initiates Stripe Connect transfers to sellers                  |
+| pickup | `pickup` | Manages pickup lifecycle timeouts and OTP expiry               |
+
+### Setup
+
+1. Create an account at [render.com](https://render.com)
+2. Connect your GitHub repository
+3. Create a new **Background Worker** service
+4. Render will detect `render.yaml` automatically
+5. Set all environment variables marked `sync: false` in the Render dashboard
+6. Deploy — the `npm run worker` start command launches all four workers
+
+### Environment Variables
+
+All required variables are defined in `render.yaml`. Variables marked
+`sync: false` must be set manually in the Render dashboard. See the `.env.example`
+file for descriptions of each variable.
+
+Critical secrets that must be set:
+
+- `DATABASE_URL` — PostgreSQL connection string (use direct URL, not Prisma Accelerate)
+- `REDIS_URL` — TCP Redis connection for BullMQ (format: `rediss://...`)
+- `STRIPE_SECRET_KEY` — for payout transfers
+- `RESEND_API_KEY` — for transactional emails
+- `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` — for image processing
+- `ENCRYPTION_KEY` — for decrypting phone numbers (pickup OTP)
+- `NEXT_PUBLIC_APP_URL` — used in email links
+
+### Health Check
+
+The worker process exposes a health endpoint so Render.com can verify it is running:
+
+```
+GET https://buyzi-worker.onrender.com/health
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "workers": ["email", "image", "payout", "pickup"],
+  "timestamp": "2026-01-15T03:00:00.000Z"
+}
+```
+
+Render.com polls `/health` and restarts the service if it stops responding.
+The health server runs on port 3001 (configurable via `PORT` env var).
+
+### Monitoring
+
+- Worker health: `https://buyzi-worker.onrender.com/health`
+- Failed jobs: `GET /api/admin/jobs/failed` (requires admin auth)
+- Retry a failed job: `POST /api/admin/jobs/{id}/retry`
+- Render logs: Render dashboard → buyzi-worker → Logs
+
+### Costs
+
+- **Starter plan**: $7 USD/month
+- Includes 512 MB RAM, shared CPU, always-on (no sleep)
+
+### Local Development
+
+Workers are not started by `npm run dev`. To run them locally:
+
+```bash
+# Run all workers (requires local Redis at localhost:6379)
+npm run worker:dev
+
+# Or use the legacy entry point
+npm run workers:start
+```
 
 ---
 

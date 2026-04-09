@@ -85,7 +85,7 @@ export const verificationRepository = {
     });
   },
 
-  /** Upsert an application with document keys. */
+  /** Upsert an application with document keys and validation metadata. */
   async upsertWithDocuments(
     sellerId: string,
     data: {
@@ -93,6 +93,10 @@ export const verificationRepository = {
       documentFrontKey: string;
       documentBackKey: string | null;
       selfieKey: string | null;
+      documentFormat?: string | null;
+      documentSizeBytes?: number | null;
+      documentWidth?: number | null;
+      documentHeight?: number | null;
     },
     tx?: DbClient,
   ): Promise<void> {

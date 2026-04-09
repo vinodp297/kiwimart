@@ -1385,6 +1385,11 @@ model VerificationApplication {
   documentFrontKey String?   // R2 key for front of document
   documentBackKey  String?   // R2 key for back of document
   selfieKey        String?   // R2 key for selfie holding ID
+  // Document validation metadata (Sprint 4A — security hardening)
+  documentFormat    String?  // Detected format: jpeg | png | pdf
+  documentSizeBytes Int?     // Size of front document in bytes
+  documentWidth     Int?     // Width of front document image in pixels (null for PDF)
+  documentHeight    Int?     // Height of front document image in pixels (null for PDF)
 
   @@index([status])
 }

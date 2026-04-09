@@ -17,6 +17,13 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { runWithRequestContext } from "@/lib/request-context";
+import { orderRepository } from "@/modules/orders/order.repository";
+
+// ─── Adaptive batching constants ─────────────────────────────────────────────
+const BATCH_SIZE_MIN = 50;
+const BATCH_SIZE_MAX = 500;
+const BATCH_SIZE_DEFAULT = 100;
+const BACKLOG_ALERT_THRESHOLD = 200;
 
 /**
  * Add N business days (Mon–Fri) to a date.
@@ -42,15 +49,44 @@ export async function processAutoReleases(): Promise<{
     async () => {
       let processed = 0;
       let errors = 0;
+      const startMs = Date.now();
       const escrowDays = await getConfigInt(
         CONFIG_KEYS.ESCROW_RELEASE_BUSINESS_DAYS,
       );
 
+      // Count the backlog first so we can size the batch fetch adaptively.
+      // This avoids over-fetching on quiet nights and caps memory use on busy days.
+      const backlogCount = await orderRepository.countEligibleForAutoRelease();
+
+      // Alert ops when the backlog is growing faster than the cron can drain it.
+      if (backlogCount > BACKLOG_ALERT_THRESHOLD) {
+        import("@sentry/nextjs")
+          .then(({ captureMessage }) => {
+            captureMessage(
+              `autoReleaseEscrow: backlog (${backlogCount}) exceeds alert threshold (${BACKLOG_ALERT_THRESHOLD}). Consider increasing run frequency or batch size.`,
+              "warning",
+            );
+          })
+          .catch(() => {});
+      }
+
+      // Choose fetch limit: scale with actual backlog, but never below MIN or above MAX.
+      // BATCH_SIZE_DEFAULT is used when the backlog is smaller than it so we don't
+      // under-fetch on a quiet night where a handful of new orders just became eligible.
+      // The BATCH_SIZE_MIN absolute floor ensures we always have a safe lower bound.
+      const batchSize = Math.max(
+        BATCH_SIZE_MIN,
+        Math.min(BATCH_SIZE_MAX, Math.max(BATCH_SIZE_DEFAULT, backlogCount)),
+      );
+
+      logger.info("escrow.auto_release.batch_sizing", {
+        backlogCount,
+        batchSize,
+        alertThreshold: BACKLOG_ALERT_THRESHOLD,
+      });
+
       // DB-side pre-filter: only orders dispatched within the last 30 days.
-      // This caps the result set so the query never loads unbounded rows into memory.
       // The JS addBusinessDays() filter below fine-tunes the exact 4-business-day cutoff.
-      // Safety cap: take: 500 ensures a single cron run never exceeds memory limits
-      // even if the pre-filter is wider than expected.
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - 30);
 
@@ -62,7 +98,7 @@ export async function processAutoReleases(): Promise<{
             gte: cutoffDate,
           },
         },
-        take: 500, // Safety cap — prevents unbounded memory use
+        take: batchSize,
         orderBy: { dispatchedAt: "asc" }, // Process oldest first
         select: {
           id: true,
@@ -285,7 +321,7 @@ export async function processAutoReleases(): Promise<{
             status: "PENDING",
           },
         },
-        take: 500,
+        take: batchSize,
         orderBy: { completedAt: "asc" },
         select: {
           id: true,
@@ -386,7 +422,21 @@ export async function processAutoReleases(): Promise<{
         }
       }
 
-      logger.info("escrow.auto_release.completed", { processed, errors });
+      const succeeded = processed;
+      const failed = errors;
+      const durationMs = Date.now() - startMs;
+      // Remaining estimate: how many more orders might still be eligible that
+      // weren't fetched this run (i.e. backlog exceeded our batch size).
+      const remainingEstimate = Math.max(0, backlogCount - batchSize);
+
+      logger.info("escrow.auto_release.completed", {
+        processed: succeeded,
+        errors: failed,
+        backlogCount,
+        batchSize,
+        remainingEstimate,
+        durationMs,
+      });
       return { processed, errors };
     }, // end runWithRequestContext fn
   ); // end runWithRequestContext

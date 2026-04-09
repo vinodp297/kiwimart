@@ -27,7 +27,7 @@ import { runWithRequestContext } from "@/lib/request-context";
 export function startPickupWorker() {
   if (process.env.VERCEL) {
     console.error(
-      "worker.pickup: BullMQ workers cannot run on Vercel serverless.",
+      "worker.pickup: workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
     );
     return;
   }

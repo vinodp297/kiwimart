@@ -782,11 +782,16 @@ export type VerifyPhoneCodeInput = z.infer<typeof verifyPhoneCodeSchema>;
 
 export const requestVerificationUploadSchema = z.object({
   fileName: z.string().min(1).max(255),
-  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  contentType: z.enum([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "application/pdf",
+  ]),
   sizeBytes: z
     .number()
     .positive()
-    .max(8 * 1024 * 1024, "File must be under 8MB"),
+    .max(10 * 1024 * 1024, "File must be under 10MB"),
 });
 export type RequestVerificationUploadInput = z.infer<
   typeof requestVerificationUploadSchema

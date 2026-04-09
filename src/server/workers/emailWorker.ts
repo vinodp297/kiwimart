@@ -1,8 +1,8 @@
 // src/server/workers/emailWorker.ts
 //
 // Processes email jobs from the BullMQ email queue.
-// Runs on a separate persistent process (Railway/Render/VPS) — NOT on Vercel
-// serverless. Start with: node src/worker.ts
+// Runs as a persistent background service on Render.com — started via
+// src/server/workers/index.ts. See docs/RUNBOOK.md → "Worker Deployment".
 //
 // Each job switches on `template` and calls the corresponding email function.
 // Failures are logged at error level; BullMQ handles retries automatically
@@ -33,7 +33,7 @@ import { runWithRequestContext } from "@/lib/request-context";
 export function startEmailWorker() {
   if (process.env.VERCEL) {
     logger.error(
-      "worker.email: BullMQ workers cannot run on Vercel serverless. Deploy a separate worker process.",
+      "worker.email: workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
     );
     return;
   }
