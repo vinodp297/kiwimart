@@ -283,4 +283,74 @@ describe("Stripe webhook — Redis idempotency", () => {
     expect(mockRedisSet).not.toHaveBeenCalled();
     expect(mockProcessEvent).not.toHaveBeenCalled();
   });
+
+  // ── Fix 2 tests: correct order of operations ──────────────────────────────
+  // Verifies process-first-then-mark order (crash-safe idempotency).
+
+  it("handler failure → event NOT marked processed in Redis", async () => {
+    // Simulate handler crash/failure
+    mockProcessEvent.mockRejectedValue(
+      new Error("Order fulfilment crashed mid-flight"),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(500);
+    // Redis must NOT be written — Stripe will retry and the event will be processed
+    expect(mockRedisSet).not.toHaveBeenCalled();
+  });
+
+  it("handler success → Redis marked AFTER processEvent completes", async () => {
+    const callOrder: string[] = [];
+
+    mockProcessEvent.mockImplementation(async () => {
+      callOrder.push("processEvent");
+    });
+    mockRedisSet.mockImplementation(async () => {
+      callOrder.push("redisSet");
+      return "OK";
+    });
+
+    await POST(makeRequest());
+
+    // processEvent must come before redisSet — crash between them means retry
+    expect(callOrder.indexOf("processEvent")).toBeLessThan(
+      callOrder.indexOf("redisSet"),
+    );
+  });
+
+  it("second identical event is skipped (idempotency still works after fix)", async () => {
+    // Simulate Redis already having the event recorded
+    mockRedisGet.mockResolvedValue(
+      JSON.stringify({
+        processedAt: new Date().toISOString(),
+        eventType: "payment_intent.succeeded",
+        correlationId: "corr-first-run",
+      }),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ received: true });
+    expect(mockProcessEvent).not.toHaveBeenCalled();
+    expect(mockRedisSet).not.toHaveBeenCalled();
+  });
+
+  it("crash simulation: processEvent throws → Redis not written, Stripe can retry", async () => {
+    // Simulates a server crash between processEvent and redis.set.
+    // The handler throws before marking as processed.
+    mockProcessEvent.mockRejectedValue(new Error("Simulated crash"));
+
+    const res = await POST(makeRequest());
+
+    // Handler failed → 500 → Stripe retries
+    expect(res.status).toBe(500);
+    // Redis key NOT set — event can be safely retried on the next Stripe attempt
+    expect(mockRedisSet).not.toHaveBeenCalled();
+    // On a real crash, the process exits — no markProcessed runs. Since we
+    // use process-then-mark order, the next Stripe retry finds nothing in Redis
+    // and processes the event fresh.
+    expect(mockProcessEvent).toHaveBeenCalledTimes(1);
+  });
 });

@@ -211,13 +211,36 @@ describe("payout worker — distributed lock", () => {
     );
   });
 
-  it("lock failure returns without creating transfer", async () => {
+  it("lock failure throws so BullMQ retries the job (not silent complete)", async () => {
     const { acquireLock } = await import("@/server/lib/distributedLock");
     vi.mocked(acquireLock).mockResolvedValueOnce(null);
 
-    await processorRef.fn!(makeJob());
+    // Must THROW — BullMQ marks thrown jobs as FAILED and retries.
+    // Returning would mark the job COMPLETE with no payout and no error.
+    await expect(processorRef.fn!(makeJob())).rejects.toThrow(
+      "Payout lock not acquired — will retry",
+    );
 
+    // Stripe transfer must NOT have been attempted
     expect(mockTransferCreate).not.toHaveBeenCalled();
+  });
+
+  it("thrown error message contains 'will retry'", async () => {
+    const { acquireLock } = await import("@/server/lib/distributedLock");
+    vi.mocked(acquireLock).mockResolvedValueOnce(null);
+
+    await expect(processorRef.fn!(makeJob())).rejects.toThrow(/will retry/);
+  });
+
+  it("lock miss does not release the lock (no lock was acquired)", async () => {
+    const { acquireLock, releaseLock } =
+      await import("@/server/lib/distributedLock");
+    vi.mocked(acquireLock).mockResolvedValueOnce(null);
+
+    await expect(processorRef.fn!(makeJob())).rejects.toThrow();
+
+    // releaseLock must not be called — there is nothing to release
+    expect(vi.mocked(releaseLock)).not.toHaveBeenCalled();
   });
 });
 

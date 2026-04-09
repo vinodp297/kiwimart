@@ -57,17 +57,18 @@ export function startPayoutWorker() {
         // Lock key is orderId — prevents two concurrent workers processing the
         // same order simultaneously. Lock timeout is 120 s to accommodate slow
         // Stripe API calls.
-        // If lock cannot be acquired (another worker holds it), return without
-        // throwing — BullMQ retries the job. Throwing would increment the
-        // failure counter and potentially exhaust attempts unnecessarily.
+        // IMPORTANT: throw (not return) on lock miss so BullMQ marks the job
+        // as FAILED and retries it. A normal return marks the job COMPLETE —
+        // the seller would never be paid with no error logged and no retry.
         const lockKey = `payout:${orderId}`;
         const lock = await acquireLock(lockKey, 120);
         if (!lock) {
-          logger.warn("payout.worker.lock_failed", {
+          logger.warn("payout.worker.lock_not_acquired", {
             orderId,
-            reason: "Lock held by another worker — will retry",
+            reason:
+              "Lock held by another worker or Redis unavailable — will retry",
           });
-          return; // BullMQ retries automatically
+          throw new Error("Payout lock not acquired — will retry");
         }
 
         try {
