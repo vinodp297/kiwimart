@@ -10,6 +10,7 @@ import { AppError } from "@/shared/errors";
 import { getRequestContext } from "@/lib/request-context";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendOrderDispatchedEmail } from "@/server/email";
+import { enqueueEmail } from "@/lib/email-queue";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
@@ -200,6 +201,50 @@ export async function confirmDelivery(
     orderId,
     link: "/dashboard/seller?tab=orders",
   }).catch(() => {});
+
+  // Send order completion emails to buyer and seller
+  // Email failure must never block the completion — wrap in try/catch
+  try {
+    const parties =
+      await orderRepository.findPartiesForCompletionEmail(orderId);
+    if (parties) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const buyerFirst =
+        parties.buyer.displayName?.split(" ")[0] ??
+        parties.buyer.displayName ??
+        "there";
+      const payoutDays = Number(process.env.PAYOUT_PROCESSING_DAYS_MAX ?? "3");
+
+      await Promise.allSettled([
+        enqueueEmail({
+          template: "orderCompleteBuyer",
+          to: parties.buyer.email,
+          buyerName: parties.buyer.displayName ?? "there",
+          sellerName: parties.seller.displayName ?? "the seller",
+          listingTitle: parties.listing.title,
+          orderId,
+          totalNzd: parties.totalNzd,
+          orderUrl: `${appUrl}/orders/${orderId}`,
+        }),
+        enqueueEmail({
+          template: "orderCompleteSeller",
+          to: parties.seller.email,
+          sellerName: parties.seller.displayName ?? "there",
+          buyerFirstName: buyerFirst,
+          listingTitle: parties.listing.title,
+          orderId,
+          totalNzd: parties.totalNzd,
+          payoutTimelineDays: payoutDays,
+          dashboardUrl: `${appUrl}/dashboard/seller`,
+        }),
+      ]);
+    }
+  } catch (err) {
+    logger.warn("order.completion_emails.failed", {
+      orderId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   logger.info("order.delivery_confirmed", {
     orderId,

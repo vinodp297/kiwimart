@@ -32,6 +32,8 @@ async function sendEmailDirectly(data: EmailJobData): Promise<void> {
     sendOfferReceivedEmail,
     sendOfferResponseEmail,
     sendOrderDispatchedEmail,
+    sendOrderCompleteBuyerEmail,
+    sendOrderCompleteSellerEmail,
     sendDisputeOpenedEmail,
   } = await import("@/server/email");
 
@@ -115,11 +117,28 @@ async function sendEmailDirectly(data: EmailJobData): Promise<void> {
       });
       break;
 
-    case "orderComplete":
-      // No dedicated email function yet — log for observability
-      logger.info("email.fallback.order_complete_stub", {
+    case "orderCompleteBuyer":
+      await sendOrderCompleteBuyerEmail({
         to: data.to,
         buyerName: data.buyerName,
+        sellerName: data.sellerName,
+        listingTitle: data.listingTitle,
+        orderId: data.orderId,
+        totalNzd: data.totalNzd,
+        orderUrl: data.orderUrl,
+      });
+      break;
+
+    case "orderCompleteSeller":
+      await sendOrderCompleteSellerEmail({
+        to: data.to,
+        sellerName: data.sellerName,
+        buyerFirstName: data.buyerFirstName,
+        listingTitle: data.listingTitle,
+        orderId: data.orderId,
+        totalNzd: data.totalNzd,
+        payoutTimelineDays: data.payoutTimelineDays,
+        dashboardUrl: data.dashboardUrl,
       });
       break;
 

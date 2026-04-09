@@ -94,6 +94,21 @@ export const orderRepository = {
     });
   },
 
+  /** Fetch buyer + seller details and listing title for order completion emails.
+   * Called after confirmDelivery succeeds — never within the payment transaction. */
+  async findPartiesForCompletionEmail(id: string, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.order.findUnique({
+      where: { id },
+      select: {
+        totalNzd: true,
+        buyer: { select: { email: true, displayName: true } },
+        seller: { select: { email: true, displayName: true } },
+        listing: { select: { title: true } },
+      },
+    });
+  },
+
   async findByIdForCancellationEmail(id: string, tx?: DbClient) {
     const client = getClient(tx);
     return client.order.findUnique({

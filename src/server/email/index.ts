@@ -535,6 +535,99 @@ export async function sendPayoutInitiatedEmail(params: {
   });
 }
 
+// ── Order complete emails ─────────────────────────────────────────────────────
+
+export async function sendOrderCompleteBuyerEmail(params: {
+  to: string;
+  buyerName: string;
+  sellerName: string;
+  listingTitle: string;
+  orderId: string;
+  totalNzd: number; // in cents
+  orderUrl: string;
+}): Promise<void> {
+  const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
+  const html = baseTemplate(
+    `<h1>Your order is complete 🎉</h1>
+    <p>Hi ${esc(params.buyerName)},</p>
+    <p>You've confirmed delivery of <strong>"${esc(params.listingTitle)}"</strong> — thanks for buying on ${APP_NAME}!</p>
+    <table style="width:100%;font-size:14px;border-collapse:collapse;margin-bottom:16px">
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Order reference</td>
+        <td style="color:#141414;font-weight:500;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.orderId)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Item</td>
+        <td style="color:#141414;font-weight:500;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.listingTitle)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Seller</td>
+        <td style="color:#141414;font-weight:500;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.sellerName)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0">Total paid</td>
+        <td style="color:#141414;font-weight:600;text-align:right;padding:6px 0">${esc(amount)}</td>
+      </tr>
+    </table>
+    <div class="trust">
+      ✓ Payment has been released to the seller<br>
+      ✓ Your purchase is now complete
+    </div>
+    <p>Happy with your purchase? Leave a review to help other buyers and reward great sellers.</p>
+    <a href="${esc(params.orderUrl)}" class="btn">View order &amp; leave a review →</a>
+    <p style="font-size:12px;color:#9E9A91;">If you have any concerns about this transaction, please <a href="${APP_URL}/help" style="color:#D4A843;">contact support</a>.</p>`,
+    `Your order is complete — ${params.listingTitle}`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Your order is complete — ${params.listingTitle}`,
+    html,
+  });
+}
+
+export async function sendOrderCompleteSellerEmail(params: {
+  to: string;
+  sellerName: string;
+  buyerFirstName: string;
+  listingTitle: string;
+  orderId: string;
+  totalNzd: number; // in cents
+  payoutTimelineDays: number;
+  dashboardUrl: string;
+}): Promise<void> {
+  const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
+  const html = baseTemplate(
+    `<h1>Order complete — payment released 💰</h1>
+    <p>Hi ${esc(params.sellerName)},</p>
+    <p>${esc(params.buyerFirstName)} confirmed delivery of <strong>"${esc(params.listingTitle)}"</strong>. Your payment has been released from escrow.</p>
+    <table style="width:100%;font-size:14px;border-collapse:collapse;margin-bottom:16px">
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Order reference</td>
+        <td style="color:#141414;font-weight:500;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.orderId)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0;border-bottom:1px solid #F0EDE8">Item sold</td>
+        <td style="color:#141414;font-weight:500;text-align:right;padding:6px 0;border-bottom:1px solid #F0EDE8">${esc(params.listingTitle)}</td>
+      </tr>
+      <tr>
+        <td style="color:#73706A;padding:6px 0">Amount</td>
+        <td style="color:#141414;font-weight:600;text-align:right;padding:6px 0">${esc(amount)}</td>
+      </tr>
+    </table>
+    <div class="trust">
+      ✓ Payment released from escrow<br>
+      ✓ Payout arriving in approximately <strong>${params.payoutTimelineDays} business days</strong>
+    </div>
+    <a href="${esc(params.dashboardUrl)}" class="btn">View seller dashboard →</a>`,
+    `Order complete — payment released for "${params.listingTitle}"`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Order complete — payment released`,
+    html,
+  });
+}
+
 export async function sendCancellationEmail(params: {
   to: string;
   recipientName: string;

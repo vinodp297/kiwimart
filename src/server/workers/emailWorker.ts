@@ -22,6 +22,8 @@ import {
   sendOfferReceivedEmail,
   sendOfferResponseEmail,
   sendOrderDispatchedEmail,
+  sendOrderCompleteBuyerEmail,
+  sendOrderCompleteSellerEmail,
   sendDisputeOpenedEmail,
 } from "@/server/email";
 import { audit } from "@/server/lib/audit";
@@ -126,11 +128,28 @@ export function startEmailWorker() {
             });
             break;
 
-          case "orderComplete":
-            // Sprint 5: implement sendOrderCompleteEmail
-            logger.info("email.worker.order_complete_stub", {
+          case "orderCompleteBuyer":
+            await sendOrderCompleteBuyerEmail({
               to: data.to,
-              correlationId,
+              buyerName: data.buyerName,
+              sellerName: data.sellerName,
+              listingTitle: data.listingTitle,
+              orderId: data.orderId,
+              totalNzd: data.totalNzd,
+              orderUrl: data.orderUrl,
+            });
+            break;
+
+          case "orderCompleteSeller":
+            await sendOrderCompleteSellerEmail({
+              to: data.to,
+              sellerName: data.sellerName,
+              buyerFirstName: data.buyerFirstName,
+              listingTitle: data.listingTitle,
+              orderId: data.orderId,
+              totalNzd: data.totalNzd,
+              payoutTimelineDays: data.payoutTimelineDays,
+              dashboardUrl: data.dashboardUrl,
             });
             break;
 

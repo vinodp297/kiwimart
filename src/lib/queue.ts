@@ -159,10 +159,35 @@ export type EmailJobData = {
       orderUrl: string;
     }
   | {
-      template: "orderComplete";
+      /** Sent to the buyer when they confirm delivery and the order completes. */
+      template: "orderCompleteBuyer";
       to: string;
       buyerName: string;
+      sellerName: string;
       listingTitle: string;
+      /** Order ID shown in the email for reference (not an internal DB ID). */
+      orderId: string;
+      /** Total paid in NZD cents. */
+      totalNzd: number;
+      /** Full URL to the order page e.g. /orders/{id} */
+      orderUrl: string;
+    }
+  | {
+      /** Sent to the seller when payment is released on order completion. */
+      template: "orderCompleteSeller";
+      to: string;
+      sellerName: string;
+      /** Buyer's first name only — full name is not shared for privacy. */
+      buyerFirstName: string;
+      listingTitle: string;
+      /** Order ID shown in the email for reference. */
+      orderId: string;
+      /** Total sale amount in NZD cents. */
+      totalNzd: number;
+      /** Business days until payout arrives in seller's bank account. */
+      payoutTimelineDays: number;
+      /** Full URL to the seller dashboard. */
+      dashboardUrl: string;
     }
   | {
       template: "disputeOpened";
