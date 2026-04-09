@@ -150,6 +150,7 @@ vi.mock("@/lib/db", () => {
       update: vi.fn(),
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
     },
     messageThread: {
       findUnique: vi.fn(),
