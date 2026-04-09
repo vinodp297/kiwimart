@@ -120,11 +120,16 @@ export class SearchService {
     const useRadiusFilter =
       searchLat != null && searchLng != null && radiusKm != null;
 
+    // ── FTS: collect all relevance-ranked IDs (no cap) ────────────────────
+    // searchByVector returns IDs in ts_rank DESC order. We paginate the ID
+    // array in the service layer so listings beyond any arbitrary position
+    // remain reachable and counts are accurate.
+    let ftsRankedIds: string[] | null = null;
     if (useFts) {
       try {
-        const ftsIds = await listingRepository.searchByVector(trimmedQuery);
-        const idList = ftsIds.map((r) => r.id);
-        if (idList.length === 0) {
+        const ftsResult = await listingRepository.searchByVector(trimmedQuery);
+        ftsRankedIds = ftsResult.map((r) => r.id);
+        if (ftsRankedIds.length === 0) {
           return {
             listings: [],
             totalCount: 0,
@@ -134,8 +139,9 @@ export class SearchService {
             hasNextPage: false,
           };
         }
-        where.id = { in: idList };
+        where.id = { in: ftsRankedIds };
       } catch {
+        // Fall back to ILIKE when tsvector is unavailable
         where.OR = [
           { title: { contains: trimmedQuery, mode: "insensitive" as const } },
           {
@@ -165,37 +171,92 @@ export class SearchService {
 
     const skip = (page - 1) * pageSize;
 
-    // When using radius filter, overfetch to allow post-query distance filtering
-    const fetchLimit = useRadiusFilter ? Math.min(pageSize * 5, 200) : pageSize;
-
-    const [totalCountRaw, rowsRaw] = await Promise.all([
-      listingRepository.countSearch(where),
-      listingRepository.findSearchResults(
-        where,
-        orderBy,
-        useRadiusFilter ? 0 : skip,
-        useRadiusFilter ? fetchLimit : pageSize,
-      ),
-    ]);
-
-    // Apply Haversine distance filter if radius search is active
-    let rows = rowsRaw;
-    let totalCount = totalCountRaw;
+    // ── Radius: bounding-box pre-filter added to where clause ─────────────
+    // The bounding box uses the @@index([locationLat, locationLng]) index so
+    // the DB returns a small, geo-bounded subset. We then apply precise
+    // Haversine in the service (bounding box is square, radius is circular).
     if (
       useRadiusFilter &&
       searchLat != null &&
       searchLng != null &&
       radiusKm != null
     ) {
-      rows = rowsRaw.filter((row) => {
+      const KM_PER_DEGREE_LAT = 111.0;
+      const latDelta = radiusKm / KM_PER_DEGREE_LAT;
+      const lngDelta =
+        radiusKm / (KM_PER_DEGREE_LAT * Math.cos((searchLat * Math.PI) / 180));
+      // Replace the null-check with indexed bounding-box filter
+      where.locationLat = {
+        gte: searchLat - latDelta,
+        lte: searchLat + latDelta,
+      };
+      where.locationLng = {
+        gte: searchLng - lngDelta,
+        lte: searchLng + lngDelta,
+      };
+    }
+
+    // ── Determine fetch strategy ──────────────────────────────────────────
+    // useFtsRelevance: preserve ts_rank order when sort is default and no
+    // radius filter is active. For other sorts or radius, Prisma's orderBy
+    // takes precedence.
+    const useFtsRelevance =
+      ftsRankedIds !== null && sort === "newest" && !useRadiusFilter;
+
+    let rows: Awaited<ReturnType<typeof listingRepository.findSearchResults>>;
+    let totalCount: number;
+
+    if (useFtsRelevance) {
+      // Slice the ts_rank-ordered ID list for the current page, then fetch
+      // only those listings. Re-sort to restore rank order after Prisma fetch
+      // (IN-list order is not guaranteed by Postgres).
+      const pageIds = ftsRankedIds!.slice(skip, skip + pageSize);
+      [totalCount, rows] = await Promise.all([
+        listingRepository.countSearch(where),
+        pageIds.length
+          ? listingRepository.findSearchResults(
+              { ...where, id: { in: pageIds } },
+              orderBy,
+              0,
+              pageIds.length,
+            )
+          : Promise.resolve([]),
+      ]);
+      const rowMap = new Map(rows.map((r) => [r.id, r]));
+      rows = pageIds
+        .map((id) => rowMap.get(id))
+        .filter((r): r is NonNullable<typeof r> => r != null);
+    } else if (
+      useRadiusFilter &&
+      searchLat != null &&
+      searchLng != null &&
+      radiusKm != null
+    ) {
+      // Bounding box rows come back already indexed — at most a few thousand
+      // for any realistic NZ radius. Precise Haversine then filters the square
+      // corners. Total count is the precise post-filter count, not the bbox count.
+      const MAX_RADIUS_RESULTS = 2000;
+      const allBboxRows = await listingRepository.findSearchResults(
+        where,
+        orderBy,
+        0,
+        MAX_RADIUS_RESULTS,
+      );
+      const preciseRows = allBboxRows.filter((row) => {
         if (row.locationLat == null || row.locationLng == null) return false;
         return (
           haversineKm(searchLat, searchLng, row.locationLat, row.locationLng) <=
           radiusKm
         );
       });
-      totalCount = rows.length;
-      rows = rows.slice(skip, skip + pageSize);
+      totalCount = preciseRows.length;
+      rows = preciseRows.slice(skip, skip + pageSize);
+    } else {
+      // Standard path: DB handles all filtering, sorting, and pagination.
+      [totalCount, rows] = await Promise.all([
+        listingRepository.countSearch(where),
+        listingRepository.findSearchResults(where, orderBy, skip, pageSize),
+      ]);
     }
 
     // Batch-compute seller review stats at DB level (no N+1)

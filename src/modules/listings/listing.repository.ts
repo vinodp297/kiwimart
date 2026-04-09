@@ -617,14 +617,17 @@ export const listingRepository = {
     });
   },
 
-  /** Full-text search for listing IDs using Postgres tsvector. */
+  /** Full-text search for listing IDs using Postgres tsvector.
+   *  Returns all matching IDs ordered by relevance (ts_rank DESC) — no cap.
+   *  The service paginates the result list directly so listings beyond any
+   *  arbitrary cut-off remain reachable. */
   async searchByVector(query: string): Promise<{ id: string }[]> {
     return db.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Listing"
       WHERE "searchVector" @@ plainto_tsquery('english', ${query})
         AND status = 'ACTIVE'
         AND "deletedAt" IS NULL
-      LIMIT 500
+      ORDER BY ts_rank("searchVector", plainto_tsquery('english', ${query})) DESC
     `;
   },
 
