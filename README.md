@@ -148,8 +148,7 @@ src/
 │   └── types/              # ActionResult<T> and shared types
 ├── test/                   # Test files
 ├── types/                  # Global TypeScript declarations
-├── proxy.ts                # Dev proxy utilities
-└── worker.ts               # BullMQ worker entry point (Railway)
+└── proxy.ts                # Dev proxy utilities
 ```
 
 ## Local Development Setup
@@ -209,7 +208,7 @@ Open [http://localhost:3000](http://localhost:3000).
 If you need background job processing (emails, image processing, payouts, pickup scheduling):
 
 ```bash
-npm run workers:start
+npm run worker:dev
 ```
 
 This requires a `REDIS_URL` environment variable pointing to a Redis instance.
@@ -343,7 +342,7 @@ These run on Vercel's cron scheduler. Each is a Next.js API route protected by `
 
 ### BullMQ Workers (Persistent Process)
 
-These run as a separate long-lived process (`npm run workers:start`) on Railway or similar. They process four queues:
+These run as a separate long-lived process (`npm run worker`) on Render.com. They process four queues:
 
 | Queue    | Worker       | Concurrency | Description                                                                                                         |
 | -------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -494,13 +493,13 @@ Run on every deploy:
 npx prisma migrate deploy
 ```
 
-### BullMQ Workers (Railway/Render)
+### BullMQ Workers (Render.com)
 
-Deploy `src/worker.ts` as a separate persistent process:
+Deploy `src/server/workers/index.ts` as a separate persistent process via `render.yaml`:
 
-1. Set the same database and Redis environment variables
-2. Start command: `npx tsx src/worker.ts`
-3. Ensure `REDIS_URL` points to your Redis instance
+1. Create a Render.com **Background Worker** service and connect your GitHub repository
+2. Render detects `render.yaml` automatically — start command is `npm run worker`
+3. Set the required environment variables in the Render dashboard
 4. The process runs all 4 workers (email, image, payout, pickup) in a single Node.js process
 
 ### Cron Jobs

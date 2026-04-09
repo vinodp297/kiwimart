@@ -135,23 +135,23 @@ neon branches create --name staging --parent main
 
 Each Neon branch gets its own connection string. Set this as `DATABASE_DIRECT_URL` in your staging environment.
 
-## BullMQ Workers (Railway)
+## BullMQ Workers (Render.com)
 
 ### What the Worker Process Does
 
-The worker (`src/worker.ts`) starts four BullMQ workers in a single Node.js process:
+The worker (`src/server/workers/index.ts`) starts four BullMQ workers in a single Node.js process:
 
 1. **Email Worker** — Sends transactional emails via Resend (welcome, offers, dispatch, disputes)
 2. **Image Worker** — Downloads images from R2, scans, resizes to 1200px + 480px thumbnail, converts to WebP, strips EXIF/GPS, re-uploads
 3. **Payout Worker** — Initiates Stripe Connect transfers to sellers after order completion
 4. **Pickup Worker** — Manages pickup lifecycle timeouts (scheduling deadlines, no-show handling, OTP expiry)
 
-### How to Deploy to Railway
+### How to Deploy to Render.com
 
-1. Create a new Railway project and connect your GitHub repository.
-2. Set the start command: `npx tsx src/worker.ts`
-3. Set the required environment variables (see below).
-4. Deploy. Railway will run the process continuously with automatic restarts.
+1. Create a new Render.com **Background Worker** service and connect your GitHub repository.
+2. Render will detect `render.yaml` automatically — start command is `npm run worker`.
+3. Set the required environment variables in the Render dashboard (see below).
+4. Deploy. Render.com will run the process continuously with automatic restarts.
 
 ### Required Environment Variables
 
@@ -267,7 +267,7 @@ R2 requires CORS for direct browser uploads via presigned URLs. Configure in the
 
 ### Worker Failures
 
-1. Check Railway logs for error output from `src/worker.ts`.
+1. Check Render.com logs for error output from the worker service.
 2. Run `npm run workers:check` to inspect failed jobs in BullMQ queues.
 3. Check Redis connectivity — if Redis is down, all workers stall.
 4. Verify the `REDIS_URL` is correct and the Redis instance has available memory.

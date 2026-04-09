@@ -24,7 +24,6 @@
     "test:e2e:report": "playwright show-report",
     "worker": "tsx src/server/workers/index.ts",
     "worker:dev": "tsx watch src/server/workers/index.ts",
-    "workers:start": "tsx src/worker.ts",
     "workers:check": "tsx scripts/check-failed-jobs.ts",
     "check-env": "tsx scripts/check-env.ts",
     "postinstall": "prisma generate",

@@ -140,7 +140,7 @@ export async function GET(request: Request) {
 
 1. Define the job data type in `src/lib/queue.ts`.
 2. Create the worker in `src/server/workers/<name>Worker.ts`.
-3. Register the worker in `src/worker.ts`.
+3. Register the worker in `src/server/workers/index.ts`.
 4. Enqueue jobs from services via `queue.add('<queue-name>', data)`.
 
 ### Add a New Admin Page
@@ -253,7 +253,7 @@ describe("SomeService", () => {
 | `npm run db:migrate`    | Create and apply a migration           |
 | `npm run db:seed`       | Seed database with sample data         |
 | `npm run db:studio`     | Open Prisma Studio (visual DB browser) |
-| `npm run workers:start` | Start BullMQ worker process            |
+| `npm run worker`        | Start BullMQ worker process            |
 | `npm run workers:check` | Check for failed jobs                  |
 | `npm run check-env`     | Validate environment variables         |
 | `npm run lint`          | Run ESLint                             |

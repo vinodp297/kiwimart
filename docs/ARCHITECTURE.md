@@ -120,7 +120,7 @@ CANCELLED        → (terminal)
 - Jobs are enqueued from serverless functions but processed elsewhere.
 - Four queues with different concurrency: `email` (5), `image` (3), `payout` (2), `pickup` (2).
 
-**Example:** `src/worker.ts` (entry point), `src/server/workers/` (implementations)
+**Example:** `src/server/workers/index.ts` (canonical entry point), `src/server/workers/` (implementations)
 
 ---
 

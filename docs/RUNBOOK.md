@@ -442,7 +442,12 @@ Response:
 ```json
 {
   "status": "ok",
-  "workers": ["email", "image", "payout", "pickup"],
+  "workers": [
+    { "name": "email", "running": true, "paused": false },
+    { "name": "image", "running": true, "paused": false },
+    { "name": "payout", "running": true, "paused": false },
+    { "name": "pickup", "running": true, "paused": false }
+  ],
   "timestamp": "2026-01-15T03:00:00.000Z"
 }
 ```
@@ -469,9 +474,6 @@ Workers are not started by `npm run dev`. To run them locally:
 ```bash
 # Run all workers (requires local Redis at localhost:6379)
 npm run worker:dev
-
-# Or use the legacy entry point
-npm run workers:start
 ```
 
 ---
