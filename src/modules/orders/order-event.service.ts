@@ -6,7 +6,7 @@
 
 import { logger } from "@/shared/logger";
 import type { Prisma } from "@prisma/client";
-import { orderRepository } from "./order.repository";
+import { orderRepository, type DbClient } from "./order.repository";
 
 // ── Event type constants ────────────────────────────────────────────────────
 // Plain strings (not a Prisma enum) so new types can be added without migrations.
@@ -64,41 +64,58 @@ export interface RecordEventInput {
   actorRole: ActorRole;
   summary: string;
   metadata?: Record<string, unknown>;
+  /** Optional transaction client. When provided, the event write uses this
+   *  transaction (awaitable) so it rolls back with the parent if it fails.
+   *  When omitted, the write is fire-and-forget (backward compatible). */
+  tx?: DbClient;
 }
 
 export class OrderEventService {
   /**
    * Record an order event.
    *
-   * Fire-and-forget — do NOT await this. Matches the `audit()` pattern
-   * in src/server/lib/audit.ts. Silently catches errors so a failed
-   * event write never blocks an order state transition.
+   * When `input.tx` is provided, the write participates in that transaction
+   * and returns a Promise<void> that the caller must await. Failures propagate
+   * so the parent transaction rolls back.
+   *
+   * When `input.tx` is omitted, the write is fire-and-forget (backward
+   * compatible). Silently catches errors so a failed event write never blocks
+   * an order state transition.
    */
-  recordEvent(input: RecordEventInput): void {
-    orderRepository
-      .createEvent({
-        orderId: input.orderId,
-        type: input.type,
-        actorId: input.actorId ?? null,
-        actorRole: input.actorRole,
-        summary: input.summary,
-        metadata: (input.metadata ?? undefined) as
-          | Prisma.InputJsonValue
-          | undefined,
-      })
-      .catch((err) => {
-        logger.error("order-event.write.failed", {
-          error: err instanceof Error ? err.message : String(err),
-          orderId: input.orderId,
-          type: input.type,
-        });
-      });
+  recordEvent(input: RecordEventInput): void | Promise<void> {
+    const eventData = {
+      orderId: input.orderId,
+      type: input.type,
+      actorId: input.actorId ?? null,
+      actorRole: input.actorRole,
+      summary: input.summary,
+      metadata: (input.metadata ?? undefined) as
+        | Prisma.InputJsonValue
+        | undefined,
+    };
 
     logger.info("order-event.recorded", {
       orderId: input.orderId,
       type: input.type,
       actorRole: input.actorRole,
       actorId: input.actorId ?? undefined,
+    });
+
+    // When a transaction client is provided, the write participates in the
+    // transaction — failures propagate (caller must await). When omitted,
+    // fire-and-forget to preserve backward compatibility.
+    if (input.tx) {
+      return orderRepository
+        .createEvent(eventData, input.tx)
+        .then(() => undefined);
+    }
+
+    orderRepository.createEvent(eventData).catch((err) => {
+      logger.error("order-event.write.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        orderId: input.orderId,
+        type: input.type,
+      });
     });
   }
 

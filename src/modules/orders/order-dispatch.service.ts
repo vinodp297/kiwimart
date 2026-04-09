@@ -84,6 +84,17 @@ export async function confirmDelivery(
     );
     await orderRepository.markPayoutsProcessing(orderId, tx);
     await orderRepository.markListingSold(order.listingId, tx);
+
+    // CRITICAL: audit inside the transaction so it rolls back atomically
+    // if the transition, payout marking, or listing update fails.
+    await audit({
+      userId: buyerId,
+      action: "ORDER_STATUS_CHANGED",
+      entityType: "Order",
+      entityId: orderId,
+      metadata: { newStatus: "COMPLETED", previousStatus: order.status },
+      tx,
+    });
   });
 
   // Queue payout processing (3 business days delay)
@@ -112,14 +123,6 @@ export async function confirmDelivery(
   } catch {
     logger.warn("order.payout_queue.failed", { orderId });
   }
-
-  audit({
-    userId: buyerId,
-    action: "ORDER_STATUS_CHANGED",
-    entityType: "Order",
-    entityId: orderId,
-    metadata: { newStatus: "COMPLETED", previousStatus: order.status },
-  });
 
   // Record delivery confirmation event with feedback metadata
   if (feedback?.itemAsDescribed) {
@@ -292,16 +295,49 @@ export async function markDispatched(
     );
   }
 
-  await transitionOrder(
-    input.orderId,
-    "DISPATCHED",
-    {
-      dispatchedAt: new Date(),
-      trackingNumber: input.trackingNumber,
-      trackingUrl: input.trackingUrl ?? null,
-    },
-    { fromStatus: order.status },
-  );
+  // Wrap transition + audit + event in a single transaction for atomicity
+  await orderRepository.$transaction(async (tx) => {
+    await transitionOrder(
+      input.orderId,
+      "DISPATCHED",
+      {
+        dispatchedAt: new Date(),
+        trackingNumber: input.trackingNumber,
+        trackingUrl: input.trackingUrl ?? null,
+      },
+      { tx, fromStatus: order.status },
+    );
+
+    // CRITICAL: audit and event inside the transaction so they roll back
+    // atomically if the transition fails.
+    await audit({
+      userId: sellerId,
+      action: "ORDER_STATUS_CHANGED",
+      entityType: "Order",
+      entityId: input.orderId,
+      metadata: {
+        newStatus: "DISPATCHED",
+        trackingNumber: input.trackingNumber,
+      },
+      tx,
+    });
+
+    await orderEventService.recordEvent({
+      orderId: input.orderId,
+      type: ORDER_EVENT_TYPES.DISPATCHED,
+      actorId: sellerId,
+      actorRole: ACTOR_ROLES.SELLER,
+      summary: `Seller dispatched order via ${input.courier} — tracking: ${input.trackingNumber}`,
+      metadata: {
+        trackingNumber: input.trackingNumber,
+        trackingUrl: input.trackingUrl,
+        courier: input.courier,
+        estimatedDeliveryDate: input.estimatedDeliveryDate,
+        dispatchPhotos: input.dispatchPhotos,
+      },
+      tx,
+    });
+  });
 
   // Notify buyer directly — BullMQ worker does not run on Vercel serverless
   try {
@@ -319,32 +355,6 @@ export async function markDispatched(
       error: err instanceof Error ? err.message : String(err),
     });
   }
-
-  audit({
-    userId: sellerId,
-    action: "ORDER_STATUS_CHANGED",
-    entityType: "Order",
-    entityId: input.orderId,
-    metadata: {
-      newStatus: "DISPATCHED",
-      trackingNumber: input.trackingNumber,
-    },
-  });
-
-  orderEventService.recordEvent({
-    orderId: input.orderId,
-    type: ORDER_EVENT_TYPES.DISPATCHED,
-    actorId: sellerId,
-    actorRole: ACTOR_ROLES.SELLER,
-    summary: `Seller dispatched order via ${input.courier} — tracking: ${input.trackingNumber}`,
-    metadata: {
-      trackingNumber: input.trackingNumber,
-      trackingUrl: input.trackingUrl,
-      courier: input.courier,
-      estimatedDeliveryDate: input.estimatedDeliveryDate,
-      dispatchPhotos: input.dispatchPhotos,
-    },
-  });
 
   // Notify buyer that their item has been dispatched
   fireAndForget(

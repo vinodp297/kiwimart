@@ -2,6 +2,8 @@
 // ─── Order Repository — data access only, no business logic ─────────────────
 
 import db, { getClient, type DbClient } from "@/lib/db";
+
+export type { DbClient };
 import { Prisma } from "@prisma/client";
 import { fireAndForget } from "@/lib/fire-and-forget";
 
@@ -465,8 +467,9 @@ export const orderRepository = {
 
   // ── Order Event methods (wired in order-event.service.ts) ───────────────
 
-  createEvent(data: Prisma.OrderEventUncheckedCreateInput) {
-    return db.orderEvent.create({ data });
+  createEvent(data: Prisma.OrderEventUncheckedCreateInput, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.orderEvent.create({ data });
   },
 
   async findEventsByOrderId(orderId: string) {

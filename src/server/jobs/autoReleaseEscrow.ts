@@ -218,6 +218,34 @@ export async function processAutoReleases(): Promise<{
               where: { id: order.listing.id },
               data: { status: "SOLD", soldAt: new Date() },
             });
+
+            // CRITICAL: audit and event inside the transaction so they roll back
+            // atomically if the transition, payout, or listing update fails.
+            await audit({
+              userId: null,
+              action: "ORDER_STATUS_CHANGED",
+              entityType: "Order",
+              entityId: order.id,
+              metadata: {
+                newStatus: "COMPLETED",
+                previousStatus: "DISPATCHED",
+                trigger: "AUTO_RELEASE",
+                buyerEmail: order.buyer.email,
+                sellerEmail: order.seller.email,
+              },
+              tx,
+            });
+
+            await orderEventService.recordEvent({
+              orderId: order.id,
+              type: ORDER_EVENT_TYPES.COMPLETED,
+              actorId: null,
+              actorRole: ACTOR_ROLES.SYSTEM,
+              summary:
+                "Order auto-completed — buyer did not confirm delivery within 4 business days",
+              metadata: { trigger: "AUTO_RELEASE" },
+              tx,
+            });
           });
         } catch (err) {
           // P2025 = optimistic lock conflict — another process already transitioned this order
@@ -231,30 +259,6 @@ export async function processAutoReleases(): Promise<{
         } finally {
           await releaseLock(`order:release:${order.id}`, lockValue);
         }
-
-        audit({
-          userId: null,
-          action: "ORDER_STATUS_CHANGED",
-          entityType: "Order",
-          entityId: order.id,
-          metadata: {
-            newStatus: "COMPLETED",
-            previousStatus: "DISPATCHED",
-            trigger: "AUTO_RELEASE",
-            buyerEmail: order.buyer.email,
-            sellerEmail: order.seller.email,
-          },
-        });
-
-        orderEventService.recordEvent({
-          orderId: order.id,
-          type: ORDER_EVENT_TYPES.COMPLETED,
-          actorId: null,
-          actorRole: ACTOR_ROLES.SYSTEM,
-          summary:
-            "Order auto-completed — buyer did not confirm delivery within 4 business days",
-          metadata: { trigger: "AUTO_RELEASE" },
-        });
 
         logger.info("escrow.auto_release.order_released", {
           orderId: order.id,

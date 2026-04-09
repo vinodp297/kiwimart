@@ -25,7 +25,6 @@ import {
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
-
 export class WebhookService {
   /**
    * Race-safe idempotency: try to insert, catch unique constraint violation.
@@ -166,33 +165,37 @@ export class WebhookService {
           update: {},
         });
       }
-    });
 
-    audit({
-      action: "PAYMENT_COMPLETED",
-      entityType: "Order",
-      entityId: orderId,
-      metadata: {
-        stripePaymentIntentId: pi.id,
-        amountNzd: pi.amount,
-        trigger: "amount_capturable_updated",
-        targetStatus,
-      },
-    });
+      // CRITICAL: audit and event inside the transaction so they roll back
+      // atomically if the transition or payout creation fails.
+      await audit({
+        action: "PAYMENT_COMPLETED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: {
+          stripePaymentIntentId: pi.id,
+          amountNzd: pi.amount,
+          trigger: "amount_capturable_updated",
+          targetStatus,
+        },
+        tx,
+      });
 
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.PAYMENT_HELD,
-      actorId: null,
-      actorRole: ACTOR_ROLES.SYSTEM,
-      summary: isPickupOrder
-        ? "Payment authorized — awaiting pickup arrangement"
-        : "Payment authorized and held in escrow",
-      metadata: {
-        stripePaymentIntentId: pi.id,
-        trigger: "amount_capturable_updated",
-        targetStatus,
-      },
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.PAYMENT_HELD,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: isPickupOrder
+          ? "Payment authorized — awaiting pickup arrangement"
+          : "Payment authorized and held in escrow",
+        metadata: {
+          stripePaymentIntentId: pi.id,
+          trigger: "amount_capturable_updated",
+          targetStatus,
+        },
+        tx,
+      });
     });
 
     logger.info(
@@ -247,25 +250,29 @@ export class WebhookService {
         },
         update: {},
       });
-    });
 
-    audit({
-      action: "PAYMENT_COMPLETED",
-      entityType: "Order",
-      entityId: orderId,
-      metadata: { stripePaymentIntentId: pi.id, amountNzd: pi.amount },
-    });
+      // CRITICAL: audit and event inside the transaction so they roll back
+      // atomically if the transition or payout creation fails.
+      await audit({
+        action: "PAYMENT_COMPLETED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: { stripePaymentIntentId: pi.id, amountNzd: pi.amount },
+        tx,
+      });
 
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.PAYMENT_HELD,
-      actorId: null,
-      actorRole: ACTOR_ROLES.SYSTEM,
-      summary: "Payment authorized and held in escrow",
-      metadata: {
-        stripePaymentIntentId: pi.id,
-        trigger: "payment_intent_succeeded",
-      },
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.PAYMENT_HELD,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: "Payment authorized and held in escrow",
+        metadata: {
+          stripePaymentIntentId: pi.id,
+          trigger: "payment_intent_succeeded",
+        },
+        tx,
+      });
     });
   }
 
@@ -287,12 +294,40 @@ export class WebhookService {
       return;
     }
 
-    await transitionOrder(
-      orderId,
-      "CANCELLED",
-      {},
-      { fromStatus: currentOrder.status },
-    );
+    await orderRepository.$transaction(async (tx) => {
+      await transitionOrder(
+        orderId,
+        "CANCELLED",
+        {},
+        { tx, fromStatus: currentOrder.status },
+      );
+
+      // CRITICAL: audit and event inside the transaction so they roll back
+      // atomically if the transition fails.
+      await audit({
+        action: "PAYMENT_FAILED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: {
+          stripePaymentIntentId: pi.id,
+          failureCode: pi.last_payment_error?.code,
+        },
+        tx,
+      });
+
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.CANCELLED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary: `Order cancelled: payment failed${pi.last_payment_error?.code ? ` (${pi.last_payment_error.code})` : ""}`,
+        metadata: {
+          trigger: "PAYMENT_FAILED",
+          failureCode: pi.last_payment_error?.code,
+        },
+        tx,
+      });
+    });
 
     // Release listing reservation so other buyers can purchase it.
     // Guard: only release if still RESERVED — never overwrite SOLD/ACTIVE.
@@ -300,28 +335,6 @@ export class WebhookService {
     if (listingId) {
       await listingRepository.releaseReservation(listingId);
     }
-
-    audit({
-      action: "PAYMENT_FAILED",
-      entityType: "Order",
-      entityId: orderId,
-      metadata: {
-        stripePaymentIntentId: pi.id,
-        failureCode: pi.last_payment_error?.code,
-      },
-    });
-
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.CANCELLED,
-      actorId: null,
-      actorRole: ACTOR_ROLES.SYSTEM,
-      summary: `Order cancelled: payment failed${pi.last_payment_error?.code ? ` (${pi.last_payment_error.code})` : ""}`,
-      metadata: {
-        trigger: "PAYMENT_FAILED",
-        failureCode: pi.last_payment_error?.code,
-      },
-    });
   }
 
   private async handleAccountUpdated(event: Stripe.Event): Promise<void> {

@@ -8,7 +8,7 @@
 // All calls are fire-and-forget (no await) from within server actions.
 
 import type { AuditAction, Prisma } from "@prisma/client";
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 import { logger } from "@/shared/logger";
 
 interface AuditParams {
@@ -19,6 +19,10 @@ interface AuditParams {
   metadata?: Record<string, unknown>;
   ip?: string | null;
   userAgent?: string | null;
+  /** Optional transaction client. When provided, the audit write uses this
+   *  transaction (awaitable) so it rolls back with the parent if it fails.
+   *  When omitted, the write is fire-and-forget (backward compatible). */
+  tx?: DbClient;
 }
 
 /**
@@ -75,36 +79,41 @@ function redactIp(ip: string | null | undefined): string | null {
  *   ip,
  * });
  */
-export function audit(params: AuditParams): void {
+export function audit(params: AuditParams): void | Promise<void> {
   const sanitizedMeta = sanitizeAuditMetadata(params.metadata);
-  db.auditLog
-    .create({
-      data: {
-        userId: params.userId ?? null,
-        action: params.action,
-        entityType: params.entityType ?? null,
-        entityId: params.entityId ?? null,
-        metadata: (sanitizedMeta ?? undefined) as
-          | Prisma.InputJsonValue
-          | undefined,
-        ip: redactIp(params.ip),
-        userAgent: null, // PII — never store raw user-agent
-      },
-    })
-    .catch((err) => {
-      logger.error("audit.write.failed", {
-        error: err instanceof Error ? err.message : String(err),
-        action: params.action,
-        entityType: params.entityType,
-        entityId: params.entityId,
-      });
-    });
+  const client = getClient(params.tx);
 
-  // Also emit a structured log line for observability (fire-and-forget DB above)
+  const createData = {
+    userId: params.userId ?? null,
+    action: params.action,
+    entityType: params.entityType ?? null,
+    entityId: params.entityId ?? null,
+    metadata: (sanitizedMeta ?? undefined) as Prisma.InputJsonValue | undefined,
+    ip: redactIp(params.ip),
+    userAgent: null, // PII — never store raw user-agent
+  };
+
+  // Also emit a structured log line for observability
   logger.info("audit.event", {
     userId: params.userId ?? undefined,
     action: params.action,
     entityType: params.entityType,
     entityId: params.entityId,
+  });
+
+  // When a transaction client is provided, the write participates in the
+  // transaction — failures propagate (caller must await). When omitted,
+  // fire-and-forget to preserve backward compatibility.
+  if (params.tx) {
+    return client.auditLog.create({ data: createData }).then(() => undefined);
+  }
+
+  db.auditLog.create({ data: createData }).catch((err) => {
+    logger.error("audit.write.failed", {
+      error: err instanceof Error ? err.message : String(err),
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId,
+    });
   });
 }

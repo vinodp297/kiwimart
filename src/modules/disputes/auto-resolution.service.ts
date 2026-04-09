@@ -659,6 +659,36 @@ export class AutoResolutionService {
               tx,
             });
           }
+
+          // CRITICAL: audit and event inside the transaction so they roll back
+          // atomically if the transition or dispute resolution fails.
+          await orderEventService.recordEvent({
+            orderId,
+            type: ORDER_EVENT_TYPES.REFUNDED,
+            actorId: null,
+            actorRole: ACTOR_ROLES.SYSTEM,
+            summary: `Auto-resolved: Full refund to buyer. Score: ${evaluation.score}`,
+            metadata: {
+              decision: "AUTO_REFUND",
+              score: evaluation.score,
+              factors: evaluation.factors,
+              status: "EXECUTED",
+            },
+            tx,
+          });
+
+          await audit({
+            userId: null,
+            action: "DISPUTE_RESOLVED",
+            entityType: "Order",
+            entityId: orderId,
+            metadata: {
+              trigger: "AUTO_RESOLUTION",
+              decision: "AUTO_REFUND",
+              score: evaluation.score,
+            },
+            tx,
+          });
         });
       } catch {
         logger.warn("auto-resolution.transition_failed", {
@@ -675,20 +705,6 @@ export class AutoResolutionService {
           { orderId, listingId: order.listing.id },
         );
       }
-
-      orderEventService.recordEvent({
-        orderId,
-        type: ORDER_EVENT_TYPES.REFUNDED,
-        actorId: null,
-        actorRole: ACTOR_ROLES.SYSTEM,
-        summary: `Auto-resolved: Full refund to buyer. Score: ${evaluation.score}`,
-        metadata: {
-          decision: "AUTO_REFUND",
-          score: evaluation.score,
-          factors: evaluation.factors,
-          status: "EXECUTED",
-        },
-      });
 
       fireAndForget(
         createNotification({
@@ -759,18 +775,6 @@ export class AutoResolutionService {
         "autoResolution.refund.emailLookup",
         { orderId },
       );
-
-      audit({
-        userId: null,
-        action: "DISPUTE_RESOLVED",
-        entityType: "Order",
-        entityId: orderId,
-        metadata: {
-          trigger: "AUTO_RESOLUTION",
-          decision: "AUTO_REFUND",
-          score: evaluation.score,
-        },
-      });
     } else if (evaluation.decision === "AUTO_DISMISS") {
       // Stripe capture FIRST — never mark COMPLETED unless money actually moved.
       if (order.stripePaymentIntentId) {
@@ -820,24 +824,40 @@ export class AutoResolutionService {
               tx,
             });
           }
+
+          // CRITICAL: audit and event inside the transaction so they roll back
+          // atomically if the transition or dispute resolution fails.
+          await orderEventService.recordEvent({
+            orderId,
+            type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
+            actorId: null,
+            actorRole: ACTOR_ROLES.SYSTEM,
+            summary: `Auto-resolved: Dismissed in seller's favour. Score: ${evaluation.score}`,
+            metadata: {
+              decision: "AUTO_DISMISS",
+              score: evaluation.score,
+              factors: evaluation.factors,
+              status: "EXECUTED",
+            },
+            tx,
+          });
+
+          await audit({
+            userId: null,
+            action: "DISPUTE_RESOLVED",
+            entityType: "Order",
+            entityId: orderId,
+            metadata: {
+              trigger: "AUTO_RESOLUTION",
+              decision: "AUTO_DISMISS",
+              score: evaluation.score,
+            },
+            tx,
+          });
         });
       } catch {
         logger.warn("auto-resolution.dismiss_failed", { orderId });
       }
-
-      orderEventService.recordEvent({
-        orderId,
-        type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
-        actorId: null,
-        actorRole: ACTOR_ROLES.SYSTEM,
-        summary: `Auto-resolved: Dismissed in seller's favour. Score: ${evaluation.score}`,
-        metadata: {
-          decision: "AUTO_DISMISS",
-          score: evaluation.score,
-          factors: evaluation.factors,
-          status: "EXECUTED",
-        },
-      });
 
       fireAndForget(
         createNotification({
@@ -908,18 +928,6 @@ export class AutoResolutionService {
         "autoResolution.dismiss.emailLookup",
         { orderId },
       );
-
-      audit({
-        userId: null,
-        action: "DISPUTE_RESOLVED",
-        entityType: "Order",
-        entityId: orderId,
-        metadata: {
-          trigger: "AUTO_RESOLUTION",
-          decision: "AUTO_DISMISS",
-          score: evaluation.score,
-        },
-      });
     } else if (evaluation.decision === "FLAG_FRAUD") {
       orderEventService.recordEvent({
         orderId,

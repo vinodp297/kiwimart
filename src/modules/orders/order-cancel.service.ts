@@ -80,6 +80,8 @@ export async function cancelOrder(
     }
   }
 
+  const cancelledBy = order.buyerId === userId ? "BUYER" : "SELLER";
+
   await orderRepository.$transaction(async (tx) => {
     await transitionOrder(
       orderId,
@@ -96,28 +98,32 @@ export async function cancelOrder(
     if (order.listingId) {
       await orderRepository.reactivateListingInTx(order.listingId, tx);
     }
-  });
 
-  audit({
-    userId,
-    action: "ORDER_STATUS_CHANGED",
-    entityType: "Order",
-    entityId: orderId,
-    metadata: {
-      newStatus: "CANCELLED",
-      cancelledBy: order.buyerId === userId ? "BUYER" : "SELLER",
-      reason,
-    },
-  });
+    // CRITICAL: audit and event recording inside the transaction so they
+    // roll back atomically if the transition or listing update fails.
+    await audit({
+      userId,
+      action: "ORDER_STATUS_CHANGED",
+      entityType: "Order",
+      entityId: orderId,
+      metadata: {
+        newStatus: "CANCELLED",
+        cancelledBy,
+        reason,
+      },
+      tx,
+    });
 
-  const cancelledBy = order.buyerId === userId ? "BUYER" : "SELLER";
-  orderEventService.recordEvent({
-    orderId,
-    type: ORDER_EVENT_TYPES.CANCELLED,
-    actorId: userId,
-    actorRole: cancelledBy === "BUYER" ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
-    summary: `${cancelledBy === "BUYER" ? "Buyer" : "Seller"} cancelled order${reason ? `: ${reason}` : ""}`,
-    metadata: { cancelledBy, reason },
+    await orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.CANCELLED,
+      actorId: userId,
+      actorRole:
+        cancelledBy === "BUYER" ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
+      summary: `${cancelledBy === "BUYER" ? "Buyer" : "Seller"} cancelled order${reason ? `: ${reason}` : ""}`,
+      metadata: { cancelledBy, reason },
+      tx,
+    });
   });
 
   logger.info("order.cancelled", { orderId, cancelledBy: userId, reason });
