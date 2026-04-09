@@ -19,6 +19,7 @@ import {
   getDisputeByOrderId,
   addEvidence,
 } from "@/server/services/dispute/dispute.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import { submitCounterEvidenceSchema } from "@/server/validators";
 
@@ -101,14 +102,18 @@ export async function submitCounterEvidence(
 
     // Notify the other party
     const otherPartyId = isBuyer ? order.sellerId : order.buyerId;
-    createNotification({
-      userId: otherPartyId,
-      type: "ORDER_DISPUTED",
-      title: "New evidence submitted",
-      body: `${roleLabel} submitted additional evidence for the dispute on "${order.listing.title}".`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: otherPartyId,
+        type: "ORDER_DISPUTED",
+        title: "New evidence submitted",
+        body: `${roleLabel} submitted additional evidence for the dispute on "${order.listing.title}".`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "counterEvidence.notification",
+      { orderId, otherPartyId },
+    );
 
     logger.info("counter-evidence.submitted", {
       orderId,

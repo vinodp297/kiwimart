@@ -2,7 +2,7 @@
 // ─── In-App Notification Service ─────────────────────────────────────────────
 // Framework-free. Only imports db + logger.
 // All callers must wrap this in fire-and-forget (non-blocking):
-//   createNotification({...}).catch(() => {})
+//   fireAndForget(createNotification({...}), 'notification.context')
 
 import {
   notificationRepository,

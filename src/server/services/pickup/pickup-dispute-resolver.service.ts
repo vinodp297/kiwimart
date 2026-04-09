@@ -22,6 +22,7 @@ import {
 import { orderRepository } from "@/modules/orders/order.repository";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { adminRepository } from "@/modules/admin/admin.repository";
+import { fireAndForget } from "@/lib/fire-and-forget";
 
 export type PickupDisputeDecision =
   | "AUTO_REFUND"
@@ -164,7 +165,13 @@ async function executeAutoRefund(
   });
 
   // 3. Restore listing
-  await listingRepository.reactivate(order.listingId).catch(() => {});
+  await listingRepository.reactivate(order.listingId).catch((err: unknown) => {
+    logger.error("pickup.dispute.reactivateListing.failed", {
+      orderId: order.id,
+      listingId: order.listingId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   // 4. Update trust metrics for seller
   await adminRepository
@@ -172,7 +179,13 @@ async function executeAutoRefund(
       order.sellerId,
       reason === "ITEM_NOT_PRESENT",
     )
-    .catch(() => {});
+    .catch((err: unknown) => {
+      logger.error("pickup.dispute.recordSellerMetrics.failed", {
+        orderId: order.id,
+        sellerId: order.sellerId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
 
   // 5. Record event
   orderEventService.recordEvent({
@@ -189,48 +202,64 @@ async function executeAutoRefund(
   });
 
   // 6. Notifications
-  createNotification({
-    userId: order.buyerId,
-    type: "SYSTEM",
-    title: "Pickup dispute resolved in your favour",
-    body: `Your pickup dispute has been resolved in your favour. A full refund is on its way.`,
-    orderId: order.id,
-    link: `/orders/${order.id}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Pickup dispute resolved in your favour",
+      body: `Your pickup dispute has been resolved in your favour. A full refund is on its way.`,
+      orderId: order.id,
+      link: `/orders/${order.id}`,
+    }),
+    "pickup.dispute.autoRefund.buyerNotification",
+    { orderId: order.id },
+  );
 
-  createNotification({
-    userId: order.sellerId,
-    type: "SYSTEM",
-    title: "Pickup dispute resolved",
-    body: `A pickup dispute was resolved in the buyer's favour for order ${order.id}.`,
-    orderId: order.id,
-    link: `/orders/${order.id}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.sellerId,
+      type: "SYSTEM",
+      title: "Pickup dispute resolved",
+      body: `A pickup dispute was resolved in the buyer's favour for order ${order.id}.`,
+      orderId: order.id,
+      link: `/orders/${order.id}`,
+    }),
+    "pickup.dispute.autoRefund.sellerNotification",
+    { orderId: order.id },
+  );
 
   // 7. Emails
   if (order.buyer) {
-    sendDisputeResolvedEmail({
-      to: order.buyer.email,
-      recipientName: order.buyer.displayName ?? "there",
-      recipientRole: "buyer",
-      orderId: order.id,
-      listingTitle: order.listing.title,
-      resolution: "BUYER_WON",
-      refundAmount: order.totalNzd,
-      adminNote: null,
-    }).catch(() => {});
+    fireAndForget(
+      sendDisputeResolvedEmail({
+        to: order.buyer.email,
+        recipientName: order.buyer.displayName ?? "there",
+        recipientRole: "buyer",
+        orderId: order.id,
+        listingTitle: order.listing.title,
+        resolution: "BUYER_WON",
+        refundAmount: order.totalNzd,
+        adminNote: null,
+      }),
+      "pickup.dispute.autoRefund.buyerEmail",
+      { orderId: order.id },
+    );
   }
   if (order.seller) {
-    sendDisputeResolvedEmail({
-      to: order.seller.email,
-      recipientName: order.seller.displayName ?? "there",
-      recipientRole: "seller",
-      orderId: order.id,
-      listingTitle: order.listing.title,
-      resolution: "BUYER_WON",
-      refundAmount: null,
-      adminNote: null,
-    }).catch(() => {});
+    fireAndForget(
+      sendDisputeResolvedEmail({
+        to: order.seller.email,
+        recipientName: order.seller.displayName ?? "there",
+        recipientRole: "seller",
+        orderId: order.id,
+        listingTitle: order.listing.title,
+        resolution: "BUYER_WON",
+        refundAmount: null,
+        adminNote: null,
+      }),
+      "pickup.dispute.autoRefund.sellerEmail",
+      { orderId: order.id },
+    );
   }
 
   // 8. Audit
@@ -264,25 +293,33 @@ async function escalateToAdmin(
   const admins = await adminRepository.findDisputeAdmins();
 
   for (const admin of admins) {
-    createNotification({
-      userId: admin.id,
-      type: "ORDER_DISPUTED",
-      title: "Pickup dispute requires manual review",
-      body: `Buyer rejected item at pickup for "${order.listing.title}". Reason: ${reason.replace(/_/g, " ").toLowerCase()}`,
-      orderId: order.id,
-      link: `/admin/disputes/${order.id}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: admin.id,
+        type: "ORDER_DISPUTED",
+        title: "Pickup dispute requires manual review",
+        body: `Buyer rejected item at pickup for "${order.listing.title}". Reason: ${reason.replace(/_/g, " ").toLowerCase()}`,
+        orderId: order.id,
+        link: `/admin/disputes/${order.id}`,
+      }),
+      "pickup.dispute.escalate.adminNotification",
+      { orderId: order.id, adminId: admin.id },
+    );
   }
 
   // Notify buyer
-  createNotification({
-    userId: order.buyerId,
-    type: "SYSTEM",
-    title: "Pickup dispute under review",
-    body: "Your pickup dispute is under review. We will resolve it within 24 hours.",
-    orderId: order.id,
-    link: `/orders/${order.id}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Pickup dispute under review",
+      body: "Your pickup dispute is under review. We will resolve it within 24 hours.",
+      orderId: order.id,
+      link: `/orders/${order.id}`,
+    }),
+    "pickup.dispute.escalate.buyerNotification",
+    { orderId: order.id },
+  );
 
   // Record event
   orderEventService.recordEvent({

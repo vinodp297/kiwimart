@@ -4,6 +4,7 @@
 
 import { getRegionsWithCoords } from "@/lib/dynamic-lists";
 import { apiOk } from "@/app/api/v1/_helpers/response";
+import { MS_PER_DAY } from "@/lib/time";
 
 export async function GET() {
   const regions = await getRegionsWithCoords();
@@ -15,7 +16,7 @@ export async function GET() {
   response.headers.set("Deprecation", "true");
   response.headers.set(
     "Sunset",
-    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
+    new Date(Date.now() + 90 * MS_PER_DAY).toUTCString(),
   );
   response.headers.set("Link", '</api/v1/>; rel="successor-version"');
   return response;

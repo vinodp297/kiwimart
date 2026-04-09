@@ -17,6 +17,7 @@ import { orderRepository } from "@/modules/orders/order.repository";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { pickupRepository } from "@/modules/pickup/pickup.repository";
 import { getPickupConfig } from "./pickup-scheduling.helpers";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { PickupResult } from "./pickup-scheduling.types";
 
 // ── cancelPickupOrder ─────────────────────────────────────────────────────────
@@ -145,23 +146,31 @@ export async function cancelPickupOrder(params: {
   });
 
   // Notify both parties
-  createNotification({
-    userId: cancelledById,
-    type: "SYSTEM",
-    title: "Pickup order cancelled",
-    body: `You cancelled the pickup order for "${order.listing.title}".`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: cancelledById,
+      type: "SYSTEM",
+      title: "Pickup order cancelled",
+      body: `You cancelled the pickup order for "${order.listing.title}".`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.cancel.initiatorNotification",
+    { orderId },
+  );
 
-  createNotification({
-    userId: otherPartyId,
-    type: "SYSTEM",
-    title: "Pickup order cancelled",
-    body: `The ${cancelledByRole.toLowerCase()} cancelled the pickup for "${order.listing.title}".${order.fulfillmentType === "ONLINE_PAYMENT_PICKUP" ? " A refund has been initiated." : ""}`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: otherPartyId,
+      type: "SYSTEM",
+      title: "Pickup order cancelled",
+      body: `The ${cancelledByRole.toLowerCase()} cancelled the pickup for "${order.listing.title}".${order.fulfillmentType === "ONLINE_PAYMENT_PICKUP" ? " A refund has been initiated." : ""}`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.cancel.otherPartyNotification",
+    { orderId },
+  );
 
   logger.info("pickup.cancelled", { orderId, cancelledById, reason });
 

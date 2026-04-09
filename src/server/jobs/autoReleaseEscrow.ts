@@ -67,7 +67,11 @@ export async function processAutoReleases(): Promise<{
               "warning",
             );
           })
-          .catch(() => {});
+          .catch((err: unknown) => {
+            logger.error("autoReleaseEscrow.sentry.import.failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
       }
 
       // Choose fetch limit: scale with actual backlog, but never below MIN or above MAX.

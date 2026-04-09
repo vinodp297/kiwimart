@@ -6,38 +6,33 @@ import { auth } from "@/lib/auth";
 import { cartRepository } from "@/modules/cart/cart.repository";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
+import { withDeprecation } from "@/app/api/_helpers/deprecation";
+import { MS_PER_DAY } from "@/lib/time";
 
-function dep<T extends Response>(res: T): T {
-  res.headers.set("Deprecation", "true");
-  res.headers.set(
-    "Sunset",
-    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
-  );
-  res.headers.set("Link", '</api/v1/>; rel="successor-version"');
-  return res;
-}
+const SUNSET = new Date(Date.now() + 90 * MS_PER_DAY);
 
 export async function GET() {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return dep(apiOk({ count: 0 }));
+      return withDeprecation(apiOk({ count: 0 }), SUNSET);
     }
 
     const cart = await cartRepository.findByUserCount(session.user.id);
 
     if (!cart || new Date(cart.expiresAt) < new Date()) {
-      return dep(apiOk({ count: 0 }));
+      return withDeprecation(apiOk({ count: 0 }), SUNSET);
     }
 
-    return dep(apiOk({ count: cart._count.items }));
+    return withDeprecation(apiOk({ count: cart._count.items }), SUNSET);
   } catch (err) {
     logger.error("api.error", {
       path: "/api/cart",
       error: err instanceof Error ? err.message : String(err),
     });
-    return dep(
+    return withDeprecation(
       apiError("We couldn't process your cart request. Please try again.", 500),
+      SUNSET,
     );
   }
 }

@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { adminDisputesRepository } from "./admin-disputes.repository";
 import { trustMetricsService } from "@/modules/trust/trust-metrics.service";
 import { analyzeInconsistencies } from "@/modules/disputes/inconsistency-analysis.service";
+import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -229,7 +230,7 @@ export interface DisputeCaseDetail {
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function daysAgo(date: Date): number {
-  return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.floor((Date.now() - date.getTime()) / MS_PER_DAY);
 }
 
 function parseAutoResolutionMeta(
@@ -345,8 +346,7 @@ export class AdminDisputesService {
     if (recentResolved.length > 0) {
       const totalHours = recentResolved.reduce((sum, r) => {
         return (
-          sum +
-          (r.resolvedAt!.getTime() - r.openedAt.getTime()) / (1000 * 60 * 60)
+          sum + (r.resolvedAt!.getTime() - r.openedAt.getTime()) / MS_PER_HOUR
         );
       }, 0);
       avgResolutionHours = Math.round(totalHours / recentResolved.length);

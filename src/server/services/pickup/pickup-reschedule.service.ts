@@ -25,6 +25,7 @@ import {
   formatPickupTime,
   reasonLabel,
 } from "./pickup-scheduling.helpers";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type {
   PickupResult,
   PickupRescheduleRequestCard,
@@ -175,7 +176,11 @@ export async function requestReschedule(params: {
   // Cancel existing pickup window job
   if (order.pickupScheduledAt) {
     const oldWindowJobId = `pickup-window-${orderId}`;
-    pickupQueue.remove(oldWindowJobId).catch(() => {});
+    fireAndForget(
+      pickupQueue.remove(oldWindowJobId),
+      "pickup.reschedule.removeWindowJob",
+      { orderId },
+    );
   }
 
   // Schedule RESCHEDULE_RESPONSE_EXPIRED job (12 hours)
@@ -205,14 +210,18 @@ export async function requestReschedule(params: {
   const timeLabel = formatPickupTime(proposedTime);
   const reasonText = reasonLabel(sellerReason, buyerReason);
 
-  createNotification({
-    userId: otherPartyId,
-    type: "SYSTEM",
-    title: "Pickup reschedule requested",
-    body: `The ${label} would like to reschedule pickup for "${order.listing.title}" to ${timeLabel}. Reason: ${reasonText}`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: otherPartyId,
+      type: "SYSTEM",
+      title: "Pickup reschedule requested",
+      body: `The ${label} would like to reschedule pickup for "${order.listing.title}" to ${timeLabel}. Reason: ${reasonText}`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.reschedule.notification",
+    { orderId, otherPartyId },
+  );
 
   orderEventService.recordEvent({
     orderId,

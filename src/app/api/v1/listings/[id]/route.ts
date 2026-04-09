@@ -5,6 +5,7 @@
 
 import { listingService } from "@/modules/listings/listing.service";
 import { createListingSchema } from "@/server/validators";
+import { toCents } from "@/lib/currency";
 import {
   apiOk,
   apiError,
@@ -46,8 +47,7 @@ export async function PATCH(
     const update: Record<string, unknown> = {};
     if (data.title !== undefined) update.title = data.title;
     if (data.description !== undefined) update.description = data.description;
-    if (data.price !== undefined)
-      update.priceNzd = Math.round(data.price * 100);
+    if (data.price !== undefined) update.priceNzd = toCents(data.price);
     if (data.condition !== undefined) update.condition = data.condition;
     if (data.categoryId !== undefined) update.categoryId = data.categoryId;
     if (data.subcategoryName !== undefined)
@@ -57,7 +57,7 @@ export async function PATCH(
     if (data.shippingOption !== undefined)
       update.shippingOption = data.shippingOption;
     if (data.shippingPrice !== undefined)
-      update.shippingNzd = Math.round(data.shippingPrice * 100);
+      update.shippingNzd = toCents(data.shippingPrice);
     if (data.isOffersEnabled !== undefined)
       update.isOffersEnabled = data.isOffersEnabled;
     if (data.isGstIncluded !== undefined)

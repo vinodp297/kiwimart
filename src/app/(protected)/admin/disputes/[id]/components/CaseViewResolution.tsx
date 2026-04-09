@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Section } from "./case-view-shared";
 import { SOP, formatDate } from "./case-view-types";
+import { toCents } from "@/lib/currency";
 import type { AutoResolution, DisputeData } from "./case-view-types";
 import {
   resolveDispute,
@@ -343,7 +344,7 @@ function ResolutionActions({
   }
 
   async function handlePartialRefund() {
-    const cents = Math.round(parseFloat(partialAmount) * 100);
+    const cents = toCents(parseFloat(partialAmount));
     if (!cents || cents <= 0 || cents > totalNzd) {
       setError(`Amount must be between $0.01 and $${maxRefund.toFixed(2)}.`);
       return;
@@ -421,7 +422,7 @@ function ResolutionActions({
       reason: overrideReason,
     };
     if (overrideDecision === "partial_refund") {
-      const cents = Math.round(parseFloat(overrideAmount) * 100);
+      const cents = toCents(parseFloat(overrideAmount));
       if (!cents || cents <= 0 || cents > totalNzd) {
         setError(`Amount must be between $0.01 and $${maxRefund.toFixed(2)}.`);
         return;

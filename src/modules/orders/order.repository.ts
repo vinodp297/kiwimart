@@ -3,6 +3,7 @@
 
 import db, { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { fireAndForget } from "@/lib/fire-and-forget";
 
 export type OrderWithRelations = Prisma.OrderGetPayload<{
   include: {
@@ -797,9 +798,11 @@ export const orderRepository = {
 
   /** Fire-and-forget setter for the BullMQ pickup window job id. */
   setPickupWindowJobId(id: string, jobId: string): void {
-    db.order
-      .update({ where: { id }, data: { pickupWindowJobId: jobId } })
-      .catch(() => {});
+    fireAndForget(
+      db.order.update({ where: { id }, data: { pickupWindowJobId: jobId } }),
+      "order.pickup.set_window_job_id",
+      { orderId: id, jobId },
+    );
   },
 
   /** Fetch order context needed when a user creates or views a review.

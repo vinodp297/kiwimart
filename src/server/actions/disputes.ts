@@ -27,6 +27,7 @@ import {
   getDisputeByOrderId,
   addSellerResponse,
 } from "@/server/services/dispute/dispute.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import { openDisputeSchema, respondToDisputeSchema } from "@/server/validators";
 
@@ -266,14 +267,18 @@ export async function respondToDispute(
     });
 
     // Notify buyer that the seller has responded
-    createNotification({
-      userId: order.buyerId,
-      type: "ORDER_DISPUTED",
-      title: "Seller responded to your dispute",
-      body: `${order.seller.displayName} has responded to your dispute on "${order.listing.title}".`,
-      orderId: order.id,
-      link: `/orders/${order.id}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.buyerId,
+        type: "ORDER_DISPUTED",
+        title: "Seller responded to your dispute",
+        body: `${order.seller.displayName} has responded to your dispute on "${order.listing.title}".`,
+        orderId: order.id,
+        link: `/orders/${order.id}`,
+      }),
+      "dispute.sellerResponse.notification",
+      { orderId: order.id },
+    );
 
     // Audit trail (fire-and-forget)
     audit({

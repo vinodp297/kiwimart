@@ -18,6 +18,7 @@ import crypto from "crypto";
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import {
   requestVerificationUploadSchema,
@@ -264,14 +265,16 @@ export async function submitIdVerification(
     await userRepository.update(user.id, { idSubmittedAt: new Date() });
 
     // Notify admins
-    notificationRepository
-      .notifyAdmins({
+    fireAndForget(
+      notificationRepository.notifyAdmins({
         type: "SYSTEM",
         title: "New ID verification to review",
         body: `${user.email} submitted ${documentType.replace(/_/g, " ").toLowerCase()} for identity verification.`,
         link: `/admin/sellers/${user.id}/verify`,
-      })
-      .catch(() => {});
+      }),
+      "verification.submitId.adminNotification",
+      { userId: user.id, documentType },
+    );
 
     audit({
       userId: user.id,

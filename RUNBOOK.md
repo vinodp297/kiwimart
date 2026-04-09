@@ -32,8 +32,16 @@ curl https://kiwimart.vercel.app/api/health
 ```
 
 Expected:
+
 ```json
-{"status":"ok","services":[{"name":"database","status":"ok"},{"name":"redis","status":"ok"},{"name":"stripe","status":"ok"}]}
+{
+  "status": "ok",
+  "services": [
+    { "name": "database", "status": "ok" },
+    { "name": "redis", "status": "ok" },
+    { "name": "stripe", "status": "ok" }
+  ]
+}
 ```
 
 ---
@@ -50,7 +58,7 @@ Deploy the standalone worker process to Railway so it runs continuously:
 
 1. Create a Railway account at [railway.app](https://railway.app)
 2. Create a new project → **Deploy from GitHub repo** → `vinodp297/kiwimart`
-3. Set the **Start Command**: `npx tsx src/worker.ts`
+3. Set the **Start Command**: `npm run worker` (runs `tsx src/server/workers/index.ts`)
 4. Add environment variables:
    - `DATABASE_URL`
    - `DATABASE_DIRECT_URL`
@@ -78,11 +86,11 @@ npm run workers:check
 
 ### Queues
 
-| Queue | Worker | Concurrency |
-|-------|--------|-------------|
-| `payout` | payoutWorker | 2 |
-| `email` | emailWorker | 5 (max 10/sec) |
-| `image` | imageWorker | 3 |
+| Queue    | Worker       | Concurrency    |
+| -------- | ------------ | -------------- |
+| `payout` | payoutWorker | 2              |
+| `email`  | emailWorker  | 5 (max 10/sec) |
+| `image`  | imageWorker  | 3              |
 
 ---
 
@@ -177,6 +185,7 @@ Always use `prisma migrate deploy` in production.
 ### Banned user still accessing the site
 
 Session-level ban checks run in `proxy.ts`. If a banned user has an active session:
+
 1. Find their session token in the `Session` table
 2. Delete the row: `DELETE FROM "Session" WHERE "userId" = 'xxx'`
 3. The proxy will block their next request
@@ -207,17 +216,17 @@ npm run check-env
 
 ## Key URLs
 
-| URL | Purpose |
-|-----|---------|
-| https://kiwimart.vercel.app | Production site |
-| https://kiwimart.vercel.app/api/health | Health check (public) |
-| https://kiwimart.vercel.app/api/metrics | Business metrics (admin only) |
-| https://console.neon.tech | Database console |
-| https://console.upstash.com | Redis console |
-| https://dashboard.stripe.com | Payments console |
-| https://resend.com/emails | Email logs |
-| https://vercel.com/63media/kiwimart | Deployment console |
-| https://github.com/vinodp297/kiwimart/actions | CI/CD pipelines |
+| URL                                           | Purpose                       |
+| --------------------------------------------- | ----------------------------- |
+| https://kiwimart.vercel.app                   | Production site               |
+| https://kiwimart.vercel.app/api/health        | Health check (public)         |
+| https://kiwimart.vercel.app/api/metrics       | Business metrics (admin only) |
+| https://console.neon.tech                     | Database console              |
+| https://console.upstash.com                   | Redis console                 |
+| https://dashboard.stripe.com                  | Payments console              |
+| https://resend.com/emails                     | Email logs                    |
+| https://vercel.com/63media/kiwimart           | Deployment console            |
+| https://github.com/vinodp297/kiwimart/actions | CI/CD pipelines               |
 
 ---
 

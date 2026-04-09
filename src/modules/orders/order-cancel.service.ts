@@ -8,6 +8,7 @@ import { transitionOrder } from "./order.transitions";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { sendCancellationEmail } from "@/server/email";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
@@ -122,32 +123,41 @@ export async function cancelOrder(
   logger.info("order.cancelled", { orderId, cancelledBy: userId, reason });
 
   // Fire-and-forget cancellation emails to both parties
-  orderRepository
-    .findByIdForCancellationEmail(orderId)
-    .then((o) => {
+  fireAndForget(
+    orderRepository.findByIdForCancellationEmail(orderId).then((o) => {
       if (!o) return;
       const refundAmount = order.status === "PAYMENT_HELD" ? o.totalNzd : null;
       const cancelReason = reason ?? "";
-      sendCancellationEmail({
-        to: o.buyer.email,
-        recipientName: o.buyer.displayName ?? "there",
-        recipientRole: "buyer",
-        orderId,
-        listingTitle: o.listing.title,
-        cancellationReason: cancelReason,
-        refundAmount,
-      }).catch(() => {});
-      sendCancellationEmail({
-        to: o.seller.email,
-        recipientName: o.seller.displayName ?? "there",
-        recipientRole: "seller",
-        orderId,
-        listingTitle: o.listing.title,
-        cancellationReason: cancelReason,
-        refundAmount: null,
-      }).catch(() => {});
-    })
-    .catch(() => {});
+      fireAndForget(
+        sendCancellationEmail({
+          to: o.buyer.email,
+          recipientName: o.buyer.displayName ?? "there",
+          recipientRole: "buyer",
+          orderId,
+          listingTitle: o.listing.title,
+          cancellationReason: cancelReason,
+          refundAmount,
+        }),
+        "order.cancellation_email.buyer",
+        { orderId },
+      );
+      fireAndForget(
+        sendCancellationEmail({
+          to: o.seller.email,
+          recipientName: o.seller.displayName ?? "there",
+          recipientRole: "seller",
+          orderId,
+          listingTitle: o.listing.title,
+          cancellationReason: cancelReason,
+          refundAmount: null,
+        }),
+        "order.cancellation_email.seller",
+        { orderId },
+      );
+    }),
+    "order.cancellation_email.lookup",
+    { orderId },
+  );
 }
 
 // ── getCancellationStatus ─────────────────────────────────────────────────────

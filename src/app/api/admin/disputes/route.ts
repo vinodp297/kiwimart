@@ -5,24 +5,18 @@ import { adminCursorQuerySchema } from "@/modules/admin/admin.schema";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 import { adminRepository } from "@/modules/admin/admin.repository";
 import { logger } from "@/shared/logger";
+import { withDeprecation } from "@/app/api/_helpers/deprecation";
+import { MS_PER_DAY } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-function dep<T extends Response>(res: T): T {
-  res.headers.set("Deprecation", "true");
-  res.headers.set(
-    "Sunset",
-    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
-  );
-  res.headers.set("Link", '</api/v1/>; rel="successor-version"');
-  return res;
-}
+const SUNSET = new Date(Date.now() + 90 * MS_PER_DAY);
 
 export async function GET(request: Request) {
   try {
     await requirePermission("VIEW_DISPUTES");
   } catch {
-    return dep(apiError("Unauthorised", 403));
+    return withDeprecation(apiError("Unauthorised", 403), SUNSET);
   }
 
   try {
@@ -33,7 +27,10 @@ export async function GET(request: Request) {
       query = adminCursorQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return dep(apiError("Validation failed", 400, "VALIDATION_ERROR"));
+        return withDeprecation(
+          apiError("Validation failed", 400, "VALIDATION_ERROR"),
+          SUNSET,
+        );
       }
       throw err;
     }
@@ -49,12 +46,15 @@ export async function GET(request: Request) {
     const disputes = hasMore ? raw.slice(0, limit) : raw;
     const nextCursor = hasMore ? (disputes.at(-1)?.id ?? null) : null;
 
-    return dep(apiOk({ disputes, nextCursor, hasMore }));
+    return withDeprecation(apiOk({ disputes, nextCursor, hasMore }), SUNSET);
   } catch (e) {
     logger.error("api.error", {
       path: "/api/admin/disputes",
       error: e instanceof Error ? e.message : e,
     });
-    return dep(apiError("Failed to load disputes. Please refresh.", 500));
+    return withDeprecation(
+      apiError("Failed to load disputes. Please refresh.", 500),
+      SUNSET,
+    );
   }
 }

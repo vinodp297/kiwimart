@@ -11,6 +11,7 @@ import { requireUser } from "@/server/lib/requireUser";
 import { requireAdmin } from "@/server/lib/requireAdmin";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import { reviewVerificationSchema as ReviewSchema } from "@/server/validators";
 
@@ -62,14 +63,16 @@ export async function applyForVerification(): Promise<ActionResult<void>> {
     await verificationRepository.upsertApplication(user.id);
 
     // Notify admins
-    notificationRepository
-      .notifyAdmins({
+    fireAndForget(
+      notificationRepository.notifyAdmins({
         type: "SYSTEM",
         title: "New verification application",
         body: `${user.email} has applied for seller verification.`,
         link: "/admin/sellers",
-      })
-      .catch(() => {});
+      }),
+      "verification.application.adminNotification",
+      { userId: user.id },
+    );
 
     audit({
       userId: user.id,
@@ -130,23 +133,31 @@ export async function reviewVerificationApplication(
         verifiedSellerAt: new Date(),
       });
 
-      createNotification({
-        userId: sellerId,
-        type: "SYSTEM",
-        title: "Seller verification approved!",
-        body: `Congratulations! You are now a Verified Seller on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}.`,
-        link: "/dashboard/seller",
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: sellerId,
+          type: "SYSTEM",
+          title: "Seller verification approved!",
+          body: `Congratulations! You are now a Verified Seller on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}.`,
+          link: "/dashboard/seller",
+        }),
+        "verification.review.approvedNotification",
+        { sellerId },
+      );
     } else {
-      createNotification({
-        userId: sellerId,
-        type: "SYSTEM",
-        title: "Verification application update",
-        body: notes
-          ? `Your verification application was not approved: ${notes}`
-          : "Your verification application was not approved at this time.",
-        link: "/account/settings",
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: sellerId,
+          type: "SYSTEM",
+          title: "Verification application update",
+          body: notes
+            ? `Your verification application was not approved: ${notes}`
+            : "Your verification application was not approved at this time.",
+          link: "/account/settings",
+        }),
+        "verification.review.rejectedNotification",
+        { sellerId },
+      );
     }
 
     audit({

@@ -36,7 +36,8 @@ export type ErrorCode =
   | "AUTH_SERVICE_UNAVAILABLE"
   | "ERASURE_BLOCKED"
   | "EXPORT_RATE_LIMITED"
-  | "CONCURRENT_MODIFICATION";
+  | "CONCURRENT_MODIFICATION"
+  | "CONFIGURATION_ERROR";
 
 export class AppError extends Error {
   constructor(

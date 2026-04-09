@@ -19,23 +19,8 @@ import sharp from "sharp";
 import { validateMagicBytes } from "@/server/lib/fileValidation";
 import { scanForMalware } from "@/server/actions/imageProcessor";
 
-// ── PDF magic bytes ───────────────────────────────────────────────────────────
-// ASCII: %PDF — the standard header for all valid PDF files.
-const PDF_MAGIC_BYTES = [0x25, 0x50, 0x44, 0x46];
-
-/**
- * Extend the JPEG/PNG/WebP magic byte check (from fileValidation.ts) to also
- * handle PDF. Returns true when the buffer's leading bytes match the expected
- * signature for the given MIME type.
- */
-function checkDocumentMagicBytes(buffer: Buffer, mimeType: string): boolean {
-  if (mimeType === "application/pdf") {
-    if (buffer.length < PDF_MAGIC_BYTES.length) return false;
-    return PDF_MAGIC_BYTES.every((byte, i) => buffer[i] === byte);
-  }
-  // Delegate JPEG / PNG / WebP to the shared utility
-  return validateMagicBytes(buffer, mimeType);
-}
+// PDF magic bytes now live in fileValidation.ts alongside JPEG/PNG/WebP.
+// validateMagicBytes() handles all supported types in one place.
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -102,7 +87,7 @@ export async function validateUploadedDocument(
   }
 
   // 3. Magic byte validation — prevents MIME-type spoofing
-  if (!checkDocumentMagicBytes(buffer, mimeType)) {
+  if (!validateMagicBytes(buffer, mimeType)) {
     return {
       isValid: false,
       error: "Document file type is not valid",

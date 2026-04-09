@@ -130,7 +130,7 @@ export const notificationRepository = {
    * one notification per admin in a single `db.$transaction` using
    * `Promise.all` — not sequential.
    *
-   * Callers must fire-and-forget: `notifyAdmins(...).catch(() => {})`
+   * Callers must fire-and-forget: `fireAndForget(notifyAdmins(...), 'context')`
    *
    * @param payload - notification content
    * @param roles   - optional role filter passed to findAdmins() */

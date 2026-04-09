@@ -21,6 +21,7 @@ import {
   createPickupMessage,
   formatPickupTime,
 } from "./pickup-scheduling.helpers";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type {
   PickupResult,
   PickupProposalCard,
@@ -126,14 +127,18 @@ export async function proposePickupTime(params: {
   const roleLabel = proposedByRole === "BUYER" ? "buyer" : "seller";
   const timeLabel = formatPickupTime(proposedTime);
 
-  createNotification({
-    userId: otherPartyId,
-    type: "SYSTEM",
-    title: "Pickup time proposed",
-    body: `The ${roleLabel} proposed pickup for "${order.listing.title}" on ${timeLabel}. Accept or suggest another time.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: otherPartyId,
+      type: "SYSTEM",
+      title: "Pickup time proposed",
+      body: `The ${roleLabel} proposed pickup for "${order.listing.title}" on ${timeLabel}. Accept or suggest another time.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.propose.notification",
+    { orderId, otherPartyId },
+  );
 
   orderEventService.recordEvent({
     orderId,
@@ -314,23 +319,31 @@ export async function acceptPickupTime(params: {
   const timeLabel = formatPickupTime(confirmedTime);
 
   // Notify both parties
-  createNotification({
-    userId: order.buyerId,
-    type: "SYSTEM",
-    title: "Pickup time confirmed",
-    body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Pickup time confirmed",
+      body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.accept.buyerNotification",
+    { orderId },
+  );
 
-  createNotification({
-    userId: order.sellerId,
-    type: "SYSTEM",
-    title: "Pickup time confirmed",
-    body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.sellerId,
+      type: "SYSTEM",
+      title: "Pickup time confirmed",
+      body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.accept.sellerNotification",
+    { orderId },
+  );
 
   orderEventService.recordEvent({
     orderId,

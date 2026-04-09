@@ -6,7 +6,9 @@
 // duplicate alerts on the same price drop.
 
 import db from "@/lib/db";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 
@@ -48,16 +50,20 @@ export async function checkPriceDrops(): Promise<{
 
       // Fire all notifications in parallel (fire-and-forget)
       droppedItems.forEach((item) => {
-        const oldDollars = (item.priceAtWatch! / 100).toFixed(2);
-        const newDollars = (item.listing.priceNzd / 100).toFixed(2);
-        createNotification({
-          userId: item.userId,
-          type: "SYSTEM",
-          title: `Price drop on "${item.listing.title}"`,
-          body: `"${item.listing.title}" dropped from $${oldDollars} to $${newDollars}!`,
-          listingId: item.listing.id,
-          link: `/listings/${item.listing.id}`,
-        }).catch(() => {});
+        const oldDollars = formatCentsAsNzd(item.priceAtWatch!);
+        const newDollars = formatCentsAsNzd(item.listing.priceNzd);
+        fireAndForget(
+          createNotification({
+            userId: item.userId,
+            type: "SYSTEM",
+            title: `Price drop on "${item.listing.title}"`,
+            body: `"${item.listing.title}" dropped from ${oldDollars} to ${newDollars}!`,
+            listingId: item.listing.id,
+            link: `/listings/${item.listing.id}`,
+          }),
+          "priceDrop.notification",
+          { listingId: item.listing.id, userId: item.userId },
+        );
       });
 
       // Bulk update all priceAtWatch values in one transaction (each item has a different price)

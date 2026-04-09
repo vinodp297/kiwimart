@@ -383,6 +383,73 @@ export const adminRepository = {
     });
   },
 
+  // -------------------------------------------------------------------------
+  // Team management
+  // -------------------------------------------------------------------------
+
+  /** Find the current user's admin details (for team page auth check). */
+  async findUserAdminInfo(userId: string) {
+    return db.user.findUnique({
+      where: { id: userId },
+      select: { isAdmin: true, adminRole: true },
+    });
+  },
+
+  /** List all admin team members ordered by creation date. */
+  async findAdminTeamMembers() {
+    return db.user.findMany({
+      where: { isAdmin: true },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        adminRole: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  },
+
+  // -------------------------------------------------------------------------
+  // Moderation dashboard
+  // -------------------------------------------------------------------------
+
+  /** Open reports with full reporter/target details (moderation queue). */
+  async findOpenReportsForModeration(take: number) {
+    return db.report.findMany({
+      where: { status: "OPEN" },
+      include: {
+        reporter: { select: { displayName: true, email: true } },
+        targetUser: {
+          select: { displayName: true, email: true, isBanned: true },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take,
+    });
+  },
+
+  /** Count reports resolved since a given date. */
+  async countResolvedReports(since: Date): Promise<number> {
+    return db.report.count({ where: { resolvedAt: { gte: since } } });
+  },
+
+  /** Banned users for the moderation dashboard. */
+  async findBannedUsers(take: number) {
+    return db.user.findMany({
+      where: { isBanned: true },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        bannedAt: true,
+        bannedReason: true,
+      },
+      orderBy: { bannedAt: "desc" },
+      take,
+    });
+  },
+
   /** Disputed orders with cursor pagination — matches /api/admin/disputes shape. */
   async findDisputedOrdersCursor(limit: number, cursor?: string) {
     return db.order.findMany({

@@ -8,6 +8,8 @@ import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendDisputeOpenedEmail } from "@/server/email";
+import { fireAndForget } from "@/lib/fire-and-forget";
+import { MS_PER_DAY } from "@/lib/time";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
@@ -81,8 +83,7 @@ export async function openDispute(
       CONFIG_KEYS.DISPUTE_OPEN_WINDOW_DAYS,
     );
     const disputeDeadline = new Date(
-      order.dispatchedAt.getTime() +
-        disputeOpenWindowDays * 24 * 60 * 60 * 1000,
+      order.dispatchedAt.getTime() + disputeOpenWindowDays * MS_PER_DAY,
     );
     if (new Date() > disputeDeadline) {
       throw new AppError(
@@ -156,14 +157,18 @@ export async function openDispute(
   });
 
   // Notify seller that a dispute has been opened
-  createNotification({
-    userId: order.sellerId,
-    type: "ORDER_DISPUTED",
-    title: "⚠️ A dispute has been opened",
-    body: `A buyer opened a dispute on "${order.listing.title}". Please check your dashboard.`,
-    orderId: input.orderId,
-    link: "/dashboard/seller?tab=orders",
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.sellerId,
+      type: "ORDER_DISPUTED",
+      title: "⚠️ A dispute has been opened",
+      body: `A buyer opened a dispute on "${order.listing.title}". Please check your dashboard.`,
+      orderId: input.orderId,
+      link: "/dashboard/seller?tab=orders",
+    }),
+    "order.notification.dispute_opened",
+    { orderId: input.orderId, sellerId: order.sellerId },
+  );
 
   logger.info("order.dispute.opened", { orderId: input.orderId, buyerId });
 }

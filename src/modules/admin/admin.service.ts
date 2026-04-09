@@ -3,6 +3,7 @@
 // Admin-only operations. Framework-free. Takes adminUserId as parameter.
 
 import { audit } from "@/server/lib/audit";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { paymentService } from "@/modules/payments/payment.service";
 import { transitionOrder } from "@/modules/orders/order.transitions";
 import { withLock } from "@/server/lib/distributedLock";
@@ -14,6 +15,7 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { sendDisputeResolvedEmail } from "@/server/email";
 import {
   getDisputeByOrderId,
@@ -266,53 +268,70 @@ export class AdminService {
       favour === "seller"
         ? `The dispute for "${listingTitle}" was resolved in your favour — payment will be released.`
         : `The dispute for "${listingTitle}" was resolved in favour of the buyer.`;
-    createNotification({
-      userId: order.buyerId,
-      type: "SYSTEM",
-      title: "Dispute resolved",
-      body: buyerMsg,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
-    createNotification({
-      userId: order.sellerId,
-      type: "SYSTEM",
-      title: "Dispute resolved",
-      body: sellerMsg,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.buyerId,
+        type: "SYSTEM",
+        title: "Dispute resolved",
+        body: buyerMsg,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "admin.dispute.notify.buyer",
+      { orderId, userId: order.buyerId },
+    );
+    fireAndForget(
+      createNotification({
+        userId: order.sellerId,
+        type: "SYSTEM",
+        title: "Dispute resolved",
+        body: sellerMsg,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "admin.dispute.notify.seller",
+      { orderId, userId: order.sellerId },
+    );
 
     // Fire-and-forget dispute resolved emails to both parties
-    orderRepository
-      .findByIdForCancellationEmail(orderId)
-      .then((o) => {
+    fireAndForget(
+      orderRepository.findByIdForCancellationEmail(orderId).then((o) => {
         if (!o) return;
         const resolution =
           favour === "buyer" ? ("BUYER_WON" as const) : ("SELLER_WON" as const);
         const refundAmount = favour === "buyer" ? o.totalNzd : null;
-        sendDisputeResolvedEmail({
-          to: o.buyer.email,
-          recipientName: o.buyer.displayName ?? "there",
-          recipientRole: "buyer",
-          orderId,
-          listingTitle: o.listing.title,
-          resolution,
-          refundAmount,
-          adminNote: null,
-        }).catch(() => {});
-        sendDisputeResolvedEmail({
-          to: o.seller.email,
-          recipientName: o.seller.displayName ?? "there",
-          recipientRole: "seller",
-          orderId,
-          listingTitle: o.listing.title,
-          resolution,
-          refundAmount: null,
-          adminNote: null,
-        }).catch(() => {});
-      })
-      .catch(() => {});
+        fireAndForget(
+          sendDisputeResolvedEmail({
+            to: o.buyer.email,
+            recipientName: o.buyer.displayName ?? "there",
+            recipientRole: "buyer",
+            orderId,
+            listingTitle: o.listing.title,
+            resolution,
+            refundAmount,
+            adminNote: null,
+          }),
+          "admin.dispute.email.buyer",
+          { orderId },
+        );
+        fireAndForget(
+          sendDisputeResolvedEmail({
+            to: o.seller.email,
+            recipientName: o.seller.displayName ?? "there",
+            recipientRole: "seller",
+            orderId,
+            listingTitle: o.listing.title,
+            resolution,
+            refundAmount: null,
+            adminNote: null,
+          }),
+          "admin.dispute.email.seller",
+          { orderId },
+        );
+      }),
+      "admin.dispute.emailLookup",
+      { orderId },
+    );
   }
 
   /**
@@ -372,7 +391,7 @@ export class AdminService {
         await paymentService.refundPayment({
           paymentIntentId,
           orderId,
-          reason: `Partial refund ($${(amountCents / 100).toFixed(2)}): ${reason}`,
+          reason: `Partial refund (${formatCentsAsNzd(amountCents)}): ${reason}`,
         });
       } catch (err) {
         logger.error("admin.dispute.partial_refund_failed", {
@@ -392,7 +411,7 @@ export class AdminService {
       }
     });
 
-    const refundDollars = (amountCents / 100).toFixed(2);
+    const refundDollars = formatCentsAsNzd(amountCents);
 
     audit({
       userId: adminUserId,
@@ -411,7 +430,7 @@ export class AdminService {
       type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
       actorId: adminUserId,
       actorRole: ACTOR_ROLES.ADMIN,
-      summary: `Partial refund of $${refundDollars} issued to buyer. Reason: ${reason}`,
+      summary: `Partial refund of ${refundDollars} issued to buyer. Reason: ${reason}`,
       metadata: {
         favour: "partial",
         refundAmount: amountCents,
@@ -419,23 +438,31 @@ export class AdminService {
       },
     });
 
-    createNotification({
-      userId: order.buyerId,
-      type: "SYSTEM",
-      title: "Dispute resolved — partial refund",
-      body: `A partial refund of $${refundDollars} has been issued for "${order.listing.title}".`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.buyerId,
+        type: "SYSTEM",
+        title: "Dispute resolved — partial refund",
+        body: `A partial refund of ${refundDollars} has been issued for "${order.listing.title}".`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "admin.dispute.partialRefund.notify.buyer",
+      { orderId, userId: order.buyerId },
+    );
 
-    createNotification({
-      userId: order.sellerId,
-      type: "SYSTEM",
-      title: "Dispute resolved — partial refund to buyer",
-      body: `A partial refund of $${refundDollars} was issued for "${order.listing.title}". The remaining balance will be released.`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.sellerId,
+        type: "SYSTEM",
+        title: "Dispute resolved — partial refund to buyer",
+        body: `A partial refund of ${refundDollars} was issued for "${order.listing.title}". The remaining balance will be released.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "admin.dispute.partialRefund.notify.seller",
+      { orderId, userId: order.sellerId },
+    );
 
     logger.info("admin.dispute.partial_refund", {
       orderId,
@@ -444,37 +471,48 @@ export class AdminService {
     });
 
     // Fire-and-forget partial refund emails to both parties
-    userRepository
-      .findManyEmailContactsByIds([order.buyerId, order.sellerId])
-      .then((users) => {
-        const buyer = users.find((u) => u.id === order.buyerId);
-        const seller = users.find((u) => u.id === order.sellerId);
-        if (buyer) {
-          sendDisputeResolvedEmail({
-            to: buyer.email,
-            recipientName: buyer.displayName ?? "there",
-            recipientRole: "buyer",
-            orderId,
-            listingTitle: order.listing.title,
-            resolution: "PARTIAL_REFUND",
-            refundAmount: amountCents,
-            adminNote: reason,
-          }).catch(() => {});
-        }
-        if (seller) {
-          sendDisputeResolvedEmail({
-            to: seller.email,
-            recipientName: seller.displayName ?? "there",
-            recipientRole: "seller",
-            orderId,
-            listingTitle: order.listing.title,
-            resolution: "PARTIAL_REFUND",
-            refundAmount: amountCents,
-            adminNote: reason,
-          }).catch(() => {});
-        }
-      })
-      .catch(() => {});
+    fireAndForget(
+      userRepository
+        .findManyEmailContactsByIds([order.buyerId, order.sellerId])
+        .then((users) => {
+          const buyer = users.find((u) => u.id === order.buyerId);
+          const seller = users.find((u) => u.id === order.sellerId);
+          if (buyer) {
+            fireAndForget(
+              sendDisputeResolvedEmail({
+                to: buyer.email,
+                recipientName: buyer.displayName ?? "there",
+                recipientRole: "buyer",
+                orderId,
+                listingTitle: order.listing.title,
+                resolution: "PARTIAL_REFUND",
+                refundAmount: amountCents,
+                adminNote: reason,
+              }),
+              "admin.dispute.partialRefund.email.buyer",
+              { orderId },
+            );
+          }
+          if (seller) {
+            fireAndForget(
+              sendDisputeResolvedEmail({
+                to: seller.email,
+                recipientName: seller.displayName ?? "there",
+                recipientRole: "seller",
+                orderId,
+                listingTitle: order.listing.title,
+                resolution: "PARTIAL_REFUND",
+                refundAmount: amountCents,
+                adminNote: reason,
+              }),
+              "admin.dispute.partialRefund.email.seller",
+              { orderId },
+            );
+          }
+        }),
+      "admin.dispute.partialRefund.emailLookup",
+      { orderId },
+    );
   }
 
   /**
@@ -569,14 +607,18 @@ export class AdminService {
           : [order.sellerId];
 
     for (const userId of targets) {
-      createNotification({
-        userId,
-        type: "ORDER_DISPUTED",
-        title: "More information requested",
-        body: `Our team needs more information about the dispute on "${order.listing.title}": ${message}`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId,
+          type: "ORDER_DISPUTED",
+          title: "More information requested",
+          body: `Our team needs more information about the dispute on "${order.listing.title}": ${message}`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "admin.dispute.requestInfo.notify",
+        { orderId, userId },
+      );
     }
 
     orderEventService.recordEvent({
@@ -709,6 +751,33 @@ export class AdminService {
         thisWeekNzd: revenueThisWeek._sum.totalNzd ?? 0,
       },
     };
+  }
+  // ─── Team management ───────────────────────────────────────────────────────
+
+  /** Get admin details for auth check on team page. */
+  async getUserAdminInfo(userId: string) {
+    return adminRepository.findUserAdminInfo(userId);
+  }
+
+  /** List all admin team members. */
+  async getTeamMembers() {
+    return adminRepository.findAdminTeamMembers();
+  }
+
+  // ─── Moderation dashboard ─────────────────────────────────────────────────
+
+  /** Fetch moderation dashboard data (open reports, resolved count, banned users). */
+  async getModerationData() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [reports, resolvedToday, bannedUsers] = await Promise.all([
+      adminRepository.findOpenReportsForModeration(50),
+      adminRepository.countResolvedReports(todayStart),
+      adminRepository.findBannedUsers(20),
+    ]);
+
+    return { reports, resolvedToday, bannedUsers };
   }
 }
 

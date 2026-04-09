@@ -1,14 +1,9 @@
 import type { Condition } from "@/types";
+import { formatNzd } from "@/lib/currency";
 
-/** Format price in NZD */
+/** Format price in NZD. Input is in cents. Returns "$50.00" format. */
 export function formatPrice(cents: number): string {
-  if (cents >= 1_000_000) {
-    return `$${(cents / 1_000_000).toFixed(1)}m`;
-  }
-  if (cents >= 1_000) {
-    return `$${cents.toLocaleString("en-NZ")}`;
-  }
-  return `$${cents}`;
+  return formatNzd(cents);
 }
 
 /** Human-readable condition label */

@@ -5,6 +5,7 @@
 
 import db from "@/lib/db";
 import type { DynamicListType } from "@prisma/client";
+import { MS_PER_MINUTE } from "@/lib/time";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ export interface DynamicListOption {
 
 // ── Cache ───────────────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 5 * MS_PER_MINUTE;
 
 const cache = new Map<
   string,

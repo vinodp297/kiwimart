@@ -14,6 +14,7 @@ import { calculateSellerTier } from "@/lib/seller-tiers.server";
 import type { PerformanceTier } from "@/lib/seller-tiers";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 
@@ -173,13 +174,17 @@ export async function runSellerDowngradeCheck(): Promise<{
             },
           });
 
-          createNotification({
-            userId: seller.id,
-            type: "SYSTEM",
-            title: "Your seller status has been updated",
-            body: "Your seller tier has been adjusted due to a high dispute rate. Resolve your open disputes to restore your previous status. Contact support if you believe this is an error.",
-            link: "/dashboard/seller",
-          }).catch(() => {});
+          fireAndForget(
+            createNotification({
+              userId: seller.id,
+              type: "SYSTEM",
+              title: "Your seller status has been updated",
+              body: "Your seller tier has been adjusted due to a high dispute rate. Resolve your open disputes to restore your previous status. Contact support if you believe this is an error.",
+              link: "/dashboard/seller",
+            }),
+            "seller.notification.tier_downgraded",
+            { sellerId: seller.id },
+          );
 
           audit({
             userId: null,

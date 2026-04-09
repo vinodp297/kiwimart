@@ -21,6 +21,7 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 
 export async function processDisputeAutoResolution(): Promise<{
   coolingExecuted: number;
@@ -335,23 +336,31 @@ export async function processDisputeAutoResolution(): Promise<{
             }
 
             // Notify both parties (fire-and-forget)
-            createNotification({
-              userId: interaction.order.buyerId,
-              type: "ORDER_DISPUTED",
-              title: "Request escalated",
-              body: `Your ${interaction.type.replace(/_/g, " ").toLowerCase()} for "${interaction.order.listing.title}" was not responded to in time and has been escalated.`,
-              orderId: interaction.orderId,
-              link: `/orders/${interaction.orderId}`,
-            }).catch(() => {});
+            fireAndForget(
+              createNotification({
+                userId: interaction.order.buyerId,
+                type: "ORDER_DISPUTED",
+                title: "Request escalated",
+                body: `Your ${interaction.type.replace(/_/g, " ").toLowerCase()} for "${interaction.order.listing.title}" was not responded to in time and has been escalated.`,
+                orderId: interaction.orderId,
+                link: `/orders/${interaction.orderId}`,
+              }),
+              "dispute.notification.escalated.buyer",
+              { orderId: interaction.orderId },
+            );
 
-            createNotification({
-              userId: interaction.order.sellerId,
-              type: "ORDER_DISPUTED",
-              title: "Request escalated",
-              body: `A ${interaction.type.replace(/_/g, " ").toLowerCase()} for "${interaction.order.listing.title}" has been escalated due to no response.`,
-              orderId: interaction.orderId,
-              link: `/orders/${interaction.orderId}`,
-            }).catch(() => {});
+            fireAndForget(
+              createNotification({
+                userId: interaction.order.sellerId,
+                type: "ORDER_DISPUTED",
+                title: "Request escalated",
+                body: `A ${interaction.type.replace(/_/g, " ").toLowerCase()} for "${interaction.order.listing.title}" has been escalated due to no response.`,
+                orderId: interaction.orderId,
+                link: `/orders/${interaction.orderId}`,
+              }),
+              "dispute.notification.escalated.seller",
+              { orderId: interaction.orderId },
+            );
           }),
         );
 

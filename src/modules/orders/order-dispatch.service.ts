@@ -11,6 +11,8 @@ import { getRequestContext } from "@/lib/request-context";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendOrderDispatchedEmail } from "@/server/email";
 import { enqueueEmail } from "@/lib/email-queue";
+import { fireAndForget } from "@/lib/fire-and-forget";
+import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
@@ -101,7 +103,7 @@ export async function confirmDelivery(
           correlationId: getRequestContext()?.correlationId,
         },
         {
-          delay: 3 * 24 * 60 * 60 * 1000,
+          delay: 3 * MS_PER_DAY,
           attempts: 3,
           backoff: { type: "exponential", delay: 5000 },
         },
@@ -157,7 +159,7 @@ export async function confirmDelivery(
   // If buyer reported an issue, auto-create a DELIVERY_ISSUE interaction
   if (feedback && !feedback.itemAsDescribed && feedback.issueType) {
     try {
-      const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+      const expiresAt = new Date(Date.now() + 72 * MS_PER_HOUR); // 72 hours
       await orderInteractionService.createInteraction({
         orderId,
         type: INTERACTION_TYPES.DELIVERY_ISSUE,
@@ -174,14 +176,18 @@ export async function confirmDelivery(
       });
 
       // Notify seller about the delivery issue
-      createNotification({
-        userId: order.sellerId,
-        type: "ORDER_DISPUTED",
-        title: "Buyer reported a delivery issue",
-        body: `The buyer reported an issue: ${feedback.issueType.replace(/_/g, " ").toLowerCase()}. You have 72 hours to respond.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.sellerId,
+          type: "ORDER_DISPUTED",
+          title: "Buyer reported a delivery issue",
+          body: `The buyer reported an issue: ${feedback.issueType.replace(/_/g, " ").toLowerCase()}. You have 72 hours to respond.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "order.notification.delivery_issue",
+        { orderId, sellerId: order.sellerId },
+      );
     } catch (err) {
       logger.warn("order.delivery_issue.interaction_failed", {
         orderId,
@@ -192,15 +198,19 @@ export async function confirmDelivery(
 
   // Notify seller that payment has been released
   const listing = await orderRepository.findListingTitle(order.listingId);
-  createNotification({
-    userId: order.sellerId,
-    type: "ORDER_COMPLETED",
-    title: "Payment released! 💰",
-    body: `Buyer confirmed delivery${listing ? ` of "${listing.title}"` : ""}. Your payout is being processed.`,
-    listingId: order.listingId,
-    orderId,
-    link: "/dashboard/seller?tab=orders",
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.sellerId,
+      type: "ORDER_COMPLETED",
+      title: "Payment released! 💰",
+      body: `Buyer confirmed delivery${listing ? ` of "${listing.title}"` : ""}. Your payout is being processed.`,
+      listingId: order.listingId,
+      orderId,
+      link: "/dashboard/seller?tab=orders",
+    }),
+    "order.notification.payment_released",
+    { orderId, sellerId: order.sellerId },
+  );
 
   // Send order completion emails to buyer and seller
   // Email failure must never block the completion — wrap in try/catch
@@ -337,14 +347,18 @@ export async function markDispatched(
   });
 
   // Notify buyer that their item has been dispatched
-  createNotification({
-    userId: order.buyerId,
-    type: "ORDER_DISPATCHED",
-    title: "Your item has been dispatched 📦",
-    body: `"${order.listing.title}" is on its way!${input.trackingNumber ? ` Tracking: ${input.trackingNumber}` : ""}`,
-    orderId: input.orderId,
-    link: "/dashboard/buyer?tab=orders",
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.buyerId,
+      type: "ORDER_DISPATCHED",
+      title: "Your item has been dispatched 📦",
+      body: `"${order.listing.title}" is on its way!${input.trackingNumber ? ` Tracking: ${input.trackingNumber}` : ""}`,
+      orderId: input.orderId,
+      link: "/dashboard/buyer?tab=orders",
+    }),
+    "order.notification.dispatched",
+    { orderId: input.orderId, buyerId: order.buyerId },
+  );
 
   logger.info("order.dispatched", { orderId: input.orderId, sellerId });
 }

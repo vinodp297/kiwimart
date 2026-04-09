@@ -10,6 +10,7 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { getRedisClient } from "@/infrastructure/redis/client";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
+import { MS_PER_WEEK, SECONDS_PER_WEEK } from "@/lib/time";
 
 const getSecret = () => new TextEncoder().encode(process.env.MOBILE_JWT_SECRET);
 
@@ -17,8 +18,8 @@ const getSecret = () => new TextEncoder().encode(process.env.MOBILE_JWT_SECRET);
 // for a marketplace mobile app. Shorter than 30 days to limit exposure if a
 // token is compromised. The OpenAPI spec (api/docs/route.ts) must match this.
 const EXPIRY = "7d";
-const EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
-const EXPIRY_SECONDS = 7 * 24 * 60 * 60; // TTL for Redis key
+const EXPIRY_MS = MS_PER_WEEK;
+const EXPIRY_SECONDS = SECONDS_PER_WEEK; // TTL for Redis key
 // Session set TTL is slightly longer than token TTL so revokeAll still works
 // for tokens issued moments before the set would expire.
 const SESSION_SET_TTL_SECONDS = EXPIRY_SECONDS + 3600; // 7 days + 1 hour

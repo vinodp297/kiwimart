@@ -5,6 +5,7 @@
 
 import { orderRepository } from "@/modules/orders/order.repository";
 import { trustMetricsService } from "@/modules/trust/trust-metrics.service";
+import { MS_PER_DAY } from "@/lib/time";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -26,7 +27,7 @@ export async function analyzeInconsistencies(
   const alerts: InconsistencyAlert[] = [];
 
   // Fetch events and metrics in parallel
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * MS_PER_DAY);
 
   const [
     deliveryOkEvent,

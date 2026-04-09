@@ -59,7 +59,9 @@ export default function RegisterPage() {
           setTurnstileSiteKey(data.siteKey);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("register.fetchTurnstileConfig failed", err);
+      });
   }, []);
 
   const initializeTurnstileWidget = useCallback(() => {

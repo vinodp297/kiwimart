@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/primitives";
+import { toCents, calculateStripeFee, fromCents } from "@/lib/currency";
 
 interface CheckboxOptionProps {
   checked: boolean;
@@ -111,11 +112,11 @@ export default function SellStep3Pricing({
             },
             {
               label: "Payment processing (est.)",
-              value: `$${(Number(price) * 0.019 + 0.3).toFixed(2)}`,
+              value: `$${fromCents(calculateStripeFee(toCents(Number(price)))).toFixed(2)}`,
             },
             {
               label: "You receive",
-              value: `$${(Number(price) - (Number(price) * 0.019 + 0.3)).toFixed(2)}`,
+              value: `$${(Number(price) - fromCents(calculateStripeFee(toCents(Number(price))))).toFixed(2)}`,
               bold: true,
             },
           ].map(({ label, value, highlight, bold }) => (

@@ -8,10 +8,13 @@ import { withLock } from "@/server/lib/distributedLock";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
+import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 import { sendOfferReceivedEmail, sendOfferResponseEmail } from "@/server/email";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { offerRepository } from "./offer.repository";
+import { toCents } from "@/lib/currency";
 import type { CreateOfferInput, RespondOfferInput } from "./offer.types";
 
 export class OfferService {
@@ -32,7 +35,7 @@ export class OfferService {
       );
     }
 
-    const amountCents = Math.round(input.amount * 100);
+    const amountCents = toCents(input.amount);
     if (amountCents >= listing.priceNzd) {
       throw AppError.validation(
         'Your offer must be less than the asking price. Use "Buy Now" instead.',
@@ -62,7 +65,7 @@ export class OfferService {
       sellerId: listing.sellerId,
       amountNzd: amountCents,
       note: input.note ?? null,
-      expiresAt: new Date(Date.now() + offerExpiryHours * 60 * 60 * 1000),
+      expiresAt: new Date(Date.now() + offerExpiryHours * MS_PER_HOUR),
     });
 
     // Notify seller directly — BullMQ worker does not run on Vercel serverless
@@ -152,7 +155,7 @@ export class OfferService {
             // in a true concurrent race that both passed the pre-check above.
             const acceptResult = await offerRepository.accept(
               input.offerId,
-              new Date(Date.now() + 24 * 60 * 60 * 1000),
+              new Date(Date.now() + MS_PER_DAY),
               tx,
             );
             if (acceptResult.count === 0) {
@@ -222,23 +225,31 @@ export class OfferService {
 
     // Notify buyer of offer response
     if (input.action === "ACCEPT") {
-      createNotification({
-        userId: offer.buyerId,
-        type: "OFFER_ACCEPTED",
-        title: "Your offer was accepted! 🎉",
-        body: `"${offer.listing.title}" — complete your purchase within 24 hours.`,
-        listingId: offer.listingId,
-        link: `/listings/${offer.listingId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: offer.buyerId,
+          type: "OFFER_ACCEPTED",
+          title: "Your offer was accepted! 🎉",
+          body: `"${offer.listing.title}" — complete your purchase within 24 hours.`,
+          listingId: offer.listingId,
+          link: `/listings/${offer.listingId}`,
+        }),
+        "offer.accepted.notify.buyer",
+        { offerId: input.offerId, buyerId: offer.buyerId },
+      );
     } else {
-      createNotification({
-        userId: offer.buyerId,
-        type: "OFFER_DECLINED",
-        title: "Offer not accepted",
-        body: `Your offer on "${offer.listing.title}" was declined. The listing is still available.`,
-        listingId: offer.listingId,
-        link: `/listings/${offer.listingId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: offer.buyerId,
+          type: "OFFER_DECLINED",
+          title: "Offer not accepted",
+          body: `Your offer on "${offer.listing.title}" was declined. The listing is still available.`,
+          listingId: offer.listingId,
+          link: `/listings/${offer.listingId}`,
+        }),
+        "offer.declined.notify.buyer",
+        { offerId: input.offerId, buyerId: offer.buyerId },
+      );
     }
 
     logger.info("offer.responded", {

@@ -4,6 +4,7 @@
 import { userRepository } from "@/modules/users/user.repository";
 import { getImageUrl, getThumbUrl } from "@/lib/image";
 import { dashboardRepository } from "./dashboard.repository";
+import { MS_PER_DAY } from "@/lib/time";
 
 // ── Types (re-exported by the server action) ────────────────────────────────
 
@@ -425,9 +426,7 @@ class DashboardService {
       paidAt: p.paidAt?.toISOString() ?? null,
       estimatedArrival: p.paidAt
         ? null
-        : new Date(
-            p.createdAt.getTime() + 3 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
+        : new Date(p.createdAt.getTime() + 3 * MS_PER_DAY).toISOString(),
     }));
 
     return {

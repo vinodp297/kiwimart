@@ -87,16 +87,19 @@ export default function NavBar() {
         setCartCount(d.cartCount ?? 0);
         setNotifications(d.notifications ?? []);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("NavBar.fetchNavSummary failed", err);
+      });
   }, [isAuthenticated]);
 
   // ── Optimistic mark-all-read with rollback ─────────────────────────────────
   const handleMarkAllRead = useCallback(() => {
     const prev = notifications;
     setNotifications((ns) => ns.map((n) => ({ ...n, isRead: true })));
-    fetch("/api/v1/notifications", { method: "PATCH" }).catch(() =>
-      setNotifications(prev),
-    );
+    fetch("/api/v1/notifications", { method: "PATCH" }).catch((err) => {
+      console.error("NavBar.markAllRead failed", err);
+      setNotifications(prev);
+    });
   }, [notifications]);
 
   useEffect(() => {

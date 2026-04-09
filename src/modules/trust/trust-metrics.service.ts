@@ -7,6 +7,7 @@
 import { trustMetricsRepository } from "./trust-metrics.repository";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { logger } from "@/shared/logger";
+import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ export class TrustMetricsService {
     const cacheHours = await getConfigInt(
       CONFIG_KEYS.TRUST_METRICS_CACHE_HOURS,
     );
-    const CACHE_TTL_MS = cacheHours * 60 * 60 * 1000;
+    const CACHE_TTL_MS = cacheHours * MS_PER_HOUR;
 
     const cached = await trustMetricsRepository.findCached(userId);
 
@@ -84,9 +85,7 @@ export class TrustMetricsService {
     const rollingDays = await getConfigInt(
       CONFIG_KEYS.TRUST_SCORE_ROLLING_DAYS,
     );
-    const rollingWindowAgo = new Date(
-      Date.now() - rollingDays * 24 * 60 * 60 * 1000,
-    );
+    const rollingWindowAgo = new Date(Date.now() - rollingDays * MS_PER_DAY);
 
     const [
       user,
@@ -129,9 +128,7 @@ export class TrustMetricsService {
         : 0;
 
     const accountAgeDays = user
-      ? Math.floor(
-          (Date.now() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24),
-        )
+      ? Math.floor((Date.now() - user.createdAt.getTime()) / MS_PER_DAY)
       : 0;
 
     // Average rating (stored as 1-50, represents 0.1-5.0)
@@ -154,8 +151,7 @@ export class TrustMetricsService {
       const totalHours = respondedDisputes.reduce((sum, d) => {
         return (
           sum +
-          (d.sellerRespondedAt!.getTime() - d.openedAt.getTime()) /
-            (1000 * 60 * 60)
+          (d.sellerRespondedAt!.getTime() - d.openedAt.getTime()) / MS_PER_HOUR
         );
       }, 0);
       averageResponseHours =

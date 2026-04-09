@@ -2,6 +2,8 @@
 // ─── Listing Repository — data access only, no business logic ───────────────
 
 import db, { getClient, type DbClient } from "@/lib/db";
+import { fireAndForget } from "@/lib/fire-and-forget";
+import { MS_PER_DAY } from "@/lib/time";
 import { Prisma } from "@prisma/client";
 import type { ListingStatus } from "@prisma/client";
 
@@ -119,9 +121,14 @@ export const listingRepository = {
 
   /** Fire-and-forget view count increment */
   incrementViewCount(id: string) {
-    db.listing
-      .update({ where: { id }, data: { viewCount: { increment: 1 } } })
-      .catch(() => {});
+    fireAndForget(
+      db.listing.update({
+        where: { id },
+        data: { viewCount: { increment: 1 } },
+      }),
+      "listing.incrementViewCount",
+      { listingId: id },
+    );
   },
 
   // ── Watchlist ─────────────────────────────────────────────────────────────
@@ -439,9 +446,11 @@ export const listingRepository = {
   // ── Price history ─────────────────────────────────────────────────────────
 
   createPriceHistory(listingId: string, priceNzd: number) {
-    db.listingPriceHistory
-      .create({ data: { listingId, priceNzd } })
-      .catch(() => {});
+    fireAndForget(
+      db.listingPriceHistory.create({ data: { listingId, priceNzd } }),
+      "listing.createPriceHistory",
+      { listingId, priceNzd },
+    );
   },
 
   // ── Trust metrics (for auto-review) ───────────────────────────────────────
@@ -702,7 +711,7 @@ export const listingRepository = {
       data: {
         status: "ACTIVE",
         publishedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 30 * MS_PER_DAY),
         moderatedBy: adminId,
         moderatedAt: new Date(),
         moderationNote: null,
@@ -834,7 +843,7 @@ export const listingRepository = {
   /** Count listings approved (or published) within the last 24 hours. */
   async countApprovedToday(tx?: DbClient): Promise<number> {
     const client = getClient(tx);
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since = new Date(Date.now() - MS_PER_DAY);
     return client.listing.count({
       where: {
         status: "ACTIVE",

@@ -8,50 +8,47 @@ import { auth } from "@/lib/auth";
 import { userRepository } from "@/modules/users/user.repository";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
+import { withDeprecation } from "@/app/api/_helpers/deprecation";
+import { MS_PER_DAY } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-function dep<T extends Response>(res: T): T {
-  res.headers.set("Deprecation", "true");
-  res.headers.set(
-    "Sunset",
-    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
-  );
-  res.headers.set("Link", '</api/v1/>; rel="successor-version"');
-  return res;
-}
+const SUNSET = new Date(Date.now() + 90 * MS_PER_DAY);
 
 export async function GET() {
   try {
     const session = await auth();
 
     if (!session?.user?.id) {
-      return dep(
+      return withDeprecation(
         apiOk({
           authenticated: false,
           isStripeOnboarded: false,
           isSellerEnabled: false,
         }),
+        SUNSET,
       );
     }
 
     const user = await userRepository.findForStripeConnect(session.user.id);
 
-    return dep(
+    return withDeprecation(
       apiOk({
         authenticated: true,
         isStripeOnboarded: user?.isStripeOnboarded ?? false,
         hasStripeAccount: !!user?.stripeAccountId,
         isSellerEnabled: user?.isSellerEnabled ?? false,
       }),
+      SUNSET,
     );
   } catch (e) {
     logger.error("api.error", {
       path: "/api/seller/status",
       error: e instanceof Error ? e.message : e,
     });
-    return dep(
+    return withDeprecation(
       apiError("We couldn't check your seller status. Please try again.", 500),
+      SUNSET,
     );
   }
 }

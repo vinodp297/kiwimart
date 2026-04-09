@@ -10,6 +10,7 @@
 
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
+import { AppError } from "@/shared/errors";
 
 export type AuthenticatedUser = {
   id: string;
@@ -23,7 +24,7 @@ export async function requireUser(): Promise<AuthenticatedUser> {
   const session = await auth();
 
   if (!session?.user?.id) {
-    throw new Error("Unauthorised — please sign in");
+    throw AppError.unauthenticated();
   }
 
   // With DB sessions, session.user.isBanned is fresh from the DB.
@@ -50,15 +51,20 @@ export async function requireUser(): Promise<AuthenticatedUser> {
 
   if (!user) {
     // User not found OR deletedAt is set — treat both as unauthenticated
-    throw new Error("Unauthorised — user not found");
+    throw AppError.unauthenticated();
   }
 
   if (user.isBanned) {
     // Delete their sessions to force logout on next request
-    await db.session.deleteMany({ where: { userId: user.id } }).catch(() => {});
-    throw new Error(
-      `Your account has been suspended. Contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"} for help.`,
-    );
+    await db.session
+      .deleteMany({ where: { userId: user.id } })
+      .catch((err: unknown) => {
+        console.error(
+          "[requireUser] session cleanup failed",
+          err instanceof Error ? err.message : String(err),
+        );
+      });
+    throw AppError.banned();
   }
 
   return {

@@ -5,6 +5,7 @@
 // Routes to the appropriate handler based on problem type.
 
 import { safeActionError } from "@/shared/errors";
+import { formatCentsAsNzd, toCents } from "@/lib/currency";
 import { requireUser } from "@/server/lib/requireUser";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { headers } from "next/headers";
@@ -18,6 +19,7 @@ import {
 } from "@/modules/orders/order-interaction.service";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { autoResolutionService } from "@/modules/disputes/auto-resolution.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import { submitProblemSchema } from "@/server/validators";
 
@@ -96,14 +98,18 @@ export async function submitProblem(raw: unknown): Promise<
         autoAction: AUTO_ACTIONS.AUTO_APPROVE,
       });
 
-      createNotification({
-        userId: order.sellerId,
-        type: "SYSTEM",
-        title: "Cancellation requested",
-        body: `The buyer has requested to cancel "${order.listing.title}". You have 48 hours to respond.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.sellerId,
+          type: "SYSTEM",
+          title: "Cancellation requested",
+          body: `The buyer has requested to cancel "${order.listing.title}". You have 48 hours to respond.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "problem.cancelRequest.notification",
+        { orderId },
+      );
 
       return {
         success: true,
@@ -144,14 +150,18 @@ export async function submitProblem(raw: unknown): Promise<
         autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
       });
 
-      createNotification({
-        userId: order.sellerId,
-        type: "ORDER_DISPUTED",
-        title: "Buyer reports shipping delay",
-        body: `The buyer is asking about dispatch for "${order.listing.title}". Please dispatch soon or respond.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.sellerId,
+          type: "ORDER_DISPUTED",
+          title: "Buyer reports shipping delay",
+          body: `The buyer is asking about dispatch for "${order.listing.title}". Please dispatch soon or respond.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "problem.shippingDelay.notification",
+        { orderId },
+      );
 
       return {
         success: true,
@@ -196,14 +206,18 @@ export async function submitProblem(raw: unknown): Promise<
         autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
       });
 
-      createNotification({
-        userId: order.sellerId,
-        type: "SYSTEM",
-        title: "Return requested",
-        body: `The buyer has requested a return for "${order.listing.title}". You have 72 hours to respond.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.sellerId,
+          type: "SYSTEM",
+          title: "Return requested",
+          body: `The buyer has requested a return for "${order.listing.title}". You have 72 hours to respond.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "problem.returnRequest.notification",
+        { orderId },
+      );
 
       return {
         success: true,
@@ -223,11 +237,11 @@ export async function submitProblem(raw: unknown): Promise<
       if (!refundAmount || refundAmount <= 0) {
         return { success: false, error: "Please specify a refund amount." };
       }
-      const amountCents = Math.round(refundAmount * 100);
+      const amountCents = toCents(refundAmount);
       if (amountCents > order.totalNzd) {
         return {
           success: false,
-          error: `Amount cannot exceed $${(order.totalNzd / 100).toFixed(2)}.`,
+          error: `Amount cannot exceed ${formatCentsAsNzd(order.totalNzd)}.`,
         };
       }
 
@@ -242,14 +256,18 @@ export async function submitProblem(raw: unknown): Promise<
         autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
       });
 
-      createNotification({
-        userId: order.sellerId,
-        type: "SYSTEM",
-        title: "Partial refund requested",
-        body: `The buyer requested a $${refundAmount.toFixed(2)} partial refund for "${order.listing.title}".`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.sellerId,
+          type: "SYSTEM",
+          title: "Partial refund requested",
+          body: `The buyer requested a $${refundAmount.toFixed(2)} partial refund for "${order.listing.title}".`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "problem.partialRefund.notification",
+        { orderId },
+      );
 
       return {
         success: true,

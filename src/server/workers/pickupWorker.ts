@@ -23,6 +23,7 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { runWithRequestContext } from "@/lib/request-context";
+import { fireAndForget } from "@/lib/fire-and-forget";
 
 export function startPickupWorker() {
   if (process.env.VERCEL) {
@@ -133,7 +134,13 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
           where: { id: order.listingId, status: "RESERVED" },
           data: { status: "ACTIVE" },
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          logger.error("pickup.listing_reactivate.failed", {
+            error: err instanceof Error ? err.message : String(err),
+            listingId: order.listingId,
+            orderId,
+          });
+        });
     }
   });
 
@@ -170,25 +177,39 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
       },
       update: { disputeCount: { increment: 1 } },
     })
-    .catch(() => {});
+    .catch((err: unknown) => {
+      logger.error("pickup.trust_metrics.upsert.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        userId: order.sellerId,
+        orderId,
+      });
+    });
 
-  createNotification({
-    userId: order.buyerId,
-    type: "SYSTEM",
-    title: "Pickup order auto-cancelled",
-    body: `Your pickup order for "${order.listing.title}" was automatically cancelled because no pickup time was agreed within 48 hours.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Pickup order auto-cancelled",
+      body: `Your pickup order for "${order.listing.title}" was automatically cancelled because no pickup time was agreed within 48 hours.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.schedule_deadline.buyer",
+    { orderId },
+  );
 
-  createNotification({
-    userId: order.sellerId,
-    type: "SYSTEM",
-    title: "Pickup order cancelled",
-    body: `Your pickup order for "${order.listing.title}" was cancelled because you did not agree a pickup time within 48 hours. This may affect your seller rating.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.sellerId,
+      type: "SYSTEM",
+      title: "Pickup order cancelled",
+      body: `Your pickup order for "${order.listing.title}" was cancelled because you did not agree a pickup time within 48 hours. This may affect your seller rating.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.schedule_deadline.seller",
+    { orderId },
+  );
 
   orderEventService.recordEvent({
     orderId,
@@ -254,7 +275,13 @@ async function handleWindowExpired(orderId: string): Promise<void> {
           where: { id: order.listingId, status: "RESERVED" },
           data: { status: "ACTIVE" },
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          logger.error("pickup.listing_reactivate.failed", {
+            error: err instanceof Error ? err.message : String(err),
+            listingId: order.listingId,
+            orderId,
+          });
+        });
     }
   });
 
@@ -295,45 +322,62 @@ async function handleWindowExpired(orderId: string): Promise<void> {
         isFlaggedForFraud: true,
       },
     })
-    .catch(() => {});
-
-  createNotification({
-    userId: order.buyerId,
-    type: "SYSTEM",
-    title: "Seller no-show — order cancelled",
-    body: `The seller did not show up for your pickup. We have automatically cancelled the order and issued a full refund.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
-
-  createNotification({
-    userId: order.sellerId,
-    type: "SYSTEM",
-    title: "Missed pickup — order cancelled",
-    body: `You missed your pickup appointment and the order has been automatically cancelled. This has been recorded on your account.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
-
-  db.user
-    .findUnique({
-      where: { id: order.buyerId },
-      select: { email: true, displayName: true },
-    })
-    .then((buyer) => {
-      if (!buyer) return;
-      sendDisputeResolvedEmail({
-        to: buyer.email,
-        recipientName: buyer.displayName ?? "there",
-        recipientRole: "buyer",
+    .catch((err: unknown) => {
+      logger.error("pickup.trust_metrics.upsert.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        userId: order.sellerId,
         orderId,
-        listingTitle: order.listing.title,
-        resolution: "BUYER_WON",
-        refundAmount: order.totalNzd,
-        adminNote: null,
-      }).catch(() => {});
-    })
-    .catch(() => {});
+      });
+    });
+
+  fireAndForget(
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Seller no-show — order cancelled",
+      body: `The seller did not show up for your pickup. We have automatically cancelled the order and issued a full refund.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.window_expired.buyer",
+    { orderId },
+  );
+
+  fireAndForget(
+    createNotification({
+      userId: order.sellerId,
+      type: "SYSTEM",
+      title: "Missed pickup — order cancelled",
+      body: `You missed your pickup appointment and the order has been automatically cancelled. This has been recorded on your account.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.window_expired.seller",
+    { orderId },
+  );
+
+  fireAndForget(
+    db.user
+      .findUnique({
+        where: { id: order.buyerId },
+        select: { email: true, displayName: true },
+      })
+      .then((buyer) => {
+        if (!buyer) return;
+        return sendDisputeResolvedEmail({
+          to: buyer.email,
+          recipientName: buyer.displayName ?? "there",
+          recipientRole: "buyer",
+          orderId,
+          listingTitle: order.listing.title,
+          resolution: "BUYER_WON",
+          refundAmount: order.totalNzd,
+          adminNote: null,
+        });
+      }),
+    "pickup.email.dispute_resolved",
+    { orderId },
+  );
 
   orderEventService.recordEvent({
     orderId,
@@ -482,7 +526,13 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
           where: { id: order.listingId },
           data: { status: "SOLD", soldAt: new Date() },
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          logger.error("pickup.listing_sold.failed", {
+            error: err instanceof Error ? err.message : String(err),
+            listingId: order.listingId,
+            orderId,
+          });
+        });
     }
   });
 
@@ -508,25 +558,39 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
         disputesLast30Days: { increment: 1 },
       },
     })
-    .catch(() => {});
+    .catch((err: unknown) => {
+      logger.error("pickup.trust_metrics.upsert.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        userId: order.buyerId,
+        orderId,
+      });
+    });
 
-  createNotification({
-    userId: order.buyerId,
-    type: "SYSTEM",
-    title: "Pickup code expired",
-    body: `You did not confirm your pickup within the allowed time. The seller has been paid and the order is complete. If you believe this is an error, please contact support.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.buyerId,
+      type: "SYSTEM",
+      title: "Pickup code expired",
+      body: `You did not confirm your pickup within the allowed time. The seller has been paid and the order is complete. If you believe this is an error, please contact support.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.otp_expired.buyer",
+    { orderId },
+  );
 
-  createNotification({
-    userId: order.sellerId,
-    type: "ORDER_COMPLETED",
-    title: "Payment released",
-    body: `The buyer did not enter the pickup code in time. Your payment has been automatically released.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: order.sellerId,
+      type: "ORDER_COMPLETED",
+      title: "Payment released",
+      body: `The buyer did not enter the pickup code in time. Your payment has been automatically released.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.otp_expired.seller",
+    { orderId },
+  );
 
   orderEventService.recordEvent({
     orderId,
@@ -624,7 +688,13 @@ async function handleRescheduleExpired(
           where: { id: order.listingId, status: "RESERVED" },
           data: { status: "ACTIVE" },
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          logger.error("pickup.listing_reactivate.failed", {
+            error: err instanceof Error ? err.message : String(err),
+            listingId: order.listingId,
+            orderId,
+          });
+        });
     }
   });
 
@@ -666,25 +736,39 @@ async function handleRescheduleExpired(
       },
       update: { disputeCount: { increment: 1 } },
     })
-    .catch(() => {});
+    .catch((err: unknown) => {
+      logger.error("pickup.trust_metrics.upsert.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        userId: request.requestedById,
+        orderId,
+      });
+    });
 
-  createNotification({
-    userId: innocentPartyId,
-    type: "SYSTEM",
-    title: "Pickup order cancelled",
-    body: `The ${requesterRoleLabel} did not respond to the reschedule request within 12 hours. The order has been automatically cancelled and you have been refunded.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: innocentPartyId,
+      type: "SYSTEM",
+      title: "Pickup order cancelled",
+      body: `The ${requesterRoleLabel} did not respond to the reschedule request within 12 hours. The order has been automatically cancelled and you have been refunded.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.reschedule_expired.innocent",
+    { orderId },
+  );
 
-  createNotification({
-    userId: request.requestedById,
-    type: "SYSTEM",
-    title: "Reschedule request expired",
-    body: `Your reschedule request expired without a response. The order has been cancelled.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: request.requestedById,
+      type: "SYSTEM",
+      title: "Reschedule request expired",
+      body: `Your reschedule request expired without a response. The order has been cancelled.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "pickup.notification.reschedule_expired.requester",
+    { orderId },
+  );
 
   orderEventService.recordEvent({
     orderId,

@@ -42,9 +42,7 @@ describe("requireUser", () => {
   it("throws for unauthenticated request (no session)", async () => {
     vi.mocked(auth).mockResolvedValue(null as never);
 
-    await expect(requireUser()).rejects.toThrow(
-      "Unauthorised — please sign in",
-    );
+    await expect(requireUser()).rejects.toThrow("Please sign in to continue");
     expect(db.user.findUnique).not.toHaveBeenCalled();
   });
 
@@ -53,9 +51,7 @@ describe("requireUser", () => {
       user: { id: undefined },
     } as never);
 
-    await expect(requireUser()).rejects.toThrow(
-      "Unauthorised — please sign in",
-    );
+    await expect(requireUser()).rejects.toThrow("Please sign in to continue");
   });
 
   it("throws for banned user and cleans up their sessions", async () => {
@@ -75,7 +71,7 @@ describe("requireUser", () => {
     vi.mocked(db.session.deleteMany).mockResolvedValue({ count: 2 } as never);
 
     await expect(requireUser()).rejects.toThrow(
-      "Your account has been suspended",
+      "Your account has been suspended", // AppError.banned() message
     );
 
     // Should delete all sessions as cleanup
@@ -92,7 +88,7 @@ describe("requireUser", () => {
     vi.mocked(db.user.findUnique).mockResolvedValue(null as never);
 
     await expect(requireUser()).rejects.toThrow(
-      "Unauthorised — user not found",
+      "Please sign in to continue", // AppError.unauthenticated() — user gone = unauthenticated
     );
   });
 

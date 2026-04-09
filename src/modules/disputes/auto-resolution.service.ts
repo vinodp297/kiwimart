@@ -5,15 +5,18 @@
 // submit counter-evidence.
 
 import { orderRepository } from "@/modules/orders/order.repository";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { interactionRepository } from "@/modules/orders/interaction.repository";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { CONFIG_KEYS, getConfigMany } from "@/lib/platform-config";
 import type { ConfigKey } from "@/lib/platform-config";
+import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 import { logger } from "@/shared/logger";
 import { paymentService } from "@/modules/payments/payment.service";
 import { transitionOrder } from "@/modules/orders/order.transitions";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { sendDisputeResolvedEmail } from "@/server/email";
 import {
   orderEventService,
@@ -226,7 +229,7 @@ export class AutoResolutionService {
 
     if (order.dispatchedAt) {
       const daysSinceDispatch =
-        (Date.now() - order.dispatchedAt.getTime()) / (1000 * 60 * 60 * 24);
+        (Date.now() - order.dispatchedAt.getTime()) / MS_PER_DAY;
       if (daysSinceDispatch >= 7 && !order.completedAt) {
         score += W.TRACKING_NO_MOVEMENT_7D;
         factors.push({
@@ -258,7 +261,7 @@ export class AutoResolutionService {
 
     if (disputeOpenedAt && !sellerRespondedAt) {
       const hoursSinceDispute =
-        (Date.now() - disputeOpenedAt.getTime()) / (1000 * 60 * 60);
+        (Date.now() - disputeOpenedAt.getTime()) / MS_PER_HOUR;
       if (hoursSinceDispute >= sellerUnresponsiveHours) {
         score += W.SELLER_UNRESPONSIVE_72H;
         factors.push({
@@ -493,17 +496,21 @@ export class AutoResolutionService {
 
     if (evaluation.canAutoResolve) {
       const executeAt = new Date(
-        Date.now() + evaluation.coolingPeriodHours * 60 * 60 * 1000,
+        Date.now() + evaluation.coolingPeriodHours * MS_PER_HOUR,
       );
 
       // Update dispute status to AUTO_RESOLVING
       const dispute = await getDisputeByOrderId(orderId);
       if (dispute) {
-        setAutoResolving(
-          dispute.id,
-          evaluation.score,
-          evaluation.recommendation,
-        ).catch(() => {});
+        fireAndForget(
+          setAutoResolving(
+            dispute.id,
+            evaluation.score,
+            evaluation.recommendation,
+          ),
+          "autoResolution.setAutoResolving",
+          { orderId, disputeId: dispute.id },
+        );
       }
 
       // Record the queued decision
@@ -531,14 +538,18 @@ export class AutoResolutionService {
           ? "resolved with a refund to the buyer"
           : "dismissed in the seller's favour";
 
-      createNotification({
-        userId: affectedPartyId,
-        type: "ORDER_DISPUTED",
-        title: "Dispute resolution pending",
-        body: `Based on our review, this dispute will be ${outcomeText} in ${evaluation.coolingPeriodHours} hours unless you provide additional evidence.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: affectedPartyId,
+          type: "ORDER_DISPUTED",
+          title: "Dispute resolution pending",
+          body: `Based on our review, this dispute will be ${outcomeText} in ${evaluation.coolingPeriodHours} hours unless you provide additional evidence.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "autoResolution.queued.notify",
+        { orderId, userId: affectedPartyId },
+      );
 
       logger.info("auto-resolution.queued", {
         orderId,
@@ -658,9 +669,11 @@ export class AutoResolutionService {
 
       // Restore listing
       if (order.listing) {
-        await listingRepository
-          .restoreFromSold(order.listing.id)
-          .catch(() => {});
+        fireAndForget(
+          listingRepository.restoreFromSold(order.listing.id),
+          "autoResolution.restoreFromSold",
+          { orderId, listingId: order.listing.id },
+        );
       }
 
       orderEventService.recordEvent({
@@ -677,56 +690,75 @@ export class AutoResolutionService {
         },
       });
 
-      createNotification({
-        userId: order.buyerId,
-        type: "SYSTEM",
-        title: "Dispute resolved — refund issued",
-        body: `Your dispute has been resolved in your favour. A full refund of $${(order.totalNzd / 100).toFixed(2)} is being processed.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.buyerId,
+          type: "SYSTEM",
+          title: "Dispute resolved — refund issued",
+          body: `Your dispute has been resolved in your favour. A full refund of ${formatCentsAsNzd(order.totalNzd)} is being processed.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "autoResolution.refund.notify.buyer",
+        { orderId, userId: order.buyerId },
+      );
 
-      createNotification({
-        userId: order.sellerId,
-        type: "SYSTEM",
-        title: "Dispute resolved — refund to buyer",
-        body: `The dispute on "${order.listing?.title}" has been resolved with a refund to the buyer.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.sellerId,
+          type: "SYSTEM",
+          title: "Dispute resolved — refund to buyer",
+          body: `The dispute on "${order.listing?.title}" has been resolved with a refund to the buyer.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "autoResolution.refund.notify.seller",
+        { orderId, userId: order.sellerId },
+      );
 
       // Fire-and-forget AUTO_REFUND emails to both parties
-      userRepository
-        .findManyEmailContactsByIds([order.buyerId, order.sellerId])
-        .then((users) => {
-          const buyer = users.find((u) => u.id === order.buyerId);
-          const seller = users.find((u) => u.id === order.sellerId);
-          if (buyer) {
-            sendDisputeResolvedEmail({
-              to: buyer.email,
-              recipientName: buyer.displayName ?? "there",
-              recipientRole: "buyer",
-              orderId,
-              listingTitle: order.listing?.title ?? "your item",
-              resolution: "BUYER_WON",
-              refundAmount: order.totalNzd,
-              adminNote: null,
-            }).catch(() => {});
-          }
-          if (seller) {
-            sendDisputeResolvedEmail({
-              to: seller.email,
-              recipientName: seller.displayName ?? "there",
-              recipientRole: "seller",
-              orderId,
-              listingTitle: order.listing?.title ?? "your item",
-              resolution: "BUYER_WON",
-              refundAmount: null,
-              adminNote: null,
-            }).catch(() => {});
-          }
-        })
-        .catch(() => {});
+      fireAndForget(
+        userRepository
+          .findManyEmailContactsByIds([order.buyerId, order.sellerId])
+          .then((users) => {
+            const buyer = users.find((u) => u.id === order.buyerId);
+            const seller = users.find((u) => u.id === order.sellerId);
+            if (buyer) {
+              fireAndForget(
+                sendDisputeResolvedEmail({
+                  to: buyer.email,
+                  recipientName: buyer.displayName ?? "there",
+                  recipientRole: "buyer",
+                  orderId,
+                  listingTitle: order.listing?.title ?? "your item",
+                  resolution: "BUYER_WON",
+                  refundAmount: order.totalNzd,
+                  adminNote: null,
+                }),
+                "autoResolution.refund.email.buyer",
+                { orderId },
+              );
+            }
+            if (seller) {
+              fireAndForget(
+                sendDisputeResolvedEmail({
+                  to: seller.email,
+                  recipientName: seller.displayName ?? "there",
+                  recipientRole: "seller",
+                  orderId,
+                  listingTitle: order.listing?.title ?? "your item",
+                  resolution: "BUYER_WON",
+                  refundAmount: null,
+                  adminNote: null,
+                }),
+                "autoResolution.refund.email.seller",
+                { orderId },
+              );
+            }
+          }),
+        "autoResolution.refund.emailLookup",
+        { orderId },
+      );
 
       audit({
         userId: null,
@@ -807,56 +839,75 @@ export class AutoResolutionService {
         },
       });
 
-      createNotification({
-        userId: order.buyerId,
-        type: "SYSTEM",
-        title: "Dispute resolved",
-        body: "After review, the dispute has been resolved in the seller's favour. Payment will be released.",
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.buyerId,
+          type: "SYSTEM",
+          title: "Dispute resolved",
+          body: "After review, the dispute has been resolved in the seller's favour. Payment will be released.",
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "autoResolution.dismiss.notify.buyer",
+        { orderId, userId: order.buyerId },
+      );
 
-      createNotification({
-        userId: order.sellerId,
-        type: "ORDER_COMPLETED",
-        title: "Dispute resolved in your favour",
-        body: `The dispute on "${order.listing?.title}" has been dismissed. Payment is being released.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: order.sellerId,
+          type: "ORDER_COMPLETED",
+          title: "Dispute resolved in your favour",
+          body: `The dispute on "${order.listing?.title}" has been dismissed. Payment is being released.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "autoResolution.dismiss.notify.seller",
+        { orderId, userId: order.sellerId },
+      );
 
       // Fire-and-forget AUTO_DISMISS emails to both parties
-      userRepository
-        .findManyEmailContactsByIds([order.buyerId, order.sellerId])
-        .then((users) => {
-          const buyer = users.find((u) => u.id === order.buyerId);
-          const seller = users.find((u) => u.id === order.sellerId);
-          if (buyer) {
-            sendDisputeResolvedEmail({
-              to: buyer.email,
-              recipientName: buyer.displayName ?? "there",
-              recipientRole: "buyer",
-              orderId,
-              listingTitle: order.listing?.title ?? "your item",
-              resolution: "SELLER_WON",
-              refundAmount: null,
-              adminNote: null,
-            }).catch(() => {});
-          }
-          if (seller) {
-            sendDisputeResolvedEmail({
-              to: seller.email,
-              recipientName: seller.displayName ?? "there",
-              recipientRole: "seller",
-              orderId,
-              listingTitle: order.listing?.title ?? "your item",
-              resolution: "SELLER_WON",
-              refundAmount: null,
-              adminNote: null,
-            }).catch(() => {});
-          }
-        })
-        .catch(() => {});
+      fireAndForget(
+        userRepository
+          .findManyEmailContactsByIds([order.buyerId, order.sellerId])
+          .then((users) => {
+            const buyer = users.find((u) => u.id === order.buyerId);
+            const seller = users.find((u) => u.id === order.sellerId);
+            if (buyer) {
+              fireAndForget(
+                sendDisputeResolvedEmail({
+                  to: buyer.email,
+                  recipientName: buyer.displayName ?? "there",
+                  recipientRole: "buyer",
+                  orderId,
+                  listingTitle: order.listing?.title ?? "your item",
+                  resolution: "SELLER_WON",
+                  refundAmount: null,
+                  adminNote: null,
+                }),
+                "autoResolution.dismiss.email.buyer",
+                { orderId },
+              );
+            }
+            if (seller) {
+              fireAndForget(
+                sendDisputeResolvedEmail({
+                  to: seller.email,
+                  recipientName: seller.displayName ?? "there",
+                  recipientRole: "seller",
+                  orderId,
+                  listingTitle: order.listing?.title ?? "your item",
+                  resolution: "SELLER_WON",
+                  refundAmount: null,
+                  adminNote: null,
+                }),
+                "autoResolution.dismiss.email.seller",
+                { orderId },
+              );
+            }
+          }),
+        "autoResolution.dismiss.emailLookup",
+        { orderId },
+      );
 
       audit({
         userId: null,

@@ -3,6 +3,7 @@
 // All PickupRescheduleRequest reads/writes are routed through this module.
 
 import db, { getClient, type DbClient } from "@/lib/db";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { Prisma } from "@prisma/client";
 
 export type RescheduleRequest = Prisma.PickupRescheduleRequestGetPayload<{
@@ -76,8 +77,13 @@ export const pickupRepository = {
 
   /** Fire-and-forget setter for the BullMQ rescheduleJobId after enqueue. */
   setRescheduleJobId(id: string, jobId: string): void {
-    db.pickupRescheduleRequest
-      .update({ where: { id }, data: { rescheduleJobId: jobId } })
-      .catch(() => {});
+    fireAndForget(
+      db.pickupRescheduleRequest.update({
+        where: { id },
+        data: { rescheduleJobId: jobId },
+      }),
+      "pickup.setRescheduleJobId",
+      { requestId: id, jobId },
+    );
   },
 };

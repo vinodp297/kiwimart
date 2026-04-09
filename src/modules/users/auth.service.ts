@@ -10,6 +10,7 @@ import { AppError } from "@/shared/errors";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { passwordSchema } from "@/server/validators";
 import { enqueueEmail } from "@/lib/email-queue";
+import { MS_PER_HOUR } from "@/lib/time";
 import crypto from "crypto";
 import type { RegisterInput, ResetPasswordInput } from "./user.types";
 
@@ -109,7 +110,7 @@ export class AuthService {
       .createHash("sha256")
       .update(rawToken)
       .digest("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + MS_PER_HOUR);
 
     await userRepository.invalidatePendingResetTokens(user.id);
 

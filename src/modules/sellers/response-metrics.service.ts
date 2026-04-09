@@ -3,6 +3,7 @@
 
 import { sellerRepository } from "./seller.repository";
 import { logger } from "@/shared/logger";
+import { MS_PER_DAY } from "@/lib/time";
 
 /**
  * Recalculate a seller's response metrics from their message threads.
@@ -40,7 +41,7 @@ export async function updateSellerResponseMetrics(
         (msgs[buyerFirstIdx]?.createdAt.getTime() ?? 0);
       if (delta > 0) {
         replyMs.push(delta);
-        if (delta <= 24 * 60 * 60 * 1000) {
+        if (delta <= MS_PER_DAY) {
           repliedWithin24h++;
         }
       }

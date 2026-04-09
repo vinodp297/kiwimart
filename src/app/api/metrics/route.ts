@@ -9,18 +9,12 @@ import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminService } from "@/modules/admin/admin.service";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
+import { withDeprecation } from "@/app/api/_helpers/deprecation";
+import { MS_PER_DAY } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
-function dep<T extends Response>(res: T): T {
-  res.headers.set("Deprecation", "true");
-  res.headers.set(
-    "Sunset",
-    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString(),
-  );
-  res.headers.set("Link", '</api/v1/>; rel="successor-version"');
-  return res;
-}
+const SUNSET = new Date(Date.now() + 90 * MS_PER_DAY);
 
 export async function GET() {
   // Auth guard — requires VIEW_ALL_METRICS permission (DB-backed, not JWT claim)
@@ -28,7 +22,7 @@ export async function GET() {
   try {
     admin = await requirePermission("VIEW_ALL_METRICS");
   } catch {
-    return dep(apiError("Unauthorised", 403));
+    return withDeprecation(apiError("Unauthorised", 403), SUNSET);
   }
 
   try {
@@ -36,12 +30,15 @@ export async function GET() {
 
     logger.info("metrics.requested", { requestedBy: admin.id });
 
-    return dep(apiOk(metrics));
+    return withDeprecation(apiOk(metrics), SUNSET);
   } catch (e) {
     logger.error("api.error", {
       path: "/api/metrics",
       error: e instanceof Error ? e.message : e,
     });
-    return dep(apiError("Failed to load metrics. Please try again.", 500));
+    return withDeprecation(
+      apiError("Failed to load metrics. Please try again.", 500),
+      SUNSET,
+    );
   }
 }

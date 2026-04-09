@@ -7,6 +7,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import db from "@/lib/db";
 import { credentialsProvider, googleProvider } from "./auth.providers";
 import { callbacks, events } from "./auth.callbacks";
+import { SECONDS_PER_HOUR } from "@/lib/time";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -15,11 +16,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     strategy: "jwt",
     // 1-hour expiry — short window limits exposure if Redis is unavailable
     // and a token can't be blocklisted after sign-out.
-    maxAge: 60 * 60,
+    maxAge: SECONDS_PER_HOUR,
   },
 
   jwt: {
-    maxAge: 60 * 60,
+    maxAge: SECONDS_PER_HOUR,
   },
 
   pages: {

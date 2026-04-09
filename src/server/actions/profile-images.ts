@@ -26,6 +26,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { validateMagicBytes } from "@/server/lib/fileValidation";
 import { logger } from "@/shared/logger";
+import { fireAndForget } from "@/lib/fire-and-forget";
 
 export type ProfileImageType = "avatar" | "cover";
 
@@ -197,11 +198,13 @@ export async function confirmProfileImageUpload(params: {
 
     // Delete old image from R2 (fire-and-forget, skip seed/external URLs)
     if (oldKey && oldKey.startsWith("profiles/")) {
-      import("@/infrastructure/storage/r2")
-        .then(({ r2, R2_BUCKET }) =>
+      fireAndForget(
+        import("@/infrastructure/storage/r2").then(({ r2, R2_BUCKET }) =>
           r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: oldKey })),
-        )
-        .catch(() => {});
+        ),
+        "profileImage.deleteOldKey",
+        { oldKey },
+      );
     }
 
     return { success: true, data: { newKey: params.r2Key } };

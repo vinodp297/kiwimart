@@ -12,6 +12,7 @@
 // All schema code is tree-shaken in production builds.
 
 import { z } from "zod";
+import { MS_PER_DAY } from "@/lib/time";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared field validators
@@ -415,7 +416,7 @@ export const markDispatchedSchema = z.object({
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const diffDays = Math.round(
-          (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+          (d.getTime() - today.getTime()) / MS_PER_DAY,
         );
         return diffDays >= 1 && diffDays <= 14;
       },

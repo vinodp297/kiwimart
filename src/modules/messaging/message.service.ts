@@ -7,6 +7,7 @@ import { moderateText } from "@/server/lib/moderation";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { sendNewMessageEmail } from "@/server/email";
 import type { SendMessageInput, SendMessageResult } from "./message.types";
 
@@ -92,23 +93,32 @@ export class MessageService {
 
     // Notify the recipient of new message (fire-and-forget, don't block send)
     const sender = await messageRepository.findUserDisplayName(userId);
-    createNotification({
-      userId: input.recipientId,
-      type: "MESSAGE_RECEIVED",
-      title: `New message from ${sender?.displayName ?? "Someone"}`,
-      body: input.body.length > 80 ? `${input.body.slice(0, 77)}…` : input.body,
-      listingId: input.listingId ?? undefined,
-      link: "/dashboard/buyer?tab=messages",
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: input.recipientId,
+        type: "MESSAGE_RECEIVED",
+        title: `New message from ${sender?.displayName ?? "Someone"}`,
+        body:
+          input.body.length > 80 ? `${input.body.slice(0, 77)}…` : input.body,
+        listingId: input.listingId ?? undefined,
+        link: "/dashboard/buyer?tab=messages",
+      }),
+      "message.notification",
+      { threadId: thread.id, recipientId: input.recipientId },
+    );
 
     // Send email notification to recipient (fire-and-forget)
     if (recipient.email) {
-      sendNewMessageEmail({
-        to: recipient.email,
-        recipientName: recipient.displayName ?? "there",
-        senderName: sender?.displayName ?? "Someone",
-        messagePreview: input.body,
-      }).catch(() => {});
+      fireAndForget(
+        sendNewMessageEmail({
+          to: recipient.email,
+          recipientName: recipient.displayName ?? "there",
+          senderName: sender?.displayName ?? "Someone",
+          messagePreview: input.body,
+        }),
+        "message.email",
+        { threadId: thread.id, recipientId: input.recipientId },
+      );
     }
 
     return { messageId: message.id, threadId: thread.id };

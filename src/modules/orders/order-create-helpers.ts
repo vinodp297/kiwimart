@@ -4,8 +4,11 @@
 // Not exported from the barrel — consumed only by order-create.service.ts.
 
 import { audit } from "@/server/lib/audit";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendOrderConfirmationEmail } from "@/server/email";
+import { fireAndForget } from "@/lib/fire-and-forget";
+import { MS_PER_HOUR } from "@/lib/time";
 import {
   orderEventService,
   ORDER_EVENT_TYPES,
@@ -42,7 +45,7 @@ export function handleCashOnPickup(
     type: ORDER_EVENT_TYPES.ORDER_CREATED,
     actorId: userId,
     actorRole: ACTOR_ROLES.BUYER,
-    summary: `Cash-on-pickup order placed for "${listing.title}" — $${(totalNzd / 100).toFixed(2)} NZD`,
+    summary: `Cash-on-pickup order placed for "${listing.title}" — ${formatCentsAsNzd(totalNzd)}`,
     metadata: {
       listingId: listing.id,
       totalNzd,
@@ -50,23 +53,31 @@ export function handleCashOnPickup(
     },
   });
 
-  createNotification({
-    userId,
-    type: "ORDER_PLACED",
-    title: "Order placed",
-    body: "Order placed. Now arrange a pickup time with the seller.",
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId,
+      type: "ORDER_PLACED",
+      title: "Order placed",
+      body: "Order placed. Now arrange a pickup time with the seller.",
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "order.notification.buyer.pickup_placed",
+    { orderId, userId },
+  );
 
-  createNotification({
-    userId: listing.sellerId,
-    type: "ORDER_PLACED",
-    title: "New pickup order received!",
-    body: `New cash-on-pickup order for "${listing.title}". Arrange a pickup time with the buyer.`,
-    orderId,
-    link: `/orders/${orderId}`,
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: listing.sellerId,
+      type: "ORDER_PLACED",
+      title: "New pickup order received!",
+      body: `New cash-on-pickup order for "${listing.title}". Arrange a pickup time with the buyer.`,
+      orderId,
+      link: `/orders/${orderId}`,
+    }),
+    "order.notification.seller.pickup_received",
+    { orderId, sellerId: listing.sellerId },
+  );
 
   schedulePickupDeadline(orderId);
 }
@@ -86,72 +97,94 @@ export function notifyOrderCreated(
   totalNzd: number,
   fulfillmentType: string,
 ) {
-  orderRepository
-    .findBuyerDisplayName(userId)
-    .then((buyerRecord) => {
+  fireAndForget(
+    orderRepository.findBuyerDisplayName(userId).then((buyerRecord) => {
       const buyerName =
         buyerRecord?.displayName ?? userEmail.split("@")[0] ?? "Buyer";
 
       if (fulfillmentType === "ONLINE_PAYMENT_PICKUP") {
-        createNotification({
-          userId,
-          type: "ORDER_PLACED",
-          title: "Order placed",
-          body: "Order placed. Now arrange a pickup time with the seller.",
-          orderId,
-          link: `/orders/${orderId}`,
-        }).catch(() => {});
-        createNotification({
-          userId: listing.sellerId,
-          type: "ORDER_PLACED",
-          title: "New pickup order received!",
-          body: `${buyerName} placed a pickup order for "${listing.title}". Agree a pickup time within 24 hours.`,
-          orderId,
-          link: `/orders/${orderId}`,
-        }).catch(() => {});
+        fireAndForget(
+          createNotification({
+            userId,
+            type: "ORDER_PLACED",
+            title: "Order placed",
+            body: "Order placed. Now arrange a pickup time with the seller.",
+            orderId,
+            link: `/orders/${orderId}`,
+          }),
+          "order.notification.buyer.pickup_placed",
+          { orderId, userId },
+        );
+        fireAndForget(
+          createNotification({
+            userId: listing.sellerId,
+            type: "ORDER_PLACED",
+            title: "New pickup order received!",
+            body: `${buyerName} placed a pickup order for "${listing.title}". Agree a pickup time within 24 hours.`,
+            orderId,
+            link: `/orders/${orderId}`,
+          }),
+          "order.notification.seller.pickup_received",
+          { orderId, sellerId: listing.sellerId },
+        );
       } else {
-        createNotification({
-          userId: listing.sellerId,
-          type: "ORDER_PLACED",
-          title: "New order received! 🎉",
-          body: `${buyerName} purchased "${listing.title}" for $${(totalNzd / 100).toFixed(2)} NZD`,
-          listingId: listing.id,
-          orderId,
-          link: "/dashboard/seller?tab=orders",
-        }).catch(() => {});
+        fireAndForget(
+          createNotification({
+            userId: listing.sellerId,
+            type: "ORDER_PLACED",
+            title: "New order received! 🎉",
+            body: `${buyerName} purchased "${listing.title}" for ${formatCentsAsNzd(totalNzd)}`,
+            listingId: listing.id,
+            orderId,
+            link: "/dashboard/seller?tab=orders",
+          }),
+          "order.notification.seller.order_received",
+          { orderId, sellerId: listing.sellerId },
+        );
       }
 
-      sendOrderConfirmationEmail({
-        to: userEmail,
-        buyerName,
-        sellerName: listing.seller.displayName ?? "the seller",
-        listingTitle: listing.title,
-        totalNzd,
-        orderId,
-        listingId: listing.id,
-      }).catch(() => {});
-    })
-    .catch(() => {});
+      fireAndForget(
+        sendOrderConfirmationEmail({
+          to: userEmail,
+          buyerName,
+          sellerName: listing.seller.displayName ?? "the seller",
+          listingTitle: listing.title,
+          totalNzd,
+          orderId,
+          listingId: listing.id,
+        }),
+        "order.confirmation_email.buyer",
+        { orderId, userId },
+      );
+    }),
+    "order.notify_created.lookup",
+    { orderId, userId },
+  );
 }
 
 // ── schedulePickupDeadline ────────────────────────────────────────────────────
 
 export function schedulePickupDeadline(orderId: string) {
   const deadlineJobId = `pickup-deadline-${orderId}`;
-  pickupQueue
-    .add(
-      "PICKUP_JOB",
-      {
-        type: "PICKUP_SCHEDULE_DEADLINE" as const,
-        orderId,
-        correlationId: getRequestContext()?.correlationId,
-      },
-      { delay: 48 * 60 * 60 * 1000, jobId: deadlineJobId },
-    )
-    .then(() => {
-      orderRepository
-        .updateScheduleDeadlineJobId(orderId, deadlineJobId)
-        .catch(() => {});
-    })
-    .catch(() => {});
+  fireAndForget(
+    pickupQueue
+      .add(
+        "PICKUP_JOB",
+        {
+          type: "PICKUP_SCHEDULE_DEADLINE" as const,
+          orderId,
+          correlationId: getRequestContext()?.correlationId,
+        },
+        { delay: 48 * MS_PER_HOUR, jobId: deadlineJobId },
+      )
+      .then(() => {
+        fireAndForget(
+          orderRepository.updateScheduleDeadlineJobId(orderId, deadlineJobId),
+          "order.pickup.update_deadline_job_id",
+          { orderId, deadlineJobId },
+        );
+      }),
+    "order.pickup.schedule_deadline",
+    { orderId },
+  );
 }

@@ -4,8 +4,10 @@
 // the same seller. Prices are snapshotted at add-time, re-validated at checkout.
 
 import { audit } from "@/server/lib/audit";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { logger } from "@/shared/logger";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { paymentService } from "@/modules/payments/payment.service";
 import { sendOrderConfirmationEmail } from "@/server/email";
 import { transitionOrder } from "@/modules/orders/order.transitions";
@@ -18,12 +20,13 @@ import {
 import { stripe } from "@/infrastructure/stripe/client";
 import { userRepository } from "@/modules/users/user.repository";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
+import { MS_PER_HOUR, SECONDS_PER_WEEK } from "@/lib/time";
 import { getImageUrl } from "@/lib/image";
 import { cartRepository } from "./cart.repository";
 import { getRedisClient } from "@/infrastructure/redis/client";
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const CART_REDIS_TTL = 60 * 60 * 24 * 7; // 7 days in seconds
+const CART_REDIS_TTL = SECONDS_PER_WEEK; // 7 days in seconds
 
 // Redis is a best-effort cache for the active-cart session pointer.
 // If Upstash is not configured or unreachable, cart operations must still
@@ -106,7 +109,7 @@ export class CartService {
     listingId: string,
   ): Promise<ServiceResult<{ cartItemCount: number }>> {
     const cartExpiryHours = await getConfigInt(CONFIG_KEYS.CART_EXPIRY_HOURS);
-    const CART_EXPIRY_MS = cartExpiryHours * 60 * 60 * 1000;
+    const CART_EXPIRY_MS = cartExpiryHours * MS_PER_HOUR;
 
     const listing = await cartRepository.findListingForCart(listingId);
     if (!listing) {
@@ -175,7 +178,7 @@ export class CartService {
     listingId: string,
   ): Promise<ServiceResult<{ cartItemCount: number }>> {
     const cartExpiryHours = await getConfigInt(CONFIG_KEYS.CART_EXPIRY_HOURS);
-    const CART_EXPIRY_MS = cartExpiryHours * 60 * 60 * 1000;
+    const CART_EXPIRY_MS = cartExpiryHours * MS_PER_HOUR;
 
     const cart = await cartRepository.findByUserWithItems(userId);
     if (!cart) {
@@ -526,34 +529,43 @@ export class CartService {
         type: ORDER_EVENT_TYPES.ORDER_CREATED,
         actorId: userId,
         actorRole: ACTOR_ROLES.BUYER,
-        summary: `Cart order placed — ${cart.items.length} item(s), $${(totalNzd / 100).toFixed(2)} NZD`,
+        summary: `Cart order placed — ${cart.items.length} item(s), ${formatCentsAsNzd(totalNzd)}`,
         metadata: { cartId: cart.id, itemCount: cart.items.length, totalNzd },
       });
 
       // Notify seller (fire-and-forget)
-      cartRepository
-        .findBuyerDisplayName(userId)
-        .then((buyer) => {
+      fireAndForget(
+        cartRepository.findBuyerDisplayName(userId).then((buyer) => {
           const buyerName = buyer?.displayName ?? "A buyer";
-          createNotification({
-            userId: cart.sellerId,
-            type: "ORDER_PLACED",
-            title: "New cart order received!",
-            body: `${buyerName} purchased ${cart.items.length} item(s) for $${(totalNzd / 100).toFixed(2)} NZD`,
-            orderId: order.id,
-            link: "/dashboard/seller?tab=orders",
-          }).catch(() => {});
-          sendOrderConfirmationEmail({
-            to: userEmail,
-            buyerName,
-            sellerName: seller.displayName ?? "the seller",
-            listingTitle: `${cart.items.length} items`,
-            totalNzd,
-            orderId: order.id,
-            listingId: cart.items[0]?.listingId ?? "",
-          }).catch(() => {});
-        })
-        .catch(() => {});
+          fireAndForget(
+            createNotification({
+              userId: cart.sellerId,
+              type: "ORDER_PLACED",
+              title: "New cart order received!",
+              body: `${buyerName} purchased ${cart.items.length} item(s) for ${formatCentsAsNzd(totalNzd)}`,
+              orderId: order.id,
+              link: "/dashboard/seller?tab=orders",
+            }),
+            "cart.checkout.notify.seller",
+            { orderId: order.id, sellerId: cart.sellerId },
+          );
+          fireAndForget(
+            sendOrderConfirmationEmail({
+              to: userEmail,
+              buyerName,
+              sellerName: seller.displayName ?? "the seller",
+              listingTitle: `${cart.items.length} items`,
+              totalNzd,
+              orderId: order.id,
+              listingId: cart.items[0]?.listingId ?? "",
+            }),
+            "cart.checkout.email.confirmation",
+            { orderId: order.id },
+          );
+        }),
+        "cart.checkout.buyerLookup",
+        { orderId: order.id, userId },
+      );
 
       await safeRedisDel(`cart:active:${userId}`);
 
@@ -597,7 +609,13 @@ export class CartService {
       );
 
       // Release reserved listings
-      await cartRepository.releaseListings(listingIds).catch(() => {});
+      await cartRepository.releaseListings(listingIds).catch((err: unknown) => {
+        logger.error("cart.checkout.releaseListings.failed", {
+          error: err instanceof Error ? err.message : String(err),
+          orderId: order.id,
+          listingIds,
+        });
+      });
 
       orderEventService.recordEvent({
         orderId: order.id,

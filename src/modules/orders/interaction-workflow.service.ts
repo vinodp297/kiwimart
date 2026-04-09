@@ -18,8 +18,11 @@ import {
 } from "./order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendReturnRequestEmail } from "@/server/email";
+import { fireAndForget } from "@/lib/fire-and-forget";
+import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { interactionRepository } from "./interaction.repository";
+import { toCents, formatCentsAsNzd } from "@/lib/currency";
 
 import type { ServiceResult } from "@/shared/types/service-result";
 
@@ -62,7 +65,7 @@ export class InteractionWorkflowService {
     const initiatorRole = isBuyer ? "BUYER" : "SELLER";
     const otherPartyId = isBuyer ? order.sellerId : order.buyerId;
     const hoursSinceCreation =
-      (Date.now() - new Date(order.createdAt).getTime()) / (1000 * 60 * 60);
+      (Date.now() - new Date(order.createdAt).getTime()) / MS_PER_HOUR;
     const isInFreeWindow =
       hoursSinceCreation * 60 < FREE_CANCEL_WINDOW_MINUTES &&
       order.status === "PAYMENT_HELD";
@@ -105,14 +108,18 @@ export class InteractionWorkflowService {
         summary: `Cancellation auto-approved (within ${FREE_CANCEL_WINDOW_MINUTES}-minute free cancellation window)`,
       });
 
-      createNotification({
-        userId: otherPartyId,
-        type: "SYSTEM",
-        title: "Order cancelled",
-        body: `${initiatorRole === "BUYER" ? "The buyer" : "The seller"} cancelled the order for "${order.listing.title}". A refund has been initiated.`,
-        orderId,
-        link: `/orders/${orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: otherPartyId,
+          type: "SYSTEM",
+          title: "Order cancelled",
+          body: `${initiatorRole === "BUYER" ? "The buyer" : "The seller"} cancelled the order for "${order.listing.title}". A refund has been initiated.`,
+          orderId,
+          link: `/orders/${orderId}`,
+        }),
+        "interaction.cancel.free_window.notification",
+        { orderId, userId: otherPartyId },
+      );
 
       return { ok: true, data: { autoApproved: true } };
     }
@@ -126,7 +133,7 @@ export class InteractionWorkflowService {
     }
 
     // Create interaction for seller to respond
-    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 48 * MS_PER_HOUR);
 
     const interaction = await orderInteractionService.createInteraction({
       orderId,
@@ -151,14 +158,18 @@ export class InteractionWorkflowService {
       },
     });
 
-    createNotification({
-      userId: otherPartyId,
-      type: "SYSTEM",
-      title: "Cancellation requested",
-      body: `${initiatorRole === "BUYER" ? "The buyer" : "The seller"} has requested to cancel the order for "${order.listing.title}". You have 48 hours to respond.`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: otherPartyId,
+        type: "SYSTEM",
+        title: "Cancellation requested",
+        body: `${initiatorRole === "BUYER" ? "The buyer" : "The seller"} has requested to cancel the order for "${order.listing.title}". You have 48 hours to respond.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "interaction.cancel.request.notification",
+      { orderId, userId: otherPartyId },
+    );
 
     return {
       ok: true,
@@ -231,14 +242,18 @@ export class InteractionWorkflowService {
         metadata: { interactionId },
       });
 
-      createNotification({
-        userId: interaction.initiatedById,
-        type: "SYSTEM",
-        title: "Cancellation approved",
-        body: `Your cancellation request for "${order.listing.title}" has been approved. A refund has been initiated.`,
-        orderId: order.id,
-        link: `/orders/${order.id}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: interaction.initiatedById,
+          type: "SYSTEM",
+          title: "Cancellation approved",
+          body: `Your cancellation request for "${order.listing.title}" has been approved. A refund has been initiated.`,
+          orderId: order.id,
+          link: `/orders/${order.id}`,
+        }),
+        "interaction.cancel.approved.notification",
+        { orderId: order.id, userId: interaction.initiatedById },
+      );
     } else {
       orderEventService.recordEvent({
         orderId: interaction.orderId,
@@ -249,14 +264,18 @@ export class InteractionWorkflowService {
         metadata: { interactionId, responseNote },
       });
 
-      createNotification({
-        userId: interaction.initiatedById,
-        type: "SYSTEM",
-        title: "Cancellation rejected",
-        body: `Your cancellation request for "${order.listing.title}" was declined. You can open a dispute if you believe this is unfair.`,
-        orderId: order.id,
-        link: `/orders/${order.id}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: interaction.initiatedById,
+          type: "SYSTEM",
+          title: "Cancellation rejected",
+          body: `Your cancellation request for "${order.listing.title}" was declined. You can open a dispute if you believe this is unfair.`,
+          orderId: order.id,
+          link: `/orders/${order.id}`,
+        }),
+        "interaction.cancel.rejected.notification",
+        { orderId: order.id, userId: interaction.initiatedById },
+      );
     }
 
     return { ok: true, data: undefined };
@@ -286,9 +305,7 @@ export class InteractionWorkflowService {
     const returnResponseHours = await getConfigInt(
       CONFIG_KEYS.RETURN_RESPONSE_WINDOW_HOURS,
     );
-    const expiresAt = new Date(
-      Date.now() + returnResponseHours * 60 * 60 * 1000,
-    );
+    const expiresAt = new Date(Date.now() + returnResponseHours * MS_PER_HOUR);
 
     const interaction = await orderInteractionService.createInteraction({
       orderId,
@@ -310,32 +327,41 @@ export class InteractionWorkflowService {
       metadata: { interactionId: interaction.id, ...details },
     });
 
-    createNotification({
-      userId: order.sellerId,
-      type: "SYSTEM",
-      title: "Return requested",
-      body: `The buyer has requested a return for "${order.listing.title}". You have 72 hours to respond.`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.sellerId,
+        type: "SYSTEM",
+        title: "Return requested",
+        body: `The buyer has requested a return for "${order.listing.title}". You have 72 hours to respond.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "interaction.return.request.notification",
+      { orderId, sellerId: order.sellerId },
+    );
 
     // Fire-and-forget return request email to seller
-    interactionRepository
-      .findUserEmailInfo(order.sellerId)
-      .then((seller) => {
+    fireAndForget(
+      interactionRepository.findUserEmailInfo(order.sellerId).then((seller) => {
         if (!seller) return;
-        sendReturnRequestEmail({
-          to: seller.email,
-          recipientName: seller.displayName ?? "there",
-          recipientRole: "seller",
-          orderId,
-          listingTitle: order.listing.title,
-          action: "REQUESTED",
-          reason: reason ?? null,
-          sellerNote: null,
-        }).catch(() => {});
-      })
-      .catch(() => {});
+        fireAndForget(
+          sendReturnRequestEmail({
+            to: seller.email,
+            recipientName: seller.displayName ?? "there",
+            recipientRole: "seller",
+            orderId,
+            listingTitle: order.listing.title,
+            action: "REQUESTED",
+            reason: reason ?? null,
+            sellerNote: null,
+          }),
+          "interaction.return.request_email.seller",
+          { orderId, sellerId: order.sellerId },
+        );
+      }),
+      "interaction.return.request_email.lookup",
+      { orderId },
+    );
 
     return { ok: true, data: { interactionId: interaction.id } };
   }
@@ -382,32 +408,43 @@ export class InteractionWorkflowService {
         metadata: { interactionId },
       });
 
-      createNotification({
-        userId: interaction.initiatedById,
-        type: "SYSTEM",
-        title: "Return approved",
-        body: `Your return request for "${order?.listing.title}" has been approved. Check the order for return instructions.`,
-        orderId: interaction.orderId,
-        link: `/orders/${interaction.orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: interaction.initiatedById,
+          type: "SYSTEM",
+          title: "Return approved",
+          body: `Your return request for "${order?.listing.title}" has been approved. Check the order for return instructions.`,
+          orderId: interaction.orderId,
+          link: `/orders/${interaction.orderId}`,
+        }),
+        "interaction.return.approved.notification",
+        { orderId: interaction.orderId, userId: interaction.initiatedById },
+      );
 
       // Fire-and-forget return approved email to buyer
-      interactionRepository
-        .findUserEmailInfo(interaction.initiatedById)
-        .then((buyer) => {
-          if (!buyer) return;
-          sendReturnRequestEmail({
-            to: buyer.email,
-            recipientName: buyer.displayName ?? "there",
-            recipientRole: "buyer",
-            orderId: interaction.orderId,
-            listingTitle: order?.listing.title ?? "your item",
-            action: "APPROVED",
-            reason: null,
-            sellerNote: responseNote ?? null,
-          }).catch(() => {});
-        })
-        .catch(() => {});
+      fireAndForget(
+        interactionRepository
+          .findUserEmailInfo(interaction.initiatedById)
+          .then((buyer) => {
+            if (!buyer) return;
+            fireAndForget(
+              sendReturnRequestEmail({
+                to: buyer.email,
+                recipientName: buyer.displayName ?? "there",
+                recipientRole: "buyer",
+                orderId: interaction.orderId,
+                listingTitle: order?.listing.title ?? "your item",
+                action: "APPROVED",
+                reason: null,
+                sellerNote: responseNote ?? null,
+              }),
+              "interaction.return.approved_email.buyer",
+              { orderId: interaction.orderId },
+            );
+          }),
+        "interaction.return.approved_email.lookup",
+        { orderId: interaction.orderId },
+      );
     } else {
       orderEventService.recordEvent({
         orderId: interaction.orderId,
@@ -418,32 +455,43 @@ export class InteractionWorkflowService {
         metadata: { interactionId, responseNote },
       });
 
-      createNotification({
-        userId: interaction.initiatedById,
-        type: "SYSTEM",
-        title: "Return rejected",
-        body: `Your return request for "${order?.listing.title}" was declined. You can open a dispute if you believe this is unfair.`,
-        orderId: interaction.orderId,
-        link: `/orders/${interaction.orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: interaction.initiatedById,
+          type: "SYSTEM",
+          title: "Return rejected",
+          body: `Your return request for "${order?.listing.title}" was declined. You can open a dispute if you believe this is unfair.`,
+          orderId: interaction.orderId,
+          link: `/orders/${interaction.orderId}`,
+        }),
+        "interaction.return.rejected.notification",
+        { orderId: interaction.orderId, userId: interaction.initiatedById },
+      );
 
       // Fire-and-forget return rejected email to buyer
-      interactionRepository
-        .findUserEmailInfo(interaction.initiatedById)
-        .then((buyer) => {
-          if (!buyer) return;
-          sendReturnRequestEmail({
-            to: buyer.email,
-            recipientName: buyer.displayName ?? "there",
-            recipientRole: "buyer",
-            orderId: interaction.orderId,
-            listingTitle: order?.listing.title ?? "your item",
-            action: "REJECTED",
-            reason: null,
-            sellerNote: responseNote ?? null,
-          }).catch(() => {});
-        })
-        .catch(() => {});
+      fireAndForget(
+        interactionRepository
+          .findUserEmailInfo(interaction.initiatedById)
+          .then((buyer) => {
+            if (!buyer) return;
+            fireAndForget(
+              sendReturnRequestEmail({
+                to: buyer.email,
+                recipientName: buyer.displayName ?? "there",
+                recipientRole: "buyer",
+                orderId: interaction.orderId,
+                listingTitle: order?.listing.title ?? "your item",
+                action: "REJECTED",
+                reason: null,
+                sellerNote: responseNote ?? null,
+              }),
+              "interaction.return.rejected_email.buyer",
+              { orderId: interaction.orderId },
+            );
+          }),
+        "interaction.return.rejected_email.lookup",
+        { orderId: interaction.orderId },
+      );
     }
 
     return { ok: true, data: undefined };
@@ -474,11 +522,11 @@ export class InteractionWorkflowService {
       };
     }
 
-    const amountCents = Math.round(amount * 100);
+    const amountCents = toCents(amount);
     if (amountCents > order.totalNzd) {
       return {
         ok: false,
-        error: `Amount cannot exceed the order total of $${(order.totalNzd / 100).toFixed(2)}.`,
+        error: `Amount cannot exceed the order total of ${formatCentsAsNzd(order.totalNzd)}.`,
       };
     }
 
@@ -488,7 +536,7 @@ export class InteractionWorkflowService {
       CONFIG_KEYS.PARTIAL_REFUND_RESPONSE_HOURS,
     );
     const expiresAt = new Date(
-      Date.now() + partialRefundResponseHours * 60 * 60 * 1000,
+      Date.now() + partialRefundResponseHours * MS_PER_HOUR,
     );
 
     const interaction = await orderInteractionService.createInteraction({
@@ -515,14 +563,18 @@ export class InteractionWorkflowService {
       },
     });
 
-    createNotification({
-      userId: otherPartyId,
-      type: "SYSTEM",
-      title: "Partial refund requested",
-      body: `${label} has requested a partial refund of $${amount.toFixed(2)} for "${order.listing.title}". You have 48 hours to respond.`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: otherPartyId,
+        type: "SYSTEM",
+        title: "Partial refund requested",
+        body: `${label} has requested a partial refund of $${amount.toFixed(2)} for "${order.listing.title}". You have 48 hours to respond.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "interaction.partial_refund.request.notification",
+      { orderId, userId: otherPartyId },
+    );
 
     return { ok: true, data: { interactionId: interaction.id } };
   }
@@ -556,7 +608,7 @@ export class InteractionWorkflowService {
     );
 
     if (action === "COUNTER") {
-      const counterCents = Math.round(counterAmount! * 100);
+      const counterCents = toCents(counterAmount!);
       await interactionRepository.updateInteractionCounter(interactionId, {
         ...(interaction.details as Record<string, unknown> | null),
         counterAmount: counterCents,
@@ -586,14 +638,18 @@ export class InteractionWorkflowService {
         metadata: { interactionId },
       });
 
-      createNotification({
-        userId: interaction.initiatedById,
-        type: "SYSTEM",
-        title: "Partial refund approved",
-        body: `Your partial refund request for "${order?.listing.title}" has been approved.`,
-        orderId: interaction.orderId,
-        link: `/orders/${interaction.orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: interaction.initiatedById,
+          type: "SYSTEM",
+          title: "Partial refund approved",
+          body: `Your partial refund request for "${order?.listing.title}" has been approved.`,
+          orderId: interaction.orderId,
+          link: `/orders/${interaction.orderId}`,
+        }),
+        "interaction.partial_refund.approved.notification",
+        { orderId: interaction.orderId, userId: interaction.initiatedById },
+      );
     } else if (action === "COUNTER") {
       orderEventService.recordEvent({
         orderId: interaction.orderId,
@@ -603,18 +659,22 @@ export class InteractionWorkflowService {
         summary: `${responderRole} counter-offered $${counterAmount!.toFixed(2)} for the partial refund`,
         metadata: {
           interactionId,
-          counterAmount: Math.round(counterAmount! * 100),
+          counterAmount: toCents(counterAmount!),
         },
       });
 
-      createNotification({
-        userId: interaction.initiatedById,
-        type: "SYSTEM",
-        title: "Counter-offer received",
-        body: `${responderRole} counter-offered $${counterAmount!.toFixed(2)} on your partial refund request for "${order?.listing.title}".`,
-        orderId: interaction.orderId,
-        link: `/orders/${interaction.orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: interaction.initiatedById,
+          type: "SYSTEM",
+          title: "Counter-offer received",
+          body: `${responderRole} counter-offered $${counterAmount!.toFixed(2)} on your partial refund request for "${order?.listing.title}".`,
+          orderId: interaction.orderId,
+          link: `/orders/${interaction.orderId}`,
+        }),
+        "interaction.partial_refund.counter.notification",
+        { orderId: interaction.orderId, userId: interaction.initiatedById },
+      );
     } else {
       orderEventService.recordEvent({
         orderId: interaction.orderId,
@@ -625,14 +685,18 @@ export class InteractionWorkflowService {
         metadata: { interactionId, responseNote },
       });
 
-      createNotification({
-        userId: interaction.initiatedById,
-        type: "SYSTEM",
-        title: "Partial refund rejected",
-        body: `Your partial refund request for "${order?.listing.title}" was declined.`,
-        orderId: interaction.orderId,
-        link: `/orders/${interaction.orderId}`,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId: interaction.initiatedById,
+          type: "SYSTEM",
+          title: "Partial refund rejected",
+          body: `Your partial refund request for "${order?.listing.title}" was declined.`,
+          orderId: interaction.orderId,
+          link: `/orders/${interaction.orderId}`,
+        }),
+        "interaction.partial_refund.rejected.notification",
+        { orderId: interaction.orderId, userId: interaction.initiatedById },
+      );
     }
 
     return { ok: true, data: undefined };
@@ -668,9 +732,7 @@ export class InteractionWorkflowService {
     const shippingDelayDays = await getConfigInt(
       CONFIG_KEYS.SHIPPING_DELAY_NOTIFICATION_DAYS,
     );
-    const expiresAt = new Date(
-      Date.now() + shippingDelayDays * 24 * 60 * 60 * 1000,
-    );
+    const expiresAt = new Date(Date.now() + shippingDelayDays * MS_PER_DAY);
 
     const interaction = await orderInteractionService.createInteraction({
       orderId,
@@ -698,14 +760,18 @@ export class InteractionWorkflowService {
       },
     });
 
-    createNotification({
-      userId: order.buyerId,
-      type: "SYSTEM",
-      title: "Shipping delay",
-      body: `The seller has notified a shipping delay for "${order.listing.title}": ${reason}`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.buyerId,
+        type: "SYSTEM",
+        title: "Shipping delay",
+        body: `The seller has notified a shipping delay for "${order.listing.title}": ${reason}`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "interaction.shipping_delay.notification",
+      { orderId, buyerId: order.buyerId },
+    );
 
     return { ok: true, data: { interactionId: interaction.id } };
   }
@@ -748,20 +814,24 @@ export class InteractionWorkflowService {
       metadata: { interactionId, action },
     });
 
-    createNotification({
-      userId: interaction.initiatedById,
-      type: "SYSTEM",
-      title:
-        action === "ACCEPT"
-          ? "Delay acknowledged"
-          : "Buyer did not accept delay",
-      body:
-        action === "ACCEPT"
-          ? `The buyer acknowledged the shipping delay for "${order?.listing.title}".`
-          : `The buyer did not accept the shipping delay for "${order?.listing.title}". They may request a cancellation.`,
-      orderId: interaction.orderId,
-      link: `/orders/${interaction.orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: interaction.initiatedById,
+        type: "SYSTEM",
+        title:
+          action === "ACCEPT"
+            ? "Delay acknowledged"
+            : "Buyer did not accept delay",
+        body:
+          action === "ACCEPT"
+            ? `The buyer acknowledged the shipping delay for "${order?.listing.title}".`
+            : `The buyer did not accept the shipping delay for "${order?.listing.title}". They may request a cancellation.`,
+        orderId: interaction.orderId,
+        link: `/orders/${interaction.orderId}`,
+      }),
+      "interaction.shipping_delay.response.notification",
+      { orderId: interaction.orderId, userId: interaction.initiatedById },
+    );
 
     return { ok: true, data: undefined };
   }

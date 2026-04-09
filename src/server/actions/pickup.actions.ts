@@ -4,6 +4,7 @@
 // OTP initiation (seller), OTP confirmation (buyer), item rejection (buyer).
 
 import { safeActionError } from "@/shared/errors";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { getRequestContext } from "@/lib/request-context";
 import { requireUser } from "@/server/lib/requireUser";
 import { orderRepository } from "@/modules/orders/order.repository";
@@ -27,6 +28,7 @@ import { createDispute } from "@/server/services/dispute/dispute.service";
 import { sendPayoutInitiatedEmail } from "@/server/email";
 import { pickupQueue } from "@/lib/queue";
 import { getConfigInt, CONFIG_KEYS } from "@/lib/platform-config";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import type { DisputeReason } from "@prisma/client";
 
@@ -155,17 +157,28 @@ export async function initiatePickupOTP(
       });
 
     // Store job ID
-    await orderRepository.updateOtpJobId(orderId, otpJobId).catch(() => {});
+    await orderRepository
+      .updateOtpJobId(orderId, otpJobId)
+      .catch((err: unknown) => {
+        logger.error("pickup.otp.storeJobId.failed", {
+          orderId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
 
     // Notify buyer
-    createNotification({
-      userId: order.buyerId,
-      type: "SYSTEM",
-      title: "Pickup confirmation started",
-      body: "The seller has initiated pickup confirmation. Check your SMS for your 6-digit code.",
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.buyerId,
+        type: "SYSTEM",
+        title: "Pickup confirmation started",
+        body: "The seller has initiated pickup confirmation. Check your SMS for your 6-digit code.",
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "pickup.initiateOTP.notification",
+      { orderId },
+    );
 
     return { success: true, data: undefined };
   } catch (err) {
@@ -262,15 +275,29 @@ export async function confirmPickupOTP(
           where: { id: order.listingId },
           data: { status: "SOLD", soldAt: new Date() },
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          logger.error("pickup.confirmOTP.markListingSold.failed", {
+            orderId,
+            listingId: order.listingId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
     });
 
     // Cancel BullMQ jobs
     if (order.otpJobId) {
-      pickupQueue.remove(order.otpJobId).catch(() => {});
+      fireAndForget(
+        pickupQueue.remove(order.otpJobId),
+        "pickup.confirmOTP.removeOtpJob",
+        { orderId },
+      );
     }
     if (order.pickupWindowJobId) {
-      pickupQueue.remove(order.pickupWindowJobId).catch(() => {});
+      fireAndForget(
+        pickupQueue.remove(order.pickupWindowJobId),
+        "pickup.confirmOTP.removeWindowJob",
+        { orderId },
+      );
     }
 
     // Record event
@@ -296,41 +323,50 @@ export async function confirmPickupOTP(
     });
 
     // Notify both parties
-    const amount = `$${(order.totalNzd / 100).toFixed(2)} NZD`;
+    const amount = formatCentsAsNzd(order.totalNzd);
 
-    createNotification({
-      userId: order.buyerId,
-      type: "ORDER_COMPLETED",
-      title: "Pickup complete!",
-      body: `Your order for "${order.listing.title}" is now marked as collected.`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.buyerId,
+        type: "ORDER_COMPLETED",
+        title: "Pickup complete!",
+        body: `Your order for "${order.listing.title}" is now marked as collected.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "pickup.confirmOTP.buyerNotification",
+      { orderId },
+    );
 
-    createNotification({
-      userId: order.sellerId,
-      type: "ORDER_COMPLETED",
-      title: "Pickup confirmed! 💰",
-      body: `Pickup confirmed! Your payment of ${amount} is being processed.`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.sellerId,
+        type: "ORDER_COMPLETED",
+        title: "Pickup confirmed! 💰",
+        body: `Pickup confirmed! Your payment of ${amount} is being processed.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "pickup.confirmOTP.sellerNotification",
+      { orderId },
+    );
 
     // Send payout email to seller (fire-and-forget)
-    userRepository
-      .findEmailInfo(order.sellerId)
-      .then((seller) => {
+    fireAndForget(
+      userRepository.findEmailInfo(order.sellerId).then((seller) => {
         if (!seller) return;
-        sendPayoutInitiatedEmail({
+        return sendPayoutInitiatedEmail({
           to: seller.email,
           sellerName: seller.displayName ?? "there",
           amountNzd: order.totalNzd,
           listingTitle: order.listing.title,
           orderId,
           estimatedArrival: "2–3 business days",
-        }).catch(() => {});
-      })
-      .catch(() => {});
+        });
+      }),
+      "pickup.confirmOTP.payoutEmail",
+      { orderId, sellerId: order.sellerId },
+    );
 
     return { success: true, data: undefined };
   } catch (err) {
@@ -475,7 +511,11 @@ export async function rejectItemAtPickup(
 
     // Cancel OTP expiry job
     if (order.otpJobId) {
-      pickupQueue.remove(order.otpJobId).catch(() => {});
+      fireAndForget(
+        pickupQueue.remove(order.otpJobId),
+        "pickup.rejectItem.removeOtpJob",
+        { orderId },
+      );
     }
 
     // Run auto-resolution engine

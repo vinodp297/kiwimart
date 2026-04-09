@@ -3,6 +3,7 @@
 // Exports: createOrder
 
 import { audit } from "@/server/lib/audit";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { paymentService } from "@/modules/payments/payment.service";
 import { stripe } from "@/infrastructure/stripe/client";
 import { transitionOrder } from "./order.transitions";
@@ -184,7 +185,12 @@ export async function createOrder(
       return created;
     });
   } catch (txErr) {
-    await orderRepository.releaseListing(listingId).catch(() => {});
+    await orderRepository.releaseListing(listingId).catch((err: unknown) => {
+      logger.error("order.listing.release_after_tx_failure.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        listingId,
+      });
+    });
     logger.error("order.create.transaction-failed", {
       listingId: listing.id,
       userId,
@@ -281,7 +287,7 @@ export async function createOrder(
       type: ORDER_EVENT_TYPES.ORDER_CREATED,
       actorId: userId,
       actorRole: ACTOR_ROLES.BUYER,
-      summary: `Order placed for "${listing.title}" — $${(totalNzd / 100).toFixed(2)} NZD`,
+      summary: `Order placed for "${listing.title}" — ${formatCentsAsNzd(totalNzd)}`,
       metadata: { listingId: listing.id, totalNzd },
     });
 
@@ -332,7 +338,13 @@ export async function createOrder(
       {},
       { fromStatus: "AWAITING_PAYMENT" },
     );
-    await orderRepository.releaseListing(listingId).catch(() => {});
+    await orderRepository.releaseListing(listingId).catch((err: unknown) => {
+      logger.error("order.listing.release_after_stripe_failure.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        listingId,
+        orderId: order.id,
+      });
+    });
 
     audit({
       userId,

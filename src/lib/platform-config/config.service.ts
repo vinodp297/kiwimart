@@ -9,10 +9,11 @@ import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 import type { ConfigKey } from "./config-keys";
 import { CONFIG_DEFAULTS } from "./config-defaults";
+import { MS_PER_MINUTE } from "@/lib/time";
 
 // ── Cache ────────────────────────────────────────────────────────────────────
 
-export const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const CACHE_TTL_MS = 5 * MS_PER_MINUTE;
 
 const cache = new Map<string, { value: string; expiresAt: number }>();
 const warnedMissing = new Set<string>();

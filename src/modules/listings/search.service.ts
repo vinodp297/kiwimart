@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getThumbUrl } from "@/lib/image";
 import { haversineKm } from "@/lib/geocoding";
+import { toCents } from "@/lib/currency";
 import { listingRepository } from "./listing.repository";
 import { reviewRepository } from "@/modules/reviews/review.repository";
 import type { ListingCard } from "@/types";
@@ -99,8 +100,8 @@ export class SearchService {
       ...(priceMin != null || priceMax != null
         ? {
             priceNzd: {
-              ...(priceMin != null ? { gte: Math.round(priceMin * 100) } : {}),
-              ...(priceMax != null ? { lte: Math.round(priceMax * 100) } : {}),
+              ...(priceMin != null ? { gte: toCents(priceMin) } : {}),
+              ...(priceMax != null ? { lte: toCents(priceMax) } : {}),
             },
           }
         : {}),

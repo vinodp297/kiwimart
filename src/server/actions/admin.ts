@@ -10,6 +10,7 @@ import { adminService } from "@/modules/admin/admin.service";
 import { userRepository } from "@/modules/users/user.repository";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import {
   banUserSchema as BanUserSchema,
@@ -333,13 +334,17 @@ export async function setSellerTierOverride(params: {
         metadata: { previousOverride, removedBy: admin.id },
       });
 
-      createNotification({
-        userId,
-        type: "SYSTEM",
-        title: "Your seller tier has been restored",
-        body: "Your seller tier has been restored. Contact support with any questions.",
-        link: "/dashboard/seller",
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId,
+          type: "SYSTEM",
+          title: "Your seller tier has been restored",
+          body: "Your seller tier has been restored. Contact support with any questions.",
+          link: "/dashboard/seller",
+        }),
+        "admin.sellerTierOverride.removedNotification",
+        { userId },
+      );
     } else {
       await userRepository.update(userId, {
         sellerTierOverride: tier,
@@ -360,13 +365,17 @@ export async function setSellerTierOverride(params: {
         },
       });
 
-      createNotification({
-        userId,
-        type: "SYSTEM",
-        title: "Your seller tier has been adjusted",
-        body: `Your seller tier has been adjusted by our team. Reason: ${reason.trim()}`,
-        link: "/dashboard/seller",
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId,
+          type: "SYSTEM",
+          title: "Your seller tier has been adjusted",
+          body: `Your seller tier has been adjusted by our team. Reason: ${reason.trim()}`,
+          link: "/dashboard/seller",
+        }),
+        "admin.sellerTierOverride.setNotification",
+        { userId },
+      );
     }
 
     return { success: true, data: undefined };

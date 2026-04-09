@@ -9,6 +9,7 @@ import { requireUser } from "@/server/lib/requireUser";
 import { messageService } from "@/modules/messaging/message.service";
 import { sendMessageSchema } from "@/server/validators";
 import { updateSellerResponseMetrics } from "@/modules/sellers/response-metrics.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 
 export async function sendMessage(
@@ -44,7 +45,11 @@ export async function sendMessage(
     );
 
     // Update seller response metrics (fire-and-forget)
-    updateSellerResponseMetrics(user.id).catch(() => {});
+    fireAndForget(
+      updateSellerResponseMetrics(user.id),
+      "messages.sendMessage.updateSellerMetrics",
+      { userId: user.id },
+    );
 
     return { success: true, data: result };
   } catch (err) {

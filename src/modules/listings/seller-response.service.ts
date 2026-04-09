@@ -5,6 +5,7 @@
 
 import { unstable_cache } from "next/cache";
 import { sellerRepository } from "@/modules/sellers/seller.repository";
+import { MS_PER_HOUR } from "@/lib/time";
 
 const LABELS: [number, string][] = [
   [1, "Usually replies within 1 hour"],
@@ -51,7 +52,7 @@ export const getSellerResponseTime = unstable_cache(
     // Compute median
     replyMs.sort((a, b) => a - b);
     const medianMs = replyMs[Math.floor(replyMs.length / 2)] ?? 0;
-    const medianHours = medianMs / (1000 * 60 * 60);
+    const medianHours = medianMs / MS_PER_HOUR;
 
     for (const [hours, label] of LABELS) {
       if (medianHours <= hours) return label;

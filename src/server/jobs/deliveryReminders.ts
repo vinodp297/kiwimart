@@ -17,6 +17,7 @@ import { runWithRequestContext } from "@/lib/request-context";
 import { paymentService } from "@/modules/payments/payment.service";
 import { transitionOrder } from "@/modules/orders/order.transitions";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { notifyBuyerDeliveryOverdue } from "@/lib/smartNotifications";
 import {
   orderEventService,
@@ -220,23 +221,31 @@ export async function processDeliveryReminders(): Promise<{
               },
             });
 
-            createNotification({
-              userId: order.buyerId,
-              type: "ORDER_COMPLETED",
-              title: "Order auto-completed",
-              body: `Your order "${order.listing.title}" has been auto-completed. Payment has been released to the seller.`,
-              orderId: order.id,
-              link: `/orders/${order.id}`,
-            }).catch(() => {});
+            fireAndForget(
+              createNotification({
+                userId: order.buyerId,
+                type: "ORDER_COMPLETED",
+                title: "Order auto-completed",
+                body: `Your order "${order.listing.title}" has been auto-completed. Payment has been released to the seller.`,
+                orderId: order.id,
+                link: `/orders/${order.id}`,
+              }),
+              "delivery.notification.auto_complete.buyer",
+              { orderId: order.id },
+            );
 
-            createNotification({
-              userId: order.sellerId,
-              type: "ORDER_COMPLETED",
-              title: "Payment released",
-              body: `Order for "${order.listing.title}" auto-completed after delivery reminder period. Payment is being processed.`,
-              orderId: order.id,
-              link: `/orders/${order.id}`,
-            }).catch(() => {});
+            fireAndForget(
+              createNotification({
+                userId: order.sellerId,
+                type: "ORDER_COMPLETED",
+                title: "Payment released",
+                body: `Order for "${order.listing.title}" auto-completed after delivery reminder period. Payment is being processed.`,
+                orderId: order.id,
+                link: `/orders/${order.id}`,
+              }),
+              "delivery.notification.auto_complete.seller",
+              { orderId: order.id },
+            );
 
             audit({
               userId: null,

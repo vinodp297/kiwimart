@@ -3,11 +3,14 @@
 // Listing CRUD and watchlist operations. Framework-free.
 
 import { audit } from "@/server/lib/audit";
+import { formatCentsAsNzd } from "@/lib/currency";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { userRepository } from "@/modules/users/user.repository";
+import { MS_PER_DAY } from "@/lib/time";
 import {
   sendPriceDropEmail,
   sendListingApprovedEmail,
@@ -21,6 +24,7 @@ import {
 import { getKeywordLists } from "@/lib/dynamic-lists";
 import type { Prisma } from "@prisma/client";
 import { listingRepository } from "./listing.repository";
+import { toCents } from "@/lib/currency";
 
 // ── Types for service inputs ────────────────────────────────────────────────
 
@@ -256,7 +260,7 @@ export class ListingService {
     }
 
     // 4. Create listing in a transaction
-    const priceNzd = Math.round(data.price * 100);
+    const priceNzd = toCents(data.price);
     const listing = await listingRepository.$transaction(async (tx) => {
       const created = await listingRepository.create(
         {
@@ -273,9 +277,7 @@ export class ListingService {
           suburb: data.suburb,
           shippingOption: data.shippingOption,
           shippingNzd:
-            data.shippingPrice != null
-              ? Math.round(data.shippingPrice * 100)
-              : null,
+            data.shippingPrice != null ? toCents(data.shippingPrice) : null,
           pickupAddress: data.pickupAddress ?? null,
           isOffersEnabled: data.isOffersEnabled,
           isUrgent: data.isUrgent,
@@ -361,7 +363,7 @@ export class ListingService {
     const buildDraftFields = () => ({
       ...(data.title != null ? { title: data.title } : {}),
       ...(data.description != null ? { description: data.description } : {}),
-      ...(data.price != null ? { priceNzd: Math.round(data.price * 100) } : {}),
+      ...(data.price != null ? { priceNzd: toCents(data.price) } : {}),
       ...(data.isGstIncluded != null
         ? { isGstIncluded: data.isGstIncluded }
         : {}),
@@ -376,7 +378,7 @@ export class ListingService {
         ? { shippingOption: data.shippingOption }
         : {}),
       ...(data.shippingPrice != null
-        ? { shippingNzd: Math.round(data.shippingPrice * 100) }
+        ? { shippingNzd: toCents(data.shippingPrice) }
         : {}),
       ...(data.pickupAddress !== undefined
         ? { pickupAddress: data.pickupAddress ?? null }
@@ -429,7 +431,7 @@ export class ListingService {
       sellerId: userId,
       title: data.title || "Untitled Draft",
       description: data.description || "",
-      priceNzd: data.price != null ? Math.round(data.price * 100) : 0,
+      priceNzd: data.price != null ? toCents(data.price) : 0,
       isGstIncluded: data.isGstIncluded ?? false,
       condition: data.condition ?? "GOOD",
       status: "DRAFT",
@@ -439,9 +441,7 @@ export class ListingService {
       suburb: data.suburb ?? "",
       shippingOption: data.shippingOption ?? "PICKUP",
       shippingNzd:
-        data.shippingPrice != null
-          ? Math.round(data.shippingPrice * 100)
-          : null,
+        data.shippingPrice != null ? toCents(data.shippingPrice) : null,
       pickupAddress: data.pickupAddress ?? null,
       isOffersEnabled: data.isOffersEnabled ?? true,
       isUrgent: data.isUrgent ?? false,
@@ -487,8 +487,7 @@ export class ListingService {
       return { ok: false, error: "Not authorised." };
     }
 
-    const newPriceNzd =
-      data.price != null ? Math.round(data.price * 100) : undefined;
+    const newPriceNzd = data.price != null ? toCents(data.price) : undefined;
     const priceDropData =
       newPriceNzd != null && newPriceNzd < existing.priceNzd
         ? {
@@ -521,7 +520,7 @@ export class ListingService {
           ? { shippingOption: data.shippingOption }
           : {}),
         ...(data.shippingPrice != null
-          ? { shippingNzd: Math.round(data.shippingPrice * 100) }
+          ? { shippingNzd: toCents(data.shippingPrice) }
           : {}),
         ...(data.pickupAddress !== undefined
           ? { pickupAddress: data.pickupAddress ?? null }
@@ -590,8 +589,8 @@ export class ListingService {
           const sellerName =
             (await userRepository.findDisplayName(userId)) ?? email;
           const listingTitle = data.title ?? existing.title;
-          notificationRepository
-            .notifyAdmins(
+          fireAndForget(
+            notificationRepository.notifyAdmins(
               {
                 type: "SYSTEM",
                 title: "Listing resubmitted for review",
@@ -599,8 +598,10 @@ export class ListingService {
                 link: "/admin/listings",
               },
               ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"],
-            )
-            .catch(() => {});
+            ),
+            "listing.resubmit.notifyAdmins",
+            { listingId },
+          );
         }
 
         if (autoReviewResult && !autoReviewResult.ok) {
@@ -634,8 +635,8 @@ export class ListingService {
             (await userRepository.findDisplayName(userId)) ?? email;
           const listingTitleForAdmin = data.title ?? existing.title;
 
-          notificationRepository
-            .notifyAdmins(
+          fireAndForget(
+            notificationRepository.notifyAdmins(
               {
                 type: "SYSTEM",
                 title: "Listing updated while under review",
@@ -643,8 +644,10 @@ export class ListingService {
                 link: "/admin/listings",
               },
               ["SUPER_ADMIN", "TRUST_SAFETY_ADMIN"],
-            )
-            .catch(() => {});
+            ),
+            "listing.editWhilePending.notifyAdmins",
+            { listingId },
+          );
 
           audit({
             userId,
@@ -669,21 +672,25 @@ export class ListingService {
 
           const sellerInfo = await userRepository.findEmailInfo(userId);
           const listingTitle = data.title ?? existing.title;
-          Promise.all([
-            createNotification({
-              userId,
-              type: "LISTING_REJECTED",
-              title: "Listing removed",
-              body: moderationNote,
-              listingId,
-            }),
-            sendListingRejectedEmail({
-              to: email,
-              sellerName: sellerInfo?.displayName ?? email,
-              listingTitle,
-              rejectionReason: moderationNote,
-            }),
-          ]).catch(() => {});
+          fireAndForget(
+            Promise.all([
+              createNotification({
+                userId,
+                type: "LISTING_REJECTED",
+                title: "Listing removed",
+                body: moderationNote,
+                listingId,
+              }),
+              sendListingRejectedEmail({
+                to: email,
+                sellerName: sellerInfo?.displayName ?? email,
+                listingTitle,
+                rejectionReason: moderationNote,
+              }),
+            ]),
+            "listing.keywordRemoval.notifyAndEmail",
+            { listingId, userId },
+          );
 
           audit({
             userId,
@@ -806,7 +813,7 @@ export class ListingService {
     }
 
     // 4. Create listing in transaction
-    const priceNzd = Math.round(data.price * 100);
+    const priceNzd = toCents(data.price);
     const created = await listingRepository.$transaction(async (tx) => {
       const listing = await listingRepository.create(
         {
@@ -823,9 +830,7 @@ export class ListingService {
           suburb: data.suburb,
           shippingOption: data.shippingOption,
           shippingNzd:
-            data.shippingPrice != null
-              ? Math.round(data.shippingPrice * 100)
-              : null,
+            data.shippingPrice != null ? toCents(data.shippingPrice) : null,
           pickupAddress: data.pickupAddress ?? null,
           isOffersEnabled: data.isOffersEnabled,
           isUrgent: data.isUrgent,
@@ -1021,25 +1026,29 @@ export class ListingService {
         ip,
       });
 
-      Promise.all([
-        createNotification({
-          userId,
-          type: "LISTING_REJECTED",
-          title: "Listing not approved",
-          body:
-            reviewResult.rejectReason ??
-            "Your listing did not pass our review.",
-          listingId,
-        }),
-        sendListingRejectedEmail({
-          to: email,
-          sellerName: resolvedDisplayName,
-          listingTitle: input.title,
-          rejectionReason:
-            reviewResult.rejectReason ??
-            "Your listing did not pass our review.",
-        }),
-      ]).catch(() => {});
+      fireAndForget(
+        Promise.all([
+          createNotification({
+            userId,
+            type: "LISTING_REJECTED",
+            title: "Listing not approved",
+            body:
+              reviewResult.rejectReason ??
+              "Your listing did not pass our review.",
+            listingId,
+          }),
+          sendListingRejectedEmail({
+            to: email,
+            sellerName: resolvedDisplayName,
+            listingTitle: input.title,
+            rejectionReason:
+              reviewResult.rejectReason ??
+              "Your listing did not pass our review.",
+          }),
+        ]),
+        "listing.autoReview.reject.notifyAndEmail",
+        { listingId, userId },
+      );
 
       return {
         ok: false,
@@ -1052,7 +1061,7 @@ export class ListingService {
         autoRiskScore: reviewResult.score,
         autoRiskFlags: reviewResult.flags,
         publishedAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 30 * MS_PER_DAY),
       });
 
       audit({
@@ -1070,21 +1079,25 @@ export class ListingService {
       });
 
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-      Promise.all([
-        createNotification({
-          userId,
-          type: "LISTING_APPROVED",
-          title: "Your listing is live!",
-          body: `"${input.title}" has been approved and is now visible to buyers.`,
-          listingId,
-        }),
-        sendListingApprovedEmail({
-          to: email,
-          sellerName: resolvedDisplayName,
-          listingTitle: input.title,
-          listingUrl: `${appUrl}/listings/${listingId}`,
-        }),
-      ]).catch(() => {});
+      fireAndForget(
+        Promise.all([
+          createNotification({
+            userId,
+            type: "LISTING_APPROVED",
+            title: "Your listing is live!",
+            body: `"${input.title}" has been approved and is now visible to buyers.`,
+            listingId,
+          }),
+          sendListingApprovedEmail({
+            to: email,
+            sellerName: resolvedDisplayName,
+            listingTitle: input.title,
+            listingUrl: `${appUrl}/listings/${listingId}`,
+          }),
+        ]),
+        "listing.autoReview.approve.notifyAndEmail",
+        { listingId, userId },
+      );
     } else {
       // verdict === "queue" — keep as PENDING_REVIEW
       await listingRepository.updateListing(listingId, {
@@ -1106,13 +1119,17 @@ export class ListingService {
         ip,
       });
 
-      createNotification({
-        userId,
-        type: "LISTING_UNDER_REVIEW",
-        title: "Listing under review",
-        body: "Your listing has been submitted and is under review. We'll notify you once it's approved.",
-        listingId,
-      }).catch(() => {});
+      fireAndForget(
+        createNotification({
+          userId,
+          type: "LISTING_UNDER_REVIEW",
+          title: "Listing under review",
+          body: "Your listing has been submitted and is under review. We'll notify you once it's approved.",
+          listingId,
+        }),
+        "listing.autoReview.queue.notify",
+        { listingId, userId },
+      );
     }
 
     return null; // success — no error
@@ -1130,9 +1147,9 @@ export class ListingService {
     const priceDrop = Math.round(
       ((oldPriceNzd - newPriceNzd) / oldPriceNzd) * 100,
     );
-    const newPriceFormatted = `$${(newPriceNzd / 100).toFixed(2)}`;
-    const oldPriceFormatted = `$${(oldPriceNzd / 100).toFixed(2)}`;
-    const savings = `$${((oldPriceNzd - newPriceNzd) / 100).toFixed(2)}`;
+    const newPriceFormatted = formatCentsAsNzd(newPriceNzd);
+    const oldPriceFormatted = formatCentsAsNzd(oldPriceNzd);
+    const savings = formatCentsAsNzd(oldPriceNzd - newPriceNzd);
 
     listingRepository
       .findWatchersWithPriceAlert(listingId)

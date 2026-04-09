@@ -8,12 +8,20 @@ import { hashPassword, verifyPassword } from "@/server/lib/password";
 import { encrypt, decrypt, isEncryptionConfigured } from "@/lib/encryption";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
+import { MS_PER_MINUTE } from "@/lib/time";
 import crypto from "crypto";
 import type { UpdateProfileInput, ChangePasswordInput } from "./user.types";
 
-/** Encrypt a phone number if ENCRYPTION_KEY is set, otherwise store plaintext. */
+/** Encrypt a phone number. Throws if ENCRYPTION_KEY is missing (defence in depth). */
 function encryptPhone(phone: string): string {
-  return isEncryptionConfigured() ? encrypt(phone) : phone;
+  if (!isEncryptionConfigured()) {
+    throw new AppError(
+      "CONFIGURATION_ERROR",
+      "Encryption key not configured — cannot store phone number",
+      500,
+    );
+  }
+  return encrypt(phone);
 }
 
 /** Decrypt a phone number. If it doesn't look like base64 ciphertext, return as-is. */
@@ -102,7 +110,7 @@ export class UserService {
 
     const code = crypto.randomInt(100000, 999999).toString();
     const codeHash = crypto.createHash("sha256").update(code).digest("hex");
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 10 * MS_PER_MINUTE);
 
     await userRepository.deletePhoneTokens(userId);
 

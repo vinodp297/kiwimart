@@ -18,6 +18,7 @@ import {
   createPickupMessage,
   formatPickupTime,
 } from "./pickup-scheduling.helpers";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type {
   PickupResult,
   PickupRescheduleResponseCard,
@@ -127,23 +128,31 @@ export async function respondToReschedule(params: {
     const timeLabel = formatPickupTime(request.proposedTime);
 
     // Notify both parties
-    createNotification({
-      userId: order.buyerId,
-      type: "SYSTEM",
-      title: "Pickup rescheduled",
-      body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.buyerId,
+        type: "SYSTEM",
+        title: "Pickup rescheduled",
+        body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "pickup.rescheduleRespond.buyerNotification",
+      { orderId },
+    );
 
-    createNotification({
-      userId: order.sellerId,
-      type: "SYSTEM",
-      title: "Pickup rescheduled",
-      body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: order.sellerId,
+        type: "SYSTEM",
+        title: "Pickup rescheduled",
+        body: `Pickup for "${order.listing.title}" confirmed: ${timeLabel}`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "pickup.rescheduleRespond.sellerNotification",
+      { orderId },
+    );
 
     orderEventService.recordEvent({
       orderId,
@@ -199,14 +208,18 @@ export async function respondToReschedule(params: {
       await createPickupMessage(threadId, respondedById, card, tx);
     });
 
-    createNotification({
-      userId: request.requestedById,
-      type: "SYSTEM",
-      title: "Reschedule request declined",
-      body: `Your reschedule request for "${order.listing.title}" was declined. The original pickup time stands.`,
-      orderId,
-      link: `/orders/${orderId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: request.requestedById,
+        type: "SYSTEM",
+        title: "Reschedule request declined",
+        body: `Your reschedule request for "${order.listing.title}" was declined. The original pickup time stands.`,
+        orderId,
+        link: `/orders/${orderId}`,
+      }),
+      "pickup.rescheduleRespond.rejectedNotification",
+      { orderId },
+    );
 
     orderEventService.recordEvent({
       orderId,

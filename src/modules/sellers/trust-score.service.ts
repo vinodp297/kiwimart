@@ -3,6 +3,7 @@
 
 import { unstable_cache } from "next/cache";
 import { sellerRepository } from "./seller.repository";
+import { MS_PER_DAY } from "@/lib/time";
 
 export interface TrustScoreData {
   score: number; // 0–100
@@ -98,7 +99,7 @@ async function fetchSellerTrustProfile(
   const reviewCount = reviewStats._count.id;
 
   const memberMonths = Math.floor(
-    (Date.now() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30),
+    (Date.now() - user.createdAt.getTime()) / (30 * MS_PER_DAY),
   );
 
   const data: TrustScoreData = {

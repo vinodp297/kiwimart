@@ -7,6 +7,7 @@ import { adminDisputesService } from "@/modules/admin/admin-disputes.service";
 import { getSignedEvidenceFromRecords } from "@/server/actions/disputes";
 import { markUnderReview } from "@/server/services/dispute/dispute.service";
 import CaseView from "./CaseView";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,11 @@ export default async function DisputeCasePage(props: {
 
   // Mark dispute as under review when admin opens the case
   if (caseData.dispute) {
-    markUnderReview(caseData.dispute.id).catch(() => {});
+    fireAndForget(
+      markUnderReview(caseData.dispute.id),
+      "admin.disputeCase.markUnderReview",
+      { disputeId: caseData.dispute.id },
+    );
   }
 
   // Serialize dates for client component

@@ -4,6 +4,7 @@
 // Used by the order detail page, buyer dashboard, and seller dashboard.
 
 import { formatPrice } from "@/lib/utils";
+import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ export interface OrderForStatus {
 function formatTimeRemaining(targetDate: Date): string | null {
   const ms = targetDate.getTime() - Date.now();
   if (ms <= 0) return null;
-  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const hours = Math.floor(ms / MS_PER_HOUR);
   const days = Math.floor(hours / 24);
   const remainingHours = hours % 24;
   if (days > 0) {
@@ -56,7 +57,7 @@ function formatTimeRemaining(targetDate: Date): string | null {
 
 function _daysBetween(a: string | Date, b: Date = new Date()): number {
   const dateA = typeof a === "string" ? new Date(a) : a;
-  return Math.floor((b.getTime() - dateA.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.floor((b.getTime() - dateA.getTime()) / MS_PER_DAY);
 }
 
 // ── Main Function ─────────────────────────────────────────────────────────
@@ -112,9 +113,7 @@ export function getOrderStatusInfo(
         progressTotal: 5,
         nextAction: "Dispatch this order",
         timeRemaining: formatTimeRemaining(
-          new Date(
-            new Date(order.createdAt).getTime() + 3 * 24 * 60 * 60 * 1000,
-          ),
+          new Date(new Date(order.createdAt).getTime() + 3 * MS_PER_DAY),
         ),
         whatHappensNext: `Once you dispatch and add tracking, ${order.otherPartyName} will be notified. Payment is released after they confirm delivery.`,
         celebrationMessage: null,
@@ -226,13 +225,11 @@ export function getOrderStatusInfo(
       const _hoursOpen = order.disputeOpenedAt
         ? Math.floor(
             (Date.now() - new Date(order.disputeOpenedAt).getTime()) /
-              (1000 * 60 * 60),
+              MS_PER_HOUR,
           )
         : 0;
       const sellerDeadline = order.disputeOpenedAt
-        ? new Date(
-            new Date(order.disputeOpenedAt).getTime() + 72 * 60 * 60 * 1000,
-          )
+        ? new Date(new Date(order.disputeOpenedAt).getTime() + 72 * MS_PER_HOUR)
         : null;
       const sellerHasResponded = !!order.sellerRespondedAt;
 

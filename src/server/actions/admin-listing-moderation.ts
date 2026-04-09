@@ -16,6 +16,7 @@ import {
   sendListingRejectedEmail,
 } from "@/server/email";
 import { logger } from "@/shared/logger";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 
 // ── approveListing ──────────────────────────────────────────────────────────
@@ -86,23 +87,31 @@ export async function approveListing(
     });
 
     // Notify seller
-    createNotification({
-      userId: listing.sellerId,
-      type: "LISTING_APPROVED",
-      title: "Listing approved!",
-      body: `Your listing "${listing.title}" has been approved and is now live.`,
-      listingId,
-      link: `/listings/${listingId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: listing.sellerId,
+        type: "LISTING_APPROVED",
+        title: "Listing approved!",
+        body: `Your listing "${listing.title}" has been approved and is now live.`,
+        listingId,
+        link: `/listings/${listingId}`,
+      }),
+      "admin.approveListing.notification",
+      { listingId },
+    );
 
     // Email seller
     if (listing.seller?.email) {
-      sendListingApprovedEmail({
-        to: listing.seller.email,
-        sellerName: listing.seller.displayName ?? "there",
-        listingTitle: listing.title,
-        listingUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz"}/listings/${listingId}`,
-      }).catch(() => {});
+      fireAndForget(
+        sendListingApprovedEmail({
+          to: listing.seller.email,
+          sellerName: listing.seller.displayName ?? "there",
+          listingTitle: listing.title,
+          listingUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz"}/listings/${listingId}`,
+        }),
+        "admin.approveListing.email",
+        { listingId },
+      );
     }
 
     revalidatePath("/admin/listings");
@@ -192,24 +201,32 @@ export async function requestListingChanges(
     });
 
     // Notify seller
-    createNotification({
-      userId: listing.sellerId,
-      type: "LISTING_NEEDS_CHANGES",
-      title: "Listing needs changes",
-      body: `Your listing "${listing.title}" requires changes before it can be approved: ${note.trim()}`,
-      listingId,
-      link: `/sell/edit/${listingId}`,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: listing.sellerId,
+        type: "LISTING_NEEDS_CHANGES",
+        title: "Listing needs changes",
+        body: `Your listing "${listing.title}" requires changes before it can be approved: ${note.trim()}`,
+        listingId,
+        link: `/sell/edit/${listingId}`,
+      }),
+      "admin.requestListingChanges.notification",
+      { listingId },
+    );
 
     // Email seller
     if (listing.seller?.email) {
-      sendListingNeedsChangesEmail({
-        to: listing.seller.email,
-        sellerName: listing.seller.displayName ?? "there",
-        listingTitle: listing.title,
-        moderationNote: note.trim(),
-        editUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz"}/sell/edit/${listingId}`,
-      }).catch(() => {});
+      fireAndForget(
+        sendListingNeedsChangesEmail({
+          to: listing.seller.email,
+          sellerName: listing.seller.displayName ?? "there",
+          listingTitle: listing.title,
+          moderationNote: note.trim(),
+          editUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz"}/sell/edit/${listingId}`,
+        }),
+        "admin.requestListingChanges.email",
+        { listingId },
+      );
     }
 
     revalidatePath("/admin/listings");
@@ -300,22 +317,30 @@ export async function rejectListing(
     });
 
     // Notify seller
-    createNotification({
-      userId: listing.sellerId,
-      type: "LISTING_REJECTED",
-      title: "Listing rejected",
-      body: `Your listing "${listing.title}" has been rejected: ${reason.trim()}`,
-      listingId,
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: listing.sellerId,
+        type: "LISTING_REJECTED",
+        title: "Listing rejected",
+        body: `Your listing "${listing.title}" has been rejected: ${reason.trim()}`,
+        listingId,
+      }),
+      "admin.rejectListing.notification",
+      { listingId },
+    );
 
     // Email seller
     if (listing.seller?.email) {
-      sendListingRejectedEmail({
-        to: listing.seller.email,
-        sellerName: listing.seller.displayName ?? "there",
-        listingTitle: listing.title,
-        rejectionReason: reason.trim(),
-      }).catch(() => {});
+      fireAndForget(
+        sendListingRejectedEmail({
+          to: listing.seller.email,
+          sellerName: listing.seller.displayName ?? "there",
+          listingTitle: listing.title,
+          rejectionReason: reason.trim(),
+        }),
+        "admin.rejectListing.email",
+        { listingId },
+      );
     }
 
     revalidatePath("/admin/listings");

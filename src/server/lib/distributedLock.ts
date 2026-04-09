@@ -17,6 +17,7 @@
 // process that acquired the lock can release it.
 
 import { logger } from "@/shared/logger";
+import { AppError } from "@/shared/errors";
 
 const NO_REDIS_LOCK = "NO_REDIS_LOCK";
 
@@ -108,7 +109,11 @@ export async function withLock<T>(
   const lockValue = await acquireLock(resource, ttlSeconds);
 
   if (lockValue === null) {
-    throw new Error(`Failed to acquire lock for resource: ${resource}`);
+    throw new AppError(
+      "CONCURRENT_MODIFICATION",
+      `Failed to acquire lock for resource: ${resource}`,
+      409,
+    );
   }
 
   // Redis unavailable — sentinel returned.
@@ -139,8 +144,10 @@ export async function withLock<T>(
         "Redis unavailable in PRODUCTION — failing CLOSED. " +
         "Check Redis connectivity immediately.",
     });
-    throw new Error(
+    throw new AppError(
+      "DATABASE_ERROR",
       "Lock unavailable — Redis is down. Operation rejected to prevent concurrent mutations.",
+      503,
     );
   }
 

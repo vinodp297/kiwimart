@@ -25,12 +25,13 @@ import { getRedisClient } from "@/infrastructure/redis/client";
 import { enqueueEmail } from "@/lib/email-queue";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
+import { SECONDS_PER_DAY } from "@/lib/time";
 
-const EXPORT_COOLDOWN_SECONDS = 30 * 24 * 60 * 60; // 30 days
+const EXPORT_COOLDOWN_SECONDS = 30 * SECONDS_PER_DAY; // 30 days
 const EXPORT_REDIS_PREFIX = "data_export:";
 
 /** 24-hour TTL for the presigned download URL and the R2 object. */
-export const EXPORT_URL_TTL_SECONDS = 24 * 60 * 60; // 86 400 s
+export const EXPORT_URL_TTL_SECONDS = SECONDS_PER_DAY; // 86 400 s
 
 /** Check whether the user can request a new export (30-day cooldown). */
 export async function canRequestExport(userId: string): Promise<boolean> {

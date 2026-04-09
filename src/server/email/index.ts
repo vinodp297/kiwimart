@@ -4,6 +4,7 @@
 // All HTML templates are kept here; transport via Resend.
 
 import { sendTransactionalEmail } from "./transport";
+import { formatCentsAsNzd } from "@/lib/currency";
 
 // ── Email configuration from environment ─────────────────────────────────────
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
@@ -287,7 +288,7 @@ export async function sendOrderConfirmationEmail(params: {
   orderId: string;
   listingId: string;
 }): Promise<void> {
-  const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
+  const amount = formatCentsAsNzd(params.totalNzd);
   const html = baseTemplate(
     `<h1>Your order is confirmed! 🎉</h1>
     <p>Hi ${esc(params.buyerName)}, your payment has been received and is held securely in escrow until you confirm delivery.</p>
@@ -515,7 +516,7 @@ export async function sendPayoutInitiatedEmail(params: {
   orderId: string;
   estimatedArrival: string;
 }): Promise<void> {
-  const amount = `$${(params.amountNzd / 100).toFixed(2)} NZD`;
+  const amount = formatCentsAsNzd(params.amountNzd);
   const html = baseTemplate(
     `<h1>Your payout is on its way 💰</h1>
     <p>Hi ${esc(params.sellerName)},</p>
@@ -546,7 +547,7 @@ export async function sendOrderCompleteBuyerEmail(params: {
   totalNzd: number; // in cents
   orderUrl: string;
 }): Promise<void> {
-  const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
+  const amount = formatCentsAsNzd(params.totalNzd);
   const html = baseTemplate(
     `<h1>Your order is complete 🎉</h1>
     <p>Hi ${esc(params.buyerName)},</p>
@@ -595,7 +596,7 @@ export async function sendOrderCompleteSellerEmail(params: {
   payoutTimelineDays: number;
   dashboardUrl: string;
 }): Promise<void> {
-  const amount = `$${(params.totalNzd / 100).toFixed(2)} NZD`;
+  const amount = formatCentsAsNzd(params.totalNzd);
   const html = baseTemplate(
     `<h1>Order complete — payment released 💰</h1>
     <p>Hi ${esc(params.sellerName)},</p>
@@ -650,7 +651,7 @@ export async function sendCancellationEmail(params: {
   if (isBuyer) {
     const refundHtml =
       params.refundAmount != null && params.refundAmount > 0
-        ? `<div class="trust">Your refund of <strong>$${(params.refundAmount / 100).toFixed(2)} NZD</strong> will be returned to your original payment method within ${REFUND_DAYS_MIN}–${REFUND_DAYS_MAX} business days.</div>`
+        ? `<div class="trust">Your refund of <strong>${formatCentsAsNzd(params.refundAmount)}</strong> will be returned to your original payment method within ${REFUND_DAYS_MIN}–${REFUND_DAYS_MAX} business days.</div>`
         : "";
     bodyContent = `<h1>Your order has been cancelled</h1>
     <p>Hi ${esc(params.recipientName)},</p>
@@ -683,9 +684,7 @@ export async function sendDisputeResolvedEmail(params: {
 }): Promise<void> {
   const isBuyer = params.recipientRole === "buyer";
   const refundFmt =
-    params.refundAmount != null
-      ? `$${(params.refundAmount / 100).toFixed(2)} NZD`
-      : "";
+    params.refundAmount != null ? formatCentsAsNzd(params.refundAmount) : "";
 
   // Subject varies by role + resolution outcome
   let subject: string;

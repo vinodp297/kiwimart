@@ -41,6 +41,7 @@ import type {
 } from "@/types";
 import { getImageUrl as r2Url } from "@/lib/image";
 import { headers } from "next/headers";
+import { fireAndForget } from "@/lib/fire-and-forget";
 
 export const revalidate = 60;
 
@@ -132,7 +133,9 @@ export default async function ListingDetailPage({
   // Record view for authenticated users (fire-and-forget, never blocks render)
   // Skip if seller is viewing their own listing
   if (session?.user?.id && session.user.id !== listing.seller.id) {
-    recordListingView(listing.id).catch(() => {});
+    fireAndForget(recordListingView(listing.id), "listingDetail.recordView", {
+      listingId: listing.id,
+    });
   }
 
   // Fetch all independent data in a single parallel batch

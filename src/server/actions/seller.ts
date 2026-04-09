@@ -13,6 +13,7 @@ import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { logger } from "@/shared/logger";
 import { enqueueEmail } from "@/lib/email-queue";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import {
   approveIdSchema as ApproveIdSchema,
@@ -140,7 +141,12 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
       userEmail: user.email,
       submittedAt: now.toISOString(),
       adminUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/admin`,
-    }).catch(() => {}); // non-fatal — admin is notified via in-app notification too
+    }).catch((err: unknown) => {
+      logger.error("seller.submitIdVerification.email.failed", {
+        error: err instanceof Error ? err.message : String(err),
+        userId: user.id,
+      });
+    }); // non-fatal — admin is notified via in-app notification too
   }
 
   return { success: true, data: undefined };
@@ -224,16 +230,25 @@ export async function approveIdVerification(
     userEmail: target.email,
     submittedAt: new Date().toISOString(),
     adminUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/seller/onboarding`,
-  }).catch(() => {}); // non-fatal
+  }).catch((err: unknown) => {
+    logger.error("seller.approveIdVerification.email.failed", {
+      error: err instanceof Error ? err.message : String(err),
+      userId: target.id,
+    });
+  }); // non-fatal
 
   // 7. In-app notification (fire-and-forget)
-  createNotification({
-    userId: target.id,
-    type: "ID_VERIFIED",
-    title: "ID verification approved! ✅",
-    body: "You are now an ID Verified seller. Unlimited listings and next-day payouts are now enabled.",
-    link: "/seller/onboarding",
-  }).catch(() => {});
+  fireAndForget(
+    createNotification({
+      userId: target.id,
+      type: "ID_VERIFIED",
+      title: "ID verification approved! ✅",
+      body: "You are now an ID Verified seller. Unlimited listings and next-day payouts are now enabled.",
+      link: "/seller/onboarding",
+    }),
+    "seller.approveIdVerification.notification",
+    { userId: target.id },
+  );
 
   // 8. Return
   return { success: true, data: undefined };
@@ -313,13 +328,17 @@ export async function rejectIdVerification(
       metadata: { reason, notes },
     });
 
-    createNotification({
-      userId: target.id,
-      type: "SYSTEM",
-      title: "ID verification not approved",
-      body: `Your ID verification was not approved: ${rejectionMessage}. You can resubmit with updated documents.`,
-      link: "/seller/onboarding",
-    }).catch(() => {});
+    fireAndForget(
+      createNotification({
+        userId: target.id,
+        type: "SYSTEM",
+        title: "ID verification not approved",
+        body: `Your ID verification was not approved: ${rejectionMessage}. You can resubmit with updated documents.`,
+        link: "/seller/onboarding",
+      }),
+      "seller.rejectIdVerification.notification",
+      { userId: target.id },
+    );
 
     return { success: true, data: undefined };
   } catch (err) {
