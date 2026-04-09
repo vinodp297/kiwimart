@@ -355,6 +355,14 @@ export const orderRepository = {
         reviews: {
           select: { id: true, reviewerRole: true },
         },
+        payout: {
+          select: {
+            status: true,
+            amountNzd: true,
+            platformFeeNzd: true,
+            stripeFeeNzd: true,
+          },
+        },
       },
     });
   },

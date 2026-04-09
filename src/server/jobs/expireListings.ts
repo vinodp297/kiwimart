@@ -5,50 +5,68 @@
 import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
+import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+
+const LOCK_TTL_SECONDS = 300;
 
 // ── expireListings ────────────────────────────────────────────────────────────
 
 export async function expireListings(): Promise<{
   expired: number;
   errors: number;
+  skipped?: boolean;
 }> {
-  return runWithRequestContext(
-    { correlationId: `cron:expireListings:${Date.now()}` },
-    async () => {
-      logger.info("job.expire_listings.started");
+  const LOCK_KEY = "cron:expire-listings";
+  const lock = await acquireLock(LOCK_KEY, LOCK_TTL_SECONDS);
+  if (!lock) {
+    logger.info("expire_listings.skipped_lock_held", {
+      reason:
+        "Another instance is already running — skipping to prevent duplicate processing.",
+    });
+    return { expired: 0, errors: 0, skipped: true };
+  }
 
-      const now = new Date();
-      let expired = 0;
-      let errors = 0;
+  try {
+    return await runWithRequestContext(
+      { correlationId: `cron:expireListings:${Date.now()}` },
+      async () => {
+        logger.info("job.expire_listings.started");
 
-      try {
-        const result = await db.listing.updateMany({
-          where: {
-            status: "ACTIVE",
-            expiresAt: { lt: now },
-            deletedAt: null,
-          },
-          data: {
-            status: "EXPIRED",
-          },
-        });
+        const now = new Date();
+        let expired = 0;
+        let errors = 0;
 
-        expired = result.count;
+        try {
+          const result = await db.listing.updateMany({
+            where: {
+              status: "ACTIVE",
+              expiresAt: { lt: now },
+              deletedAt: null,
+            },
+            data: {
+              status: "EXPIRED",
+            },
+          });
 
-        logger.info("job.expire_listings.completed", {
-          expired,
-          timestamp: now.toISOString(),
-        });
-      } catch (err) {
-        errors++;
-        logger.error("job.expire_listings.failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+          expired = result.count;
 
-      return { expired, errors };
-    }, // end runWithRequestContext fn
-  ); // end runWithRequestContext
+          logger.info("job.expire_listings.completed", {
+            expired,
+            timestamp: now.toISOString(),
+          });
+        } catch (err) {
+          errors++;
+          logger.error("job.expire_listings.failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        return { expired, errors };
+      }, // end runWithRequestContext fn
+    ); // end runWithRequestContext
+  } finally {
+    await releaseLock(LOCK_KEY, lock);
+  }
 }
 
 // ── releaseExpiredOfferReservations ───────────────────────────────────────────
@@ -59,103 +77,118 @@ export async function expireListings(): Promise<{
 export async function releaseExpiredOfferReservations(): Promise<{
   released: number;
   errors: number;
+  skipped?: boolean;
 }> {
-  return runWithRequestContext(
-    { correlationId: `cron:releaseExpiredOfferReservations:${Date.now()}` },
-    async () => {
-      logger.info("job.release_expired_offer_reservations.started");
+  const LOCK_KEY = "cron:release-expired-offer-reservations";
+  const lock = await acquireLock(LOCK_KEY, LOCK_TTL_SECONDS);
+  if (!lock) {
+    logger.info("release_expired_offer_reservations.skipped_lock_held", {
+      reason:
+        "Another instance is already running — skipping to prevent duplicate processing.",
+    });
+    return { released: 0, errors: 0, skipped: true };
+  }
 
-      const now = new Date();
-      let released = 0;
-      let errors = 0;
+  try {
+    return await runWithRequestContext(
+      { correlationId: `cron:releaseExpiredOfferReservations:${Date.now()}` },
+      async () => {
+        logger.info("job.release_expired_offer_reservations.started");
 
-      // Find accepted offers whose payment window has closed
-      const expiredOffers = await db.offer.findMany({
-        where: {
-          status: "ACCEPTED",
-          paymentDeadlineAt: { lt: now },
-        },
-        select: {
-          id: true,
-          listingId: true,
-        },
-      });
+        const now = new Date();
+        let released = 0;
+        let errors = 0;
 
-      if (expiredOffers.length === 0) {
-        logger.info("job.release_expired_offer_reservations.completed", {
-          released: 0,
-        });
-        return { released: 0, errors: 0 };
-      }
-
-      // Exclude listings that already have a paid order (buyer completed checkout)
-      const paidListingIds = await db.order
-        .findMany({
+        // Find accepted offers whose payment window has closed
+        const expiredOffers = await db.offer.findMany({
           where: {
-            listingId: { in: expiredOffers.map((o) => o.listingId) },
-            status: {
-              in: [
-                "PAYMENT_HELD",
-                "DISPATCHED",
-                "DELIVERED",
-                "COMPLETED",
-                "DISPUTED",
-              ],
-            },
+            status: "ACCEPTED",
+            paymentDeadlineAt: { lt: now },
           },
-          select: { listingId: true },
-        })
-        .then((orders) => new Set(orders.map((o) => o.listingId)));
+          select: {
+            id: true,
+            listingId: true,
+          },
+        });
 
-      const trulyExpired = expiredOffers.filter(
-        (o) => !paidListingIds.has(o.listingId),
-      );
-
-      if (trulyExpired.length > 0) {
-        try {
-          const expiredOfferIds = trulyExpired.map((o) => o.id);
-          const expiredListingIds = [
-            ...new Set(trulyExpired.map((o) => o.listingId)),
-          ];
-
-          // Bulk update in a single transaction
-          await db.$transaction([
-            db.offer.updateMany({
-              where: {
-                id: { in: expiredOfferIds },
-                status: "ACCEPTED", // safety check
-              },
-              data: { status: "EXPIRED", updatedAt: new Date() },
-            }),
-            db.listing.updateMany({
-              where: {
-                id: { in: expiredListingIds },
-                status: "RESERVED", // only release if still reserved
-              },
-              data: { status: "ACTIVE" },
-            }),
-          ]);
-
-          released = trulyExpired.length;
-          logger.info("job.release_expired_offers.bulk", {
-            offersExpired: expiredOfferIds.length,
-            listingsReleased: expiredListingIds.length,
+        if (expiredOffers.length === 0) {
+          logger.info("job.release_expired_offer_reservations.completed", {
+            released: 0,
           });
-        } catch (err) {
-          errors = trulyExpired.length;
-          logger.error("job.release_expired_offers.bulk_failed", {
-            count: trulyExpired.length,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          return { released: 0, errors: 0 };
         }
-      }
 
-      logger.info("job.release_expired_offer_reservations.completed", {
-        released,
-        errors,
-      });
+        // Exclude listings that already have a paid order (buyer completed checkout)
+        const paidListingIds = await db.order
+          .findMany({
+            where: {
+              listingId: { in: expiredOffers.map((o) => o.listingId) },
+              status: {
+                in: [
+                  "PAYMENT_HELD",
+                  "DISPATCHED",
+                  "DELIVERED",
+                  "COMPLETED",
+                  "DISPUTED",
+                ],
+              },
+            },
+            select: { listingId: true },
+          })
+          .then((orders) => new Set(orders.map((o) => o.listingId)));
 
-      return { released, errors };
-    }, // end runWithRequestContext fn
-  ); // end runWithRequestContext
+        const trulyExpired = expiredOffers.filter(
+          (o) => !paidListingIds.has(o.listingId),
+        );
+
+        if (trulyExpired.length > 0) {
+          try {
+            const expiredOfferIds = trulyExpired.map((o) => o.id);
+            const expiredListingIds = [
+              ...new Set(trulyExpired.map((o) => o.listingId)),
+            ];
+
+            // Bulk update in a single transaction
+            await db.$transaction([
+              db.offer.updateMany({
+                where: {
+                  id: { in: expiredOfferIds },
+                  status: "ACCEPTED", // safety check
+                },
+                data: { status: "EXPIRED", updatedAt: new Date() },
+              }),
+              db.listing.updateMany({
+                where: {
+                  id: { in: expiredListingIds },
+                  status: "RESERVED", // only release if still reserved
+                },
+                data: { status: "ACTIVE" },
+              }),
+            ]);
+
+            released = trulyExpired.length;
+            logger.info("job.release_expired_offers.bulk", {
+              offersExpired: expiredOfferIds.length,
+              listingsReleased: expiredListingIds.length,
+            });
+          } catch (err) {
+            errors = trulyExpired.length;
+            logger.error("job.release_expired_offers.bulk_failed", {
+              count: trulyExpired.length,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        logger.info("job.release_expired_offer_reservations.completed", {
+          released,
+          errors,
+        });
+
+        return { released, errors };
+      }, // end runWithRequestContext fn
+    ); // end runWithRequestContext
+  } finally {
+    await releaseLock(LOCK_KEY, lock);
+  }
 }

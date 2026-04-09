@@ -15,6 +15,7 @@ import { ListObjectsV2Command, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
+import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
 
 /** Retention window for export files — must match EXPORT_URL_TTL_SECONDS. */
 const EXPORT_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -23,63 +24,79 @@ export async function cleanupExportFiles(): Promise<{
   deleted: number;
   errors: number;
 }> {
-  return runWithRequestContext(
-    { correlationId: `cron:cleanupExportFiles:${Date.now()}` },
-    async () => {
-      logger.info("job.cleanup_export_files.started");
+  const LOCK_KEY = "cron:cleanup-export-files";
+  const LOCK_TTL_SECONDS = 300;
 
-      let deleted = 0;
-      let errors = 0;
+  const lock = await acquireLock(LOCK_KEY, LOCK_TTL_SECONDS);
+  if (!lock) {
+    logger.info("cleanup_export_files.skipped_lock_held", {
+      reason:
+        "Another instance is already running — skipping to prevent duplicate processing.",
+    });
+    return { deleted: 0, errors: 0 };
+  }
 
-      try {
-        const cutoff = new Date(Date.now() - EXPORT_RETENTION_MS);
+  try {
+    return await runWithRequestContext(
+      { correlationId: `cron:cleanupExportFiles:${Date.now()}` },
+      async () => {
+        logger.info("job.cleanup_export_files.started");
 
-        // List all objects under the exports/ prefix
-        const listResult = await r2.send(
-          new ListObjectsV2Command({
-            Bucket: R2_BUCKET,
-            Prefix: "exports/",
-          }),
-        );
+        let deleted = 0;
+        let errors = 0;
 
-        const staleObjects = (listResult.Contents ?? []).filter(
-          (obj) => obj.LastModified && obj.LastModified < cutoff,
-        );
+        try {
+          const cutoff = new Date(Date.now() - EXPORT_RETENTION_MS);
 
-        // Delete stale objects — one at a time to avoid partial failures masking errors
-        await Promise.all(
-          staleObjects.map(async (obj) => {
-            if (!obj.Key) return;
-            try {
-              await r2.send(
-                new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: obj.Key }),
-              );
-              deleted++;
-              logger.debug("job.cleanup_export_files.deleted", {
-                key: obj.Key,
-              });
-            } catch (err) {
-              errors++;
-              logger.error("job.cleanup_export_files.delete_failed", {
-                key: obj.Key,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }),
-        );
+          // List all objects under the exports/ prefix
+          const listResult = await r2.send(
+            new ListObjectsV2Command({
+              Bucket: R2_BUCKET,
+              Prefix: "exports/",
+            }),
+          );
 
-        logger.info("job.cleanup_export_files.completed", {
-          deleted,
-          retentionHours: 24,
-        });
-      } catch (err) {
-        errors++;
-        logger.error("job.cleanup_export_files.failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+          const staleObjects = (listResult.Contents ?? []).filter(
+            (obj) => obj.LastModified && obj.LastModified < cutoff,
+          );
 
-      return { deleted, errors };
-    }, // end runWithRequestContext fn
-  ); // end runWithRequestContext
+          // Delete stale objects — one at a time to avoid partial failures masking errors
+          await Promise.all(
+            staleObjects.map(async (obj) => {
+              if (!obj.Key) return;
+              try {
+                await r2.send(
+                  new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: obj.Key }),
+                );
+                deleted++;
+                logger.debug("job.cleanup_export_files.deleted", {
+                  key: obj.Key,
+                });
+              } catch (err) {
+                errors++;
+                logger.error("job.cleanup_export_files.delete_failed", {
+                  key: obj.Key,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }),
+          );
+
+          logger.info("job.cleanup_export_files.completed", {
+            deleted,
+            retentionHours: 24,
+          });
+        } catch (err) {
+          errors++;
+          logger.error("job.cleanup_export_files.failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        return { deleted, errors };
+      }, // end runWithRequestContext fn
+    ); // end runWithRequestContext
+  } finally {
+    await releaseLock(LOCK_KEY, lock);
+  }
 }

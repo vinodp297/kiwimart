@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { formatPrice } from "@/lib/utils";
+import { fromCents } from "@/lib/currency";
 import type { OrderDetailData } from "./order-types";
 import { getCourierUrl } from "./order-utils";
 import { XCircleIcon } from "./order-icons";
+
+function fmtNzd(cents: number): string {
+  return `$${fromCents(cents).toFixed(2)}`;
+}
 
 export default function OrderPaymentDetails({
   order,
@@ -85,6 +90,52 @@ export default function OrderPaymentDetails({
           )}
         </div>
       </div>
+
+      {/* Seller payout breakdown — only shown to seller when payout record exists */}
+      {!order.isBuyer && order.payout && (
+        <div className="bg-white rounded-2xl border border-[#E3E0D9] p-5 mb-6">
+          <h3 className="text-[13px] font-semibold text-[#141414] mb-3">
+            Your payout breakdown
+          </h3>
+          <div className="space-y-2">
+            <div className="flex justify-between text-[13px]">
+              <span className="text-[#73706A]">Order total</span>
+              <span className="text-[#141414]">
+                {fmtNzd(order.payout.amountNzd)}
+              </span>
+            </div>
+            <div className="flex justify-between text-[13px]">
+              <span className="text-[#73706A]">Platform fee</span>
+              <span className="text-[#141414]">
+                −{fmtNzd(order.payout.platformFeeNzd)}
+              </span>
+            </div>
+            <div className="flex justify-between text-[13px]">
+              <span className="text-[#73706A]">Stripe processing fee</span>
+              <span className="text-[#141414]">
+                −{fmtNzd(order.payout.stripeFeeNzd)}
+              </span>
+            </div>
+            <div className="flex justify-between text-[14px] font-semibold pt-2 border-t border-[#F0EDE8]">
+              <span className="text-[#141414]">You receive</span>
+              <span className="text-emerald-600">
+                {fmtNzd(order.payout.sellerPayoutNzd)}
+              </span>
+            </div>
+          </div>
+          {order.payout.status === "PENDING" && (
+            <p className="text-[11.5px] text-[#9E9A91] mt-3">
+              Payout is pending — funds will transfer once the order completes.
+            </p>
+          )}
+          {order.payout.status === "PROCESSING" && (
+            <p className="text-[11.5px] text-emerald-600 mt-3">
+              Transfer initiated — funds are on their way to your Stripe
+              account.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Cancellation audit trail */}
       {isCancelled && (order.cancelReason || order.cancelledAt) && (

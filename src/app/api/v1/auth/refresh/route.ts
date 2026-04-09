@@ -1,8 +1,23 @@
 // src/app/api/v1/auth/refresh/route.ts
 // ─── Mobile Token Refresh ────────────────────────────────────────────────────
 // POST /api/v1/auth/refresh — verify existing Bearer token, issue a fresh one.
+//
+// Security: after issuing the new token, the old token is immediately revoked:
+//   1. Old jti is added to the JWT blocklist (defence-in-depth; TTL = remaining
+//      lifetime of the old token so the blocklist doesn't grow indefinitely).
+//   2. Old mobile token key deleted from Redis via revokeMobileToken — the
+//      primary revocation mechanism used by verifyMobileToken on every request.
+//   3. New token is registered in Redis by signMobileToken automatically.
+//
+// This prevents a compromised token from remaining valid after refresh and
+// stops multiple valid tokens accumulating for the same device.
 
-import { verifyMobileToken, signMobileToken } from "@/lib/mobile-auth";
+import {
+  verifyMobileToken,
+  signMobileToken,
+  revokeMobileToken,
+} from "@/lib/mobile-auth";
+import { blockToken } from "@/server/lib/jwtBlocklist";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "../../_helpers/response";
@@ -28,13 +43,32 @@ export async function POST(request: Request) {
       );
     }
 
+    const oldJti = payload.jti;
+    const oldExp = payload.exp ?? 0;
+
+    // Issue new token first — if this fails we haven't revoked the old one yet
     const { token: newToken, expiresAt } = await signMobileToken({
       id: payload.sub,
       email: payload.email as string,
       role: (payload.role as string) ?? "user",
     });
 
-    logger.info("mobile.token.refreshed", { userId: payload.sub });
+    // Revoke old token — both mechanisms run concurrently for speed.
+    // Errors are best-effort: the new token is already issued so we must not
+    // return a failure here. Logging ensures ops can detect Redis issues.
+    await Promise.allSettled([
+      // Primary: delete the Redis key that verifyMobileToken checks
+      revokeMobileToken(payload.sub, oldJti),
+      // Defence-in-depth: add to JWT blocklist with remaining TTL so the
+      // blocklist key expires when the old token would have expired anyway.
+      blockToken(oldJti, oldExp),
+    ]);
+
+    logger.info("mobile.token.refreshed", {
+      userId: payload.sub,
+      oldJti,
+      revokedAt: new Date().toISOString(),
+    });
 
     return withCors(
       apiOk({ token: newToken, expiresAt }),

@@ -12,7 +12,7 @@ import { userService } from "@/modules/users/user.service";
 
 export async function GET(request: Request) {
   try {
-    const sessionUser = await requireApiUser();
+    const sessionUser = await requireApiUser(request);
 
     const user = await userService.getApiProfile(sessionUser.id);
 

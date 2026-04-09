@@ -46,6 +46,14 @@ export interface OrderDetailData {
   pickupWindowExpiresAt: string | null;
   otpExpiresAt: string | null;
   rescheduleCount: number;
+  // Payout breakdown — only present for sellers when payout record exists
+  payout: {
+    status: string;
+    amountNzd: number;
+    platformFeeNzd: number;
+    stripeFeeNzd: number;
+    sellerPayoutNzd: number;
+  } | null;
 }
 
 export type { InteractionData, TimelineEvent };

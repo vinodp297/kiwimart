@@ -25,257 +25,279 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { audit } from "@/server/lib/audit";
+import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+
+const LOCK_KEY = "cron:delivery-reminders";
+const LOCK_TTL_SECONDS = 300; // 5-minute max runtime — well above expected duration
 
 export async function processDeliveryReminders(): Promise<{
   remindersSent: number;
   autoCompleted: number;
   errors: number;
+  skipped?: boolean;
 }> {
-  return runWithRequestContext(
-    { correlationId: `cron:processDeliveryReminders:${Date.now()}` },
-    async () => {
-      let remindersSent = 0;
-      let autoCompleted = 0;
-      let errors = 0;
+  const lock = await acquireLock(LOCK_KEY, LOCK_TTL_SECONDS);
+  if (!lock) {
+    logger.info("delivery_reminders.skipped_lock_held", {
+      reason:
+        "Another instance is already running — skipping to prevent duplicate reminders.",
+    });
+    return { remindersSent: 0, autoCompleted: 0, errors: 0, skipped: true };
+  }
 
-      const now = new Date();
+  try {
+    return await runWithRequestContext(
+      { correlationId: `cron:processDeliveryReminders:${Date.now()}` },
+      async () => {
+        let remindersSent = 0;
+        let autoCompleted = 0;
+        let errors = 0;
 
-      // Find all DISPATCHED orders that have an estimatedDeliveryDate in their
-      // DISPATCHED event metadata
-      const dispatchedOrders = await db.order.findMany({
-        where: {
-          status: "DISPATCHED",
-          dispatchedAt: { not: null },
-        },
-        take: 500,
-        select: {
-          id: true,
-          buyerId: true,
-          sellerId: true,
-          totalNzd: true,
-          stripePaymentIntentId: true,
-          dispatchedAt: true,
-          listing: { select: { title: true, id: true } },
-          buyer: { select: { email: true, displayName: true } },
-        },
-      });
+        const now = new Date();
 
-      // ── Bulk-fetch all order events for these orders (eliminates N+1) ──
-      const orderIds = dispatchedOrders.map((o) => o.id);
-      const allEvents = await db.orderEvent.findMany({
-        where: {
-          orderId: { in: orderIds },
-          type: { in: ["DISPATCHED", "DELIVERY_REMINDER_SENT"] },
-        },
-        select: { id: true, orderId: true, type: true, metadata: true },
-      });
+        // Find all DISPATCHED orders that have an estimatedDeliveryDate in their
+        // DISPATCHED event metadata
+        const dispatchedOrders = await db.order.findMany({
+          where: {
+            status: "DISPATCHED",
+            dispatchedAt: { not: null },
+          },
+          take: 500,
+          select: {
+            id: true,
+            buyerId: true,
+            sellerId: true,
+            totalNzd: true,
+            stripePaymentIntentId: true,
+            dispatchedAt: true,
+            listing: { select: { title: true, id: true } },
+            buyer: { select: { email: true, displayName: true } },
+          },
+        });
 
-      // Build lookup: orderId → events grouped by type
-      const eventsByOrder = new Map<
-        string,
-        {
-          dispatched: (typeof allEvents)[number][];
-          reminders: (typeof allEvents)[number][];
+        // ── Bulk-fetch all order events for these orders (eliminates N+1) ──
+        const orderIds = dispatchedOrders.map((o) => o.id);
+        const allEvents = await db.orderEvent.findMany({
+          where: {
+            orderId: { in: orderIds },
+            type: { in: ["DISPATCHED", "DELIVERY_REMINDER_SENT"] },
+          },
+          select: { id: true, orderId: true, type: true, metadata: true },
+        });
+
+        // Build lookup: orderId → events grouped by type
+        const eventsByOrder = new Map<
+          string,
+          {
+            dispatched: (typeof allEvents)[number][];
+            reminders: (typeof allEvents)[number][];
+          }
+        >();
+        for (const e of allEvents) {
+          if (!eventsByOrder.has(e.orderId)) {
+            eventsByOrder.set(e.orderId, { dispatched: [], reminders: [] });
+          }
+          const bucket = eventsByOrder.get(e.orderId)!;
+          if (e.type === "DISPATCHED") bucket.dispatched.push(e);
+          else bucket.reminders.push(e);
         }
-      >();
-      for (const e of allEvents) {
-        if (!eventsByOrder.has(e.orderId)) {
-          eventsByOrder.set(e.orderId, { dispatched: [], reminders: [] });
-        }
-        const bucket = eventsByOrder.get(e.orderId)!;
-        if (e.type === "DISPATCHED") bucket.dispatched.push(e);
-        else bucket.reminders.push(e);
-      }
 
-      for (const order of dispatchedOrders) {
-        try {
-          const events = eventsByOrder.get(order.id);
+        for (const order of dispatchedOrders) {
+          try {
+            const events = eventsByOrder.get(order.id);
 
-          // Get the DISPATCHED event to check estimatedDeliveryDate
-          const dispatchEvent = events?.dispatched[0];
-          const meta = (dispatchEvent?.metadata ?? {}) as Record<
-            string,
-            unknown
-          >;
-          const estDateStr = meta.estimatedDeliveryDate as string | undefined;
+            // Get the DISPATCHED event to check estimatedDeliveryDate
+            const dispatchEvent = events?.dispatched[0];
+            const meta = (dispatchEvent?.metadata ?? {}) as Record<
+              string,
+              unknown
+            >;
+            const estDateStr = meta.estimatedDeliveryDate as string | undefined;
 
-          if (!estDateStr) continue; // Legacy order without estimated date
+            if (!estDateStr) continue; // Legacy order without estimated date
 
-          const estimatedDelivery = new Date(estDateStr);
-          if (isNaN(estimatedDelivery.getTime())) continue;
+            const estimatedDelivery = new Date(estDateStr);
+            if (isNaN(estimatedDelivery.getTime())) continue;
 
-          const daysPastEstimate = Math.floor(
-            (now.getTime() - estimatedDelivery.getTime()) /
-              (1000 * 60 * 60 * 24),
-          );
-
-          // Check if reminder was already sent (from bulk-fetched data)
-          const reminderCount = events?.reminders.length ?? 0;
-          const reminderSent = reminderCount > 0;
-
-          // 1. Send reminder if 3+ days past estimated delivery and no reminder sent
-          if (daysPastEstimate >= 3 && !reminderSent) {
-            notifyBuyerDeliveryOverdue(
-              order.buyerId,
-              order.id,
-              order.listing.title,
-              daysPastEstimate,
+            const daysPastEstimate = Math.floor(
+              (now.getTime() - estimatedDelivery.getTime()) /
+                (1000 * 60 * 60 * 24),
             );
 
-            orderEventService.recordEvent({
-              orderId: order.id,
-              type: ORDER_EVENT_TYPES.DELIVERY_REMINDER_SENT,
-              actorId: null,
-              actorRole: ACTOR_ROLES.SYSTEM,
-              summary: `Auto-reminder sent: ${daysPastEstimate} days past estimated delivery`,
-              metadata: {
-                estimatedDeliveryDate: estDateStr,
-                daysPastEstimate,
-              },
-            });
+            // Check if reminder was already sent (from bulk-fetched data)
+            const reminderCount = events?.reminders.length ?? 0;
+            const reminderSent = reminderCount > 0;
 
-            remindersSent++;
-            continue;
-          }
-
-          // Also send a second reminder at 10 days
-          if (daysPastEstimate >= 10 && daysPastEstimate < 14 && reminderSent) {
-            if (reminderCount < 2) {
+            // 1. Send reminder if 3+ days past estimated delivery and no reminder sent
+            if (daysPastEstimate >= 3 && !reminderSent) {
               notifyBuyerDeliveryOverdue(
                 order.buyerId,
                 order.id,
                 order.listing.title,
                 daysPastEstimate,
               );
+
               orderEventService.recordEvent({
                 orderId: order.id,
                 type: ORDER_EVENT_TYPES.DELIVERY_REMINDER_SENT,
                 actorId: null,
                 actorRole: ACTOR_ROLES.SYSTEM,
-                summary: `Second reminder sent: ${daysPastEstimate} days past estimated delivery`,
+                summary: `Auto-reminder sent: ${daysPastEstimate} days past estimated delivery`,
                 metadata: {
                   estimatedDeliveryDate: estDateStr,
                   daysPastEstimate,
                 },
               });
+
               remindersSent++;
               continue;
             }
-          }
 
-          // 2. Auto-complete if 14+ days past estimated delivery
-          //    (3 days grace + 11 days after first reminder)
-          if (daysPastEstimate >= 14 && reminderSent) {
-            // Capture payment
-            if (order.stripePaymentIntentId) {
-              try {
-                await paymentService.capturePayment({
-                  paymentIntentId: order.stripePaymentIntentId,
+            // Also send a second reminder at 10 days
+            if (
+              daysPastEstimate >= 10 &&
+              daysPastEstimate < 14 &&
+              reminderSent
+            ) {
+              if (reminderCount < 2) {
+                notifyBuyerDeliveryOverdue(
+                  order.buyerId,
+                  order.id,
+                  order.listing.title,
+                  daysPastEstimate,
+                );
+                orderEventService.recordEvent({
                   orderId: order.id,
+                  type: ORDER_EVENT_TYPES.DELIVERY_REMINDER_SENT,
+                  actorId: null,
+                  actorRole: ACTOR_ROLES.SYSTEM,
+                  summary: `Second reminder sent: ${daysPastEstimate} days past estimated delivery`,
+                  metadata: {
+                    estimatedDeliveryDate: estDateStr,
+                    daysPastEstimate,
+                  },
+                });
+                remindersSent++;
+                continue;
+              }
+            }
+
+            // 2. Auto-complete if 14+ days past estimated delivery
+            //    (3 days grace + 11 days after first reminder)
+            if (daysPastEstimate >= 14 && reminderSent) {
+              // Capture payment
+              if (order.stripePaymentIntentId) {
+                try {
+                  await paymentService.capturePayment({
+                    paymentIntentId: order.stripePaymentIntentId,
+                    orderId: order.id,
+                  });
+                } catch (err) {
+                  logger.error("delivery_reminder.capture_failed", {
+                    orderId: order.id,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                  errors++;
+                  continue;
+                }
+              }
+
+              try {
+                await db.$transaction(async (tx) => {
+                  await transitionOrder(
+                    order.id,
+                    "COMPLETED",
+                    { completedAt: new Date() },
+                    { tx, fromStatus: "DISPATCHED" },
+                  );
+                  await tx.payout.updateMany({
+                    where: { orderId: order.id },
+                    data: { status: "PROCESSING", initiatedAt: new Date() },
+                  });
+                  await tx.listing.update({
+                    where: { id: order.listing.id },
+                    data: { status: "SOLD", soldAt: new Date() },
+                  });
                 });
               } catch (err) {
-                logger.error("delivery_reminder.capture_failed", {
-                  orderId: order.id,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-                errors++;
-                continue;
+                if ((err as { code?: string }).code === "P2025") {
+                  // Already transitioned
+                  continue;
+                }
+                throw err;
               }
-            }
 
-            try {
-              await db.$transaction(async (tx) => {
-                await transitionOrder(
-                  order.id,
-                  "COMPLETED",
-                  { completedAt: new Date() },
-                  { tx, fromStatus: "DISPATCHED" },
-                );
-                await tx.payout.updateMany({
-                  where: { orderId: order.id },
-                  data: { status: "PROCESSING", initiatedAt: new Date() },
-                });
-                await tx.listing.update({
-                  where: { id: order.listing.id },
-                  data: { status: "SOLD", soldAt: new Date() },
-                });
+              orderEventService.recordEvent({
+                orderId: order.id,
+                type: ORDER_EVENT_TYPES.AUTO_COMPLETED,
+                actorId: null,
+                actorRole: ACTOR_ROLES.SYSTEM,
+                summary: `Auto-completed: Buyer did not respond ${daysPastEstimate} days after estimated delivery`,
+                metadata: {
+                  trigger: "DELIVERY_REMINDER_EXPIRED",
+                  estimatedDeliveryDate: estDateStr,
+                  daysPastEstimate,
+                },
               });
-            } catch (err) {
-              if ((err as { code?: string }).code === "P2025") {
-                // Already transitioned
-                continue;
-              }
-              throw err;
+
+              fireAndForget(
+                createNotification({
+                  userId: order.buyerId,
+                  type: "ORDER_COMPLETED",
+                  title: "Order auto-completed",
+                  body: `Your order "${order.listing.title}" has been auto-completed. Payment has been released to the seller.`,
+                  orderId: order.id,
+                  link: `/orders/${order.id}`,
+                }),
+                "delivery.notification.auto_complete.buyer",
+                { orderId: order.id },
+              );
+
+              fireAndForget(
+                createNotification({
+                  userId: order.sellerId,
+                  type: "ORDER_COMPLETED",
+                  title: "Payment released",
+                  body: `Order for "${order.listing.title}" auto-completed after delivery reminder period. Payment is being processed.`,
+                  orderId: order.id,
+                  link: `/orders/${order.id}`,
+                }),
+                "delivery.notification.auto_complete.seller",
+                { orderId: order.id },
+              );
+
+              audit({
+                userId: null,
+                action: "ORDER_STATUS_CHANGED",
+                entityType: "Order",
+                entityId: order.id,
+                metadata: {
+                  trigger: "DELIVERY_REMINDER_AUTO_COMPLETE",
+                  daysPastEstimate,
+                },
+              });
+
+              autoCompleted++;
             }
-
-            orderEventService.recordEvent({
+          } catch (err) {
+            errors++;
+            logger.error("delivery_reminder.order_failed", {
               orderId: order.id,
-              type: ORDER_EVENT_TYPES.AUTO_COMPLETED,
-              actorId: null,
-              actorRole: ACTOR_ROLES.SYSTEM,
-              summary: `Auto-completed: Buyer did not respond ${daysPastEstimate} days after estimated delivery`,
-              metadata: {
-                trigger: "DELIVERY_REMINDER_EXPIRED",
-                estimatedDeliveryDate: estDateStr,
-                daysPastEstimate,
-              },
+              error: err instanceof Error ? err.message : String(err),
             });
-
-            fireAndForget(
-              createNotification({
-                userId: order.buyerId,
-                type: "ORDER_COMPLETED",
-                title: "Order auto-completed",
-                body: `Your order "${order.listing.title}" has been auto-completed. Payment has been released to the seller.`,
-                orderId: order.id,
-                link: `/orders/${order.id}`,
-              }),
-              "delivery.notification.auto_complete.buyer",
-              { orderId: order.id },
-            );
-
-            fireAndForget(
-              createNotification({
-                userId: order.sellerId,
-                type: "ORDER_COMPLETED",
-                title: "Payment released",
-                body: `Order for "${order.listing.title}" auto-completed after delivery reminder period. Payment is being processed.`,
-                orderId: order.id,
-                link: `/orders/${order.id}`,
-              }),
-              "delivery.notification.auto_complete.seller",
-              { orderId: order.id },
-            );
-
-            audit({
-              userId: null,
-              action: "ORDER_STATUS_CHANGED",
-              entityType: "Order",
-              entityId: order.id,
-              metadata: {
-                trigger: "DELIVERY_REMINDER_AUTO_COMPLETE",
-                daysPastEstimate,
-              },
-            });
-
-            autoCompleted++;
           }
-        } catch (err) {
-          errors++;
-          logger.error("delivery_reminder.order_failed", {
-            orderId: order.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
         }
-      }
 
-      logger.info("delivery_reminders.completed", {
-        remindersSent,
-        autoCompleted,
-        errors,
-      });
+        logger.info("delivery_reminders.completed", {
+          remindersSent,
+          autoCompleted,
+          errors,
+        });
 
-      return { remindersSent, autoCompleted, errors };
-    }, // end runWithRequestContext fn
-  ); // end runWithRequestContext
+        return { remindersSent, autoCompleted, errors };
+      }, // end runWithRequestContext fn
+    ); // end runWithRequestContext
+  } finally {
+    await releaseLock(LOCK_KEY, lock);
+  }
 }

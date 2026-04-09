@@ -34,7 +34,13 @@ async function startAllWorkers() {
 
   // Start health check server so Render.com can verify the process is alive
   const port = process.env.PORT ? Number(process.env.PORT) : 3001;
-  const healthServer = startHealthServer(port);
+  const workerEntries = [
+    emailWorker && { name: "email", worker: emailWorker },
+    imageWorker && { name: "image", worker: imageWorker },
+    payoutWorker && { name: "payout", worker: payoutWorker },
+    pickupWorker && { name: "pickup", worker: pickupWorker },
+  ].filter(Boolean) as import("./health-server").WorkerEntry[];
+  const healthServer = startHealthServer(port, workerEntries);
 
   // Graceful shutdown — Render.com sends SIGTERM before stopping the service
   async function shutdown(signal: string) {

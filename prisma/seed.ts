@@ -4,6 +4,11 @@
 // All scenarios covered: every order status, disputes with
 // evidence, pickup orders, offers, messages, reviews, payouts
 
+if (process.env.NODE_ENV === "production") {
+  console.error("ERROR: prisma/seed.ts must not be run in production.");
+  process.exit(1);
+}
+
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import argon2 from "argon2";

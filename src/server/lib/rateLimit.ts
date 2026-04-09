@@ -220,6 +220,15 @@ const adminListingModLimiter = () =>
     analytics: true,
   });
 
+/** 20 platform config update actions per hour per admin */
+const adminConfigUpdateLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(20, "1 h"),
+    prefix: "km:rl:admin-config-update",
+    analytics: true,
+  });
+
 // ── Rate limit types ──────────────────────────────────────────────────────────
 
 export type RateLimitKey =
@@ -245,7 +254,8 @@ export type RateLimitKey =
   | "adminBan"
   | "adminErase"
   | "adminJobRetry"
-  | "adminListingMod";
+  | "adminListingMod"
+  | "adminConfigUpdate";
 
 export interface RateLimitResult {
   success: boolean;
@@ -307,6 +317,7 @@ export async function rateLimit(
     adminErase: adminEraseLimiter,
     adminJobRetry: adminJobRetryLimiter,
     adminListingMod: adminListingModLimiter,
+    adminConfigUpdate: adminConfigUpdateLimiter,
   };
 
   // Public read endpoints fail OPEN — never block browsing or search because

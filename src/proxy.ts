@@ -67,6 +67,7 @@ function isPublicApi(pathname: string, method: string): boolean {
     "/api/v1/search",
     "/api/v1/notifications", // Returns empty for unauthenticated
     "/api/v1/cart", // Returns { count: 0 } for unauthenticated
+    "/api/v1/fees", // Public fee preview — no auth required
   ].some((p) => pathname.startsWith(p));
 }
 

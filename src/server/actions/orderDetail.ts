@@ -67,6 +67,14 @@ export interface OrderDetailData {
   pickupWindowExpiresAt: string | null;
   otpExpiresAt: string | null;
   rescheduleCount: number;
+  // Payout breakdown — only present for sellers when payout record exists
+  payout: {
+    status: string;
+    amountNzd: number;
+    platformFeeNzd: number;
+    stripeFeeNzd: number;
+    sellerPayoutNzd: number;
+  } | null;
 }
 
 export async function fetchOrderDetail(
@@ -139,6 +147,19 @@ export async function fetchOrderDetail(
         hasReview: order.reviews.length > 0,
         hasBuyerReview: order.reviews.some((r) => r.reviewerRole === "BUYER"),
         hasSellerReview: order.reviews.some((r) => r.reviewerRole === "SELLER"),
+        payout:
+          !isBuyer && order.payout
+            ? {
+                status: order.payout.status,
+                amountNzd: order.payout.amountNzd,
+                platformFeeNzd: order.payout.platformFeeNzd,
+                stripeFeeNzd: order.payout.stripeFeeNzd,
+                sellerPayoutNzd:
+                  order.payout.amountNzd -
+                  order.payout.platformFeeNzd -
+                  order.payout.stripeFeeNzd,
+              }
+            : null,
       },
     };
   } catch (err) {

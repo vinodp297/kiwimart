@@ -1,7 +1,25 @@
 "use client";
 
 import { Input } from "@/components/ui/primitives";
-import { toCents, calculateStripeFee, fromCents } from "@/lib/currency";
+import {
+  toCents,
+  calculateStripeFee,
+  fromCents,
+  DEFAULT_PLATFORM_FEE_RATE,
+} from "@/lib/currency";
+
+const PLATFORM_FEE_MIN_CENTS = 50; // $0.50
+const PLATFORM_FEE_MAX_CENTS = 5000; // $50.00
+
+function calcPlatformFee(grossCents: number): number {
+  return Math.max(
+    PLATFORM_FEE_MIN_CENTS,
+    Math.min(
+      PLATFORM_FEE_MAX_CENTS,
+      Math.round(grossCents * DEFAULT_PLATFORM_FEE_RATE),
+    ),
+  );
+}
 
 interface CheckboxOptionProps {
   checked: boolean;
@@ -100,26 +118,36 @@ export default function SellStep3Pricing({
       {/* Fee breakdown */}
       {price && !isNaN(Number(price)) && Number(price) > 0 && (
         <div className="rounded-xl border border-[#E3E0D9] divide-y divide-[#F0EDE8]">
-          {[
-            {
-              label: "Listing price",
-              value: `$${Number(price).toFixed(2)}`,
-            },
-            {
-              label: "KiwiMart listing fee",
-              value: "$0.00",
-              highlight: true,
-            },
-            {
-              label: "Payment processing (est.)",
-              value: `$${fromCents(calculateStripeFee(toCents(Number(price)))).toFixed(2)}`,
-            },
-            {
-              label: "You receive",
-              value: `$${(Number(price) - fromCents(calculateStripeFee(toCents(Number(price))))).toFixed(2)}`,
-              bold: true,
-            },
-          ].map(({ label, value, highlight, bold }) => (
+          {(() => {
+            const grossCents = toCents(Number(price));
+            const stripeFee = calculateStripeFee(grossCents);
+            const platformFee = calcPlatformFee(grossCents);
+            const youReceiveCents = grossCents - stripeFee - platformFee;
+            return [
+              {
+                label: "Listing price",
+                value: `$${Number(price).toFixed(2)}`,
+              },
+              {
+                label: "KiwiMart listing fee",
+                value: "$0.00",
+                highlight: true,
+              },
+              {
+                label: "Platform fee (3.5% est.)",
+                value: `-$${fromCents(platformFee).toFixed(2)}`,
+              },
+              {
+                label: "Payment processing (est.)",
+                value: `-$${fromCents(stripeFee).toFixed(2)}`,
+              },
+              {
+                label: "You receive",
+                value: `$${fromCents(youReceiveCents).toFixed(2)}`,
+                bold: true,
+              },
+            ];
+          })().map(({ label, value, highlight, bold }) => (
             <div
               key={label}
               className="flex justify-between px-4 py-2.5 text-[12.5px]"

@@ -9,34 +9,51 @@
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
+import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
 
 export async function cleanupStalePushTokens(): Promise<{
   deleted: number;
   errors: number;
 }> {
-  return runWithRequestContext(
-    { correlationId: `cron:cleanupStalePushTokens:${Date.now()}` },
-    async () => {
-      logger.info("job.cleanup_stale_push_tokens.started");
+  const LOCK_KEY = "cron:cleanup-stale-push-tokens";
+  const LOCK_TTL_SECONDS = 300;
 
-      let deleted = 0;
-      let errors = 0;
+  const lock = await acquireLock(LOCK_KEY, LOCK_TTL_SECONDS);
+  if (!lock) {
+    logger.info("cleanup_stale_push_tokens.skipped_lock_held", {
+      reason:
+        "Another instance is already running — skipping to prevent duplicate processing.",
+    });
+    return { deleted: 0, errors: 0 };
+  }
 
-      try {
-        deleted = await notificationRepository.deleteInactivePushTokens();
+  try {
+    return await runWithRequestContext(
+      { correlationId: `cron:cleanupStalePushTokens:${Date.now()}` },
+      async () => {
+        logger.info("job.cleanup_stale_push_tokens.started");
 
-        logger.info("job.cleanup_stale_push_tokens.completed", {
-          deleted,
-          retentionDays: 90,
-        });
-      } catch (err) {
-        errors++;
-        logger.error("job.cleanup_stale_push_tokens.failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+        let deleted = 0;
+        let errors = 0;
 
-      return { deleted, errors };
-    }, // end runWithRequestContext fn
-  ); // end runWithRequestContext
+        try {
+          deleted = await notificationRepository.deleteInactivePushTokens();
+
+          logger.info("job.cleanup_stale_push_tokens.completed", {
+            deleted,
+            retentionDays: 90,
+          });
+        } catch (err) {
+          errors++;
+          logger.error("job.cleanup_stale_push_tokens.failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        return { deleted, errors };
+      }, // end runWithRequestContext fn
+    ); // end runWithRequestContext
+  } finally {
+    await releaseLock(LOCK_KEY, lock);
+  }
 }

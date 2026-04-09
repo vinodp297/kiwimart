@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   if (rateLimited) return rateLimited;
 
   try {
-    const user = await requireApiUser();
+    const user = await requireApiUser(request);
 
     let body: z.infer<typeof acceptPickupSchema>;
     try {
