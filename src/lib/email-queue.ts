@@ -16,6 +16,7 @@ import { emailQueue } from "@/lib/queue";
 import type { EmailJobData } from "@/lib/queue";
 import { getRequestContext } from "@/lib/request-context";
 import { logger } from "@/shared/logger";
+import { redactEmail } from "@/server/email/transport";
 
 // ── Fallback: direct synchronous send ────────────────────────────────────────
 // Used only when Redis is unavailable. Imports email functions lazily to avoid
@@ -196,7 +197,7 @@ export async function enqueueEmail(
     });
     logger.info("email.queued", {
       template: data.template,
-      to: (data as { to?: string }).to,
+      to: redactEmail((data as { to?: string }).to ?? ""),
       correlationId,
     });
   } catch (queueErr) {
@@ -204,7 +205,7 @@ export async function enqueueEmail(
     // email still reaches the recipient. This is the last-resort path.
     logger.error("email.queue_unavailable", {
       template: data.template,
-      to: (data as { to?: string }).to,
+      to: redactEmail((data as { to?: string }).to ?? ""),
       correlationId,
       error: queueErr instanceof Error ? queueErr.message : String(queueErr),
     });
@@ -212,7 +213,7 @@ export async function enqueueEmail(
     try {
       logger.warn("email.fallback_to_sync", {
         template: data.template,
-        to: (data as { to?: string }).to,
+        to: redactEmail((data as { to?: string }).to ?? ""),
         correlationId,
       });
       await sendEmailDirectly(data);
@@ -221,7 +222,7 @@ export async function enqueueEmail(
       // Do NOT rethrow: the caller's core operation already succeeded.
       logger.error("email.fallback_failed", {
         template: data.template,
-        to: (data as { to?: string }).to,
+        to: redactEmail((data as { to?: string }).to ?? ""),
         correlationId,
         error: sendErr instanceof Error ? sendErr.message : String(sendErr),
       });

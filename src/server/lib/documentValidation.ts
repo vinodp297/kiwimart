@@ -142,7 +142,7 @@ export async function validateUploadedDocument(
   if (!scanResult.isSafe) {
     return {
       isValid: false,
-      error: `Document failed security check: ${scanResult.reason ?? "unknown reason"}`,
+      error: `Document failed security check: ${scanResult.threats.join("; ") || "unknown reason"}`,
       errorCode: "MALWARE_DETECTED",
     };
   }

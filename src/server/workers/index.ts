@@ -16,6 +16,7 @@ import { startImageWorker } from "./imageWorker";
 import { startPayoutWorker } from "./payoutWorker";
 import { startPickupWorker } from "./pickupWorker";
 import { startHealthServer } from "./health-server";
+import { emailQueue, imageQueue, payoutQueue, pickupQueue } from "@/lib/queue";
 
 async function startAllWorkers() {
   logger.info("workers.starting", {
@@ -40,7 +41,15 @@ async function startAllWorkers() {
     payoutWorker && { name: "payout", worker: payoutWorker },
     pickupWorker && { name: "pickup", worker: pickupWorker },
   ].filter(Boolean) as import("./health-server").WorkerEntry[];
-  const healthServer = startHealthServer(port, workerEntries);
+
+  const queueEntries: import("./health-server").QueueEntry[] = [
+    { name: "email", queue: emailQueue },
+    { name: "image", queue: imageQueue },
+    { name: "payout", queue: payoutQueue },
+    { name: "pickup", queue: pickupQueue },
+  ];
+
+  const healthServer = startHealthServer(port, workerEntries, queueEntries);
 
   // Graceful shutdown — Render.com sends SIGTERM before stopping the service
   async function shutdown(signal: string) {

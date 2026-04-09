@@ -8,6 +8,7 @@ import { adminTeamRepository } from "@/modules/admin/admin-team.repository";
 import { userRepository } from "@/modules/users/user.repository";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
+import { redactEmail } from "@/server/email/transport";
 import { getRoleDisplayName } from "@/lib/permissions";
 import crypto from "crypto";
 import type { AdminRole } from "@prisma/client";
@@ -51,11 +52,14 @@ export async function inviteAdmin(
       token: rawToken,
       expiresAt,
     }).catch((err) =>
-      logger.error("admin.invitation.email.failed", { err, email }),
+      logger.error("admin.invitation.email.failed", {
+        err,
+        email: redactEmail(email),
+      }),
     );
 
     logger.info("admin.invitation.sent", {
-      invitedEmail: email,
+      invitedEmail: redactEmail(email),
       role,
       invitedById: admin.id,
     });

@@ -235,9 +235,11 @@ describe("validateImageFile", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("scanForMalware", () => {
-  it("returns isSafe true (stub — awaiting AV integration)", async () => {
+  it("returns isSafe true for a clean buffer with no threats", async () => {
     const result = await scanForMalware(Buffer.alloc(100), "test.jpg");
     expect(result.isSafe).toBe(true);
+    expect(result.threats).toHaveLength(0);
+    expect(result.confidence).toBe("HIGH");
   });
 });
 

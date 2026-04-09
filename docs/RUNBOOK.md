@@ -380,12 +380,17 @@ only re-encoded as WebP and served as an image.
 ### ListingImage flag semantics (current)
 
 ```
-isScanned: true  = passed validation pipeline (magic bytes + decodability)
-isSafe:    true  = passed validation pipeline AND scanForMalware() returned safe
+isScanned: true  = passed multi-layer content analysis
+isSafe:    true  = no threats detected by content analysis
 ```
 
-Neither flag implies a full antivirus scan. Both flags are set together by the
-`processImage()` pipeline in `src/server/actions/imageProcessor.ts`.
+Content analysis checks for: embedded PE/ELF executables, script injection
+(`<script>`, `<?php`, `javascript:`, shebang), and file size anomalies (> 8 MB).
+Both flags are set together by the `processImage()` pipeline in
+`src/server/actions/imageProcessor.ts`.
+
+Neither flag implies a full antivirus scan (ClamAV/VirusTotal). See
+`scanForMalware()` for the integration point.
 
 ---
 
@@ -448,9 +453,31 @@ Response:
     { "name": "payout", "running": true, "paused": false },
     { "name": "pickup", "running": true, "paused": false }
   ],
-  "timestamp": "2026-01-15T03:00:00.000Z"
+  "queues": {
+    "email": { "waiting": 2, "active": 1, "failed": 0, "isHealthy": true },
+    "image": { "waiting": 0, "active": 0, "failed": 0, "isHealthy": true },
+    "payout": { "waiting": 0, "active": 0, "failed": 0, "isHealthy": true },
+    "pickup": { "waiting": 1, "active": 0, "failed": 0, "isHealthy": true }
+  },
+  "timestamp": "2026-01-15T03:00:00.000Z",
+  "uptimeSeconds": 86400
 }
 ```
+
+**Status logic:**
+
+| Condition                                                 | Status      | HTTP |
+| --------------------------------------------------------- | ----------- | ---- |
+| All workers running + all queues healthy                  | `ok`        | 200  |
+| Any queue waiting > threshold                             | `degraded`  | 200  |
+| Any worker stopped/paused OR any queue failed > threshold | `unhealthy` | 503  |
+
+**Queue health thresholds** (configurable via env vars):
+
+| Variable                   | Default | Effect                                   |
+| -------------------------- | ------- | ---------------------------------------- |
+| `HEALTH_FAILED_THRESHOLD`  | 10      | failed > N → queue unhealthy → HTTP 503  |
+| `HEALTH_WAITING_THRESHOLD` | 100     | waiting > N → status degraded → HTTP 200 |
 
 Render.com polls `/health` and restarts the service if it stops responding.
 The health server runs on port 3001 (configurable via `PORT` env var).

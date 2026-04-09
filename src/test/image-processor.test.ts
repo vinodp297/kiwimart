@@ -7,9 +7,9 @@
 //     3. File exceeding 8 MB size limit → rejected
 //     4. SVG file → rejected (XSS risk)
 //     5. Dangerous file extension (.php) → rejected
-//   scanForMalware (imageProcessor.ts — AV integration point):
-//     6. Returns { isSafe: boolean, reason?: string } shape
-//     7. Returns isSafe: true for any buffer (placeholder implementation)
+//   scanForMalware (imageProcessor.ts — content-analysis scanner):
+//     6. Returns { isSafe, threats, confidence } shape
+//     7. Returns isSafe: true for clean buffers with no embedded threats
 //   processImage (imageProcessor.ts — full pipeline):
 //     8. Valid image → success + isScanned: true, isSafe: true written to DB
 //     9. Undecodable file → rejected, isScanned: true, isSafe: false written to DB
@@ -195,30 +195,30 @@ describe("validateMagicBytes — low-level signature check", () => {
   });
 });
 
-// ── scanForMalware — AV integration point ─────────────────────────────────────
+// ── scanForMalware — content-analysis scanner ─────────────────────────────────
 
-describe("scanForMalware — AV integration point", () => {
-  // Test 6 + 7: correct shape and current behaviour
-  it("returns the correct shape { isSafe: boolean; reason?: string }", async () => {
+describe("scanForMalware — content analysis", () => {
+  // Test 6 + 7: correct shape and behaviour
+  it("returns the correct shape { isSafe, threats, confidence }", async () => {
     const result = await scanForMalware(JPEG_BUFFER, "photo.jpg");
 
     expect(typeof result.isSafe).toBe("boolean");
-    // reason is optional — if present it must be a string
-    if ("reason" in result && result.reason !== undefined) {
-      expect(typeof result.reason).toBe("string");
-    }
+    expect(Array.isArray(result.threats)).toBe(true);
+    expect(["HIGH", "MEDIUM", "LOW"]).toContain(result.confidence);
   });
 
-  it("returns isSafe: true for any input (placeholder — no real AV integrated)", async () => {
+  it("returns isSafe: true for a clean buffer with no threats", async () => {
     const result = await scanForMalware(CORRUPT_BUFFER, "corrupt.dat");
 
     expect(result.isSafe).toBe(true);
+    expect(result.threats).toHaveLength(0);
   });
 
   it("returns isSafe: true for an empty buffer", async () => {
     const result = await scanForMalware(Buffer.alloc(0), "empty.jpg");
 
     expect(result.isSafe).toBe(true);
+    expect(result.threats).toHaveLength(0);
   });
 });
 

@@ -28,6 +28,7 @@ import {
 } from "@/server/email";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
+import { redactEmail } from "@/server/email/transport";
 import { runWithRequestContext } from "@/lib/request-context";
 
 export function startEmailWorker() {
@@ -176,7 +177,7 @@ export function startEmailWorker() {
 
         logger.info("email.sent", {
           template,
-          to: data.to,
+          to: redactEmail(data.to),
           correlationId,
           jobId: job.id,
         });

@@ -84,7 +84,7 @@ describe("startHealthServer", () => {
     const { status, body } = await getHealth(server);
 
     expect(status).toBe(503);
-    expect(body.status).toBe("degraded");
+    expect(body.status).toBe("unhealthy");
   });
 
   it("returns 503 when a worker is paused", async () => {
@@ -95,7 +95,7 @@ describe("startHealthServer", () => {
     const { status, body } = await getHealth(server);
 
     expect(status).toBe(503);
-    expect(body.status).toBe("degraded");
+    expect(body.status).toBe("unhealthy");
   });
 
   it("includes per-worker status in the response body", async () => {
@@ -155,7 +155,7 @@ describe("startHealthServer", () => {
     const { status, body } = await getHealth(server);
 
     expect(status).toBe(503);
-    expect(body.status).toBe("degraded");
+    expect(body.status).toBe("unhealthy");
   });
 
   it("returns 200 ok when all 4 workers (email, image, payout, pickup) are running", async () => {
