@@ -129,6 +129,25 @@ export function startPayoutWorker() {
             tier: fees.tier,
           });
 
+          // ── Manual review guard ───────────────────────────────────────────
+          // If fees would exceed the seller's payout, flag for manual review
+          // and abort — never attempt a Stripe transfer with a sub-minimum amount.
+          if (fees.requiresManualReview) {
+            logger.error("payout.worker.requires_manual_review", {
+              payoutId: payout.id,
+              orderId,
+              reason: fees.manualReviewReason,
+              grossAmountCents: fees.grossAmountCents,
+              platformFee: fees.platformFee,
+              stripeFee: fees.stripeFee,
+            });
+            await db.payout.update({
+              where: { orderId },
+              data: { status: "MANUAL_REVIEW" },
+            });
+            return { requiresManualReview: true };
+          }
+
           // ── Stripe transfer ───────────────────────────────────────────────
           // idempotencyKey = "transfer-${payout.id}" — payout.id is stable
           // across retries (unlike orderId which could theoretically have

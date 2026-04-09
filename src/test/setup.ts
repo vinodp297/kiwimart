@@ -391,7 +391,7 @@ vi.mock("@/server/lib/distributedLock", async (importOriginal) => {
       .mockImplementation(async (_key: string, fn: () => Promise<unknown>) =>
         fn(),
       ),
-    acquireLock: vi.fn().mockResolvedValue("NO_REDIS_LOCK"),
+    acquireLock: vi.fn().mockResolvedValue("mock-lock-value"),
     releaseLock: vi.fn().mockResolvedValue(undefined),
   };
 });

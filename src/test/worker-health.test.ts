@@ -126,4 +126,70 @@ describe("startHealthServer", () => {
     expect(status).toBe(200);
     expect(body.status).toBe("ok");
   });
+
+  // ── Fix 4: pickup worker included in health check ─────────────────────────
+
+  it("includes pickup worker status in the response body", async () => {
+    const server = await makeServer([
+      { name: "email", worker: makeWorker(true, false) },
+      { name: "image", worker: makeWorker(true, false) },
+      { name: "payout", worker: makeWorker(true, false) },
+      { name: "pickup", worker: makeWorker(true, false) },
+    ]);
+
+    const { body } = await getHealth(server);
+    const workers = body.workers as Array<{ name: string }>;
+    const names = workers.map((w) => w.name);
+
+    expect(names).toContain("pickup");
+  });
+
+  it("returns 503 when pickup worker has stopped", async () => {
+    const server = await makeServer([
+      { name: "email", worker: makeWorker(true, false) },
+      { name: "image", worker: makeWorker(true, false) },
+      { name: "payout", worker: makeWorker(true, false) },
+      { name: "pickup", worker: makeWorker(false, false) }, // pickup stopped
+    ]);
+
+    const { status, body } = await getHealth(server);
+
+    expect(status).toBe(503);
+    expect(body.status).toBe("degraded");
+  });
+
+  it("returns 200 ok when all 4 workers (email, image, payout, pickup) are running", async () => {
+    const server = await makeServer([
+      { name: "email", worker: makeWorker(true, false) },
+      { name: "image", worker: makeWorker(true, false) },
+      { name: "payout", worker: makeWorker(true, false) },
+      { name: "pickup", worker: makeWorker(true, false) },
+    ]);
+
+    const { status, body } = await getHealth(server);
+
+    expect(status).toBe(200);
+    expect(body.status).toBe("ok");
+    const workers = body.workers as Array<{ name: string; running: boolean }>;
+    expect(workers).toHaveLength(4);
+    expect(workers.every((w) => w.running)).toBe(true);
+  });
+
+  it("worker list in response includes all 4 expected worker names", async () => {
+    const server = await makeServer([
+      { name: "email", worker: makeWorker(true, false) },
+      { name: "image", worker: makeWorker(true, false) },
+      { name: "payout", worker: makeWorker(true, false) },
+      { name: "pickup", worker: makeWorker(true, false) },
+    ]);
+
+    const { body } = await getHealth(server);
+    const workers = body.workers as Array<{ name: string }>;
+    const names = workers.map((w) => w.name);
+
+    expect(names).toContain("email");
+    expect(names).toContain("image");
+    expect(names).toContain("payout");
+    expect(names).toContain("pickup");
+  });
 });

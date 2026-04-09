@@ -156,28 +156,17 @@ export async function processAutoReleases(): Promise<{
           return false;
         }
 
-        // Distributed lock — prevents two cron runs from double-releasing the same order
+        // Distributed lock — prevents two cron runs from double-releasing the same order.
+        // acquireLock returns null when lock is held OR Redis is unavailable — both
+        // cases are fail-closed: skip this order and retry on the next cron run.
         const lockValue = await acquireLock(`order:release:${order.id}`, 60);
-        if (lockValue === null) {
-          // Lock held by concurrent process — already being processed
-          logger.info("escrow.auto_release.lock_skipped", {
-            orderId: order.id,
-          });
-          return true; // Treat as already processed
-        }
-
-        // Fail-closed in production: if Redis is unavailable, skip this order
-        // and let the next cron run retry once Redis recovers.
-        if (
-          lockValue === "NO_REDIS_LOCK" &&
-          process.env.NODE_ENV === "production"
-        ) {
-          logger.error("escrow.auto_release.redis_unavailable", {
+        if (!lockValue) {
+          logger.warn("escrow.auto_release.lock_not_acquired", {
             orderId: order.id,
             message:
-              "Redis unavailable in production — skipping order. Will retry next cron run.",
+              "Lock not acquired (held by concurrent process or Redis unavailable) — will retry next cron run.",
           });
-          return false;
+          return false; // Not processed this run — retry on next run
         }
 
         try {
@@ -356,18 +345,13 @@ export async function processAutoReleases(): Promise<{
               `order:cash-release:${order.id}`,
               60,
             );
-            if (lockValue === null) {
-              logger.info("escrow.cash_release.lock_skipped", {
+            if (!lockValue) {
+              // acquireLock returns null when lock is held OR Redis is unavailable.
+              // Both cases are fail-closed: skip and retry next cron run.
+              logger.warn("escrow.cash_release.lock_not_acquired", {
                 orderId: order.id,
-              });
-              return true;
-            }
-            if (
-              lockValue === "NO_REDIS_LOCK" &&
-              process.env.NODE_ENV === "production"
-            ) {
-              logger.error("escrow.cash_release.redis_unavailable", {
-                orderId: order.id,
+                message:
+                  "Lock not acquired (held or Redis unavailable) — will retry next cron run.",
               });
               return false;
             }

@@ -3,12 +3,12 @@
 // Prevents concurrent processing of the same resource across serverless
 // function instances (e.g. double-release, double-refund).
 //
-// Sentinel value 'NO_REDIS_LOCK':
-//   Returned by acquireLock() when Redis is unavailable.
-//   In PRODUCTION: withLock() THROWS — fail-closed. No money operation
-//   should proceed without concurrency protection.
-//   In DEV/TEST: withLock() proceeds without lock so the app works
-//   without Redis configured locally.
+// acquireLock() returns:
+//   string  — lock value on success (pass to releaseLock)
+//   null    — lock NOT acquired (Redis unavailable OR held by another process)
+//
+// Both failure modes return null — callers must treat null as "do not proceed".
+// This is fail-closed: financial operations are never attempted without a lock.
 //
 // Lock acquisition uses SET NX EX — a single atomic Redis command that sets
 // the key only if it doesn't exist and automatically expires after ttlSeconds.
@@ -19,15 +19,14 @@
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 
-const NO_REDIS_LOCK = "NO_REDIS_LOCK";
-
 /**
  * Attempt to acquire a distributed lock for the given resource.
  *
  * Returns:
  *   - A non-empty lock value string on success (pass to releaseLock)
- *   - 'NO_REDIS_LOCK' sentinel if Redis is unavailable (proceeds without lock)
- *   - null if the lock is currently held by another process
+ *   - null if the lock is held by another process OR if Redis is unavailable
+ *
+ * Callers MUST treat null as "do not proceed" — it is always fail-closed.
  */
 export async function acquireLock(
   resource: string,
@@ -51,15 +50,16 @@ export async function acquireLock(
     }
     return null; // Lock held by another process
   } catch {
-    // Redis unavailable — return sentinel to allow non-blocking operation
+    // Redis unavailable — return null so callers fail closed.
+    // No operation requiring a distributed lock should proceed without Redis.
     logger.warn("distributedLock.redis_unavailable", { resource });
-    return NO_REDIS_LOCK;
+    return null;
   }
 }
 
 /**
  * Release a lock previously acquired via acquireLock().
- * No-op if lockValue is the NO_REDIS_LOCK sentinel.
+ * No-op if lockValue is falsy (null/undefined/empty string).
  *
  * Uses a Lua compare-and-delete to ensure only the lock owner can release.
  */
@@ -67,7 +67,7 @@ export async function releaseLock(
   resource: string,
   lockValue: string,
 ): Promise<void> {
-  if (lockValue === NO_REDIS_LOCK) return;
+  if (!lockValue) return;
 
   try {
     const { getRedisClient } = await import("@/infrastructure/redis/client");
@@ -87,12 +87,14 @@ export async function releaseLock(
 /**
  * Acquire a lock, run fn(), release the lock in a finally block.
  *
- * Throws if the lock is currently held by another process (lockValue === null).
- * Callers should catch this and treat it as "already processing".
+ * Throws if the lock cannot be acquired (null return from acquireLock).
+ * This covers both "held by another process" and "Redis unavailable".
  *
- * When Redis is unavailable:
- *   - failOpen: false (default) — throws in production, warns and proceeds in dev/test
- *   - failOpen: true — proceeds without lock (use only for non-critical operations)
+ * Callers should catch this and treat it as "already processing" or
+ * "temporarily unavailable".
+ *
+ * options.failOpen — if true, proceeds without lock when Redis is unavailable
+ *   (use only for non-critical, idempotent operations)
  */
 export async function withLock<T>(
   resource: string,
@@ -109,18 +111,9 @@ export async function withLock<T>(
   const lockValue = await acquireLock(resource, ttlSeconds);
 
   if (lockValue === null) {
-    throw new AppError(
-      "CONCURRENT_MODIFICATION",
-      `Failed to acquire lock for resource: ${resource}`,
-      409,
-    );
-  }
-
-  // Redis unavailable — sentinel returned.
-  if (lockValue === NO_REDIS_LOCK) {
     if (failOpen) {
       // Caller explicitly opted in to fail-open (non-critical operation)
-      logger.warn("distributedLock.redis_unavailable_failopen", {
+      logger.warn("distributedLock.lock_unavailable_failopen", {
         resource,
         message: "Proceeding without lock (failOpen: true)",
       });
@@ -128,26 +121,27 @@ export async function withLock<T>(
     }
 
     if (process.env.NODE_ENV !== "production") {
-      // Dev/test — proceed without lock so the app works without Redis
-      logger.warn("distributedLock.redis_unavailable_dev", {
+      // Dev — Redis may not be running locally. Proceed without lock so
+      // the app works without a local Redis instance.
+      logger.warn("distributedLock.lock_unavailable_dev", {
         resource,
-        message: "Proceeding without lock (dev/test only)",
+        message: "Lock not acquired in dev — proceeding without lock",
       });
       return await fn();
     }
 
-    // PRODUCTION fail-closed — no money operation should proceed without
-    // concurrency protection.
-    logger.error("distributedLock.redis_unavailable_production", {
+    // PRODUCTION fail-closed — lock held or Redis unavailable.
+    // Either way, reject the operation to prevent concurrent mutations.
+    logger.error("distributedLock.lock_unavailable_production", {
       resource,
       message:
-        "Redis unavailable in PRODUCTION — failing CLOSED. " +
-        "Check Redis connectivity immediately.",
+        "Lock not acquired in PRODUCTION — failing CLOSED. " +
+        "Check Redis connectivity and concurrent execution.",
     });
     throw new AppError(
-      "DATABASE_ERROR",
-      "Lock unavailable — Redis is down. Operation rejected to prevent concurrent mutations.",
-      503,
+      "CONCURRENT_MODIFICATION",
+      `Failed to acquire lock for resource: ${resource}`,
+      409,
     );
   }
 

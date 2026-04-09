@@ -116,6 +116,7 @@ enum PayoutStatus {
   PROCESSING
   PAID
   FAILED
+  MANUAL_REVIEW
 }
 
 enum DisputeReason {

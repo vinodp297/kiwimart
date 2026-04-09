@@ -38,11 +38,24 @@ export interface FeeBreakdown {
   platformFeeRate: number;
   /** Total fees deducted from seller (stripeFee + platformFee) */
   totalFees: number;
-  /** Net amount seller receives (grossAmount - totalFees) */
+  /** Net amount seller receives (grossAmount - totalFees). Zero when requiresManualReview. */
   sellerPayout: number;
   /** Seller's performance tier used for rate selection */
   tier: PerformanceTier | "STANDARD";
+  /**
+   * True when the seller payout would be below MINIMUM_PAYOUT_CENTS.
+   * The Stripe transfer must NOT be attempted — update payout to MANUAL_REVIEW.
+   */
+  requiresManualReview?: boolean;
+  /** Human-readable explanation set when requiresManualReview is true. */
+  manualReviewReason?: string;
 }
+
+// ── Minimum payout invariant ─────────────────────────────────────────────────
+// Stripe's minimum transfer amount for NZD. If fees would reduce the seller's
+// payout below this threshold the order requires manual review — we must NOT
+// attempt a Stripe transfer with a sub-minimum or negative amount.
+export const MINIMUM_PAYOUT_CENTS = 50;
 
 // ── Sync calculator (uses hardcoded defaults) ────────────────────────────────
 
@@ -163,6 +176,25 @@ function computeFees(
   // 4. Totals
   const totalFees = stripeFee + platformFee;
   const sellerPayout = grossAmountCents - totalFees;
+
+  // 5. Minimum payout invariant
+  // If the seller's net payout would be below the Stripe minimum transfer amount,
+  // flag the breakdown for manual review. The Stripe transfer must NOT be attempted.
+  if (sellerPayout < MINIMUM_PAYOUT_CENTS) {
+    return {
+      grossAmountCents,
+      stripeFee,
+      platformFee,
+      platformFeeRate,
+      totalFees,
+      sellerPayout: 0,
+      tier: tierLabel,
+      requiresManualReview: true,
+      manualReviewReason:
+        `Fees (${totalFees}¢) exceed or reduce seller payout below minimum ` +
+        `(${MINIMUM_PAYOUT_CENTS}¢) — manual review required before transfer.`,
+    };
+  }
 
   return {
     grossAmountCents,

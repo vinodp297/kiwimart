@@ -28,24 +28,16 @@ const nextConfig: NextConfig = {
     return config;
   },
   async headers() {
-    const allowedOrigins =
-      process.env.ALLOWED_ORIGINS || "https://kiwimart.vercel.app";
-    const corsHeaders = [
-      { key: "Access-Control-Allow-Origin", value: allowedOrigins },
-      {
-        key: "Access-Control-Allow-Methods",
-        value: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-      },
-      {
-        key: "Access-Control-Allow-Headers",
-        value: "Content-Type, Authorization, X-Request-ID",
-      },
-      { key: "Access-Control-Allow-Credentials", value: "true" },
-      { key: "Access-Control-Max-Age", value: "86400" },
-    ];
     // Content-Security-Policy is set per-request in src/proxy.ts with a
     // cryptographic nonce — do not add a static CSP here or it will override
     // the nonce-based header and break inline script allowance.
+    //
+    // CORS headers are intentionally NOT set here. Static CORS headers conflict
+    // with the per-request origin reflection in withCors() (cors.ts), which
+    // validates each origin against ALLOWED_ORIGINS and reflects a single
+    // matched origin — the only CORS-spec-compliant approach. Static headers
+    // cannot set a single origin value when multiple origins are allowed, and
+    // having both causes duplicate / conflicting CORS headers.
     const securityHeaders = [
       { key: "X-Frame-Options", value: "DENY" },
       { key: "X-Content-Type-Options", value: "nosniff" },
@@ -62,18 +54,6 @@ const nextConfig: NextConfig = {
     return [
       // Security headers for all routes
       { source: "/(.*)", headers: securityHeaders },
-      // CORS for versioned public API — safe for external consumers
-      { source: "/api/v1/:path*", headers: corsHeaders },
-      // CORS for non-auth API routes (health, cart, notifications, etc.)
-      // Exclude /api/auth/* — Auth.js manages its own headers/cookies
-      // Exclude /api/webhooks/* — server-to-server, no CORS needed
-      { source: "/api/docs/:path*", headers: corsHeaders },
-      { source: "/api/health", headers: corsHeaders },
-      { source: "/api/cart", headers: corsHeaders },
-      { source: "/api/notifications", headers: corsHeaders },
-      { source: "/api/seller/:path*", headers: corsHeaders },
-      { source: "/api/metrics", headers: corsHeaders },
-      { source: "/api/pusher/:path*", headers: corsHeaders },
     ];
   },
   async redirects() {
