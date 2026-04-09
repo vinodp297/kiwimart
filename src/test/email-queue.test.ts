@@ -49,7 +49,7 @@ vi.mock("@/modules/users/user.repository", () => ({
     }),
     update: vi.fn().mockResolvedValue(undefined),
     deleteAllSessions: vi.fn().mockResolvedValue(undefined),
-    findEmailAndDisplayName: vi.fn().mockResolvedValue({
+    findEmailInfo: vi.fn().mockResolvedValue({
       email: "original@buyzi.test",
       displayName: "Original User",
     }),

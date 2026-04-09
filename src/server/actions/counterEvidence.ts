@@ -38,7 +38,7 @@ export async function submitCounterEvidence(
 
     const { orderId, description, evidenceKeys } = parsed.data;
 
-    const order = await orderRepository.findForCounterEvidence(orderId);
+    const order = await orderRepository.findWithDisputeContext(orderId);
 
     if (!order) return { success: false, error: "Order not found." };
 

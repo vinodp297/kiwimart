@@ -42,8 +42,7 @@ export type TrustMetricsRow = Prisma.TrustMetricsGetPayload<{
 }>;
 
 export const sellerRepository = {
-  /** Find a seller's public profile by username.
-   * @source src/app/(public)/sellers/[username]/page.tsx */
+  /** Find a seller's public profile by username. */
   async findPublicByUsername(
     username: string,
   ): Promise<SellerPublicProfile | null> {
@@ -66,8 +65,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Find a seller's public profile by ID.
-   * @source src/app/(public)/listings/[id]/SellerPanel.tsx */
+  /** Find a seller's public profile by ID. */
   async findPublicById(id: string): Promise<SellerPublicProfile | null> {
     return db.user.findUnique({
       where: { id },
@@ -88,8 +86,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Find trust metrics for a user.
-   * @source src/modules/sellers/trust-score.service.ts */
+  /** Find trust metrics for a user. */
   async findTrustMetrics(userId: string): Promise<TrustMetricsRow | null> {
     return db.trustMetrics.findUnique({
       where: { userId },
@@ -105,8 +102,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Upsert trust metrics after a sale or review.
-   * @source src/modules/sellers/trust-score.service.ts */
+  /** Upsert trust metrics after a sale or review. */
   async upsertTrustMetrics(
     userId: string,
     create: Prisma.TrustMetricsCreateInput,
@@ -119,8 +115,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Update seller response-time metrics.
-   * @source src/modules/sellers/response-metrics.service.ts */
+  /** Update seller response-time metrics. */
   async updateResponseMetrics(
     sellerId: string,
     avgResponseTimeMinutes: number,
@@ -136,8 +131,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Find sellers eligible for tier downgrade check.
-   * @source src/server/jobs/sellerDowngradeCheck.ts */
+  /** Find sellers eligible for tier downgrade check. */
   async findSellersForDowngradeCheck(take: number): Promise<
     Prisma.UserGetPayload<{
       select: {
@@ -154,8 +148,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Update seller tier.
-   * @source src/server/jobs/sellerDowngradeCheck.ts */
+  /** Update seller tier. */
   async updateSellerTier(userId: string, tier: string): Promise<void> {
     await db.user.update({
       where: { id: userId },
@@ -167,8 +160,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Find sellers with open disputes (for downgrade check).
-   * @source src/server/jobs/sellerDowngradeCheck.ts */
+  /** Find sellers with open disputes (for downgrade check). */
   async findSellersWithOpenDisputes(): Promise<
     Prisma.UserGetPayload<{ select: { id: true } }>[]
   > {
@@ -184,8 +176,7 @@ export const sellerRepository = {
 
   // ── Trust-score helpers ───────────────────────────────────────────────────
 
-  /** Fetch user fields needed to compute a seller trust score.
-   * @source src/modules/sellers/trust-score.service.ts — fetchSellerTrustProfile */
+  /** Fetch user fields needed to compute a seller trust score. */
   async findForTrustProfile(sellerId: string): Promise<{
     createdAt: Date;
     isVerifiedSeller: boolean;
@@ -205,8 +196,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Group a seller's orders by status to compute completion/dispute rates.
-   * @source src/modules/sellers/trust-score.service.ts — fetchSellerTrustProfile */
+  /** Group a seller's orders by status to compute completion/dispute rates. */
   async groupOrdersByStatus(
     sellerId: string,
   ): Promise<{ status: string; _count: { id: number } }[]> {
@@ -220,8 +210,7 @@ export const sellerRepository = {
     }) as Promise<{ status: string; _count: { id: number } }[]>;
   },
 
-  /** Aggregate approved buyer reviews for a seller (average rating + count).
-   * @source src/modules/sellers/trust-score.service.ts — fetchSellerTrustProfile */
+  /** Aggregate approved buyer reviews for a seller (average rating + count). */
   async aggregateSellerReviews(sellerId: string): Promise<{
     _avg: { rating: number | null };
     _count: { id: number };
@@ -233,8 +222,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Count completed sales for a seller in the last 12 months (for tier calculation).
-   * @source src/modules/sellers/trust-score.service.ts — fetchSellerTrustProfile */
+  /** Count completed sales for a seller in the last 12 months (for tier calculation). */
   async countRecentCompletedSales(
     sellerId: string,
     since: Date,
@@ -250,7 +238,6 @@ export const sellerRepository = {
 
   /** Fetch message threads for a seller's response-time calculation.
    * Returns first 10 messages per thread, last 50 threads.
-   * @source src/modules/listings/seller-response.service.ts,
    *         src/modules/sellers/response-metrics.service.ts */
   async findMessageThreadsForMetrics(sellerId: string): Promise<
     {
@@ -272,8 +259,7 @@ export const sellerRepository = {
     });
   },
 
-  /** Get Stripe account ID for a seller.
-   * @source src/modules/orders/order.service.ts, src/modules/payments/payment.service.ts */
+  /** Get Stripe account ID for a seller. */
   async findStripeAccountId(sellerId: string): Promise<string | null> {
     const user = await db.user.findUnique({
       where: { id: sellerId },

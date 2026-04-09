@@ -7,16 +7,14 @@ import db from "@/lib/db";
 export const trustMetricsRepository = {
   // ── Cache lookup ───────────────────────────────────────────────────────────
 
-  /** Fetch cached trust metrics for a user (if they exist).
-   * @source src/modules/trust/trust-metrics.service.ts — getMetrics */
+  /** Fetch cached trust metrics for a user (if they exist). */
   async findCached(userId: string) {
     return db.trustMetrics.findUnique({ where: { userId } });
   },
 
   // ── User helpers ───────────────────────────────────────────────────────────
 
-  /** Fetch a user's account creation date (for age calculation).
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Fetch a user's account creation date (for age calculation). */
   async findCreatedAt(userId: string): Promise<{ createdAt: Date } | null> {
     return db.user.findUnique({
       where: { id: userId },
@@ -24,8 +22,7 @@ export const trustMetricsRepository = {
     });
   },
 
-  /** Fetch all active, non-deleted users for batch recomputation.
-   * @source src/modules/trust/trust-metrics.service.ts — computeAllMetrics */
+  /** Fetch all active, non-deleted users for batch recomputation. */
   async findAllActiveUserIds(): Promise<{ id: string }[]> {
     return db.user.findMany({
       where: { isBanned: false, deletedAt: null },
@@ -36,48 +33,41 @@ export const trustMetricsRepository = {
 
   // ── Order counts ───────────────────────────────────────────────────────────
 
-  /** Count total orders where the user is the buyer.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count total orders where the user is the buyer. */
   async countBuyerOrders(userId: string): Promise<number> {
     return db.order.count({ where: { buyerId: userId } });
   },
 
-  /** Count total orders where the user is the seller.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count total orders where the user is the seller. */
   async countSellerOrders(userId: string): Promise<number> {
     return db.order.count({ where: { sellerId: userId } });
   },
 
-  /** Count completed orders where the user is the buyer.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count completed orders where the user is the buyer. */
   async countCompletedBuyerOrders(userId: string): Promise<number> {
     return db.order.count({ where: { buyerId: userId, status: "COMPLETED" } });
   },
 
-  /** Count completed orders where the user is the seller.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count completed orders where the user is the seller. */
   async countCompletedSellerOrders(userId: string): Promise<number> {
     return db.order.count({ where: { sellerId: userId, status: "COMPLETED" } });
   },
 
-  /** Count orders with disputes where the user is the buyer.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count orders with disputes where the user is the buyer. */
   async countBuyerDisputes(userId: string): Promise<number> {
     return db.order.count({
       where: { buyerId: userId, dispute: { isNot: null } },
     });
   },
 
-  /** Count orders with disputes where the user is the seller.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count orders with disputes where the user is the seller. */
   async countSellerDisputes(userId: string): Promise<number> {
     return db.order.count({
       where: { sellerId: userId, dispute: { isNot: null } },
     });
   },
 
-  /** Count recent disputed buyer orders within the rolling window.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count recent disputed buyer orders within the rolling window. */
   async countRecentBuyerDisputes(userId: string, since: Date): Promise<number> {
     return db.order.count({
       where: {
@@ -87,8 +77,7 @@ export const trustMetricsRepository = {
     });
   },
 
-  /** Count recent disputed seller orders within the rolling window.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count recent disputed seller orders within the rolling window. */
   async countRecentSellerDisputes(
     userId: string,
     since: Date,
@@ -103,8 +92,7 @@ export const trustMetricsRepository = {
 
   // ── Review helpers ─────────────────────────────────────────────────────────
 
-  /** Fetch approved buyer review ratings for a user (for average rating calc).
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Fetch approved buyer review ratings for a user (for average rating calc). */
   async findApprovedReviewRatings(
     userId: string,
   ): Promise<{ rating: number }[]> {
@@ -116,16 +104,14 @@ export const trustMetricsRepository = {
 
   // ── Dispatch photo helpers ─────────────────────────────────────────────────
 
-  /** Count dispatched orders (for dispatch photo rate calculation).
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count dispatched orders (for dispatch photo rate calculation). */
   async countDispatchedSellerOrders(userId: string): Promise<number> {
     return db.order.count({
       where: { sellerId: userId, dispatchedAt: { not: null } },
     });
   },
 
-  /** Count dispatch events that include photos (for dispatch photo rate).
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Count dispatch events that include photos (for dispatch photo rate). */
   async countDispatchedWithPhotos(userId: string): Promise<number> {
     return db.orderEvent.count({
       where: {
@@ -138,8 +124,7 @@ export const trustMetricsRepository = {
 
   // ── Dispute response helpers ───────────────────────────────────────────────
 
-  /** Fetch responded disputes for a seller (for average response time calc).
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Fetch responded disputes for a seller (for average response time calc). */
   async findRespondedDisputes(
     userId: string,
   ): Promise<{ openedAt: Date; sellerRespondedAt: Date | null }[]> {
@@ -154,8 +139,7 @@ export const trustMetricsRepository = {
 
   // ── Upsert ─────────────────────────────────────────────────────────────────
 
-  /** Upsert computed trust metrics into the cache table.
-   * @source src/modules/trust/trust-metrics.service.ts — computeMetrics */
+  /** Upsert computed trust metrics into the cache table. */
   async upsertMetrics(
     userId: string,
     metrics: {

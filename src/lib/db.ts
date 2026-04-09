@@ -5,8 +5,20 @@ import "server-only";
 // Next.js hot-reload creates new module instances in development, which would
 // exhaust the Neon connection pool. The global singleton pattern prevents this.
 
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+
+// ── Shared repository types ────────────────────────────────────────────────
+// Every repository that supports optional transaction clients should use these
+// rather than re-declaring the same type and helper locally.
+
+/** A Prisma interactive-transaction client OR the root PrismaClient. */
+export type DbClient = Prisma.TransactionClient | PrismaClient;
+
+/** Return `tx` if provided, otherwise the singleton `db` instance. */
+export function getClient(tx?: DbClient): DbClient {
+  return tx ?? db;
+}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

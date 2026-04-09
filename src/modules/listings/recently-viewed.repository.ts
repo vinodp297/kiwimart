@@ -1,20 +1,16 @@
 // src/modules/listings/recently-viewed.repository.ts
 // ─── Recently Viewed Repository — data access for recently viewed listings ────
 
-import db from "@/lib/db";
-import { Prisma } from "@prisma/client";
-
-type DbClient = Prisma.TransactionClient | typeof db;
+import { getClient, type DbClient } from "@/lib/db";
 
 export const recentlyViewedRepository = {
-  /** Upsert a listing view for the authenticated user.
-   * @source src/server/actions/recentlyViewed.ts — recordListingView */
+  /** Upsert a listing view for the authenticated user. */
   async upsertView(
     userId: string,
     listingId: string,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.recentlyViewed.upsert({
       where: { userId_listingId: { userId, listingId } },
       update: { viewedAt: new Date() },
@@ -22,10 +18,9 @@ export const recentlyViewedRepository = {
     });
   },
 
-  /** Find the oldest view IDs beyond the cap (for trimming).
-   * @source src/server/actions/recentlyViewed.ts — recordListingView */
+  /** Find the oldest view IDs beyond the cap (for trimming). */
   async findOlderThanCap(userId: string, cap: number, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.recentlyViewed.findMany({
       where: { userId },
       orderBy: { viewedAt: "desc" },
@@ -34,17 +29,15 @@ export const recentlyViewedRepository = {
     });
   },
 
-  /** Delete recently viewed records by id.
-   * @source src/server/actions/recentlyViewed.ts — recordListingView */
+  /** Delete recently viewed records by id. */
   async deleteManyByIds(ids: string[], tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.recentlyViewed.deleteMany({ where: { id: { in: ids } } });
   },
 
-  /** Fetch a user's recently viewed listings (newest first).
-   * @source src/server/actions/recentlyViewed.ts — getRecentlyViewedFromDB */
+  /** Fetch a user's recently viewed listings (newest first). */
   async findByUser(userId: string, limit: number, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.recentlyViewed.findMany({
       where: { userId },
       orderBy: { viewedAt: "desc" },

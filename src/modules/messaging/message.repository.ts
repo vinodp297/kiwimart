@@ -1,4 +1,4 @@
-import db from "@/lib/db";
+import db, { type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -6,8 +6,6 @@ import { Prisma } from "@prisma/client";
 // Phase 2A: methods used by message.service.ts (implemented below).
 // Phase 2B stubs: reserved for src/server/actions/messages.ts migration.
 // ---------------------------------------------------------------------------
-
-type DbClient = Prisma.TransactionClient | typeof db;
 
 export type ThreadWithLastMessage = Prisma.MessageThreadGetPayload<{
   include: {
@@ -204,8 +202,7 @@ export const messageRepository = {
     });
   },
 
-  /** Fetch the most recent N messages in a thread (desc order, body + sender only).
-   * @source src/server/services/pickup/pickup-proposal.service.ts — acceptPickupTime */
+  /** Fetch the most recent N messages in a thread (desc order, body + sender only). */
   async findRecentThreadMessages(
     threadId: string,
     take: number,

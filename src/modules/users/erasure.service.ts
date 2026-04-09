@@ -48,7 +48,7 @@ export async function performAccountErasure(
 
   // Capture original email + display name BEFORE anonymisation so we can
   // send the erasure confirmation to the correct address.
-  const originalUser = await userRepository.findEmailAndDisplayName(userId);
+  const originalUser = await userRepository.findEmailInfo(userId);
 
   // Pre-flight: reject if user has orders in active escrow
   const activeOrderCount =

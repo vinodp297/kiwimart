@@ -1,14 +1,14 @@
 // src/modules/orders/interaction.repository.ts
 // ─── Interaction Repository — data access for interaction server actions ─────
 
-import db from "@/lib/db";
+import { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
-type DbClient = Prisma.TransactionClient | typeof db;
-
 export const interactionRepository = {
-  async findOrderForCancellation(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
+  /** Fetch order context for any interaction workflow action (cancellation,
+   * return, partial refund, delay, response). Superset of all per-action selects. */
+  async findOrderForWorkflow(orderId: string, tx?: DbClient) {
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id: orderId },
       select: {
@@ -18,87 +18,15 @@ export const interactionRepository = {
         status: true,
         createdAt: true,
         stripePaymentIntentId: true,
-        listing: { select: { title: true } },
-      },
-    });
-  },
-
-  async findOrderForReturn(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return client.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        listing: { select: { title: true } },
-      },
-    });
-  },
-
-  async findOrderForPartialRefund(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return client.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
         totalNzd: true,
         listing: { select: { title: true } },
       },
     });
   },
 
-  async findOrderForDelay(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return client.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        listing: { select: { title: true } },
-      },
-    });
-  },
-
-  async findOrderAfterResponse(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return client.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        stripePaymentIntentId: true,
-        listing: { select: { title: true } },
-      },
-    });
-  },
-
-  async findOrderListingTitle(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return client.order.findUnique({
-      where: { id: orderId },
-      select: { listing: { select: { title: true } } },
-    });
-  },
-
-  async findOrderBuyerId(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return client.order.findUnique({
-      where: { id: orderId },
-      select: { buyerId: true, sellerId: true },
-    });
-  },
-
+  /** Fetch buyer and seller IDs for an order (party lookup / notifications). */
   async findOrderParties(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id: orderId },
       select: { buyerId: true, sellerId: true },
@@ -110,7 +38,7 @@ export const interactionRepository = {
     resolution: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.update({
       where: { id: interactionId },
       data: { resolvedAt: new Date(), resolution },
@@ -122,7 +50,7 @@ export const interactionRepository = {
     details: Prisma.InputJsonValue,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.update({
       where: { id: interactionId },
       data: { status: "COUNTERED", details },
@@ -130,7 +58,7 @@ export const interactionRepository = {
   },
 
   async findUserEmailInfo(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.user.findUnique({
       where: { id: userId },
       select: { email: true, displayName: true },
@@ -139,43 +67,39 @@ export const interactionRepository = {
 
   // ── OrderInteractionService methods ─────────────────────────────────────
 
-  /** Fetch order id/parties/status for interaction creation auth checks.
-   * @source src/modules/orders/order-interaction.service.ts — createInteraction */
+  /** Fetch order id/parties/status for interaction creation auth checks. */
   async findOrderForInteraction(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id: orderId },
       select: { id: true, buyerId: true, sellerId: true, status: true },
     });
   },
 
-  /** Find an existing pending interaction of the same type on an order.
-   * @source src/modules/orders/order-interaction.service.ts — createInteraction */
+  /** Find an existing pending interaction of the same type on an order. */
   async findPendingByTypeAndOrder(
     orderId: string,
     type: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.findFirst({
       where: { orderId, type, status: "PENDING" },
     });
   },
 
-  /** Create a new order interaction.
-   * @source src/modules/orders/order-interaction.service.ts — createInteraction */
+  /** Create a new order interaction. */
   async createInteraction(
     data: Prisma.OrderInteractionUncheckedCreateInput,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.create({ data });
   },
 
-  /** Fetch an interaction with its order parties for response auth checks.
-   * @source src/modules/orders/order-interaction.service.ts — respondToInteraction */
+  /** Fetch an interaction with its order parties for response auth checks. */
   async findByIdWithOrder(interactionId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.findUnique({
       where: { id: interactionId },
       include: {
@@ -186,21 +110,19 @@ export const interactionRepository = {
     });
   },
 
-  /** Update an interaction record.
-   * @source src/modules/orders/order-interaction.service.ts — respondToInteraction */
+  /** Update an interaction record. */
   async updateInteraction(
     id: string,
     data: Prisma.OrderInteractionUncheckedUpdateInput,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.update({ where: { id }, data });
   },
 
-  /** Fetch active (pending) interactions for an order with party display info.
-   * @source src/modules/orders/order-interaction.service.ts — getActiveInteractions */
+  /** Fetch active (pending) interactions for an order with party display info. */
   async findActiveByOrder(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.findMany({
       where: { orderId, status: { in: ["PENDING"] } },
       orderBy: { createdAt: "desc" },
@@ -211,15 +133,14 @@ export const interactionRepository = {
     });
   },
 
-  /** Count buyer interactions on an order prior to a given date (for auto-resolution).
-   * @source src/modules/disputes/auto-resolution.service.ts — evaluateDispute */
+  /** Count buyer interactions on an order prior to a given date (for auto-resolution). */
   async countPriorBuyerInteractions(
     orderId: string,
     buyerId: string,
     before: Date,
     tx?: DbClient,
   ): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.count({
       where: {
         orderId,
@@ -229,24 +150,22 @@ export const interactionRepository = {
     });
   },
 
-  /** Find the latest rejected interaction by the seller (for auto-resolution).
-   * @source src/modules/disputes/auto-resolution.service.ts — evaluateDispute */
+  /** Find the latest rejected interaction by the seller (for auto-resolution). */
   async findRejectedByResponder(
     orderId: string,
     sellerId: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.findFirst({
       where: { orderId, status: "REJECTED", responseById: sellerId },
       orderBy: { createdAt: "desc" },
     });
   },
 
-  /** Fetch all interactions for an order with party display info.
-   * @source src/modules/orders/order-interaction.service.ts — getInteractionsByOrder */
+  /** Fetch all interactions for an order with party display info. */
   async findAllByOrder(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.orderInteraction.findMany({
       where: { orderId },
       orderBy: { createdAt: "desc" },

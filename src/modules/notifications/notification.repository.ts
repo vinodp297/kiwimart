@@ -1,4 +1,4 @@
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { userRepository } from "@/modules/users/user.repository";
 
@@ -21,8 +21,6 @@ export interface PushTokenRow {
 // ---------------------------------------------------------------------------
 // Notification repository — data access only, no business logic.
 // ---------------------------------------------------------------------------
-
-type DbClient = Prisma.TransactionClient | typeof db;
 
 // ── Select shape ────────────────────────────────────────────────────────────
 
@@ -54,25 +52,23 @@ export interface NotifyAdminsPayload {
 // ── Repository ──────────────────────────────────────────────────────────────
 
 export const notificationRepository = {
-  /** Create a single notification.
-   * @source src/modules/notifications/notification.service.ts */
+  /** Create a single notification. */
   async create(
     data: Prisma.NotificationUncheckedCreateInput,
     tx?: DbClient,
   ): Promise<NotificationRow> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.notification.create({ data, select: notificationSelect });
   },
 
-  /** Fetch notifications for a user (newest-first, cursor-paginated).
-   * @source src/app/api/notifications/route.ts */
+  /** Fetch notifications for a user (newest-first, cursor-paginated). */
   async findByUser(
     userId: string,
     take: number,
     cursor?: string,
     tx?: DbClient,
   ): Promise<NotificationRow[]> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.notification.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -82,42 +78,38 @@ export const notificationRepository = {
     });
   },
 
-  /** Mark specific notifications as read (scoped to userId for safety).
-   * @source src/app/api/notifications/route.ts */
+  /** Mark specific notifications as read (scoped to userId for safety). */
   async markRead(
     notificationIds: string[],
     userId: string,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.notification.updateMany({
       where: { id: { in: notificationIds }, userId },
       data: { isRead: true },
     });
   },
 
-  /** Mark all unread notifications as read for a user.
-   * @source src/app/(protected)/notifications/page.tsx, src/app/api/notifications/route.ts */
+  /** Mark all unread notifications as read for a user. */
   async markAllRead(userId: string, tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.notification.updateMany({
       where: { userId, isRead: false },
       data: { isRead: true },
     });
   },
 
-  /** Count unread notifications for a user.
-   * @source src/components/NavBar.tsx */
+  /** Count unread notifications for a user. */
   async countUnread(userId: string, tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.notification.count({
       where: { userId, isRead: false },
     });
   },
 
   /** Check whether a reminder notification was already sent for an order
-   * within a time window (deduplication).
-   * @source src/server/jobs/dispatchReminders.ts */
+   * within a time window (deduplication). */
   async findRecentReminder(
     userId: string,
     orderId: string,
@@ -125,7 +117,7 @@ export const notificationRepository = {
     since: Date,
     tx?: DbClient,
   ): Promise<Prisma.NotificationGetPayload<{ select: { id: true } }> | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.notification.findFirst({
       where: { userId, orderId, type, createdAt: { gte: since } },
       select: { id: true },

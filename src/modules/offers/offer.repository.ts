@@ -22,8 +22,7 @@ export type OfferWithRelations = Prisma.OfferGetPayload<{
 }>;
 
 export const offerRepository = {
-  /** Find an offer by ID with buyer, seller, and listing.
-   * @source src/modules/offers/offer.service.ts */
+  /** Find an offer by ID with buyer, seller, and listing. */
   async findByIdWithRelations(id: string): Promise<OfferWithRelations | null> {
     return db.offer.findUnique({
       where: { id },
@@ -41,8 +40,7 @@ export const offerRepository = {
     });
   },
 
-  /** Find an existing pending offer from a buyer on a listing.
-   * @source src/modules/offers/offer.service.ts */
+  /** Find an existing pending offer from a buyer on a listing. */
   async findPendingByBuyerAndListing(
     buyerId: string,
     listingId: string,
@@ -55,8 +53,7 @@ export const offerRepository = {
     });
   },
 
-  /** Create a new offer.
-   * @source src/modules/offers/offer.service.ts */
+  /** Create a new offer. */
   async create(
     data: Prisma.OfferUncheckedCreateInput,
   ): Promise<{ id: string }> {
@@ -70,7 +67,6 @@ export const offerRepository = {
    * or decline returns count=0 instead of overwriting the competing write.
    * Callers must check result.count — 0 means CONCURRENT_MODIFICATION.
    *
-   * @source src/modules/offers/offer.service.ts
    */
   async accept(
     id: string,
@@ -94,7 +90,6 @@ export const offerRepository = {
    * response returns count=0 instead of overwriting it.
    * Callers must check result.count — 0 means CONCURRENT_MODIFICATION.
    *
-   * @source src/modules/offers/offer.service.ts
    */
   async decline(
     id: string,
@@ -110,16 +105,14 @@ export const offerRepository = {
     });
   },
 
-  /** Count pending offers on a listing (for social-proof display).
-   * @source src/modules/listings/social-proof.service.ts */
+  /** Count pending offers on a listing (for social-proof display). */
   async countPendingByListing(listingId: string): Promise<number> {
     return db.offer.count({
       where: { listingId, status: "PENDING" },
     });
   },
 
-  /** Decline all competing offers on the same listing (inside a transaction).
-   * @source src/modules/offers/offer.service.ts */
+  /** Decline all competing offers on the same listing (inside a transaction). */
   async declineCompetitors(
     listingId: string,
     acceptedOfferId: string,
@@ -135,8 +128,7 @@ export const offerRepository = {
     });
   },
 
-  /** Cursor-paginated offer list for a user (buyer, seller, or both).
-   * @source src/app/api/v1/offers/route.ts */
+  /** Cursor-paginated offer list for a user (buyer, seller, or both). */
   async findByUserCursor(
     where: {
       buyerId?: string;

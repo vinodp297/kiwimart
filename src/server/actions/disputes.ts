@@ -225,7 +225,7 @@ export async function respondToDispute(
       };
     }
 
-    const order = await orderRepository.findForDisputeResponse(
+    const order = await orderRepository.findWithDisputeContext(
       parsed.data.orderId,
     );
 

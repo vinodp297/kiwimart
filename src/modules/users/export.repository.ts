@@ -4,8 +4,7 @@
 import db from "@/lib/db";
 
 export const exportRepository = {
-  /** Fetch PII-safe profile fields for a user.
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch PII-safe profile fields for a user. */
   async findProfile(userId: string) {
     return db.user.findUnique({
       where: { id: userId },
@@ -32,8 +31,7 @@ export const exportRepository = {
     });
   },
 
-  /** Fetch all orders for a user (buyer or seller).
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch all orders for a user (buyer or seller). */
   async findOrders(userId: string) {
     return db.order.findMany({
       where: { OR: [{ buyerId: userId }, { sellerId: userId }] },
@@ -60,8 +58,7 @@ export const exportRepository = {
     });
   },
 
-  /** Fetch all messages sent by a user.
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch all messages sent by a user. */
   async findMessages(userId: string) {
     return db.message.findMany({
       where: { senderId: userId },
@@ -70,8 +67,7 @@ export const exportRepository = {
     });
   },
 
-  /** Fetch all reviews written by a user.
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch all reviews written by a user. */
   async findReviews(userId: string) {
     return db.review.findMany({
       where: { authorId: userId },
@@ -80,8 +76,7 @@ export const exportRepository = {
     });
   },
 
-  /** Fetch all listings created by a user.
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch all listings created by a user. */
   async findListings(userId: string) {
     return db.listing.findMany({
       where: { sellerId: userId },
@@ -100,8 +95,7 @@ export const exportRepository = {
     });
   },
 
-  /** Fetch all offers made by a user (as buyer).
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch all offers made by a user (as buyer). */
   async findOffersMade(userId: string) {
     return db.offer.findMany({
       where: { buyerId: userId },
@@ -110,8 +104,7 @@ export const exportRepository = {
     });
   },
 
-  /** Fetch all offers received by a user (as seller).
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch all offers received by a user (as seller). */
   async findOffersReceived(userId: string) {
     return db.offer.findMany({
       where: { sellerId: userId },
@@ -120,8 +113,7 @@ export const exportRepository = {
     });
   },
 
-  /** Fetch all watchlist items for a user.
-   * @source src/modules/users/export.service.ts — collectUserData */
+  /** Fetch all watchlist items for a user. */
   async findWatchlist(userId: string) {
     return db.watchlistItem.findMany({
       where: { userId },

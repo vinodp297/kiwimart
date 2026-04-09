@@ -50,14 +50,12 @@ const DISPUTE_QUEUE_SELECT = {
 } satisfies Prisma.OrderSelect;
 
 export const adminDisputesRepository = {
-  /** Count all open (DISPUTED) orders.
-   * @source src/modules/admin/admin-disputes.service.ts — getQueueStats */
+  /** Count all open (DISPUTED) orders. */
   async countOpenDisputes(): Promise<number> {
     return db.order.count({ where: { status: "DISPUTED" } });
   },
 
-  /** Fetch all auto-resolution events for open disputes (for categorisation).
-   * @source src/modules/admin/admin-disputes.service.ts — getQueueStats */
+  /** Fetch all auto-resolution events for open disputes (for categorisation). */
   async findAllAutoResolutionEvents() {
     return db.orderEvent.findMany({
       where: {
@@ -70,16 +68,14 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Count resolved disputes since a given date.
-   * @source src/modules/admin/admin-disputes.service.ts — getQueueStats */
+  /** Count resolved disputes since a given date. */
   async countResolvedSince(since: Date): Promise<number> {
     return db.dispute.count({
       where: { resolvedAt: { not: null, gte: since } },
     });
   },
 
-  /** Count auto-resolved (EXECUTED) events since a given date.
-   * @source src/modules/admin/admin-disputes.service.ts — getQueueStats */
+  /** Count auto-resolved (EXECUTED) events since a given date. */
   async countAutoResolvedSince(since: Date): Promise<number> {
     return db.orderEvent.count({
       where: {
@@ -90,16 +86,14 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Count open disputes for pickup (non-shipped) orders.
-   * @source src/modules/admin/admin-disputes.service.ts — getQueueStats */
+  /** Count open disputes for pickup (non-shipped) orders. */
   async countPickupDisputes(): Promise<number> {
     return db.order.count({
       where: { status: "DISPUTED", fulfillmentType: { not: "SHIPPED" } },
     });
   },
 
-  /** Fetch all open dispute order IDs.
-   * @source src/modules/admin/admin-disputes.service.ts — getQueueStats */
+  /** Fetch all open dispute order IDs. */
   async findOpenDisputeIds() {
     return db.order.findMany({
       where: { status: "DISPUTED" },
@@ -107,8 +101,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch recent resolved disputes for avg-resolution-time calculation.
-   * @source src/modules/admin/admin-disputes.service.ts — getQueueStats */
+  /** Fetch recent resolved disputes for avg-resolution-time calculation. */
   async findRecentResolved(limit: number) {
     return db.dispute.findMany({
       where: { resolvedAt: { not: null } },
@@ -118,8 +111,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch disputes for the "auto_resolved" tab.
-   * @source src/modules/admin/admin-disputes.service.ts — getDisputeQueue */
+  /** Fetch disputes for the "auto_resolved" tab. */
   async findAutoResolvedQueue() {
     return db.order.findMany({
       where: {
@@ -132,8 +124,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch all disputes (open + resolved) for the "all" tab.
-   * @source src/modules/admin/admin-disputes.service.ts — getDisputeQueue */
+  /** Fetch all disputes (open + resolved) for the "all" tab. */
   async findAllDisputeQueue() {
     return db.order.findMany({
       where: { dispute: { isNot: null } },
@@ -143,8 +134,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch open disputes for queue tabs.
-   * @source src/modules/admin/admin-disputes.service.ts — getDisputeQueue */
+  /** Fetch open disputes for queue tabs. */
   async findOpenDisputeQueue() {
     return db.order.findMany({
       where: { status: "DISPUTED" },
@@ -153,8 +143,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Batch-fetch auto-resolution events for multiple orders (avoids N+1).
-   * @source src/modules/admin/admin-disputes.service.ts — batchAutoResolutionEvents */
+  /** Batch-fetch auto-resolution events for multiple orders (avoids N+1). */
   async findAutoResolutionEventsBatch(orderIds: string[]) {
     if (orderIds.length === 0) return [];
     return db.orderEvent.findMany({
@@ -168,8 +157,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Find the latest auto-resolution event for a single order.
-   * @source src/modules/admin/admin-disputes.service.ts — getAutoResolutionEvent */
+  /** Find the latest auto-resolution event for a single order. */
   async findLatestAutoResolutionEvent(orderId: string) {
     return db.orderEvent.findFirst({
       where: {
@@ -182,8 +170,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch a single order with full case detail.
-   * @source src/modules/admin/admin-disputes.service.ts — getCaseDetail */
+  /** Fetch a single order with full case detail. */
   async findCaseOrder(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -299,8 +286,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch order events (timeline) for a case.
-   * @source src/modules/admin/admin-disputes.service.ts — getCaseDetail */
+  /** Fetch order events (timeline) for a case. */
   async findCaseTimeline(orderId: string) {
     return db.orderEvent.findMany({
       where: { orderId },
@@ -319,8 +305,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch order interactions for a case.
-   * @source src/modules/admin/admin-disputes.service.ts — getCaseDetail */
+  /** Fetch order interactions for a case. */
   async findCaseInteractions(orderId: string) {
     return db.orderInteraction.findMany({
       where: { orderId },
@@ -339,8 +324,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch the message thread between buyer and seller for a case.
-   * @source src/modules/admin/admin-disputes.service.ts — getCaseDetail */
+  /** Fetch the message thread between buyer and seller for a case. */
   async findCaseMessageThread(buyerId: string, sellerId: string) {
     return db.messageThread.findFirst({
       where: {
@@ -364,8 +348,7 @@ export const adminDisputesRepository = {
     });
   },
 
-  /** Fetch counter-evidence events for a case.
-   * @source src/modules/admin/admin-disputes.service.ts — getCaseDetail */
+  /** Fetch counter-evidence events for a case. */
   async findCaseCounterEvidence(orderId: string) {
     return db.orderEvent.findMany({
       where: {

@@ -1,4 +1,4 @@
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 import type {
   Dispute,
   DisputeStatus,
@@ -9,8 +9,6 @@ import type {
 // ---------------------------------------------------------------------------
 // Dispute repository — data access only, no business logic.
 // ---------------------------------------------------------------------------
-
-type DbClient = Prisma.TransactionClient | typeof db;
 
 export type DisputeWithRelations = Prisma.DisputeGetPayload<{
   include: {
@@ -32,7 +30,7 @@ export type DisputeWithEvidence = Dispute & {
 export const disputeRepository = {
   // ── findUnique by orderId (minimal) ─────────────────────────────────────
   async findByOrderId(orderId: string, tx?: DbClient): Promise<Dispute | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.findUnique({ where: { orderId } });
   },
 
@@ -41,7 +39,7 @@ export const disputeRepository = {
     orderId: string,
     tx?: DbClient,
   ): Promise<DisputeWithEvidence | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.findUnique({
       where: { orderId },
       include: { evidence: { orderBy: { createdAt: "asc" } } },
@@ -53,7 +51,7 @@ export const disputeRepository = {
     disputeId: string,
     tx?: DbClient,
   ): Promise<DisputeWithEvidence | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.findUnique({
       where: { id: disputeId },
       include: { evidence: { orderBy: { createdAt: "asc" } } },
@@ -65,7 +63,7 @@ export const disputeRepository = {
     disputeId: string,
     tx?: DbClient,
   ): Promise<{ status: DisputeStatus } | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.findUnique({
       where: { id: disputeId },
       select: { status: true },
@@ -84,7 +82,7 @@ export const disputeRepository = {
     },
     tx?: DbClient,
   ): Promise<Dispute> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.create({
       data: data as Prisma.DisputeUncheckedCreateInput,
     });
@@ -96,7 +94,7 @@ export const disputeRepository = {
     data: Prisma.DisputeUpdateInput,
     tx?: DbClient,
   ): Promise<Dispute> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.update({
       where: { id: disputeId },
       data,
@@ -115,7 +113,7 @@ export const disputeRepository = {
     }[],
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.disputeEvidence.createMany({ data: records });
   },
 
@@ -133,7 +131,7 @@ export const disputeRepository = {
     id: string,
     tx?: DbClient,
   ): Promise<DisputeWithRelations | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.findUnique({
       where: { id },
       include: {
@@ -155,7 +153,7 @@ export const disputeRepository = {
     since: Date,
     tx?: DbClient,
   ): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.count({
       where: {
         order: { buyerId },
@@ -170,7 +168,7 @@ export const disputeRepository = {
     cursor?: string,
     tx?: DbClient,
   ): Promise<DisputeWithRelations[]> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.findMany({
       where: {
         status: {
@@ -204,7 +202,7 @@ export const disputeRepository = {
     data: Prisma.VerificationApplicationUpdateManyMutationInput,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.verificationApplication.updateMany({
       where: { sellerId },
       data,

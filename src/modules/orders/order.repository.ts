@@ -1,10 +1,8 @@
 // src/modules/orders/order.repository.ts
 // ─── Order Repository — data access only, no business logic ─────────────────
 
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-
-type DbClient = Prisma.TransactionClient | typeof db;
 
 export type OrderWithRelations = Prisma.OrderGetPayload<{
   include: {
@@ -42,7 +40,7 @@ export const orderRepository = {
   // ── Service-layer methods (wired in order.service.ts) ───────────────────
 
   async findByIdForDelivery(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: {
@@ -57,23 +55,10 @@ export const orderRepository = {
     });
   },
 
-  async findByIdForDispatch(id: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return client.order.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        sellerId: true,
-        status: true,
-        buyerId: true,
-        listing: { select: { title: true } },
-        buyer: { select: { email: true, displayName: true } },
-      },
-    });
-  },
+  // findByIdForDispatch — consolidated into findWithDisputeContext (superset)
 
   async findByIdForDispute(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: {
@@ -91,7 +76,7 @@ export const orderRepository = {
   },
 
   async findByIdForCancel(id: string, userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findFirst({
       where: {
         id,
@@ -110,7 +95,7 @@ export const orderRepository = {
   },
 
   async findByIdForCancellationEmail(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: {
@@ -123,7 +108,7 @@ export const orderRepository = {
   },
 
   async findSellerStripeAccount(sellerId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.user.findUnique({
       where: { id: sellerId },
       select: { stripeAccountId: true },
@@ -131,7 +116,7 @@ export const orderRepository = {
   },
 
   async findListingTitle(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id: listingId },
       select: { title: true },
@@ -164,8 +149,7 @@ export const orderRepository = {
 
   // ── Auto-resolution helpers ───────────────────────────────────────────────
 
-  /** Fetch the minimal order fields needed to evaluate a dispute.
-   * @source src/modules/disputes/auto-resolution.service.ts — evaluateDispute */
+  /** Fetch the minimal order fields needed to evaluate a dispute. */
   async findForAutoResolutionEvaluate(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -183,8 +167,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order parties and listing title for cooling-period notification.
-   * @source src/modules/disputes/auto-resolution.service.ts — queueAutoResolution, executeDecision */
+  /** Fetch order parties and listing title for cooling-period notification. */
   async findForAutoResolutionExecute(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -202,8 +185,7 @@ export const orderRepository = {
 
   // ── Inconsistency-analysis helpers ────────────────────────────────────────
 
-  /** Fetch order with dispute + listing context for inconsistency analysis.
-   * @source src/modules/disputes/inconsistency-analysis.service.ts */
+  /** Fetch order with dispute + listing context for inconsistency analysis. */
   async findWithInconsistencyContext(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -235,8 +217,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch the DELIVERY_CONFIRMED_OK event for an order (inconsistency analysis).
-   * @source src/modules/disputes/inconsistency-analysis.service.ts */
+  /** Fetch the DELIVERY_CONFIRMED_OK event for an order (inconsistency analysis). */
   async findDeliveryOkEvent(orderId: string) {
     return db.orderEvent.findFirst({
       where: { orderId, type: "DELIVERY_CONFIRMED_OK" },
@@ -244,8 +225,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch the DISPATCHED event for an order (inconsistency analysis).
-   * @source src/modules/disputes/inconsistency-analysis.service.ts */
+  /** Fetch the DISPATCHED event for an order (inconsistency analysis). */
   async findDispatchEvent(orderId: string) {
     return db.orderEvent.findFirst({
       where: { orderId, type: "DISPATCHED" },
@@ -255,8 +235,7 @@ export const orderRepository = {
 
   // ── Webhook helpers ───────────────────────────────────────────────────────
 
-  /** Fetch order status and fulfilment type for webhook idempotency checks.
-   * @source src/modules/payments/webhook.service.ts */
+  /** Fetch order status and fulfilment type for webhook idempotency checks. */
   async findForWebhookStatus(
     orderId: string,
   ): Promise<{ status: string; fulfillmentType: string } | null> {
@@ -266,20 +245,17 @@ export const orderRepository = {
     });
   },
 
-  /** Record a Stripe event ID to enable idempotent webhook processing.
-   * @source src/modules/payments/webhook.service.ts */
+  /** Record a Stripe event ID to enable idempotent webhook processing. */
   async createStripeEvent(id: string, type: string): Promise<void> {
     await db.stripeEvent.create({ data: { id, type } });
   },
 
-  /** Delete a Stripe event record when the handler fails (allows Stripe retry).
-   * @source src/modules/payments/webhook.service.ts */
+  /** Delete a Stripe event record when the handler fails (allows Stripe retry). */
   async deleteStripeEvent(id: string): Promise<void> {
     await db.stripeEvent.delete({ where: { id } });
   },
 
-  /** Update a payout record when Stripe confirms a transfer has been created.
-   * @source src/modules/payments/webhook.service.ts */
+  /** Update a payout record when Stripe confirms a transfer has been created. */
   async updatePayoutByTransferId(transferId: string): Promise<void> {
     await db.payout.updateMany({
       where: { stripeTransferId: transferId },
@@ -287,8 +263,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order for support admin lookup.
-   * @source src/server/actions/support.ts — lookupOrder */
+  /** Fetch order for support admin lookup. */
   async findForSupportLookup(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -300,23 +275,9 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order for counter-evidence auth + status check.
-   * @source src/server/actions/counterEvidence.ts — submitCounterEvidence */
-  async findForCounterEvidence(orderId: string) {
-    return db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        buyerId: true,
-        sellerId: true,
-        status: true,
-        listing: { select: { title: true } },
-      },
-    });
-  },
+  // findForCounterEvidence — consolidated into findWithDisputeContext (superset)
 
-  /** Find the latest QUEUED auto-resolution event for an order.
-   * @source src/server/actions/counterEvidence.ts — submitCounterEvidence */
+  /** Find the latest QUEUED auto-resolution event for an order. */
   async findQueuedAutoResolutionEvent(orderId: string) {
     return db.orderEvent.findFirst({
       where: {
@@ -328,8 +289,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order detail for the order detail page.
-   * @source src/server/actions/orderDetail.ts — fetchOrderDetail */
+  /** Fetch order detail for the order detail page. */
   async findForOrderDetail(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -383,24 +343,9 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order for dispute response (respondToDispute action).
-   * @source src/server/actions/disputes.ts — respondToDispute */
-  async findForDisputeResponse(orderId: string) {
-    return db.order.findUnique({
-      where: { id: orderId },
-      select: {
-        id: true,
-        sellerId: true,
-        buyerId: true,
-        status: true,
-        listing: { select: { title: true } },
-        seller: { select: { displayName: true } },
-      },
-    });
-  },
+  // findForDisputeResponse — consolidated into findWithDisputeContext (superset)
 
-  /** Fetch order for problemResolver action.
-   * @source src/server/actions/problemResolver.ts — submitProblem */
+  /** Fetch order for problemResolver action. */
   async findForProblemResolver(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -419,8 +364,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order for initiatePickupOTP action (seller auth + OTP initiation).
-   * @source src/server/actions/pickup.actions.ts — initiatePickupOTP */
+  /** Fetch order for initiatePickupOTP action (seller auth + OTP initiation). */
   async findForInitiateOTP(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -440,8 +384,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order for confirmPickupOTP action (buyer OTP entry + payment capture).
-   * @source src/server/actions/pickup.actions.ts — confirmPickupOTP */
+  /** Fetch order for confirmPickupOTP action (buyer OTP entry + payment capture). */
   async findForConfirmOTP(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -463,8 +406,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch order for rejectItemAtPickup action (buyer rejection + dispute creation).
-   * @source src/server/actions/pickup.actions.ts — rejectItemAtPickup */
+  /** Fetch order for rejectItemAtPickup action (buyer rejection + dispute creation). */
   async findForRejectAtPickup(orderId: string) {
     return db.order.findUnique({
       where: { id: orderId },
@@ -482,8 +424,7 @@ export const orderRepository = {
     });
   },
 
-  /** Store the BullMQ job ID for the OTP expiry job (fire-and-forget).
-   * @source src/server/actions/pickup.actions.ts — initiatePickupOTP */
+  /** Store the BullMQ job ID for the OTP expiry job (fire-and-forget). */
   async updateOtpJobId(orderId: string, otpJobId: string): Promise<void> {
     await db.order.update({
       where: { id: orderId },
@@ -529,7 +470,7 @@ export const orderRepository = {
   // ── Transition methods (wired in order.transitions.ts) ──────────────────
 
   async findByIdForTransition(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: { id: true, status: true },
@@ -543,7 +484,7 @@ export const orderRepository = {
     data: Record<string, unknown>,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     // Import OrderStatus dynamically to avoid circular dependency
     return client.order.updateMany({
       where: {
@@ -567,7 +508,7 @@ export const orderRepository = {
     id: string,
     tx?: DbClient,
   ): Promise<OrderWithRelations | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       include: {
@@ -592,7 +533,7 @@ export const orderRepository = {
     id: string,
     tx?: DbClient,
   ): Promise<OrderForStatus | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: {
@@ -614,7 +555,7 @@ export const orderRepository = {
     userId: string,
     tx?: DbClient,
   ): Promise<OrderForStatus | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findFirst({
       where: { id, OR: [{ buyerId: userId }, { sellerId: userId }] },
       select: {
@@ -632,7 +573,7 @@ export const orderRepository = {
   },
 
   async findByIdempotencyKey(key: string, buyerId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findFirst({
       where: { idempotencyKey: key, buyerId },
       select: {
@@ -653,7 +594,7 @@ export const orderRepository = {
     stripePaymentIntentId: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.update({
       where: { id },
       data: { stripePaymentIntentId },
@@ -661,7 +602,7 @@ export const orderRepository = {
   },
 
   async findStripePaymentIntentId(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: { stripePaymentIntentId: true },
@@ -674,7 +615,7 @@ export const orderRepository = {
     cursor?: string,
     tx?: DbClient,
   ): Promise<OrderForStatus[]> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findMany({
       where: { buyerId },
       select: {
@@ -694,8 +635,7 @@ export const orderRepository = {
     });
   },
 
-  /** Count orders in active escrow states for a user (pre-flight check before account erasure).
-   * @source src/modules/users/erasure.service.ts — performAccountErasure */
+  /** Count orders in active escrow states for a user (pre-flight check before account erasure). */
   async countActiveOrdersForUser(userId: string): Promise<number> {
     return db.order.count({
       where: {
@@ -712,7 +652,7 @@ export const orderRepository = {
     since: Date,
     tx?: DbClient,
   ): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dispute.count({
       where: {
         order: { buyerId },
@@ -724,7 +664,7 @@ export const orderRepository = {
   // ── CreateOrder helpers ─────────────────────────────────────────────────
 
   async findListingForOrder(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id: listingId, status: "ACTIVE", deletedAt: null },
       select: {
@@ -747,7 +687,7 @@ export const orderRepository = {
   },
 
   async reserveListing(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id: listingId, status: "ACTIVE" },
       data: { status: "RESERVED" },
@@ -755,7 +695,7 @@ export const orderRepository = {
   },
 
   async releaseListing(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id: listingId, status: "RESERVED" },
       data: { status: "ACTIVE" },
@@ -763,7 +703,7 @@ export const orderRepository = {
   },
 
   async findBuyerDisplayName(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.user.findUnique({
       where: { id: userId },
       select: { displayName: true },
@@ -775,7 +715,7 @@ export const orderRepository = {
     jobId: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.update({
       where: { id: orderId },
       data: { scheduleDeadlineJobId: jobId },
@@ -786,10 +726,9 @@ export const orderRepository = {
 
   /** Fetch order context needed for any dispute-related admin flow
    * (resolve dispute, partial refund, dispute emails, request-info, pickup dispute).
-   * Returns union of fields used across admin.service.ts dispute handlers.
-   * @source src/modules/admin/admin.service.ts, src/server/services/pickup/pickup-dispute-resolver.service.ts */
+   * Returns union of fields used across admin.service.ts dispute handlers. */
   async findWithDisputeContext(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: {
@@ -811,7 +750,7 @@ export const orderRepository = {
    * (propose, accept, cancel, reschedule, reschedule-respond).
    * Union of fields read across src/server/services/pickup/*.service.ts. */
   async findWithPickupContext(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: {
@@ -831,19 +770,17 @@ export const orderRepository = {
     });
   },
 
-  /** Update pickup-related fields on an order (scheduling, cancellation).
-   * @source src/server/services/pickup/*.service.ts */
+  /** Update pickup-related fields on an order (scheduling, cancellation). */
   async updatePickupFields(
     id: string,
     data: Prisma.OrderUncheckedUpdateInput,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.order.update({ where: { id }, data });
   },
 
-  /** Fire-and-forget setter for the BullMQ pickup window job id.
-   * @source src/server/services/pickup/pickup-proposal.service.ts */
+  /** Fire-and-forget setter for the BullMQ pickup window job id. */
   setPickupWindowJobId(id: string, jobId: string): void {
     db.order
       .update({ where: { id }, data: { pickupWindowJobId: jobId } })
@@ -851,14 +788,13 @@ export const orderRepository = {
   },
 
   /** Fetch order context needed when a user creates or views a review.
-   * Returns parties + status + existing review ids for the given reviewerRole.
-   * @source src/modules/reviews/review.service.ts — createReview */
+   * Returns parties + status + existing review ids for the given reviewerRole. */
   async findWithReviewContext(
     id: string,
     reviewerRole: "BUYER" | "SELLER",
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id },
       select: {
@@ -874,9 +810,7 @@ export const orderRepository = {
     });
   },
 
-  /** Fetch buyer and seller IDs for pickup role determination.
-   * @source src/app/api/v1/pickup/propose/route.ts
-   * @source src/app/api/v1/pickup/reschedule/route.ts */
+  /** Fetch buyer and seller IDs for pickup role determination. */
   async findParties(id: string): Promise<{
     buyerId: string;
     sellerId: string;
@@ -887,8 +821,7 @@ export const orderRepository = {
     });
   },
 
-  /** Cursor-paginated buyer order list for /api/v1/orders.
-   * @source src/app/api/v1/orders/route.ts */
+  /** Cursor-paginated buyer order list for /api/v1/orders. */
   async findByBuyerCursor(
     buyerId: string,
     limit: number,

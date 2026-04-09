@@ -318,7 +318,7 @@ export async function confirmPickupOTP(
 
     // Send payout email to seller (fire-and-forget)
     userRepository
-      .findEmailAndDisplayName(order.sellerId)
+      .findEmailInfo(order.sellerId)
       .then((seller) => {
         if (!seller) return;
         sendPayoutInitiatedEmail({

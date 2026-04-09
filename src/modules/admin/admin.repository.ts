@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, getClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -38,8 +38,7 @@ export const adminRepository = {
   // User management
   // -------------------------------------------------------------------------
 
-  /** Paginated admin user list with search.
-   * @source src/app/api/admin/users/route.ts */
+  /** Paginated admin user list with search. */
   async findUsers(
     query: string | null,
     take: number,
@@ -71,8 +70,7 @@ export const adminRepository = {
     });
   },
 
-  /** Count total users (for admin stats).
-   * @source src/app/(protected)/admin/page.tsx */
+  /** Count total users (for admin stats). */
   async countUsers(where?: Prisma.UserWhereInput): Promise<number> {
     return db.user.count({ where });
   },
@@ -81,8 +79,7 @@ export const adminRepository = {
   // Reports
   // -------------------------------------------------------------------------
 
-  /** Fetch open reports (admin queue, paginated).
-   * @source src/app/api/admin/reports/route.ts */
+  /** Fetch open reports (admin queue, paginated). */
   async findOpenReports(
     take: number,
     cursor?: string,
@@ -99,8 +96,7 @@ export const adminRepository = {
     });
   },
 
-  /** Find a report by ID.
-   * @source src/modules/admin/admin.service.ts */
+  /** Find a report by ID. */
   async findReportById(id: string): Promise<ReportWithRelations | null> {
     return db.report.findUnique({
       where: { id },
@@ -111,8 +107,7 @@ export const adminRepository = {
     });
   },
 
-  /** Resolve a report (inside a transaction).
-   * @source src/modules/admin/admin.service.ts */
+  /** Resolve a report (inside a transaction). */
   async resolveReport(
     id: string,
     resolvedBy: string,
@@ -132,8 +127,7 @@ export const adminRepository = {
   // Metrics / KPIs  (used by admin dashboard pages)
   // -------------------------------------------------------------------------
 
-  /** Total revenue aggregate for a period.
-   * @source src/app/(protected)/admin/finance/page.tsx */
+  /** Total revenue aggregate for a period. */
   async aggregateRevenue(
     from: Date,
     to: Date,
@@ -147,14 +141,12 @@ export const adminRepository = {
     });
   },
 
-  /** Count orders by status for a period.
-   * @source src/app/(protected)/admin/page.tsx, finance/page.tsx */
+  /** Count orders by status for a period. */
   async countOrders(where: Prisma.OrderWhereInput): Promise<number> {
     return db.order.count({ where });
   },
 
-  /** Audit log entries (paginated + filtered).
-   * @source src/app/(protected)/admin/audit/page.tsx */
+  /** Audit log entries (paginated + filtered). */
   async findAuditLogs(
     where: Prisma.AuditLogWhereInput,
     take: number,
@@ -185,8 +177,7 @@ export const adminRepository = {
     });
   },
 
-  /** Count audit log entries.
-   * @source src/app/(protected)/admin/audit/page.tsx */
+  /** Count audit log entries. */
   async countAuditLogs(where: Prisma.AuditLogWhereInput): Promise<number> {
     return db.auditLog.count({ where });
   },
@@ -195,8 +186,7 @@ export const adminRepository = {
   // Trust metrics
   // -------------------------------------------------------------------------
 
-  /** Upsert trust metrics for fraud flagging.
-   * @source src/modules/admin/admin.service.ts */
+  /** Upsert trust metrics for fraud flagging. */
   async upsertTrustMetrics(
     userId: string,
     data: Prisma.TrustMetricsUpdateInput,
@@ -218,8 +208,7 @@ export const adminRepository = {
     });
   },
 
-  /** Find non-banned dispute admin user IDs for escalation notifications.
-   * @source src/server/services/pickup/pickup-dispute-resolver.service.ts */
+  /** Find non-banned dispute admin user IDs for escalation notifications. */
   async findDisputeAdmins(): Promise<{ id: string }[]> {
     return db.user.findMany({
       where: {
@@ -232,8 +221,7 @@ export const adminRepository = {
   },
 
   /** Record a seller dispute (pickup-auto-refund path) via trust metrics upsert.
-   * Increments disputeCount + disputesLast30Days and optionally flags for fraud.
-   * @source src/server/services/pickup/pickup-dispute-resolver.service.ts */
+   * Increments disputeCount + disputesLast30Days and optionally flags for fraud. */
   async recordSellerDisputeFromPickup(
     sellerId: string,
     isFraudSignal: boolean,
@@ -262,8 +250,7 @@ export const adminRepository = {
     });
   },
 
-  /** Flag a user for fraud (upsert trust metrics with isFlaggedForFraud=true).
-   * @source src/modules/admin/admin.service.ts — flagUserForFraud */
+  /** Flag a user for fraud (upsert trust metrics with isFlaggedForFraud=true). */
   async flagUserForFraud(userId: string): Promise<void> {
     await db.trustMetrics.upsert({
       where: { userId },
@@ -289,14 +276,13 @@ export const adminRepository = {
   // Payout management
   // -------------------------------------------------------------------------
 
-  /** Update payouts for an order (seller win / refund scenarios).
-   * @source src/modules/admin/admin-disputes.service.ts */
+  /** Update payouts for an order (seller win / refund scenarios). */
   async updateOrderPayouts(
     orderId: string,
     data: Prisma.PayoutUpdateManyMutationInput,
     tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.payout.updateMany({ where: { orderId }, data });
   },
 
@@ -304,8 +290,7 @@ export const adminRepository = {
   // Order events (auto-resolution)
   // -------------------------------------------------------------------------
 
-  /** Find the most recent AUTO_RESOLVED event that carries a decision in its metadata.
-   * @source src/modules/admin/admin.service.ts — overrideAutoResolution */
+  /** Find the most recent AUTO_RESOLVED event that carries a decision in its metadata. */
   async findLatestAutoResolvedEvent(
     orderId: string,
   ): Promise<Prisma.OrderEventGetPayload<{
@@ -322,8 +307,7 @@ export const adminRepository = {
     });
   },
 
-  /** Find an order event (used by auto-resolution checks).
-   * @source src/modules/admin/admin.service.ts */
+  /** Find an order event (used by auto-resolution checks). */
   async findOrderEvent(
     orderId: string,
     type: string,
@@ -337,27 +321,23 @@ export const adminRepository = {
     });
   },
 
-  /** Count active (non-deleted) listings.
-   * @source src/app/api/metrics/route.ts */
+  /** Count active (non-deleted) listings. */
   async countActiveListings(): Promise<number> {
     return db.listing.count({ where: { status: "ACTIVE", deletedAt: null } });
   },
 
-  /** Count open reports.
-   * @source src/app/api/metrics/route.ts */
+  /** Count open reports. */
   async countOpenReports(): Promise<number> {
     return db.report.count({ where: { status: "OPEN" } });
   },
 
-  /** Count payouts in PROCESSING state.
-   * @source src/app/api/metrics/route.ts */
+  /** Count payouts in PROCESSING state. */
   async countProcessingPayouts(): Promise<number> {
     return db.payout.count({ where: { status: "PROCESSING" } });
   },
 
   /** Open reports with cursor pagination — matches /api/admin/reports shape.
-   * reporter.username matches the route's existing include shape.
-   * @source src/app/api/admin/reports/route.ts */
+   * reporter.username matches the route's existing include shape. */
   async findOpenReportsCursor(limit: number, cursor?: string) {
     return db.report.findMany({
       where: { status: "OPEN" },
@@ -370,8 +350,7 @@ export const adminRepository = {
     });
   },
 
-  /** Page-based user list with search — matches /api/admin/users shape.
-   * @source src/app/api/admin/users/route.ts */
+  /** Page-based user list with search — matches /api/admin/users shape. */
   async findUsersByPage(q: string | null, page: number) {
     const where = q
       ? {
@@ -404,8 +383,7 @@ export const adminRepository = {
     });
   },
 
-  /** Disputed orders with cursor pagination — matches /api/admin/disputes shape.
-   * @source src/app/api/admin/disputes/route.ts */
+  /** Disputed orders with cursor pagination — matches /api/admin/disputes shape. */
   async findDisputedOrdersCursor(limit: number, cursor?: string) {
     return db.order.findMany({
       where: { status: "DISPUTED" },

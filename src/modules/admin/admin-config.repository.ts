@@ -1,16 +1,12 @@
 // src/modules/admin/admin-config.repository.ts
 // ─── Admin Config Repository — data access for platform configuration ─────────
 
-import db from "@/lib/db";
-import { Prisma } from "@prisma/client";
-
-type DbClient = Prisma.TransactionClient | typeof db;
+import { getClient, type DbClient } from "@/lib/db";
 
 export const adminConfigRepository = {
-  /** Fetch all platform config records with updater info.
-   * @source src/server/actions/admin-config.ts — getAllConfigs */
+  /** Fetch all platform config records with updater info. */
   async findAll(tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.platformConfig.findMany({
       orderBy: [{ category: "asc" }, { key: "asc" }],
       include: {
@@ -19,22 +15,20 @@ export const adminConfigRepository = {
     });
   },
 
-  /** Fetch a single config record by key.
-   * @source src/server/actions/admin-config.ts — updateConfig */
+  /** Fetch a single config record by key. */
   async findByKey(key: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.platformConfig.findUnique({ where: { key } });
   },
 
-  /** Update a config value and record who changed it.
-   * @source src/server/actions/admin-config.ts — updateConfig */
+  /** Update a config value and record who changed it. */
   async updateValue(
     key: string,
     value: string,
     updatedById: string,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.platformConfig.update({
       where: { key },
       data: { value, updatedById },

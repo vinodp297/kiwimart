@@ -389,7 +389,7 @@ export async function reorderListingImages(params: {
   try {
     const user = await requireUser();
 
-    const listing = await listingImageRepository.findListingOwner(
+    const listing = await listingImageRepository.findListingOwnerAndCount(
       params.listingId,
     );
 

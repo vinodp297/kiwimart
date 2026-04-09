@@ -642,8 +642,7 @@ export class AdminService {
     });
   }
 
-  /** Aggregate business health metrics for the internal dashboard.
-   * @source src/app/api/metrics/route.ts */
+  /** Aggregate business health metrics for the internal dashboard. */
   async getBusinessMetrics() {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);

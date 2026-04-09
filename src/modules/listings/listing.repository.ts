@@ -1,11 +1,9 @@
 // src/modules/listings/listing.repository.ts
 // ─── Listing Repository — data access only, no business logic ───────────────
 
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { ListingStatus } from "@prisma/client";
-
-type DbClient = Prisma.TransactionClient | typeof db;
 
 // ── Shared select shape for recommendation queries ──────────────────────────
 // Matches the LISTING_SELECT used in recommendations.service.ts.
@@ -55,7 +53,7 @@ export const listingRepository = {
   // ── Service-layer methods (wired in listing.service.ts) ─────────────────
 
   async findByIdForDelete(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id },
       select: { id: true, sellerId: true, status: true, title: true },
@@ -63,7 +61,7 @@ export const listingRepository = {
   },
 
   async softDelete(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.update({
       where: { id },
       data: { deletedAt: new Date(), status: "REMOVED" },
@@ -71,7 +69,7 @@ export const listingRepository = {
   },
 
   async findByIdActive(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id, status: "ACTIVE", deletedAt: null },
       select: { id: true, sellerId: true },
@@ -79,7 +77,7 @@ export const listingRepository = {
   },
 
   async findByIdWithSellerAndImages(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: {
         id,
@@ -129,7 +127,7 @@ export const listingRepository = {
   // ── Watchlist ─────────────────────────────────────────────────────────────
 
   async findWatchlistItem(userId: string, listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.watchlistItem.findUnique({
       where: { userId_listingId: { userId, listingId } },
     });
@@ -163,7 +161,7 @@ export const listingRepository = {
     id: string,
     tx?: DbClient,
   ): Promise<ListingWithRelations | null> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id },
       include: {
@@ -182,7 +180,7 @@ export const listingRepository = {
   },
 
   async findByIdForPurchase(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id },
       select: {
@@ -202,7 +200,7 @@ export const listingRepository = {
     id: string,
     tx?: DbClient,
   ): Promise<Prisma.BatchPayload> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id, status: "ACTIVE" },
       data: { status: "RESERVED" },
@@ -213,7 +211,7 @@ export const listingRepository = {
     id: string,
     tx?: DbClient,
   ): Promise<Prisma.BatchPayload> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id, status: "RESERVED" },
       data: { status: "ACTIVE" },
@@ -221,8 +219,7 @@ export const listingRepository = {
   },
 
   /** Restore a SOLD listing to ACTIVE (after an auto-refund dispute resolution).
-   * Uses updateMany so a status mismatch is a no-op rather than an error.
-   * @source src/modules/disputes/auto-resolution.service.ts — executeDecision */
+   * Uses updateMany so a status mismatch is a no-op rather than an error. */
   async restoreFromSold(id: string): Promise<void> {
     await db.listing.updateMany({
       where: { id, status: "SOLD" },
@@ -235,24 +232,24 @@ export const listingRepository = {
     data: Prisma.ListingUncheckedUpdateInput,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.update({ where: { id }, data });
   },
 
   async create(data: Prisma.ListingUncheckedCreateInput, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.create({ data, select: { id: true } });
   },
 
   async countBySeller(sellerId: string, tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.count({
       where: { sellerId, status: "ACTIVE", deletedAt: null },
     });
   },
 
   async findCategoryById(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.category.findUnique({
       where: { id },
       select: { id: true },
@@ -260,7 +257,7 @@ export const listingRepository = {
   },
 
   async findImagesByListingId(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.findMany({
       where: { listingId },
       select: {
@@ -275,7 +272,7 @@ export const listingRepository = {
   },
 
   async findImagesByKeys(r2Keys: string[], tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.findMany({
       where: { r2Key: { in: r2Keys } },
       select: { id: true, r2Key: true, isScanned: true, isSafe: true },
@@ -283,7 +280,7 @@ export const listingRepository = {
   },
 
   async reorderImages(listingId: string, orderedIds: string[], tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await Promise.all(
       orderedIds.map((id, i) =>
         client.listingImage.update({ where: { id }, data: { order: i } }),
@@ -292,24 +289,22 @@ export const listingRepository = {
   },
 
   async reactivate(id: string, tx?: DbClient): Promise<Prisma.BatchPayload> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id, status: "RESERVED" },
       data: { status: "ACTIVE" },
     });
   },
 
-  /** Set listing status directly (admin remove, offer accept → RESERVED, dispute → ACTIVE).
-   * @source src/modules/admin/admin.service.ts, src/modules/offers/offer.service.ts */
+  /** Set listing status directly (admin remove, offer accept → RESERVED, dispute → ACTIVE). */
   async setStatus(id: string, status: ListingStatus, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.update({ where: { id }, data: { status } });
   },
 
-  /** Fetch active listing data needed for offer creation.
-   * @source src/modules/offers/offer.service.ts — createOffer */
+  /** Fetch active listing data needed for offer creation. */
   async findForOffer(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id, status: "ACTIVE", deletedAt: null },
       select: {
@@ -326,7 +321,7 @@ export const listingRepository = {
   // ── Draft methods ─────────────────────────────────────────────────────────
 
   async findByIdForDraftUpdate(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id },
       select: { sellerId: true, status: true, deletedAt: true },
@@ -334,7 +329,7 @@ export const listingRepository = {
   },
 
   async disconnectDraftImages(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.updateMany({
       where: { listingId },
       data: { listingId: null },
@@ -347,7 +342,7 @@ export const listingRepository = {
     order: number,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.updateMany({
       where: { r2Key },
       data: { listingId, order },
@@ -357,7 +352,7 @@ export const listingRepository = {
   // ── Edit/Update methods ───────────────────────────────────────────────────
 
   async findByIdForUpdate(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id },
       select: {
@@ -391,7 +386,7 @@ export const listingRepository = {
     expectedUpdatedAt: Date,
     tx?: DbClient,
   ): Promise<Prisma.BatchPayload> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id, updatedAt: expectedUpdatedAt },
       data: { ...data, updatedAt: new Date() },
@@ -399,7 +394,7 @@ export const listingRepository = {
   },
 
   async findByIdForEdit(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id },
       select: {
@@ -434,7 +429,7 @@ export const listingRepository = {
   // ── Seller enable ─────────────────────────────────────────────────────────
 
   async enableSeller(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.user.update({
       where: { id: userId },
       data: { isSellerEnabled: true },
@@ -452,7 +447,7 @@ export const listingRepository = {
   // ── Trust metrics (for auto-review) ───────────────────────────────────────
 
   async findTrustMetrics(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.trustMetrics.findUnique({
       where: { userId },
       select: { isFlaggedForFraud: true, disputeRate: true },
@@ -462,7 +457,7 @@ export const listingRepository = {
   // ── Watchlist price alerts ────────────────────────────────────────────────
 
   async findWatchersWithPriceAlert(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.watchlistItem.findMany({
       where: { listingId, isPriceAlertEnabled: true },
       select: {
@@ -534,8 +529,7 @@ export const listingRepository = {
 
   // ── Price history ─────────────────────────────────────────────────────────
 
-  /** Fetch price-change history for a listing, ordered oldest-first.
-   * @source src/modules/listings/price-history.service.ts */
+  /** Fetch price-change history for a listing, ordered oldest-first. */
   async findPriceHistory(
     listingId: string,
   ): Promise<{ priceNzd: number; changedAt: Date }[]> {
@@ -549,8 +543,7 @@ export const listingRepository = {
 
   // ── Social proof ──────────────────────────────────────────────────────────
 
-  /** Fetch viewCount and watcher count for social-proof display.
-   * @source src/modules/listings/social-proof.service.ts */
+  /** Fetch viewCount and watcher count for social-proof display. */
   async findSocialProofCounts(listingId: string): Promise<{
     viewCount: number;
     _count: { watchers: number };
@@ -566,8 +559,7 @@ export const listingRepository = {
 
   // ── Recommendations ───────────────────────────────────────────────────────
 
-  /** Fetch other active listings from the same seller (listing detail page).
-   * @source src/modules/listings/recommendations.service.ts */
+  /** Fetch other active listings from the same seller (listing detail page). */
   async findMoreFromSeller(sellerId: string, excludeListingId: string) {
     return db.listing.findMany({
       where: {
@@ -582,8 +574,7 @@ export const listingRepository = {
     });
   },
 
-  /** Fetch listings in the same category at a similar price point.
-   * @source src/modules/listings/recommendations.service.ts */
+  /** Fetch listings in the same category at a similar price point. */
   async findSimilarListings(
     listingId: string,
     categoryId: string,
@@ -607,8 +598,7 @@ export const listingRepository = {
     });
   },
 
-  /** Fetch featured active listings sorted by watcher count (homepage).
-   * @source src/modules/listings/recommendations.service.ts */
+  /** Fetch featured active listings sorted by watcher count (homepage). */
   async findFeaturedListings() {
     return db.listing.findMany({
       where: { status: "ACTIVE", deletedAt: null },
@@ -618,8 +608,7 @@ export const listingRepository = {
     });
   },
 
-  /** Full-text search for listing IDs using Postgres tsvector.
-   * @source src/modules/listings/search.service.ts — searchListings */
+  /** Full-text search for listing IDs using Postgres tsvector. */
   async searchByVector(query: string): Promise<{ id: string }[]> {
     return db.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Listing"
@@ -630,14 +619,12 @@ export const listingRepository = {
     `;
   },
 
-  /** Count listings matching the search filter.
-   * @source src/modules/listings/search.service.ts — searchListings */
+  /** Count listings matching the search filter. */
   async countSearch(where: Prisma.ListingWhereInput): Promise<number> {
     return db.listing.count({ where });
   },
 
-  /** Fetch listing rows for search results.
-   * @source src/modules/listings/search.service.ts — searchListings */
+  /** Fetch listing rows for search results. */
   async findSearchResults(
     where: Prisma.ListingWhereInput,
     orderBy: Prisma.ListingOrderByWithRelationInput,
@@ -691,10 +678,9 @@ export const listingRepository = {
 
   // ── Admin listing moderation ──────────────────────────────────────────────
 
-  /** Fetch listing fields needed for all three moderation actions (approve / request changes / reject).
-   * @source src/server/actions/admin-listing-moderation.ts */
+  /** Fetch listing fields needed for all three moderation actions (approve / request changes / reject). */
   async findForModeration(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id: listingId },
       select: {
@@ -708,10 +694,9 @@ export const listingRepository = {
     });
   },
 
-  /** Set listing to ACTIVE with published/expiry timestamps (admin approve).
-   * @source src/server/actions/admin-listing-moderation.ts — approveListing */
+  /** Set listing to ACTIVE with published/expiry timestamps (admin approve). */
   async approveListing(listingId: string, adminId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.update({
       where: { id: listingId },
       data: {
@@ -725,15 +710,14 @@ export const listingRepository = {
     });
   },
 
-  /** Set listing to NEEDS_CHANGES with a moderation note.
-   * @source src/server/actions/admin-listing-moderation.ts — requestListingChanges */
+  /** Set listing to NEEDS_CHANGES with a moderation note. */
   async requestChanges(
     listingId: string,
     adminId: string,
     note: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.update({
       where: { id: listingId },
       data: {
@@ -745,15 +729,14 @@ export const listingRepository = {
     });
   },
 
-  /** Set listing to REMOVED with a rejection reason.
-   * @source src/server/actions/admin-listing-moderation.ts — rejectListing */
+  /** Set listing to REMOVED with a rejection reason. */
   async rejectListing(
     listingId: string,
     adminId: string,
     reason: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.update({
       where: { id: listingId },
       data: {
@@ -765,10 +748,9 @@ export const listingRepository = {
     });
   },
 
-  /** Fetch PENDING_REVIEW listings for the admin moderation queue.
-   * @source src/server/actions/admin-listing-moderation.ts — getPendingListings */
+  /** Fetch PENDING_REVIEW listings for the admin moderation queue. */
   async findPendingReview(tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findMany({
       where: { status: "PENDING_REVIEW", deletedAt: null },
       orderBy: [{ autoRiskScore: "desc" }, { createdAt: "asc" }],
@@ -799,10 +781,9 @@ export const listingRepository = {
     });
   },
 
-  /** Fetch NEEDS_CHANGES listings for the admin moderation queue.
-   * @source src/server/actions/admin-listing-moderation.ts — getPendingListings */
+  /** Fetch NEEDS_CHANGES listings for the admin moderation queue. */
   async findNeedsChanges(tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findMany({
       where: { status: "NEEDS_CHANGES", deletedAt: null },
       orderBy: { moderatedAt: "desc" },
@@ -834,28 +815,25 @@ export const listingRepository = {
     });
   },
 
-  /** Count listings currently awaiting first review.
-   * @source src/server/actions/admin-listing-moderation.ts — getPendingListings */
+  /** Count listings currently awaiting first review. */
   async countPendingReview(tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.count({
       where: { status: "PENDING_REVIEW", deletedAt: null },
     });
   },
 
-  /** Count listings currently awaiting seller changes.
-   * @source src/server/actions/admin-listing-moderation.ts — getPendingListings */
+  /** Count listings currently awaiting seller changes. */
   async countNeedsChanges(tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.count({
       where: { status: "NEEDS_CHANGES", deletedAt: null },
     });
   },
 
-  /** Count listings approved (or published) within the last 24 hours.
-   * @source src/server/actions/admin-listing-moderation.ts — getPendingListings */
+  /** Count listings approved (or published) within the last 24 hours. */
   async countApprovedToday(tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     return client.listing.count({
       where: {

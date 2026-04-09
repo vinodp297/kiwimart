@@ -1,23 +1,19 @@
 // src/modules/listings/listing-image.repository.ts
 // ─── Listing Image Repository — data access for listing images ────────────────
 
-import db from "@/lib/db";
+import { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
-type DbClient = Prisma.TransactionClient | typeof db;
-
 export const listingImageRepository = {
-  /** Count images for a listing.
-   * @source src/server/actions/images.ts — requestImageUpload */
+  /** Count images for a listing. */
   async countByListing(listingId: string, tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.count({ where: { listingId } });
   },
 
-  /** Delete orphaned unprocessed images for a user (before new upload).
-   * @source src/server/actions/images.ts — requestImageUpload */
+  /** Delete orphaned unprocessed images for a user (before new upload). */
   async deleteOrphansByUser(userId: string, tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.listingImage.deleteMany({
       where: {
         listingId: null,
@@ -29,44 +25,39 @@ export const listingImageRepository = {
     });
   },
 
-  /** Count pending (unassociated) images for a user.
-   * @source src/server/actions/images.ts — requestImageUpload */
+  /** Count pending (unassociated) images for a user. */
   async countPendingByUser(userId: string, tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.count({
       where: { listingId: null, r2Key: { startsWith: `listings/${userId}/` } },
     });
   },
 
-  /** Create a new listing image record.
-   * @source src/server/actions/images.ts — requestImageUpload */
+  /** Create a new listing image record. */
   async create(data: Prisma.ListingImageUncheckedCreateInput, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.create({ data, select: { id: true } });
   },
 
-  /** Fetch a listing image with its listing's seller ID for ownership check.
-   * @source src/server/actions/imageProcessor.ts — processImage */
+  /** Fetch a listing image with its listing's seller ID for ownership check. */
   async findWithListing(imageId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.findUnique({
       where: { id: imageId },
       select: { r2Key: true, listing: { select: { sellerId: true } } },
     });
   },
 
-  /** Mark an image as failed scan (unsafe).
-   * @source src/server/actions/imageProcessor.ts — processImage */
+  /** Mark an image as failed scan (unsafe). */
   async markUnsafe(imageId: string, tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.listingImage.update({
       where: { id: imageId },
       data: { isScanned: true, isSafe: false, scannedAt: new Date() },
     });
   },
 
-  /** Mark an image as safe and store processed metadata.
-   * @source src/server/actions/imageProcessor.ts — processImage */
+  /** Mark an image as safe and store processed metadata. */
   async markProcessed(
     imageId: string,
     data: {
@@ -79,7 +70,7 @@ export const listingImageRepository = {
     },
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.listingImage.update({
       where: { id: imageId },
       data: {
@@ -92,20 +83,18 @@ export const listingImageRepository = {
     });
   },
 
-  /** Mark an image as safe (dev bypass when R2 is unavailable).
-   * @source src/server/actions/images.ts — confirmImageUpload (dev only) */
+  /** Mark an image as safe (dev bypass when R2 is unavailable). */
   async markSafe(imageId: string, r2Key: string, tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.listingImage.update({
       where: { id: imageId, r2Key },
       data: { isScanned: true, isSafe: true, scannedAt: new Date() },
     });
   },
 
-  /** Delete unprocessed orphaned images for the cleanup action.
-   * @source src/server/actions/images.ts — cleanupOrphanedImages */
+  /** Delete unprocessed orphaned images for the cleanup action. */
   async deleteUnprocessedOrphansByUser(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.deleteMany({
       where: {
         listingId: null,
@@ -115,36 +104,32 @@ export const listingImageRepository = {
     });
   },
 
-  /** Check listing ownership and image count for delete auth.
-   * @source src/server/actions/images.ts — deleteListingImage */
+  /** Check listing ownership and image count for delete auth. */
   async findListingOwnerAndCount(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return (tx ?? db).listing.findUnique({
+    const client = getClient(tx);
+    return client.listing.findUnique({
       where: { id: listingId },
       select: { sellerId: true, _count: { select: { images: true } } },
     });
   },
 
-  /** Find a specific image by id and listing for deletion.
-   * @source src/server/actions/images.ts — deleteListingImage */
+  /** Find a specific image by id and listing for deletion. */
   async findByIdAndListing(imageId: string, listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.findFirst({
       where: { id: imageId, listingId },
     });
   },
 
-  /** Delete an image by id.
-   * @source src/server/actions/images.ts — deleteListingImage */
+  /** Delete an image by id. */
   async deleteById(imageId: string, tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.listingImage.delete({ where: { id: imageId } });
   },
 
-  /** Fetch remaining images ordered by position for re-ordering.
-   * @source src/server/actions/images.ts — deleteListingImage */
+  /** Fetch remaining images ordered by position for re-ordering. */
   async findOrderedByListing(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.findMany({
       where: { listingId },
       orderBy: { order: "asc" },
@@ -152,64 +137,50 @@ export const listingImageRepository = {
     });
   },
 
-  /** Update the sort order of an image.
-   * @source src/server/actions/images.ts — deleteListingImage, reorderListingImages */
+  /** Update the sort order of an image. */
   async updateOrder(
     imageId: string,
     order: number,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.listingImage.update({
       where: { id: imageId },
       data: { order },
     });
   },
 
-  /** Check listing ownership for reorder auth.
-   * @source src/server/actions/images.ts — reorderListingImages */
-  async findListingOwner(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
-    return (tx ?? db).listing.findUnique({
-      where: { id: listingId },
-      select: { sellerId: true },
-    });
-  },
+  // findListingOwner — consolidated into findListingOwnerAndCount (superset)
 
-  /** Count total images (admin storage monitoring).
-   * @source src/server/actions/storage.ts — getStorageStats */
+  /** Count total images (admin storage monitoring). */
   async countAll(tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.count();
   },
 
-  /** Count processed images (processedAt not null).
-   * @source src/server/actions/storage.ts — getStorageStats */
+  /** Count processed images (processedAt not null). */
   async countProcessed(tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.count({ where: { processedAt: { not: null } } });
   },
 
-  /** Count unscanned images.
-   * @source src/server/actions/storage.ts — getStorageStats */
+  /** Count unscanned images. */
   async countPending(tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.count({ where: { isScanned: false } });
   },
 
-  /** Count images with thumbnails.
-   * @source src/server/actions/storage.ts — getStorageStats */
+  /** Count images with thumbnails. */
   async countWithThumbnails(tx?: DbClient): Promise<number> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.count({
       where: { thumbnailKey: { not: null } },
     });
   },
 
-  /** Aggregate size statistics for storage monitoring.
-   * @source src/server/actions/storage.ts — getStorageStats */
+  /** Aggregate size statistics for storage monitoring. */
   async aggregateSizes(tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listingImage.aggregate({
       _sum: { sizeBytes: true, originalSizeBytes: true },
       _avg: { sizeBytes: true },

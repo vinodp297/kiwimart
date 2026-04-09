@@ -37,7 +37,7 @@ export class InteractionWorkflowService {
         getConfigInt(CONFIG_KEYS.CANCEL_REQUEST_WINDOW_HOURS),
       ]);
 
-    const order = await interactionRepository.findOrderForCancellation(orderId);
+    const order = await interactionRepository.findOrderForWorkflow(orderId);
     if (!order) return { ok: false, error: "Order not found." };
 
     const isBuyer = order.buyerId === userId;
@@ -189,7 +189,7 @@ export class InteractionWorkflowService {
       responseNote,
     );
 
-    const order = await interactionRepository.findOrderAfterResponse(
+    const order = await interactionRepository.findOrderForWorkflow(
       interaction.orderId,
     );
     if (!order) return { ok: false, error: "Order not found." };
@@ -270,7 +270,7 @@ export class InteractionWorkflowService {
     reason: string,
     details?: Record<string, unknown>,
   ): Promise<ServiceResult<{ interactionId: string }>> {
-    const order = await interactionRepository.findOrderForReturn(orderId);
+    const order = await interactionRepository.findOrderForWorkflow(orderId);
     if (!order) return { ok: false, error: "Order not found." };
     if (order.buyerId !== userId) {
       return { ok: false, error: "Only the buyer can request a return." };
@@ -363,7 +363,7 @@ export class InteractionWorkflowService {
       responseNote,
     );
 
-    const order = await interactionRepository.findOrderListingTitle(
+    const order = await interactionRepository.findOrderForWorkflow(
       interaction.orderId,
     );
 
@@ -457,8 +457,7 @@ export class InteractionWorkflowService {
     reason: string,
     amount: number,
   ): Promise<ServiceResult<{ interactionId: string }>> {
-    const order =
-      await interactionRepository.findOrderForPartialRefund(orderId);
+    const order = await interactionRepository.findOrderForWorkflow(orderId);
     if (!order) return { ok: false, error: "Order not found." };
 
     const isBuyer = order.buyerId === userId;
@@ -565,14 +564,11 @@ export class InteractionWorkflowService {
       } as import("@prisma/client").Prisma.InputJsonValue);
     }
 
-    const order = await interactionRepository.findOrderListingTitle(
-      interaction.orderId,
-    );
-    const parties = await interactionRepository.findOrderBuyerId(
+    const order = await interactionRepository.findOrderForWorkflow(
       interaction.orderId,
     );
 
-    const isBuyer = userId === parties?.buyerId;
+    const isBuyer = userId === order?.buyerId;
     const responderRole = isBuyer ? "Buyer" : "Seller";
 
     if (action === "ACCEPT") {
@@ -650,7 +646,7 @@ export class InteractionWorkflowService {
     reason: string,
     estimatedNewDate?: string,
   ): Promise<ServiceResult<{ interactionId: string }>> {
-    const order = await interactionRepository.findOrderForDelay(orderId);
+    const order = await interactionRepository.findOrderForWorkflow(orderId);
     if (!order) return { ok: false, error: "Order not found." };
     if (order.sellerId !== userId) {
       return {
@@ -736,7 +732,7 @@ export class InteractionWorkflowService {
       );
     }
 
-    const order = await interactionRepository.findOrderListingTitle(
+    const order = await interactionRepository.findOrderForWorkflow(
       interaction.orderId,
     );
 

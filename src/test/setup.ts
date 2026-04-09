@@ -219,7 +219,11 @@ vi.mock("@/lib/db", () => {
     }),
     $queryRaw: vi.fn(),
   };
-  return { default: dbMock, db: dbMock };
+  return {
+    default: dbMock,
+    db: dbMock,
+    getClient: (tx?: unknown) => tx ?? dbMock,
+  };
 });
 
 // ── Mock platform-config ──────────────────────────────────────────────────────

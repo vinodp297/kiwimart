@@ -7,9 +7,7 @@ import db from "@/lib/db";
 
 export const healthService = {
   /** Run a lightweight DB query to confirm the database is reachable.
-   * Throws on failure; callers wrap with try/catch or withTimeout.
-   * @source src/app/api/health/route.ts
-   * @source src/app/api/admin/health/route.ts */
+   * Throws on failure; callers wrap with try/catch or withTimeout. */
   async pingDatabase(): Promise<void> {
     await db.$queryRaw`SELECT 1`;
   },

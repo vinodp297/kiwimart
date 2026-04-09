@@ -20,8 +20,7 @@ export type ReviewWithTags = Prisma.ReviewGetPayload<{
 }>;
 
 export const reviewRepository = {
-  /** Find a review by ID with author and tags.
-   * @source src/modules/reviews/review.service.ts */
+  /** Find a review by ID with author and tags. */
   async findByIdWithRelations(id: string): Promise<ReviewWithTags | null> {
     return db.review.findUnique({
       where: { id },
@@ -39,8 +38,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Find a review by order ID and reviewer role.
-   * @source src/modules/reviews/review.service.ts */
+  /** Find a review by order ID and reviewer role. */
   async findByOrderIdAndRole(
     orderId: string,
     reviewerRole: ReviewerRole,
@@ -52,8 +50,7 @@ export const reviewRepository = {
   },
 
   /** Create a review (with optional nested tags).
-   * Returns only the created id.
-   * @source src/modules/reviews/review.service.ts — createReview */
+   * Returns only the created id. */
   async create(
     data: Prisma.ReviewUncheckedCreateInput,
   ): Promise<{ id: string }> {
@@ -63,8 +60,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Find a review by id with minimal fields needed for reply authorisation.
-   * @source src/modules/reviews/review.service.ts — replyToReview */
+  /** Find a review by id with minimal fields needed for reply authorisation. */
   async findByIdForReply(
     id: string,
   ): Promise<{ id: string; subjectId: string; reply: string | null } | null> {
@@ -74,8 +70,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Add a reply from the review subject.
-   * @source src/modules/reviews/review.service.ts */
+  /** Add a reply from the review subject. */
   async addReply(id: string, reply: string, repliedAt: Date): Promise<void> {
     await db.review.update({
       where: { id },
@@ -84,8 +79,7 @@ export const reviewRepository = {
   },
 
   /** Public seller-page review list (BUYER reviews about a seller).
-   * Includes author display name, listing title, and tags. Approved only.
-   * @source src/modules/reviews/review.service.ts — fetchSellerReviews */
+   * Includes author display name, listing title, and tags. Approved only. */
   async findPublicSellerReviews(sellerId: string, take = 50) {
     return db.review.findMany({
       where: { subjectId: sellerId, reviewerRole: "BUYER", isApproved: true },
@@ -104,8 +98,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Public buyer-profile review list (SELLER reviews about a buyer).
-   * @source src/modules/reviews/review.service.ts — fetchBuyerReviews */
+  /** Public buyer-profile review list (SELLER reviews about a buyer). */
   async findPublicBuyerReviews(buyerId: string, take = 50) {
     return db.review.findMany({
       where: { subjectId: buyerId, reviewerRole: "SELLER", isApproved: true },
@@ -123,8 +116,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Fetch approved reviews about a user (paginated).
-   * @source src/modules/reviews/review.service.ts */
+  /** Fetch approved reviews about a user (paginated). */
   async findApprovedBySubject(
     subjectId: string,
     reviewerRole: ReviewerRole,
@@ -150,8 +142,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Count approved reviews about a user.
-   * @source src/app/(public)/sellers/[username]/page.tsx */
+  /** Count approved reviews about a user. */
   async countApprovedBySubject(
     subjectId: string,
     reviewerRole: ReviewerRole,
@@ -161,8 +152,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Calculate average rating for a user in a given role.
-   * @source src/modules/sellers/trust-score.service.ts */
+  /** Calculate average rating for a user in a given role. */
   async getAverageRating(
     subjectId: string,
     reviewerRole: ReviewerRole,
@@ -174,8 +164,7 @@ export const reviewRepository = {
     return result._avg.rating;
   },
 
-  /** Aggregate average buyer rating for a seller (for verification eligibility check).
-   * @source src/server/actions/verification.application.ts — applyForVerification */
+  /** Aggregate average buyer rating for a seller (for verification eligibility check). */
   async aggregateBuyerRatings(subjectId: string) {
     return db.review.aggregate({
       where: { subjectId, reviewerRole: "BUYER", isApproved: true },
@@ -183,8 +172,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Group average buyer ratings by seller ID for a set of sellers.
-   * @source src/modules/listings/search.service.ts — searchListings */
+  /** Group average buyer ratings by seller ID for a set of sellers. */
   async groupBySellerRating(sellerIds: string[]) {
     return db.review.groupBy({
       by: ["subjectId"],
@@ -197,8 +185,7 @@ export const reviewRepository = {
     });
   },
 
-  /** Cursor-paginated approved reviews (public).
-   * @source src/app/api/v1/reviews/route.ts */
+  /** Cursor-paginated approved reviews (public). */
   async findApprovedCursor(
     where: {
       isApproved: true;

@@ -1,21 +1,18 @@
 // src/modules/sellers/verification.repository.ts
 // ─── Verification Repository — data access for seller verification ────────────
 
-import db from "@/lib/db";
-import { Prisma, VerificationStatus } from "@prisma/client";
-
-type DbClient = Prisma.TransactionClient | typeof db;
+import { getClient, type DbClient } from "@/lib/db";
+import { VerificationStatus } from "@prisma/client";
 
 export const verificationRepository = {
-  /** Reject all pending verification applications for a user (used when admin rejects ID).
-   * @source src/server/actions/seller.ts — rejectIdVerification */
+  /** Reject all pending verification applications for a user (used when admin rejects ID). */
   async rejectPendingByUser(
     sellerId: string,
     reviewedBy: string,
     adminNotes: string,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.verificationApplication.updateMany({
       where: { sellerId, status: "PENDING" },
       data: {
@@ -27,20 +24,18 @@ export const verificationRepository = {
     });
   },
 
-  /** Find a pending verification application for review eligibility check.
-   * @source src/server/actions/verification.application.ts — applyForVerification */
+  /** Find a pending verification application for review eligibility check. */
   async findPendingStatusBySeller(sellerId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.verificationApplication.findUnique({
       where: { sellerId },
       select: { status: true },
     });
   },
 
-  /** Upsert a verification application (apply / reapply).
-   * @source src/server/actions/verification.application.ts — applyForVerification */
+  /** Upsert a verification application (apply / reapply). */
   async upsertApplication(sellerId: string, tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.verificationApplication.upsert({
       where: { sellerId },
       create: { sellerId, status: "PENDING" },
@@ -54,18 +49,16 @@ export const verificationRepository = {
     });
   },
 
-  /** Find a verification application by seller for admin review.
-   * @source src/server/actions/verification.application.ts — reviewVerificationApplication */
+  /** Find a verification application by seller for admin review. */
   async findForReview(sellerId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.verificationApplication.findUnique({
       where: { sellerId },
       select: { id: true, status: true },
     });
   },
 
-  /** Update a verification application with admin decision.
-   * @source src/server/actions/verification.application.ts — reviewVerificationApplication */
+  /** Update a verification application with admin decision. */
   async updateDecision(
     sellerId: string,
     data: {
@@ -76,25 +69,23 @@ export const verificationRepository = {
     },
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.verificationApplication.update({
       where: { sellerId },
       data,
     });
   },
 
-  /** Find application status for document submission check.
-   * @source src/server/actions/verification.documents.ts — submitIdVerification */
+  /** Find application status for document submission check. */
   async findStatusBySeller(sellerId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.verificationApplication.findUnique({
       where: { sellerId },
       select: { status: true },
     });
   },
 
-  /** Upsert an application with document keys.
-   * @source src/server/actions/verification.documents.ts — submitIdVerification */
+  /** Upsert an application with document keys. */
   async upsertWithDocuments(
     sellerId: string,
     data: {
@@ -105,7 +96,7 @@ export const verificationRepository = {
     },
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.verificationApplication.upsert({
       where: { sellerId },
       create: {

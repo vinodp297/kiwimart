@@ -1,17 +1,14 @@
 // src/modules/admin/dynamic-list.repository.ts
 // ─── Dynamic List Repository — data access for admin-managed dynamic lists ────
 
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import type { DynamicListType } from "@prisma/client";
 
-type DbClient = Prisma.TransactionClient | typeof db;
-
 export const dynamicListRepository = {
-  /** Fetch all items for a list type, ordered by sortOrder.
-   * @source src/server/actions/admin-lists.ts — getListItems */
+  /** Fetch all items for a list type, ordered by sortOrder. */
   async findByType(listType: DynamicListType, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dynamicListItem.findMany({
       where: { listType },
       orderBy: { sortOrder: "asc" },
@@ -21,20 +18,18 @@ export const dynamicListRepository = {
     });
   },
 
-  /** Count items by list type for the admin sidebar.
-   * @source src/server/actions/admin-lists.ts — getListTypeCounts */
+  /** Count items by list type for the admin sidebar. */
   async countByType(tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dynamicListItem.groupBy({
       by: ["listType"],
       _count: { id: true },
     });
   },
 
-  /** Find the highest sort order for a list type.
-   * @source src/server/actions/admin-lists.ts — createListItem */
+  /** Find the highest sort order for a list type. */
   async findMaxSortOrder(listType: DynamicListType, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dynamicListItem.findFirst({
       where: { listType },
       orderBy: { sortOrder: "desc" },
@@ -42,46 +37,41 @@ export const dynamicListRepository = {
     });
   },
 
-  /** Create a new list item.
-   * @source src/server/actions/admin-lists.ts — createListItem */
+  /** Create a new list item. */
   async create(
     data: Prisma.DynamicListItemUncheckedCreateInput,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dynamicListItem.create({ data });
   },
 
-  /** Fetch a single list item by id.
-   * @source src/server/actions/admin-lists.ts — updateListItem, deleteListItem */
+  /** Fetch a single list item by id. */
   async findById(id: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.dynamicListItem.findUnique({
       where: { id },
       select: { listType: true, value: true },
     });
   },
 
-  /** Update a list item.
-   * @source src/server/actions/admin-lists.ts — updateListItem */
+  /** Update a list item. */
   async update(
     id: string,
     data: Record<string, unknown>,
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.dynamicListItem.update({ where: { id }, data });
   },
 
-  /** Delete a list item by id.
-   * @source src/server/actions/admin-lists.ts — deleteListItem */
+  /** Delete a list item by id. */
   async delete(id: string, tx?: DbClient): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.dynamicListItem.delete({ where: { id } });
   },
 
-  /** Batch-update sort orders for reordering.
-   * @source src/server/actions/admin-lists.ts — reorderListItems */
+  /** Batch-update sort orders for reordering. */
   async reorderItems(orderedIds: string[]): Promise<void> {
     await db.$transaction(
       orderedIds.map((id, index) =>

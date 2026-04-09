@@ -56,7 +56,7 @@ vi.mock("@/modules/users/user.repository", async (importOriginal) => {
     userRepository: {
       ...(actual.userRepository as object),
       findPasswordHash: (...args: unknown[]) => mockFindPasswordHash(...args),
-      findEmailAndDisplayName: vi.fn().mockResolvedValue(null),
+      findEmailInfo: vi.fn().mockResolvedValue(null),
     },
   };
 });

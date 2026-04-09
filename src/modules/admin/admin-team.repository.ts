@@ -1,15 +1,11 @@
 // src/modules/admin/admin-team.repository.ts
 // ─── Admin Team Repository — data access for admin invitation management ──────
 
-import db from "@/lib/db";
-import { Prisma } from "@prisma/client";
+import { getClient, type DbClient } from "@/lib/db";
 import type { AdminRole } from "@prisma/client";
 
-type DbClient = Prisma.TransactionClient | typeof db;
-
 export const adminTeamRepository = {
-  /** Upsert an admin invitation (replaces any existing pending invite for the email).
-   * @source src/server/actions/adminTeam.ts — inviteAdmin */
+  /** Upsert an admin invitation (replaces any existing pending invite for the email). */
   async upsertInvitation(
     data: {
       email: string;
@@ -20,7 +16,7 @@ export const adminTeamRepository = {
     },
     tx?: DbClient,
   ): Promise<void> {
-    const client = tx ?? db;
+    const client = getClient(tx);
     await client.adminInvitation.upsert({
       where: { email: data.email },
       create: data,

@@ -219,7 +219,7 @@ export async function markDispatched(
     sellerId,
   });
 
-  const order = await orderRepository.findByIdForDispatch(input.orderId);
+  const order = await orderRepository.findWithDisputeContext(input.orderId);
 
   if (!order) throw AppError.notFound("Order");
 

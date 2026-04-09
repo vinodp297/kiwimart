@@ -1,16 +1,14 @@
 // src/modules/cart/cart.repository.ts
 // ─── Cart Repository — data access only, no business logic ──────────────────
 
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-
-type DbClient = Prisma.TransactionClient | typeof db;
 
 export const cartRepository = {
   // ── Cart queries ──────────────────────────────────────────────────────────
 
   async findByUser(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.findUnique({
       where: { userId },
       select: {
@@ -22,7 +20,7 @@ export const cartRepository = {
   },
 
   async findByUserForDisplay(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.findUnique({
       where: { userId },
       select: {
@@ -57,7 +55,7 @@ export const cartRepository = {
   },
 
   async findByUserForCheckout(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.findUnique({
       where: { userId },
       select: {
@@ -90,7 +88,7 @@ export const cartRepository = {
   },
 
   async findByUserCount(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.findUnique({
       where: { userId },
       select: {
@@ -101,7 +99,7 @@ export const cartRepository = {
   },
 
   async findByUserWithItems(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.findUnique({
       where: { userId },
       select: { id: true, items: { select: { id: true, listingId: true } } },
@@ -122,7 +120,7 @@ export const cartRepository = {
     },
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.create({
       data: {
         userId: data.userId,
@@ -152,7 +150,7 @@ export const cartRepository = {
     expiresAt: Date,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.update({
       where: { id: cartId },
       data: {
@@ -170,12 +168,12 @@ export const cartRepository = {
   },
 
   async deleteCart(cartId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.delete({ where: { id: cartId } });
   },
 
   async deleteCartByUser(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.cart.deleteMany({ where: { userId } });
   },
 
@@ -185,7 +183,7 @@ export const cartRepository = {
     expiresAt: Date,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.$transaction([
       client.cartItem.delete({ where: { id: itemId } }),
       client.cart.update({
@@ -203,7 +201,7 @@ export const cartRepository = {
     }>,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return Promise.all(
       updates.map((u) =>
         client.cartItem.update({
@@ -221,7 +219,7 @@ export const cartRepository = {
     buyerId: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findFirst({
       where: { idempotencyKey, buyerId },
       select: { id: true, status: true, stripePaymentIntentId: true },
@@ -229,7 +227,7 @@ export const cartRepository = {
   },
 
   async reserveListings(listingIds: string[], tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id: { in: listingIds }, status: "ACTIVE" },
       data: { status: "RESERVED" },
@@ -237,7 +235,7 @@ export const cartRepository = {
   },
 
   async releaseListings(listingIds: string[], tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.updateMany({
       where: { id: { in: listingIds }, status: "RESERVED" },
       data: { status: "ACTIVE" },
@@ -245,7 +243,7 @@ export const cartRepository = {
   },
 
   async createOrder(data: Prisma.OrderUncheckedCreateInput, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.create({ data, select: { id: true } });
   },
 
@@ -254,7 +252,7 @@ export const cartRepository = {
     stripePaymentIntentId: string,
     tx?: DbClient,
   ) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.update({
       where: { id: orderId },
       data: { stripePaymentIntentId },
@@ -262,7 +260,7 @@ export const cartRepository = {
   },
 
   async findOrderStripePI(orderId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.order.findUnique({
       where: { id: orderId },
       select: { stripePaymentIntentId: true },
@@ -270,7 +268,7 @@ export const cartRepository = {
   },
 
   async findBuyerDisplayName(userId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.user.findUnique({
       where: { id: userId },
       select: { displayName: true },
@@ -280,7 +278,7 @@ export const cartRepository = {
   // ── Listing lookup (for addToCart) ────────────────────────────────────────
 
   async findListingForCart(listingId: string, tx?: DbClient) {
-    const client = tx ?? db;
+    const client = getClient(tx);
     return client.listing.findUnique({
       where: { id: listingId, status: "ACTIVE", deletedAt: null },
       select: {
