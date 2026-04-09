@@ -22,6 +22,7 @@ import type { ImageJobData } from "@/lib/queue";
 import { processImage } from "@/server/actions/imageProcessor";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
+import { runWithRequestContext } from "@/lib/request-context";
 
 export function startImageWorker() {
   if (process.env.VERCEL) {
@@ -33,26 +34,33 @@ export function startImageWorker() {
   const worker = new Worker<ImageJobData>(
     "image",
     async (job) => {
-      const { imageId, r2Key, userId } = job.data;
-
-      const result = await processImage({ imageId, r2Key, userId });
-
-      audit({
+      const {
+        imageId,
+        r2Key,
         userId,
-        action: "ADMIN_ACTION",
-        entityType: "ListingImage",
-        entityId: imageId,
-        metadata: {
-          worker: "image",
-          jobId: job.id,
-          fullKey: result.fullKey,
-          thumbKey: result.thumbKey,
-          dimensions: `${result.width}×${result.height}`,
-          status: "processed",
-        },
-      });
+        correlationId: jobCorrelationId,
+      } = job.data;
+      const correlationId = jobCorrelationId ?? `job:${job.id ?? "unknown"}`;
+      return runWithRequestContext({ correlationId }, async () => {
+        const result = await processImage({ imageId, r2Key, userId });
 
-      return result;
+        audit({
+          userId,
+          action: "ADMIN_ACTION",
+          entityType: "ListingImage",
+          entityId: imageId,
+          metadata: {
+            worker: "image",
+            jobId: job.id,
+            fullKey: result.fullKey,
+            thumbKey: result.thumbKey,
+            dimensions: `${result.width}×${result.height}`,
+            status: "processed",
+          },
+        });
+
+        return result;
+      }); // end runWithRequestContext
     },
     {
       connection:

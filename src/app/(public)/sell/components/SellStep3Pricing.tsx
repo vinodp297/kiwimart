@@ -52,6 +52,7 @@ interface SellStep3PricingProps {
   onIsUrgentChange: (v: boolean) => void;
   onIsNegotiableChange: (v: boolean) => void;
   onShipsNationwideChange: (v: boolean) => void;
+  onPriceBlur?: () => void;
 }
 
 export default function SellStep3Pricing({
@@ -68,6 +69,7 @@ export default function SellStep3Pricing({
   onIsUrgentChange,
   onIsNegotiableChange,
   onShipsNationwideChange,
+  onPriceBlur,
 }: SellStep3PricingProps) {
   return (
     <div className="p-6 space-y-5">
@@ -83,6 +85,7 @@ export default function SellStep3Pricing({
         type="number"
         value={price}
         onChange={onPriceChange}
+        onBlur={onPriceBlur}
         placeholder="0.00"
         min={0.01}
         max={100000}

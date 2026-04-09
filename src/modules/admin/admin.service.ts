@@ -641,6 +641,76 @@ export class AdminService {
       adminUserId,
     });
   }
+
+  /** Aggregate business health metrics for the internal dashboard.
+   * @source src/app/api/metrics/route.ts */
+  async getBusinessMetrics() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - 7);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const [
+      totalUsers,
+      newUsersToday,
+      activeListings,
+      totalOrders,
+      ordersToday,
+      completedOrders,
+      disputedOrders,
+      pendingReports,
+      pendingPayouts,
+      revenueResult,
+      revenueThisWeek,
+    ] = await Promise.all([
+      adminRepository.countUsers(),
+      adminRepository.countUsers({ createdAt: { gte: todayStart } }),
+      adminRepository.countActiveListings(),
+      adminRepository.countOrders({}),
+      adminRepository.countOrders({ createdAt: { gte: todayStart } }),
+      adminRepository.countOrders({ status: "COMPLETED" }),
+      adminRepository.countOrders({ status: "DISPUTED" }),
+      adminRepository.countOpenReports(),
+      adminRepository.countProcessingPayouts(),
+      adminRepository.aggregateRevenue(new Date(0), new Date()),
+      adminRepository.aggregateRevenue(weekStart, new Date()),
+    ]);
+
+    return {
+      users: {
+        total: totalUsers,
+        newToday: newUsersToday,
+      },
+      listings: {
+        active: activeListings,
+      },
+      orders: {
+        total: totalOrders,
+        today: ordersToday,
+        completed: completedOrders,
+        disputed: disputedOrders,
+        completionRate:
+          totalOrders > 0
+            ? Math.round((completedOrders / totalOrders) * 100)
+            : 0,
+      },
+      disputes: {
+        pending: disputedOrders,
+      },
+      reports: {
+        pending: pendingReports,
+      },
+      payouts: {
+        pending: pendingPayouts,
+      },
+      revenue: {
+        totalNzd: revenueResult._sum.totalNzd ?? 0,
+        thisWeekNzd: revenueThisWeek._sum.totalNzd ?? 0,
+      },
+    };
+  }
 }
 
 export const adminService = new AdminService();

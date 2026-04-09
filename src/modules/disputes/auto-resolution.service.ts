@@ -599,7 +599,7 @@ export class AutoResolutionService {
     const dispute = await getDisputeByOrderId(orderId);
 
     if (evaluation.decision === "AUTO_REFUND") {
-      // Refund via Stripe
+      // Stripe refund FIRST — never mark REFUNDED unless money actually moved.
       if (order.stripePaymentIntentId) {
         try {
           await paymentService.refundPayment({
@@ -612,6 +612,23 @@ export class AutoResolutionService {
             orderId,
             error: err instanceof Error ? err.message : String(err),
           });
+
+          // Refund failed — keep order in DISPUTED for manual review.
+          // Do NOT transition to REFUNDED.
+          orderEventService.recordEvent({
+            orderId,
+            type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+            actorId: null,
+            actorRole: ACTOR_ROLES.SYSTEM,
+            summary:
+              "Auto-resolution refund failed — order flagged for manual review",
+            metadata: {
+              decision: "AUTO_REFUND",
+              error: err instanceof Error ? err.message : String(err),
+              status: "REFUND_FAILED",
+            },
+          });
+          return;
         }
       }
 
@@ -723,6 +740,38 @@ export class AutoResolutionService {
         },
       });
     } else if (evaluation.decision === "AUTO_DISMISS") {
+      // Stripe capture FIRST — never mark COMPLETED unless money actually moved.
+      if (order.stripePaymentIntentId) {
+        try {
+          await paymentService.capturePayment({
+            paymentIntentId: order.stripePaymentIntentId,
+            orderId: order.id,
+          });
+        } catch (err) {
+          logger.error("auto-resolution.capture_failed", {
+            orderId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+
+          // Capture failed — keep order in DISPUTED for manual review.
+          // Do NOT transition to COMPLETED.
+          orderEventService.recordEvent({
+            orderId,
+            type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+            actorId: null,
+            actorRole: ACTOR_ROLES.SYSTEM,
+            summary:
+              "Auto-resolution capture failed — order flagged for manual review",
+            metadata: {
+              decision: "AUTO_DISMISS",
+              error: err instanceof Error ? err.message : String(err),
+              status: "CAPTURE_FAILED",
+            },
+          });
+          return;
+        }
+      }
+
       try {
         await orderRepository.$transaction(async (tx) => {
           await transitionOrder(
@@ -742,20 +791,6 @@ export class AutoResolutionService {
         });
       } catch {
         logger.warn("auto-resolution.dismiss_failed", { orderId });
-      }
-
-      if (order.stripePaymentIntentId) {
-        try {
-          await paymentService.capturePayment({
-            paymentIntentId: order.stripePaymentIntentId,
-            orderId: order.id,
-          });
-        } catch (err) {
-          logger.warn("auto-resolution.capture_failed", {
-            orderId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
       }
 
       orderEventService.recordEvent({

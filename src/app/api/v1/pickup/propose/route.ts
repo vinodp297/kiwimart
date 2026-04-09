@@ -12,7 +12,7 @@ import {
 import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import { proposePickupSchema } from "@/modules/pickup/pickup.schema";
 import { proposePickupTime } from "@/server/services/pickup/pickup-proposal.service";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 
 export async function POST(request: Request) {
   const rateLimited = await checkApiRateLimit(request, "order");
@@ -37,10 +37,7 @@ export async function POST(request: Request) {
     const proposedTime = new Date(body.proposedTime);
 
     // Determine role
-    const order = await db.order.findUnique({
-      where: { id: body.orderId },
-      select: { buyerId: true, sellerId: true },
-    });
+    const order = await orderRepository.findParties(body.orderId);
 
     if (!order)
       return withCors(

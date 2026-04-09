@@ -14,6 +14,7 @@ import {
   ACTOR_ROLES,
 } from "./order-event.service";
 import { orderRepository } from "./order.repository";
+import { paymentService } from "@/modules/payments/payment.service";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,41 @@ export async function cancelOrder(
   }
   if (status.requiresReason && !reason) {
     throw AppError.validation("Please provide a reason for cancellation.");
+  }
+
+  // Stripe refund/void BEFORE DB transition — money must move first.
+  // If the order has a held payment and the refund fails, transition to
+  // DISPUTED for manual review instead of silently cancelling.
+  if (order.status === "PAYMENT_HELD" && order.stripePaymentIntentId) {
+    try {
+      await paymentService.refundPayment({
+        paymentIntentId: order.stripePaymentIntentId,
+        orderId: order.id,
+        reason: "Order cancelled",
+      });
+    } catch (err) {
+      logger.error("order.cancel.refund_failed", {
+        orderId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+
+      // Refund failed — escalate to DISPUTED for manual review
+      await transitionOrder(
+        orderId,
+        "DISPUTED",
+        {
+          disputeReason: "Cancellation refund failed — requires manual review",
+          disputedAt: new Date(),
+        },
+        { fromStatus: order.status },
+      );
+
+      throw new AppError(
+        "PAYMENT_GATEWAY_ERROR",
+        "Cancellation refund failed — requires manual review",
+        500,
+      );
+    }
   }
 
   await orderRepository.$transaction(async (tx) => {

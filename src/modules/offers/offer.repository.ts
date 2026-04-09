@@ -134,4 +134,26 @@ export const offerRepository = {
       data: { status: "DECLINED", respondedAt: new Date() },
     });
   },
+
+  /** Cursor-paginated offer list for a user (buyer, seller, or both).
+   * @source src/app/api/v1/offers/route.ts */
+  async findByUserCursor(
+    where: {
+      buyerId?: string;
+      sellerId?: string;
+      OR?: Array<{ buyerId: string } | { sellerId: string }>;
+    },
+    limit: number,
+    cursor?: string,
+  ) {
+    return db.offer.findMany({
+      where,
+      take: limit,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      include: {
+        listing: { select: { id: true, title: true, priceNzd: true } },
+      },
+    });
+  },
 };

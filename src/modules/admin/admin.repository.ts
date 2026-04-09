@@ -336,4 +336,87 @@ export const adminRepository = {
       select: { id: true, metadata: true, createdAt: true },
     });
   },
+
+  /** Count active (non-deleted) listings.
+   * @source src/app/api/metrics/route.ts */
+  async countActiveListings(): Promise<number> {
+    return db.listing.count({ where: { status: "ACTIVE", deletedAt: null } });
+  },
+
+  /** Count open reports.
+   * @source src/app/api/metrics/route.ts */
+  async countOpenReports(): Promise<number> {
+    return db.report.count({ where: { status: "OPEN" } });
+  },
+
+  /** Count payouts in PROCESSING state.
+   * @source src/app/api/metrics/route.ts */
+  async countProcessingPayouts(): Promise<number> {
+    return db.payout.count({ where: { status: "PROCESSING" } });
+  },
+
+  /** Open reports with cursor pagination — matches /api/admin/reports shape.
+   * reporter.username matches the route's existing include shape.
+   * @source src/app/api/admin/reports/route.ts */
+  async findOpenReportsCursor(limit: number, cursor?: string) {
+    return db.report.findMany({
+      where: { status: "OPEN" },
+      take: limit,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      include: {
+        reporter: { select: { username: true } },
+      },
+    });
+  },
+
+  /** Page-based user list with search — matches /api/admin/users shape.
+   * @source src/app/api/admin/users/route.ts */
+  async findUsersByPage(q: string | null, page: number) {
+    const where = q
+      ? {
+          OR: [
+            { email: { contains: q, mode: "insensitive" as const } },
+            { username: { contains: q, mode: "insensitive" as const } },
+          ],
+        }
+      : {};
+
+    return db.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      skip: (page - 1) * 20,
+      select: {
+        id: true,
+        username: true,
+        email: true,
+        displayName: true,
+        region: true,
+        isSellerEnabled: true,
+        idVerified: true,
+        isBanned: true,
+        createdAt: true,
+        _count: {
+          select: { listings: true, buyerOrders: true },
+        },
+      },
+    });
+  },
+
+  /** Disputed orders with cursor pagination — matches /api/admin/disputes shape.
+   * @source src/app/api/admin/disputes/route.ts */
+  async findDisputedOrdersCursor(limit: number, cursor?: string) {
+    return db.order.findMany({
+      where: { status: "DISPUTED" },
+      take: limit,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: {
+        buyer: { select: { username: true, email: true } },
+        seller: { select: { username: true, email: true } },
+        listing: { select: { title: true } },
+      },
+      orderBy: { updatedAt: "asc" },
+    });
+  },
 };

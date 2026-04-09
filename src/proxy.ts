@@ -18,6 +18,7 @@ import crypto from "crypto";
 import { auth } from "@/lib/auth";
 import { logger } from "@/shared/logger";
 import { getSessionVersion } from "@/server/lib/sessionStore";
+import { runWithRequestContext } from "@/lib/request-context";
 
 /** Generate a cryptographically random nonce for CSP per-request. */
 const generateNonce = () => crypto.randomBytes(16).toString("base64");
@@ -86,196 +87,201 @@ export const proxy = auth(async function proxyHandler(
 ) {
   const requestStart = Date.now();
   const requestId = crypto.randomUUID();
-  const { pathname } = request.nextUrl;
 
-  // ── Security headers (applied to all responses) ───────────────────────────
-  const nonce = generateNonce();
+  return runWithRequestContext({ correlationId: requestId }, async () => {
+    const { pathname } = request.nextUrl;
 
-  // Thread the correlation ID through to route handlers via a request header
-  // so downstream code (logger, BullMQ jobs, Stripe metadata) can read it.
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-correlation-id", requestId);
+    // ── Security headers (applied to all responses) ───────────────────────────
+    const nonce = generateNonce();
 
-  const response = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
-  // Pass nonce to server components via request header
-  response.headers.set("x-nonce", nonce);
+    // Thread the correlation ID through to route handlers via a request header
+    // so downstream code (logger, BullMQ jobs, Stripe metadata) can read it.
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-correlation-id", requestId);
 
-  const csp = [
-    "default-src 'self'",
-    // script-src: nonce for inline/first-party scripts, 'strict-dynamic' so
-    // nonce-approved scripts can load sub-resources.  Host allowlists are kept
-    // as a fallback for older browsers that don't understand 'strict-dynamic'.
-    // Turnstile, Stripe, and PostHog are listed explicitly so they work in both
-    // nonce-aware and legacy browsers.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
-    `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`,
-    "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://*.cloudflarestorage.com https://*.r2.dev https://r2.kiwimart.co.nz https://*.stripe.com",
-    "font-src 'self' https://fonts.gstatic.com",
-    "connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://*.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com wss://*.pusher.com https://*.pusher.com https://*.r2.cloudflarestorage.com",
-    "frame-src 'self' https://challenges.cloudflare.com https://js.stripe.com https://hooks.stripe.com",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "upgrade-insecure-requests",
-  ]
-    .filter(Boolean)
-    .join("; ");
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+    // Pass nonce to server components via request header
+    response.headers.set("x-nonce", nonce);
 
-  response.headers.set("Content-Security-Policy", csp);
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
-  response.headers.set("X-XSS-Protection", "1; mode=block");
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(), payment=(self)",
-  );
+    const csp = [
+      "default-src 'self'",
+      // script-src: nonce for inline/first-party scripts, 'strict-dynamic' so
+      // nonce-approved scripts can load sub-resources.  Host allowlists are kept
+      // as a fallback for older browsers that don't understand 'strict-dynamic'.
+      // Turnstile, Stripe, and PostHog are listed explicitly so they work in both
+      // nonce-aware and legacy browsers.
+      `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
+      `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`,
+      "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://*.cloudflarestorage.com https://*.r2.dev https://r2.kiwimart.co.nz https://*.stripe.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://*.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com wss://*.pusher.com https://*.pusher.com https://*.r2.cloudflarestorage.com",
+      "frame-src 'self' https://challenges.cloudflare.com https://js.stripe.com https://hooks.stripe.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "upgrade-insecure-requests",
+    ]
+      .filter(Boolean)
+      .join("; ");
 
-  if (process.env.NODE_ENV === "production") {
+    response.headers.set("Content-Security-Policy", csp);
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    response.headers.set("X-Frame-Options", "DENY");
+    response.headers.set("X-XSS-Protection", "1; mode=block");
+    response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     response.headers.set(
-      "Strict-Transport-Security",
-      "max-age=31536000; includeSubDomains; preload",
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=(), payment=(self)",
     );
-  }
 
-  // ── No-store headers for protected pages ──────────────────────────────────
-  // Prevents the browser bfcache from restoring a signed-in page after
-  // sign-out. Must-revalidate + no-store forces the browser to always hit
-  // the server, where the (now-missing) session cookie will trigger a
-  // redirect to /login instead of showing a cached dashboard.
-  if (matchesProtected(pathname)) {
-    response.headers.set(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate",
-    );
-    response.headers.set("Pragma", "no-cache");
-    response.headers.set("Expires", "0");
-  }
-
-  // ── Auth decision ─────────────────────────────────────────────────────────
-  // request.auth is populated by auth() which runs the jwt() callback.
-  // The jwt() callback already checks session version and jti blocklist —
-  // if either fails it returns null, making request.auth null here.
-  //
-  // Defence-in-depth: for protected routes we also do a direct Redis
-  // session-version check so that even if auth() somehow passes a stale
-  // session through, the proxy will still catch it.
-  const sessionUser = request.auth?.user ?? null;
-  let isAuthenticated = !!sessionUser?.id && !sessionUser?.isBanned;
-
-  const isProtected = matchesProtected(pathname);
-  const isAuthPath = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
-  const isAdminPath = pathname === "/admin" || pathname.startsWith("/admin/");
-
-  // ── API route auth checks ─────────────────────────────────────────────
-  // Returns 401 JSON for unauthenticated/MFA-pending API requests.
-  // API clients expect JSON errors, not redirects.
-  if (pathname.startsWith("/api/v1/") || pathname.startsWith("/api/admin/")) {
-    if (isPublicApi(pathname, request.method)) return response;
-    if (!isAuthenticated) {
-      return NextResponse.json(
-        { error: "Unauthorised", code: "AUTH_REQUIRED" },
-        { status: 401 },
+    if (process.env.NODE_ENV === "production") {
+      response.headers.set(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains; preload",
       );
     }
-    if (sessionUser?.mfaPending) {
-      return NextResponse.json(
-        { error: "MFA verification required", code: "MFA_REQUIRED" },
-        { status: 401 },
-      );
-    }
-    return response;
-  }
 
-  // ── Proxy-level session version check (defence-in-depth) ────────────────
-  // If the user appears authenticated on a protected route, verify the
-  // session version stored in the cookie hasn't been superseded by a
-  // sign-out.  This catches bfcache-restored pages where Chrome replayed
-  // the original cookie before Auth.js had a chance to clear it.
-  if (isProtected && isAuthenticated && sessionUser?.id) {
-    try {
-      const { getToken } = await import("next-auth/jwt");
-      // IMPORTANT: use NEXTAUTH_SECRET — the variable validated in env.ts.
-      // process.env.AUTH_SECRET would be undefined if only NEXTAUTH_SECRET is
-      // set in Vercel, silently disabling this bfcache defence for all users.
-      const jwtToken = await getToken({
-        req: request,
-        secret: process.env.NEXTAUTH_SECRET,
-      });
-      if (jwtToken && typeof jwtToken.sessionVersion === "number") {
-        const currentVersion = await getSessionVersion(jwtToken.sub as string);
-        if (currentVersion > jwtToken.sessionVersion) {
-          logger.info("proxy.session_version_stale", {
-            userId: jwtToken.sub,
-            tokenVersion: jwtToken.sessionVersion,
-            currentVersion,
-            path: pathname,
-          });
-          isAuthenticated = false;
-          // Clear the stale cookie so the browser doesn't keep sending it
-          const loginUrl = new URL("/login", request.url);
-          loginUrl.searchParams.set("from", pathname);
-          const redirectResponse = NextResponse.redirect(loginUrl);
-          redirectResponse.cookies.delete("__Secure-authjs.session-token");
-          redirectResponse.cookies.delete("authjs.session-token");
-          return redirectResponse;
-        }
+    // ── No-store headers for protected pages ──────────────────────────────────
+    // Prevents the browser bfcache from restoring a signed-in page after
+    // sign-out. Must-revalidate + no-store forces the browser to always hit
+    // the server, where the (now-missing) session cookie will trigger a
+    // redirect to /login instead of showing a cached dashboard.
+    if (matchesProtected(pathname)) {
+      response.headers.set(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate",
+      );
+      response.headers.set("Pragma", "no-cache");
+      response.headers.set("Expires", "0");
+    }
+
+    // ── Auth decision ─────────────────────────────────────────────────────────
+    // request.auth is populated by auth() which runs the jwt() callback.
+    // The jwt() callback already checks session version and jti blocklist —
+    // if either fails it returns null, making request.auth null here.
+    //
+    // Defence-in-depth: for protected routes we also do a direct Redis
+    // session-version check so that even if auth() somehow passes a stale
+    // session through, the proxy will still catch it.
+    const sessionUser = request.auth?.user ?? null;
+    let isAuthenticated = !!sessionUser?.id && !sessionUser?.isBanned;
+
+    const isProtected = matchesProtected(pathname);
+    const isAuthPath = AUTH_PREFIXES.some((p) => pathname.startsWith(p));
+    const isAdminPath = pathname === "/admin" || pathname.startsWith("/admin/");
+
+    // ── API route auth checks ─────────────────────────────────────────────
+    // Returns 401 JSON for unauthenticated/MFA-pending API requests.
+    // API clients expect JSON errors, not redirects.
+    if (pathname.startsWith("/api/v1/") || pathname.startsWith("/api/admin/")) {
+      if (isPublicApi(pathname, request.method)) return response;
+      if (!isAuthenticated) {
+        return NextResponse.json(
+          { error: "Unauthorised", code: "AUTH_REQUIRED" },
+          { status: 401 },
+        );
       }
-    } catch {
-      // Redis/getToken failure — fail open, let the normal auth flow handle it
+      if (sessionUser?.mfaPending) {
+        return NextResponse.json(
+          { error: "MFA verification required", code: "MFA_REQUIRED" },
+          { status: 401 },
+        );
+      }
+      return response;
     }
-  }
 
-  const isSellerEnabled = sessionUser?.isSellerEnabled ?? false;
-  const isAdmin = sessionUser?.isAdmin ?? false;
-  const defaultDashboard = isSellerEnabled
-    ? "/dashboard/seller"
-    : "/dashboard/buyer";
+    // ── Proxy-level session version check (defence-in-depth) ────────────────
+    // If the user appears authenticated on a protected route, verify the
+    // session version stored in the cookie hasn't been superseded by a
+    // sign-out.  This catches bfcache-restored pages where Chrome replayed
+    // the original cookie before Auth.js had a chance to clear it.
+    if (isProtected && isAuthenticated && sessionUser?.id) {
+      try {
+        const { getToken } = await import("next-auth/jwt");
+        // IMPORTANT: use NEXTAUTH_SECRET — the variable validated in env.ts.
+        // process.env.AUTH_SECRET would be undefined if only NEXTAUTH_SECRET is
+        // set in Vercel, silently disabling this bfcache defence for all users.
+        const jwtToken = await getToken({
+          req: request,
+          secret: process.env.NEXTAUTH_SECRET,
+        });
+        if (jwtToken && typeof jwtToken.sessionVersion === "number") {
+          const currentVersion = await getSessionVersion(
+            jwtToken.sub as string,
+          );
+          if (currentVersion > jwtToken.sessionVersion) {
+            logger.info("proxy.session_version_stale", {
+              userId: jwtToken.sub,
+              tokenVersion: jwtToken.sessionVersion,
+              currentVersion,
+              path: pathname,
+            });
+            isAuthenticated = false;
+            // Clear the stale cookie so the browser doesn't keep sending it
+            const loginUrl = new URL("/login", request.url);
+            loginUrl.searchParams.set("from", pathname);
+            const redirectResponse = NextResponse.redirect(loginUrl);
+            redirectResponse.cookies.delete("__Secure-authjs.session-token");
+            redirectResponse.cookies.delete("authjs.session-token");
+            return redirectResponse;
+          }
+        }
+      } catch {
+        // Redis/getToken failure — fail open, let the normal auth flow handle it
+      }
+    }
 
-  if (isProtected && !isAuthenticated) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
+    const isSellerEnabled = sessionUser?.isSellerEnabled ?? false;
+    const isAdmin = sessionUser?.isAdmin ?? false;
+    const defaultDashboard = isSellerEnabled
+      ? "/dashboard/seller"
+      : "/dashboard/buyer";
 
-  // MFA pending: redirect to /mfa-verify before granting access
-  // /mfa-verify itself is NOT in PROTECTED_PREFIXES so no infinite redirect
-  if (isProtected && isAuthenticated && sessionUser?.mfaPending) {
-    const mfaUrl = new URL("/mfa-verify", request.url);
-    mfaUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(mfaUrl);
-  }
+    if (isProtected && !isAuthenticated) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
 
-  // Admin-only routes: redirect non-admins to buyer dashboard
-  if (isAdminPath && isAuthenticated && !isAdmin) {
-    return NextResponse.redirect(new URL("/dashboard/buyer", request.url));
-  }
+    // MFA pending: redirect to /mfa-verify before granting access
+    // /mfa-verify itself is NOT in PROTECTED_PREFIXES so no infinite redirect
+    if (isProtected && isAuthenticated && sessionUser?.mfaPending) {
+      const mfaUrl = new URL("/mfa-verify", request.url);
+      mfaUrl.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(mfaUrl);
+    }
 
-  if (isAuthPath && isAuthenticated) {
-    return NextResponse.redirect(new URL(defaultDashboard, request.url));
-  }
+    // Admin-only routes: redirect non-admins to buyer dashboard
+    if (isAdminPath && isAuthenticated && !isAdmin) {
+      return NextResponse.redirect(new URL("/dashboard/buyer", request.url));
+    }
 
-  // ── Request ID + correlation ID ───────────────────────────────────────────
-  // x-request-id: internal tracing identifier (unchanged)
-  // x-correlation-id: same UUID, exposed to clients so they can reference it
-  //   in support requests and correlate with Stripe / BullMQ / Sentry traces.
-  response.headers.set("x-request-id", requestId);
-  response.headers.set("x-correlation-id", requestId);
+    if (isAuthPath && isAuthenticated) {
+      return NextResponse.redirect(new URL(defaultDashboard, request.url));
+    }
 
-  logger.info("http.request", {
-    requestId,
-    method: request.method,
-    path: pathname,
-    status: response.status,
-    latencyMs: Date.now() - requestStart,
-    userAgent: request.headers.get("user-agent")?.slice(0, 100) ?? undefined,
-  });
+    // ── Request ID + correlation ID ───────────────────────────────────────────
+    // x-request-id: internal tracing identifier (unchanged)
+    // x-correlation-id: same UUID, exposed to clients so they can reference it
+    //   in support requests and correlate with Stripe / BullMQ / Sentry traces.
+    response.headers.set("x-request-id", requestId);
+    response.headers.set("x-correlation-id", requestId);
 
-  return response;
+    logger.info("http.request", {
+      requestId,
+      method: request.method,
+      path: pathname,
+      status: response.status,
+      latencyMs: Date.now() - requestStart,
+      userAgent: request.headers.get("user-agent")?.slice(0, 100) ?? undefined,
+    });
+
+    return response;
+  }); // end runWithRequestContext
 });
 
 export const config = {

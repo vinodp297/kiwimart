@@ -41,8 +41,11 @@ export default function OrderConfirmDeliveryModal({
   actionLoading: boolean;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2 text-center">
+    <ModalOverlay onClose={onClose} labelledById="confirm-delivery-modal-title">
+      <h2
+        id="confirm-delivery-modal-title"
+        className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2 text-center"
+      >
         Confirm delivery
       </h2>
       <p className="text-[13px] text-[#73706A] mb-4 text-center">

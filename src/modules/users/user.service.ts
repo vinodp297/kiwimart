@@ -198,6 +198,18 @@ export class UserService {
     if (!user?.phone) return null;
     return decryptPhone(user.phone);
   }
+
+  /** Get full API profile (for /api/v1/users/me).
+   * @source src/app/api/v1/users/me/route.ts */
+  async getApiProfile(userId: string) {
+    return userRepository.findForApiProfile(userId);
+  }
+
+  /** Get navbar summary user data (for /api/v1/me/nav-summary).
+   * @source src/app/api/v1/me/nav-summary/route.ts */
+  async getNavSummaryUser(userId: string) {
+    return userRepository.findForNavSummary(userId);
+  }
 }
 
 export const userService = new UserService();

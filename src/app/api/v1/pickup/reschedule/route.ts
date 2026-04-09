@@ -12,7 +12,7 @@ import {
 import { getCorsHeaders, withCors } from "../../_helpers/cors";
 import { reschedulePickupSchema } from "@/modules/pickup/pickup.schema";
 import { requestReschedule } from "@/server/services/pickup/pickup-reschedule.service";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 import type {
   SellerRescheduleReason,
   BuyerRescheduleReason,
@@ -41,10 +41,7 @@ export async function POST(request: Request) {
     const proposedTime = new Date(body.proposedTime);
 
     // Determine role
-    const order = await db.order.findUnique({
-      where: { id: body.orderId },
-      select: { buyerId: true, sellerId: true },
-    });
+    const order = await orderRepository.findParties(body.orderId);
 
     if (!order)
       return withCors(

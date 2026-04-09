@@ -196,4 +196,32 @@ export const reviewRepository = {
       _avg: { rating: true },
     });
   },
+
+  /** Cursor-paginated approved reviews (public).
+   * @source src/app/api/v1/reviews/route.ts */
+  async findApprovedCursor(
+    where: {
+      isApproved: true;
+      subjectId?: string;
+      authorId?: string;
+    },
+    limit: number,
+    cursor?: string,
+  ) {
+    return db.review.findMany({
+      where,
+      take: limit,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        reply: true,
+        reviewerRole: true,
+        createdAt: true,
+        author: { select: { displayName: true, username: true } },
+      },
+    });
+  },
 };

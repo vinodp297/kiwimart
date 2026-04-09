@@ -120,6 +120,19 @@ export async function performAccountErasure(
       data: { status: "WITHDRAWN" },
     });
 
+    // Anonymise shipping PII on buyer orders — keep records for financial audit
+    await tx.order.updateMany({
+      where: { buyerId: userId },
+      data: {
+        shippingName: "Anonymised",
+        shippingLine1: "Anonymised",
+        shippingLine2: null,
+        shippingCity: "Anonymised",
+        shippingRegion: "Anonymised",
+        shippingPostcode: "Anonymised",
+      },
+    });
+
     await userRepository.deleteAllSessions(userId, tx);
 
     // 8. Create immutable ErasureLog

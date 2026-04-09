@@ -20,6 +20,7 @@ import {
   cleanupOrphanedImages,
 } from "@/server/actions/images";
 import { createListing, saveDraft } from "@/server/actions/listings";
+import { createListingSchema } from "@/server/validators";
 import ListingPreviewModal from "./ListingPreviewModal";
 
 import type {
@@ -408,6 +409,27 @@ export default function SellPage() {
       if (!suburb.trim()) errs.suburb = "Enter your suburb or town.";
     }
     return errs;
+  }
+
+  // ── Field-level blur validation using the shared Zod schema ─────────────
+  function validateListingField(name: string, value: unknown) {
+    const shape = createListingSchema.shape;
+    if (!(name in shape)) return;
+    const fieldSchema = shape[name as keyof typeof shape] as {
+      safeParse: (v: unknown) => {
+        success: boolean;
+        error: { issues: Array<{ message: string }> };
+      };
+    };
+    const result = fieldSchema.safeParse(value);
+    if (!result.success) {
+      setErrors((prev) => ({
+        ...prev,
+        [name]: result.error.issues[0]?.message ?? "Please check this field",
+      }));
+    } else {
+      setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
   }
 
   function goNext() {
@@ -825,6 +847,10 @@ export default function SellPage() {
                   setDescription(e.target.value);
                   setErrors((p) => ({ ...p, description: "" }));
                 }}
+                onTitleBlur={() => validateListingField("title", title)}
+                onDescriptionBlur={() =>
+                  validateListingField("description", description)
+                }
                 onCategoryChange={(e) => {
                   setCategoryId(e.target.value);
                   setSubcategory("");
@@ -851,6 +877,7 @@ export default function SellPage() {
                   setPrice(e.target.value);
                   setErrors((p) => ({ ...p, price: "" }));
                 }}
+                onPriceBlur={() => validateListingField("price", price)}
                 onOffersEnabledChange={setOffersEnabled}
                 onGstIncludedChange={setGstIncluded}
                 onIsUrgentChange={setIsUrgent}

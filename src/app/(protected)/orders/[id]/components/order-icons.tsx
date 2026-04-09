@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import { createEscapeHandler, findFirstFocusable } from "@/lib/a11y";
+
 export function CreditCardIcon() {
   return (
     <svg
@@ -129,20 +132,41 @@ export function XCircleIcon() {
 export function ModalOverlay({
   children,
   onClose,
+  labelledById,
 }: {
   children: React.ReactNode;
   onClose: () => void;
+  /** id of the heading element inside this modal, used for aria-labelledby */
+  labelledById?: string;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Escape key closes the modal
+  useEffect(() => {
+    const handler = createEscapeHandler(onClose);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  // Move focus to the first interactive element when the modal opens
+  useEffect(() => {
+    findFirstFocusable(containerRef.current)?.focus();
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
+      aria-labelledby={labelledById}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto">
+      <div
+        ref={containerRef}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 relative max-h-[90vh] overflow-y-auto"
+      >
         <button
           onClick={onClose}
           aria-label="Close"
@@ -150,6 +174,7 @@ export function ModalOverlay({
             justify-center hover:bg-[#EFEDE8] transition-colors"
         >
           <svg
+            aria-hidden="true"
             width="14"
             height="14"
             viewBox="0 0 24 24"
@@ -159,6 +184,7 @@ export function ModalOverlay({
           >
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
+          <span className="sr-only">Close</span>
         </button>
         {children}
       </div>

@@ -1,7 +1,8 @@
 "use client";
 // src/app/(protected)/seller/onboarding/_components/TermsModal.tsx
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { createEscapeHandler, findFirstFocusable } from "@/lib/a11y";
 
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
 
@@ -73,6 +74,19 @@ export function TermsModal({
 }) {
   const [hasScrolled, setHasScrolled] = useState(false);
   const [checked, setChecked] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Escape key closes the modal
+  useEffect(() => {
+    const handler = createEscapeHandler(onClose);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  // Move focus to the first interactive element when the modal opens
+  useEffect(() => {
+    findFirstFocusable(containerRef.current)?.focus();
+  }, []);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -84,22 +98,33 @@ export function TermsModal({
   return (
     <div
       className="fixed inset-0 z-50 bg-black/60 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="terms-modal-title"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div className="flex min-h-full items-center justify-center p-4 pt-8">
-        <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-2xl my-4 max-h-[90vh]">
+        <div
+          ref={containerRef}
+          className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-2xl my-4 max-h-[90vh]"
+        >
           {/* Header */}
           <div className="bg-[#141414] px-6 py-4 flex items-center justify-between flex-shrink-0">
-            <h2 className="font-semibold text-white text-[16px]">
+            <h2
+              id="terms-modal-title"
+              className="font-semibold text-white text-[16px]"
+            >
               Seller Terms & Conditions
             </h2>
             <button
               onClick={onClose}
+              aria-label="Close"
               className="text-white/60 hover:text-white text-xl leading-none transition-colors"
             >
-              &times;
+              <span aria-hidden="true">&times;</span>
+              <span className="sr-only">Close</span>
             </button>
           </div>
 

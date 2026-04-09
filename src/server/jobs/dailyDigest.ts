@@ -2,62 +2,72 @@
 import db from "@/lib/db";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
+import { runWithRequestContext } from "@/lib/request-context";
 
 export async function sendDailyDigest() {
-  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  return runWithRequestContext(
+    { correlationId: `cron:sendDailyDigest:${Date.now()}` },
+    async () => {
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const [newUsers, newOrders, completedOrders, newDisputes, gmv, newSellers] =
-    await Promise.all([
-      db.user.count({ where: { createdAt: { gte: yesterday } } }),
-      db.order.count({ where: { createdAt: { gte: yesterday } } }),
-      db.order.count({
-        where: { status: "COMPLETED", completedAt: { gte: yesterday } },
-      }),
-      db.order.count({
-        where: { status: "DISPUTED", updatedAt: { gte: yesterday } },
-      }),
-      db.order.aggregate({
-        where: { status: "COMPLETED", completedAt: { gte: yesterday } },
-        _sum: { totalNzd: true },
-      }),
-      db.user.count({
-        where: { isSellerEnabled: true, createdAt: { gte: yesterday } },
-      }),
-    ]);
+      const [
+        newUsers,
+        newOrders,
+        completedOrders,
+        newDisputes,
+        gmv,
+        newSellers,
+      ] = await Promise.all([
+        db.user.count({ where: { createdAt: { gte: yesterday } } }),
+        db.order.count({ where: { createdAt: { gte: yesterday } } }),
+        db.order.count({
+          where: { status: "COMPLETED", completedAt: { gte: yesterday } },
+        }),
+        db.order.count({
+          where: { status: "DISPUTED", updatedAt: { gte: yesterday } },
+        }),
+        db.order.aggregate({
+          where: { status: "COMPLETED", completedAt: { gte: yesterday } },
+          _sum: { totalNzd: true },
+        }),
+        db.user.count({
+          where: { isSellerEnabled: true, createdAt: { gte: yesterday } },
+        }),
+      ]);
 
-  const gmvFormatted = `$${((gmv._sum.totalNzd ?? 0) / 100).toLocaleString(
-    "en-NZ",
-    {
-      minimumFractionDigits: 2,
-    },
-  )}`;
+      const gmvFormatted = `$${((gmv._sum.totalNzd ?? 0) / 100).toLocaleString(
+        "en-NZ",
+        {
+          minimumFractionDigits: 2,
+        },
+      )}`;
 
-  const superAdmins = await db.user.findMany({
-    where: { adminRole: "SUPER_ADMIN" },
-    select: { email: true, displayName: true },
-  });
+      const superAdmins = await db.user.findMany({
+        where: { adminRole: "SUPER_ADMIN" },
+        select: { email: true, displayName: true },
+      });
 
-  const resend = getEmailClient();
-  if (!resend || superAdmins.length === 0) {
-    logger.warn("daily_digest.skipped", {
-      reason: !resend ? "email_not_configured" : "no_super_admins",
-    });
-    return;
-  }
+      const resend = getEmailClient();
+      if (!resend || superAdmins.length === 0) {
+        logger.warn("daily_digest.skipped", {
+          reason: !resend ? "email_not_configured" : "no_super_admins",
+        });
+        return;
+      }
 
-  const date = new Date().toLocaleDateString("en-NZ", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+      const date = new Date().toLocaleDateString("en-NZ", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
 
-  for (const admin of superAdmins) {
-    await resend.emails.send({
-      from: EMAIL_FROM,
-      to: admin.email ?? "",
-      subject: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Daily Summary — ${date}`,
-      html: `
+      for (const admin of superAdmins) {
+        await resend.emails.send({
+          from: EMAIL_FROM,
+          to: admin.email ?? "",
+          subject: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Daily Summary — ${date}`,
+          html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
           <div style="background:#141414;padding:20px;border-radius:12px;margin-bottom:24px;">
             <h1 style="color:#D4A843;margin:0;font-size:20px;">🥝 ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Daily Summary</h1>
@@ -112,13 +122,15 @@ export async function sendDailyDigest() {
           </p>
         </div>
       `,
-    });
-  }
+        });
+      }
 
-  logger.info("daily_digest.sent", {
-    recipientCount: superAdmins.length,
-    gmv: gmv._sum.totalNzd ?? 0,
-    newOrders,
-    completedOrders,
-  });
+      logger.info("daily_digest.sent", {
+        recipientCount: superAdmins.length,
+        gmv: gmv._sum.totalNzd ?? 0,
+        newOrders,
+        completedOrders,
+      });
+    }, // end runWithRequestContext fn
+  ); // end runWithRequestContext
 }

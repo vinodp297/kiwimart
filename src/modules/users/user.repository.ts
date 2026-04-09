@@ -888,4 +888,147 @@ export const userRepository = {
   ): Promise<T> {
     return db.$transaction(fn);
   },
+
+  // ── API route helpers ────────────────────────────────────────────────────
+
+  /** Fetch fields for requireApiUser() — session cookie or Bearer token path.
+   * @source src/app/api/v1/_helpers/response.ts — requireApiUser */
+  async findForApiAuth(id: string): Promise<{
+    id: string;
+    email: string;
+    isAdmin: boolean;
+    isBanned: boolean;
+    isSellerEnabled: boolean;
+    isStripeOnboarded: boolean;
+  } | null> {
+    return db.user.findUnique({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        email: true,
+        isAdmin: true,
+        isBanned: true,
+        isSellerEnabled: true,
+        isStripeOnboarded: true,
+      },
+    });
+  },
+
+  /** Fetch fields for mobile token authentication.
+   * @source src/app/api/v1/auth/token/route.ts */
+  async findForMobileAuth(email: string): Promise<{
+    id: string;
+    email: string;
+    passwordHash: string | null;
+    isAdmin: boolean;
+    isBanned: boolean;
+    displayName: string;
+  } | null> {
+    return db.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        isAdmin: true,
+        isBanned: true,
+        displayName: true,
+      },
+    });
+  },
+
+  /** Look up a user by their email verification token (not expired).
+   * @source src/app/api/verify-email/route.ts */
+  async findByVerificationToken(token: string): Promise<{
+    id: string;
+    email: string;
+    displayName: string;
+    emailVerified: Date | null;
+  } | null> {
+    return db.user.findFirst({
+      where: {
+        emailVerifyToken: token,
+        emailVerifyExpires: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        emailVerified: true,
+      },
+    });
+  },
+
+  /** Mark email as verified and clear the token.
+   * @source src/app/api/verify-email/route.ts */
+  async markEmailVerified(id: string): Promise<void> {
+    await db.user.update({
+      where: { id },
+      data: {
+        emailVerified: new Date(),
+        emailVerifyToken: null,
+        emailVerifyExpires: null,
+      },
+    });
+  },
+
+  /** Fetch navbar summary fields.
+   * @source src/app/api/v1/me/nav-summary/route.ts */
+  async findForNavSummary(id: string): Promise<{
+    id: string;
+    displayName: string;
+    email: string;
+    avatarKey: string | null;
+    isAdmin: boolean;
+    isSellerEnabled: boolean;
+    isMfaEnabled: boolean;
+  } | null> {
+    return db.user.findUnique({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        avatarKey: true,
+        isAdmin: true,
+        isSellerEnabled: true,
+        isMfaEnabled: true,
+      },
+    });
+  },
+
+  /** Fetch full API profile for /api/v1/users/me.
+   * @source src/app/api/v1/users/me/route.ts */
+  async findForApiProfile(id: string): Promise<{
+    id: string;
+    username: string;
+    displayName: string;
+    email: string;
+    avatarKey: string | null;
+    region: string | null;
+    bio: string | null;
+    isSellerEnabled: boolean;
+    isStripeOnboarded: boolean;
+    idVerified: boolean;
+    isPhoneVerified: boolean;
+    createdAt: Date;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        email: true,
+        avatarKey: true,
+        region: true,
+        bio: true,
+        isSellerEnabled: true,
+        isStripeOnboarded: true,
+        idVerified: true,
+        isPhoneVerified: true,
+        createdAt: true,
+      },
+    });
+  },
 };

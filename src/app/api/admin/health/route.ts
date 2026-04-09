@@ -5,7 +5,7 @@
 // Requires VIEW_SYSTEM_HEALTH permission (SUPER_ADMIN or READ_ONLY_ADMIN).
 
 import { NextResponse } from "next/server";
-import db from "@/lib/db";
+import { healthService } from "@/server/services/health.service";
 import { getRedisClient } from "@/infrastructure/redis/client";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
@@ -63,7 +63,7 @@ export async function GET() {
 
     const checks = await Promise.allSettled([
       checkService("database", async () => {
-        await db.$queryRaw`SELECT 1`;
+        await healthService.pingDatabase();
       }),
       checkService("redis", async () => {
         await getRedisClient().ping();

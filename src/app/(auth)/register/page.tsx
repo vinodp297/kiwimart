@@ -8,6 +8,7 @@ import { signIn, signOut } from "next-auth/react";
 import { useSessionSafe } from "@/hooks/useSessionSafe";
 import Script from "next/script";
 import { registerUser } from "@/server/actions/auth";
+import { registerSchema } from "@/server/validators";
 import {
   Button,
   Input,
@@ -69,16 +70,88 @@ export default function RegisterPage() {
     });
   }, [turnstileSiteKey]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setFieldErrors({});
-    setServerError("");
-
-    // Client-side: confirm password must match before hitting the server
-    if (password !== confirm) {
-      setFieldErrors({ confirmPassword: ["Passwords do not match"] });
+  // ── Inline blur validation using the shared Zod schema ─────────────────
+  function validateFieldOnBlur(name: string, value: unknown) {
+    // confirmPassword uses the refine rule — handle manually
+    if (name === "confirmPassword") {
+      const str = typeof value === "string" ? value : "";
+      if (!str.trim()) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          confirmPassword: ["Please confirm your password"],
+        }));
+      } else if (str !== password) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          confirmPassword: ["Passwords do not match"],
+        }));
+      } else {
+        clear("confirmPassword");
+      }
       return;
     }
+
+    const shape = registerSchema.shape;
+    if (!(name in shape)) return;
+    const fieldSchema = shape[name as keyof typeof shape] as {
+      safeParse: (v: unknown) => {
+        success: boolean;
+        error: { issues: Array<{ message: string }> };
+      };
+    };
+    const result = fieldSchema.safeParse(value);
+    if (!result.success) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        [name]: [result.error.issues[0]?.message ?? "Please check this field"],
+      }));
+    } else {
+      clear(name);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setServerError("");
+
+    // Client-side full validation using the Zod schema before hitting the server
+    const clientErrors: Record<string, string[]> = {};
+    const fieldsToValidate: [string, unknown][] = [
+      ["firstName", firstName],
+      ["lastName", lastName],
+      ["email", email],
+      ["password", password],
+    ];
+    const shape = registerSchema.shape;
+    for (const [field, value] of fieldsToValidate) {
+      const fieldSchema = shape[field as keyof typeof shape] as {
+        safeParse: (v: unknown) => {
+          success: boolean;
+          error: { issues: Array<{ message: string }> };
+        };
+      };
+      const result = fieldSchema.safeParse(value);
+      if (!result.success) {
+        clientErrors[field] = [
+          result.error.issues[0]?.message ?? "Please check this field",
+        ];
+      }
+    }
+    // Validate confirmPassword
+    if (!confirm.trim()) {
+      clientErrors.confirmPassword = ["Please confirm your password"];
+    } else if (confirm !== password) {
+      clientErrors.confirmPassword = ["Passwords do not match"];
+    }
+    // Validate terms agreement
+    if (!agreeTerms) {
+      clientErrors.agreeTerms = ["You must agree to the terms to continue"];
+    }
+    if (Object.keys(clientErrors).length > 0) {
+      setFieldErrors(clientErrors);
+      return;
+    }
+    setFieldErrors({});
 
     const turnstileToken = widgetId.current
       ? (window.turnstile?.getResponse(widgetId.current) ?? "")
@@ -187,6 +260,7 @@ export default function RegisterPage() {
                   setFirstName(e.target.value);
                   clear("firstName");
                 }}
+                onBlur={() => validateFieldOnBlur("firstName", firstName)}
                 placeholder="Jane"
                 autoComplete="given-name"
                 required
@@ -200,6 +274,7 @@ export default function RegisterPage() {
                   setLastName(e.target.value);
                   clear("lastName");
                 }}
+                onBlur={() => validateFieldOnBlur("lastName", lastName)}
                 placeholder="Smith"
                 autoComplete="family-name"
                 required
@@ -215,6 +290,7 @@ export default function RegisterPage() {
                 setEmail(e.target.value);
                 clear("email");
               }}
+              onBlur={() => validateFieldOnBlur("email", email)}
               placeholder="jane@example.co.nz"
               autoComplete="email"
               required
@@ -232,6 +308,7 @@ export default function RegisterPage() {
                   setPassword(e.target.value);
                   clear("password");
                 }}
+                onBlur={() => validateFieldOnBlur("password", password)}
                 placeholder="At least 12 characters"
                 autoComplete="new-password"
                 required
@@ -281,15 +358,11 @@ export default function RegisterPage() {
                 setConfirm(e.target.value);
                 clear("confirmPassword");
               }}
+              onBlur={() => validateFieldOnBlur("confirmPassword", confirm)}
               placeholder="Re-enter your password"
               autoComplete="new-password"
               required
-              error={
-                fe("confirmPassword") ??
-                (confirm.length > 0 && confirm !== password
-                  ? "Passwords do not match"
-                  : undefined)
-              }
+              error={fe("confirmPassword")}
             />
 
             <div className="space-y-3 pt-1">

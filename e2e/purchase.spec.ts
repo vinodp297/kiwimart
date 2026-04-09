@@ -8,17 +8,11 @@ test.describe("Purchase Flow", () => {
 
   test("buyer can view a listing and see Buy Now button", async ({ page }) => {
     await page.goto("/search");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
+    // Listings must exist in the seeded test environment
     const listingCard = page.locator('a[href*="/listings/"]').first();
-    const hasListing = await listingCard
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-
-    if (!hasListing) {
-      test.skip();
-      return;
-    }
+    await expect(listingCard).toBeVisible({ timeout: 10000 });
 
     await listingCard.click();
     await page.waitForURL(/\/listings\//, { timeout: 10000 });
@@ -35,17 +29,10 @@ test.describe("Purchase Flow", () => {
 
   test("Buy Now navigates to checkout page", async ({ page }) => {
     await page.goto("/search");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     const listingCard = page.locator('a[href*="/listings/"]').first();
-    const hasListing = await listingCard
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-
-    if (!hasListing) {
-      test.skip();
-      return;
-    }
+    await expect(listingCard).toBeVisible({ timeout: 10000 });
 
     await listingCard.click();
     await page.waitForURL(/\/listings\//, { timeout: 10000 });
@@ -53,12 +40,7 @@ test.describe("Purchase Flow", () => {
     const buyBtn = page
       .locator('button:has-text("Buy Now"), a:has-text("Buy Now")')
       .first();
-    const canBuy = await buyBtn.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!canBuy) {
-      test.skip();
-      return;
-    }
+    await expect(buyBtn).toBeVisible({ timeout: 10000 });
 
     await buyBtn.click();
     await page.waitForURL(/\/checkout\//, { timeout: 15000 });
@@ -71,17 +53,10 @@ test.describe("Purchase Flow", () => {
     page,
   }) => {
     await page.goto("/search");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     const listingCard = page.locator('a[href*="/listings/"]').first();
-    const hasListing = await listingCard
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-
-    if (!hasListing) {
-      test.skip();
-      return;
-    }
+    await expect(listingCard).toBeVisible({ timeout: 10000 });
 
     await listingCard.click();
     await page.waitForURL(/\/listings\//, { timeout: 10000 });
@@ -89,12 +64,7 @@ test.describe("Purchase Flow", () => {
     const buyBtn = page
       .locator('button:has-text("Buy Now"), a:has-text("Buy Now")')
       .first();
-    const canBuy = await buyBtn.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!canBuy) {
-      test.skip();
-      return;
-    }
+    await expect(buyBtn).toBeVisible({ timeout: 10000 });
 
     await buyBtn.click();
     await page.waitForURL(/\/checkout\//, { timeout: 15000 });
@@ -111,17 +81,10 @@ test.describe("Purchase Flow", () => {
 
   test("checkout requires Stripe payment fields", async ({ page }) => {
     await page.goto("/search");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     const listingCard = page.locator('a[href*="/listings/"]').first();
-    const hasListing = await listingCard
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-
-    if (!hasListing) {
-      test.skip();
-      return;
-    }
+    await expect(listingCard).toBeVisible({ timeout: 10000 });
 
     await listingCard.click();
     await page.waitForURL(/\/listings\//, { timeout: 10000 });
@@ -129,12 +92,7 @@ test.describe("Purchase Flow", () => {
     const buyBtn = page
       .locator('button:has-text("Buy Now"), a:has-text("Buy Now")')
       .first();
-    const canBuy = await buyBtn.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!canBuy) {
-      test.skip();
-      return;
-    }
+    await expect(buyBtn).toBeVisible({ timeout: 10000 });
 
     await buyBtn.click();
     await page.waitForURL(/\/checkout\//, { timeout: 15000 });
@@ -154,17 +112,10 @@ test.describe("Purchase Flow", () => {
   }) => {
     // Navigate to a listing checkout
     await page.goto("/search");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     const listingCard = page.locator('a[href*="/listings/"]').first();
-    const hasListing = await listingCard
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-
-    if (!hasListing) {
-      test.skip();
-      return;
-    }
+    await expect(listingCard).toBeVisible({ timeout: 10000 });
 
     await listingCard.click();
     await page.waitForURL(/\/listings\//, { timeout: 10000 });
@@ -199,7 +150,7 @@ test.describe("Purchase Flow", () => {
   test("buyer can view order history", async ({ page }) => {
     // Navigate to orders page
     await page.goto("/dashboard/buyer");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     // Should show dashboard with orders section
     await expect(page.locator("h1, h2").first()).toBeVisible({
@@ -218,7 +169,7 @@ test.describe("Purchase Flow", () => {
 
     if (hasOrdersTab) {
       await ordersLink.click();
-      await page.waitForTimeout(2000);
+      await page.waitForLoadState("networkidle");
     }
 
     // Should show orders or empty state — no error

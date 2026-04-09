@@ -12,6 +12,7 @@
 //   • Touch drag supported for mobile
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createEscapeHandler, findFirstFocusable } from "@/lib/a11y";
 
 export type CropMode = "avatar" | "cover";
 
@@ -39,6 +40,7 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [imgLoaded, setImgLoaded] = useState(false);
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const dragRef = useRef<{
     sx: number;
@@ -62,6 +64,18 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
     setOffset({ x: 0, y: 0 });
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  // Escape key closes the modal
+  useEffect(() => {
+    const handler = createEscapeHandler(onClose);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  // Move focus to the first interactive element when the modal opens
+  useEffect(() => {
+    findFirstFocusable(containerRef.current)?.focus();
+  }, []);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -219,17 +233,24 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="crop-modal-title"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
+        ref={containerRef}
         className="bg-white rounded-2xl w-full overflow-hidden shadow-2xl"
         style={{ maxWidth: Math.max(cW + 40, 400) }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#E3E0D9]">
-          <h2 className="font-semibold text-[#141414] text-[15px]">
+          <h2
+            id="crop-modal-title"
+            className="font-semibold text-[#141414] text-[15px]"
+          >
             Crop {label}
           </h2>
           <button
@@ -239,6 +260,7 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
             aria-label="Close"
           >
             <svg
+              aria-hidden="true"
               width="16"
               height="16"
               viewBox="0 0 24 24"
@@ -248,6 +270,7 @@ export function ImageCropModal({ file, mode, onAccept, onClose }: Props) {
             >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
+            <span className="sr-only">Close</span>
           </button>
         </div>
 

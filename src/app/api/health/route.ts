@@ -12,7 +12,7 @@
 // IMPORTANT: Never expose connection strings, passwords, or internal error
 // messages publicly — check values are limited to ok / degraded / unreachable.
 
-import db from "@/lib/db";
+import { healthService } from "@/server/services/health.service";
 import { getRedisClient } from "@/infrastructure/redis/client";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ const CHECK_TIMEOUT_MS = 3000;
 
 async function checkDatabase(): Promise<CheckStatus> {
   try {
-    await withTimeout(() => db.$queryRaw`SELECT 1`, CHECK_TIMEOUT_MS);
+    await withTimeout(() => healthService.pingDatabase(), CHECK_TIMEOUT_MS);
     return "ok";
   } catch (e) {
     // Timeout means the DB is slow but may still be up — degrade, don't declare dead.

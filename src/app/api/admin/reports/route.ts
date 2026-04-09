@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminCursorQuerySchema } from "@/modules/admin/admin.schema";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
-import db from "@/lib/db";
+import { adminRepository } from "@/modules/admin/admin.repository";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -40,15 +40,7 @@ export async function GET(request: Request) {
 
     const { cursor, limit } = query;
 
-    const raw = await db.report.findMany({
-      where: { status: "OPEN" },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: "desc" },
-      include: {
-        reporter: { select: { username: true } },
-      },
-    });
+    const raw = await adminRepository.findOpenReportsCursor(limit + 1, cursor);
 
     const hasMore = raw.length > limit;
     const reports = hasMore ? raw.slice(0, limit) : raw;

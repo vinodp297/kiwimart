@@ -3,7 +3,7 @@
 // PATCH  /api/v1/listings/[id] — update a listing (owner only)
 // DELETE /api/v1/listings/[id] — soft-delete a listing (owner or admin)
 
-import db from "@/lib/db";
+import { listingService } from "@/modules/listings/listing.service";
 import { createListingSchema } from "@/server/validators";
 import {
   apiOk,
@@ -22,25 +22,6 @@ export async function PATCH(
   try {
     const user = await requireApiUser(request);
     const { id } = await params;
-
-    // Verify ownership
-    const listing = await db.listing.findUnique({
-      where: { id, deletedAt: null },
-      select: { id: true, sellerId: true, status: true },
-    });
-
-    if (!listing) {
-      return withCors(
-        apiError("Listing not found", 404, "NOT_FOUND"),
-        request.headers.get("origin"),
-      );
-    }
-    if (listing.sellerId !== user.id) {
-      return withCors(
-        apiError("Not your listing", 403, "FORBIDDEN"),
-        request.headers.get("origin"),
-      );
-    }
 
     // Parse body
     const body = await request.json().catch(() => null);
@@ -96,19 +77,23 @@ export async function PATCH(
       );
     }
 
-    const updated = await db.listing.update({
-      where: { id },
-      data: update,
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        priceNzd: true,
-        updatedAt: true,
-      },
-    });
+    const result = await listingService.patchListingViaApi(id, user.id, update);
 
-    return withCors(apiOk({ listing: updated }), request.headers.get("origin"));
+    if (!result.ok) {
+      return withCors(
+        apiError(
+          result.error,
+          result.statusCode,
+          result.statusCode === 404 ? "NOT_FOUND" : "FORBIDDEN",
+        ),
+        request.headers.get("origin"),
+      );
+    }
+
+    return withCors(
+      apiOk({ listing: result.listing }),
+      request.headers.get("origin"),
+    );
   } catch (e) {
     return withCors(handleApiError(e), request.headers.get("origin"));
   }
@@ -122,28 +107,7 @@ export async function DELETE(
     const user = await requireApiUser(request);
     const { id } = await params;
 
-    const listing = await db.listing.findUnique({
-      where: { id, deletedAt: null },
-      select: { id: true, sellerId: true },
-    });
-
-    if (!listing) {
-      return withCors(
-        apiError("Listing not found", 404, "NOT_FOUND"),
-        request.headers.get("origin"),
-      );
-    }
-    if (listing.sellerId !== user.id && !user.isAdmin) {
-      return withCors(
-        apiError("Not your listing", 403, "FORBIDDEN"),
-        request.headers.get("origin"),
-      );
-    }
-
-    await db.listing.update({
-      where: { id },
-      data: { deletedAt: new Date(), status: "REMOVED" },
-    });
+    await listingService.deleteListing(id, user.id, user.isAdmin);
 
     return withCors(
       apiOk({ message: "Listing deleted" }),

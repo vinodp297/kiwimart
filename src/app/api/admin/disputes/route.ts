@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminCursorQuerySchema } from "@/modules/admin/admin.schema";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
-import db from "@/lib/db";
+import { adminRepository } from "@/modules/admin/admin.repository";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -40,17 +40,10 @@ export async function GET(request: Request) {
 
     const { cursor, limit } = query;
 
-    const raw = await db.order.findMany({
-      where: { status: "DISPUTED" },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      include: {
-        buyer: { select: { username: true, email: true } },
-        seller: { select: { username: true, email: true } },
-        listing: { select: { title: true } },
-      },
-      orderBy: { updatedAt: "asc" },
-    });
+    const raw = await adminRepository.findDisputedOrdersCursor(
+      limit + 1,
+      cursor,
+    );
 
     const hasMore = raw.length > limit;
     const disputes = hasMore ? raw.slice(0, limit) : raw;

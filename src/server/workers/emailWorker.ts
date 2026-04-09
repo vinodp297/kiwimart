@@ -26,6 +26,7 @@ import {
 } from "@/server/email";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
+import { runWithRequestContext } from "@/lib/request-context";
 
 export function startEmailWorker() {
   if (process.env.VERCEL) {
@@ -39,137 +40,139 @@ export function startEmailWorker() {
     "email",
     async (job) => {
       const data = job.data;
-      const { template, correlationId } = data;
+      const { template, correlationId: jobCorrelationId } = data;
+      const correlationId = jobCorrelationId ?? `job:${job.id ?? "unknown"}`;
+      return runWithRequestContext({ correlationId }, async () => {
+        switch (template) {
+          case "verification":
+            await sendVerificationEmail({
+              to: data.to,
+              displayName: data.displayName,
+              verifyUrl: data.verifyUrl,
+            });
+            break;
 
-      switch (template) {
-        case "verification":
-          await sendVerificationEmail({
-            to: data.to,
-            displayName: data.displayName,
-            verifyUrl: data.verifyUrl,
-          });
-          break;
+          case "welcome":
+            await sendWelcomeEmail({
+              to: data.to,
+              displayName: data.displayName,
+            });
+            break;
 
-        case "welcome":
-          await sendWelcomeEmail({
-            to: data.to,
-            displayName: data.displayName,
-          });
-          break;
+          case "passwordReset":
+            await sendPasswordResetEmail({
+              to: data.to,
+              displayName: data.displayName,
+              resetUrl: data.resetUrl,
+              expiresInMinutes: data.expiresInMinutes,
+            });
+            break;
 
-        case "passwordReset":
-          await sendPasswordResetEmail({
-            to: data.to,
-            displayName: data.displayName,
-            resetUrl: data.resetUrl,
-            expiresInMinutes: data.expiresInMinutes,
-          });
-          break;
+          case "dataExport":
+            await sendDataExportEmail({
+              to: data.to,
+              displayName: data.displayName,
+              downloadUrl: data.downloadUrl,
+              expiresAt: data.expiresAt,
+            });
+            break;
 
-        case "dataExport":
-          await sendDataExportEmail({
-            to: data.to,
-            displayName: data.displayName,
-            downloadUrl: data.downloadUrl,
-            expiresAt: data.expiresAt,
-          });
-          break;
+          case "erasureConfirmation":
+            await sendErasureConfirmationEmail({
+              to: data.to,
+              displayName: data.displayName,
+            });
+            break;
 
-        case "erasureConfirmation":
-          await sendErasureConfirmationEmail({
-            to: data.to,
-            displayName: data.displayName,
-          });
-          break;
+          case "adminIdVerification":
+            await sendAdminIdVerificationEmail({
+              to: data.to,
+              userId: data.userId,
+              userEmail: data.userEmail,
+              submittedAt: data.submittedAt,
+              adminUrl: data.adminUrl,
+            });
+            break;
 
-        case "adminIdVerification":
-          await sendAdminIdVerificationEmail({
-            to: data.to,
-            userId: data.userId,
-            userEmail: data.userEmail,
-            submittedAt: data.submittedAt,
-            adminUrl: data.adminUrl,
-          });
-          break;
+          case "offerReceived":
+            await sendOfferReceivedEmail({
+              to: data.to,
+              sellerName: data.sellerName,
+              buyerName: data.buyerName,
+              listingTitle: data.listingTitle,
+              offerAmount: data.offerAmount,
+              listingUrl: data.listingUrl,
+            });
+            break;
 
-        case "offerReceived":
-          await sendOfferReceivedEmail({
-            to: data.to,
-            sellerName: data.sellerName,
-            buyerName: data.buyerName,
-            listingTitle: data.listingTitle,
-            offerAmount: data.offerAmount,
-            listingUrl: data.listingUrl,
-          });
-          break;
+          case "offerResponse":
+            await sendOfferResponseEmail({
+              to: data.to,
+              buyerName: data.buyerName,
+              listingTitle: data.listingTitle,
+              accepted: data.accepted,
+              listingUrl: data.listingUrl,
+            });
+            break;
 
-        case "offerResponse":
-          await sendOfferResponseEmail({
-            to: data.to,
-            buyerName: data.buyerName,
-            listingTitle: data.listingTitle,
-            accepted: data.accepted,
-            listingUrl: data.listingUrl,
-          });
-          break;
+          case "orderDispatched":
+            await sendOrderDispatchedEmail({
+              to: data.to,
+              buyerName: data.buyerName,
+              listingTitle: data.listingTitle,
+              trackingNumber: data.trackingNumber,
+              trackingUrl: data.trackingUrl,
+              orderUrl: data.orderUrl,
+            });
+            break;
 
-        case "orderDispatched":
-          await sendOrderDispatchedEmail({
-            to: data.to,
-            buyerName: data.buyerName,
-            listingTitle: data.listingTitle,
-            trackingNumber: data.trackingNumber,
-            trackingUrl: data.trackingUrl,
-            orderUrl: data.orderUrl,
-          });
-          break;
+          case "orderComplete":
+            // Sprint 5: implement sendOrderCompleteEmail
+            logger.info("email.worker.order_complete_stub", {
+              to: data.to,
+              correlationId,
+            });
+            break;
 
-        case "orderComplete":
-          // Sprint 5: implement sendOrderCompleteEmail
-          logger.info("email.worker.order_complete_stub", {
-            to: data.to,
-            correlationId,
-          });
-          break;
+          case "disputeOpened":
+            await sendDisputeOpenedEmail({
+              to: data.to,
+              sellerName: data.sellerName,
+              buyerName: data.buyerName,
+              listingTitle: data.listingTitle,
+              orderId: data.orderId,
+              reason: data.reason,
+              description: data.description,
+            });
+            break;
 
-        case "disputeOpened":
-          await sendDisputeOpenedEmail({
-            to: data.to,
-            sellerName: data.sellerName,
-            buyerName: data.buyerName,
-            listingTitle: data.listingTitle,
-            orderId: data.orderId,
-            reason: data.reason,
-            description: data.description,
-          });
-          break;
-
-        default: {
-          const _exhaustive: never = data;
-          logger.warn("email.worker.unknown_template", {
-            template: (_exhaustive as EmailJobData).template,
-            jobId: job.id,
-          });
+          default: {
+            const _exhaustive: never = data;
+            logger.warn("email.worker.unknown_template", {
+              template: (_exhaustive as EmailJobData).template,
+              jobId: job.id,
+            });
+          }
         }
-      }
 
-      logger.info("email.sent", {
-        template,
-        to: data.to,
-        correlationId,
-        jobId: job.id,
-      });
-
-      audit({
-        action: "ADMIN_ACTION",
-        metadata: {
-          worker: "email",
+        logger.info("email.sent", {
           template,
-          jobId: job.id,
+          to: data.to,
           correlationId,
-          status: "sent",
-        },
-      });
+          jobId: job.id,
+        });
+
+        audit({
+          action: "ADMIN_ACTION",
+          metadata: {
+            worker: "email",
+            template,
+            jobId: job.id,
+            correlationId,
+            status: "sent",
+          },
+        });
+      }); // end runWithRequestContext
     },
     {
       connection:

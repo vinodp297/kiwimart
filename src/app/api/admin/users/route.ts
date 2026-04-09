@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminUsersQuerySchema } from "@/modules/admin/admin.schema";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
-import db from "@/lib/db";
+import { adminRepository } from "@/modules/admin/admin.repository";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -40,35 +40,7 @@ export async function GET(request: Request) {
 
     const { page, q } = query;
 
-    const where = q
-      ? {
-          OR: [
-            { email: { contains: q, mode: "insensitive" as const } },
-            { username: { contains: q, mode: "insensitive" as const } },
-          ],
-        }
-      : {};
-
-    const users = await db.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      skip: (page - 1) * 20,
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        displayName: true,
-        region: true,
-        isSellerEnabled: true,
-        idVerified: true,
-        isBanned: true,
-        createdAt: true,
-        _count: {
-          select: { listings: true, buyerOrders: true },
-        },
-      },
-    });
+    const users = await adminRepository.findUsersByPage(q ?? null, page);
 
     return dep(apiOk({ users }));
   } catch (e) {

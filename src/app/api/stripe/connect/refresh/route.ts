@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 
@@ -20,10 +20,7 @@ export async function GET(): Promise<NextResponse> {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: { stripeAccountId: true },
-    });
+    const user = await userRepository.findStripeStatus(session.user.id);
 
     if (!user?.stripeAccountId) {
       return NextResponse.redirect(

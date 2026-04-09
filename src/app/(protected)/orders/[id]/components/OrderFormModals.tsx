@@ -20,10 +20,11 @@ export function CancellationModal({
   actionLoading: boolean;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} labelledById="cancel-modal-title">
       <div className="text-center">
         <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
           <svg
+            aria-hidden="true"
             width="24"
             height="24"
             viewBox="0 0 24 24"
@@ -35,7 +36,10 @@ export function CancellationModal({
             <path d="M15 9l-6 6M9 9l6 6" />
           </svg>
         </div>
-        <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2">
+        <h2
+          id="cancel-modal-title"
+          className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-2"
+        >
           Request cancellation
         </h2>
         <p className="text-[13px] text-[#73706A] mb-4">
@@ -112,8 +116,11 @@ export function ReturnModal({
   actionLoading: boolean;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+    <ModalOverlay onClose={onClose} labelledById="return-modal-title">
+      <h2
+        id="return-modal-title"
+        className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4"
+      >
         Request a return
       </h2>
       <div className="space-y-4">
@@ -202,8 +209,11 @@ export function PartialRefundModal({
   actionLoading: boolean;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+    <ModalOverlay onClose={onClose} labelledById="partial-refund-modal-title">
+      <h2
+        id="partial-refund-modal-title"
+        className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4"
+      >
         {order.isBuyer ? "Request partial refund" : "Offer partial refund"}
       </h2>
       <div className="space-y-4">
@@ -289,8 +299,11 @@ export function ShippingDelayModal({
   actionLoading: boolean;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+    <ModalOverlay onClose={onClose} labelledById="shipping-delay-modal-title">
+      <h2
+        id="shipping-delay-modal-title"
+        className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4"
+      >
         Notify shipping delay
       </h2>
       <div className="space-y-4">
@@ -365,8 +378,11 @@ export function DisputeModal({
   actionLoading: boolean;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
-      <h2 className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4">
+    <ModalOverlay onClose={onClose} labelledById="dispute-modal-title">
+      <h2
+        id="dispute-modal-title"
+        className="font-[family-name:var(--font-playfair)] text-[1.15rem] font-semibold text-[#141414] mb-4"
+      >
         Open a dispute
       </h2>
       <div className="space-y-4">
@@ -485,7 +501,7 @@ export function ProblemResolverModal({
   onSuccess: () => void;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} labelledById="problem-resolver-modal-title">
       <ProblemResolver
         orderId={orderId}
         status={order.status}

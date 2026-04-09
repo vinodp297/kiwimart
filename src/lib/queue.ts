@@ -180,6 +180,7 @@ export interface ImageJobData {
   imageId: string;
   r2Key: string;
   userId: string;
+  correlationId?: string;
 }
 
 export interface PayoutJobData {

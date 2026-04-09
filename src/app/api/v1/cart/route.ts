@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 import { auth } from "@/lib/auth";
-import db from "@/lib/db";
+import { cartRepository } from "@/modules/cart/cart.repository";
 import { logger } from "@/shared/logger";
 import { cartService } from "@/modules/cart/cart.service";
 import {
@@ -28,13 +28,7 @@ export async function GET(request: Request) {
       return withCors(apiOk({ count: 0 }), request.headers.get("origin"));
     }
 
-    const cart = await db.cart.findUnique({
-      where: { userId: session.user.id },
-      select: {
-        expiresAt: true,
-        _count: { select: { items: true } },
-      },
-    });
+    const cart = await cartRepository.findByUserCount(session.user.id);
 
     if (!cart || new Date(cart.expiresAt) < new Date()) {
       return withCors(apiOk({ count: 0 }), request.headers.get("origin"));

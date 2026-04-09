@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Script from "next/script";
+import { loginSchema } from "@/server/validators";
 import { Button, Input, Alert, Divider } from "@/components/ui/primitives";
 
 declare global {
@@ -104,12 +105,35 @@ export default function LoginPage() {
     setTurnstileReady(true);
   }, [turnstileSiteKey]);
 
+  // ── Inline blur validation using the shared Zod schema ─────────────────
+  function validateFieldOnBlur(name: "email" | "password", value: unknown) {
+    const fieldSchema = loginSchema.shape[name] as {
+      safeParse: (v: unknown) => {
+        success: boolean;
+        error: { issues: Array<{ message: string }> };
+      };
+    };
+    const result = fieldSchema.safeParse(value);
+    if (!result.success) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        [name]: result.error.issues[0]?.message ?? "Please check this field",
+      }));
+    } else {
+      setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
+  }
+
   function validate() {
     const errs: typeof fieldErrors = {};
-    if (!email) errs.email = "Email is required.";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errs.email = "Enter a valid email.";
-    if (!password) errs.password = "Password is required.";
+    const emailResult = loginSchema.shape.email.safeParse(email);
+    if (!emailResult.success)
+      errs.email =
+        emailResult.error.issues[0]?.message ?? "Enter a valid email address";
+    const pwResult = loginSchema.shape.password.safeParse(password);
+    if (!pwResult.success)
+      errs.password =
+        pwResult.error.issues[0]?.message ?? "Password is required";
     return errs;
   }
 
@@ -248,6 +272,7 @@ export default function LoginPage() {
                 setEmail(e.target.value);
                 setFieldErrors((f) => ({ ...f, email: undefined }));
               }}
+              onBlur={() => validateFieldOnBlur("email", email)}
               placeholder="you@example.co.nz"
               autoComplete="email"
               required
@@ -273,6 +298,7 @@ export default function LoginPage() {
                   setPassword(e.target.value);
                   setFieldErrors((f) => ({ ...f, password: undefined }));
                 }}
+                onBlur={() => validateFieldOnBlur("password", password)}
                 placeholder="Your password"
                 autoComplete="current-password"
                 required

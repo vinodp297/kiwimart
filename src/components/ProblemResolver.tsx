@@ -223,7 +223,10 @@ export default function ProblemResolver({
   if (step === 1) {
     return (
       <div>
-        <h2 className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-1">
+        <h2
+          id="problem-resolver-modal-title"
+          className="font-[family-name:var(--font-playfair)] text-[1.1rem] font-semibold text-[#141414] mb-1"
+        >
           What&apos;s going on?
         </h2>
         <p className="text-[12.5px] text-[#73706A] mb-4">

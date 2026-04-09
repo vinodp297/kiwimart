@@ -13,92 +13,95 @@ import { userRepository } from "@/modules/users/user.repository";
 import { audit } from "@/server/lib/audit";
 import type { ActionResult } from "@/types";
 import { stripe } from "@/infrastructure/stripe/client";
+import { withActionContext } from "@/lib/action-context";
 
 // ── createStripeConnectAccount ──────────────────────────────────────────────
 
 export async function createStripeConnectAccount(): Promise<
   ActionResult<{ onboardingUrl: string }>
 > {
-  try {
-    const authedUser = await requireUser();
+  return withActionContext(async () => {
+    try {
+      const authedUser = await requireUser();
 
-    // 5a. Check if user already has a Connect account
-    const user = await userRepository.findForStripeConnect(authedUser.id);
+      // 5a. Check if user already has a Connect account
+      const user = await userRepository.findForStripeConnect(authedUser.id);
 
-    if (!user) return { success: false, error: "User not found." };
+      if (!user) return { success: false, error: "User not found." };
 
-    if (!user.isSellerEnabled) {
-      return { success: false, error: "Seller mode must be enabled first." };
-    }
-
-    // If already has an account, return a fresh onboarding link
-    if (user.stripeAccountId) {
-      if (user.isStripeOnboarded) {
-        return {
-          success: false,
-          error: "Stripe account already connected and active.",
-        };
+      if (!user.isSellerEnabled) {
+        return { success: false, error: "Seller mode must be enabled first." };
       }
-      // Generate a fresh onboarding link for incomplete accounts
+
+      // If already has an account, return a fresh onboarding link
+      if (user.stripeAccountId) {
+        if (user.isStripeOnboarded) {
+          return {
+            success: false,
+            error: "Stripe account already connected and active.",
+          };
+        }
+        // Generate a fresh onboarding link for incomplete accounts
+        const accountLink = await stripe.accountLinks.create({
+          account: user.stripeAccountId,
+          refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
+          return_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
+          type: "account_onboarding",
+        });
+        return { success: true, data: { onboardingUrl: accountLink.url } };
+      }
+
+      // 5b. Create Express Connect account
+      const account = await stripe.accounts.create({
+        type: "express",
+        country: "NZ",
+        email: user.email,
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+        business_profile: {
+          product_description: `KiwiMart seller: ${user.displayName}`,
+        },
+        metadata: {
+          userId: user.id,
+        },
+      });
+
+      // 5c. Store account ID on user
+      await userRepository.update(user.id, { stripeAccountId: account.id });
+
+      // 5d. Create onboarding link
       const accountLink = await stripe.accountLinks.create({
-        account: user.stripeAccountId,
+        account: account.id,
         refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
         return_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
         type: "account_onboarding",
       });
-      return { success: true, data: { onboardingUrl: accountLink.url } };
-    }
 
-    // 5b. Create Express Connect account
-    const account = await stripe.accounts.create({
-      type: "express",
-      country: "NZ",
-      email: user.email,
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-      },
-      business_profile: {
-        product_description: `KiwiMart seller: ${user.displayName}`,
-      },
-      metadata: {
+      // 6. Audit
+      audit({
         userId: user.id,
-      },
-    });
+        action: "PAYMENT_INITIATED",
+        entityType: "User",
+        entityId: user.id,
+        metadata: {
+          stripeAccountId: account.id,
+          action: "connect_account_created",
+        },
+      });
 
-    // 5c. Store account ID on user
-    await userRepository.update(user.id, { stripeAccountId: account.id });
-
-    // 5d. Create onboarding link
-    const accountLink = await stripe.accountLinks.create({
-      account: account.id,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
-      type: "account_onboarding",
-    });
-
-    // 6. Audit
-    audit({
-      userId: user.id,
-      action: "PAYMENT_INITIATED",
-      entityType: "User",
-      entityId: user.id,
-      metadata: {
-        stripeAccountId: account.id,
-        action: "connect_account_created",
-      },
-    });
-
-    return { success: true, data: { onboardingUrl: accountLink.url } };
-  } catch (err) {
-    return {
-      success: false,
-      error: safeActionError(
-        err,
-        "We couldn't connect to Stripe. Please try again.",
-      ),
-    };
-  }
+      return { success: true, data: { onboardingUrl: accountLink.url } };
+    } catch (err) {
+      return {
+        success: false,
+        error: safeActionError(
+          err,
+          "We couldn't connect to Stripe. Please try again.",
+        ),
+      };
+    }
+  }); // end withActionContext
 }
 
 // ── getStripeOnboardingUrl ──────────────────────────────────────────────────
@@ -106,42 +109,44 @@ export async function createStripeConnectAccount(): Promise<
 export async function getStripeOnboardingUrl(): Promise<
   ActionResult<{ onboardingUrl: string }>
 > {
-  try {
-    const authedUser = await requireUser();
+  return withActionContext(async () => {
+    try {
+      const authedUser = await requireUser();
 
-    const user = await userRepository.findStripeStatus(authedUser.id);
+      const user = await userRepository.findStripeStatus(authedUser.id);
 
-    if (!user) return { success: false, error: "User not found." };
-    if (!user.stripeAccountId) {
+      if (!user) return { success: false, error: "User not found." };
+      if (!user.stripeAccountId) {
+        return {
+          success: false,
+          error: "No Stripe account found. Please create one first.",
+        };
+      }
+      if (user.isStripeOnboarded) {
+        return {
+          success: false,
+          error: "Stripe account is already fully onboarded.",
+        };
+      }
+
+      const accountLink = await stripe.accountLinks.create({
+        account: user.stripeAccountId,
+        refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
+        type: "account_onboarding",
+      });
+
+      return { success: true, data: { onboardingUrl: accountLink.url } };
+    } catch (err) {
       return {
         success: false,
-        error: "No Stripe account found. Please create one first.",
+        error: safeActionError(
+          err,
+          "We couldn't check your payment account status. Please try again.",
+        ),
       };
     }
-    if (user.isStripeOnboarded) {
-      return {
-        success: false,
-        error: "Stripe account is already fully onboarded.",
-      };
-    }
-
-    const accountLink = await stripe.accountLinks.create({
-      account: user.stripeAccountId,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
-      type: "account_onboarding",
-    });
-
-    return { success: true, data: { onboardingUrl: accountLink.url } };
-  } catch (err) {
-    return {
-      success: false,
-      error: safeActionError(
-        err,
-        "We couldn't check your payment account status. Please try again.",
-      ),
-    };
-  }
+  }); // end withActionContext
 }
 
 // ── getStripeAccountStatus ──────────────────────────────────────────────────
@@ -155,57 +160,59 @@ export async function getStripeAccountStatus(): Promise<
     detailsSubmitted: boolean;
   }>
 > {
-  try {
-    const authedUser = await requireUser();
+  return withActionContext(async () => {
+    try {
+      const authedUser = await requireUser();
 
-    const user = await userRepository.findStripeStatus(authedUser.id);
+      const user = await userRepository.findStripeStatus(authedUser.id);
 
-    if (!user) return { success: false, error: "User not found." };
+      if (!user) return { success: false, error: "User not found." };
 
-    if (!user.stripeAccountId) {
+      if (!user.stripeAccountId) {
+        return {
+          success: true,
+          data: {
+            hasAccount: false,
+            onboarded: false,
+            chargesEnabled: false,
+            payoutsEnabled: false,
+            detailsSubmitted: false,
+          },
+        };
+      }
+
+      // Fetch live status from Stripe
+      const account = await stripe.accounts.retrieve(user.stripeAccountId);
+      const chargesEnabled = account.charges_enabled ?? false;
+      const payoutsEnabled = account.payouts_enabled ?? false;
+      const detailsSubmitted = account.details_submitted ?? false;
+      const onboarded = chargesEnabled && detailsSubmitted;
+
+      // Sync onboarded status if changed
+      if (onboarded !== user.isStripeOnboarded) {
+        await userRepository.update(authedUser.id, {
+          isStripeOnboarded: onboarded,
+        });
+      }
+
       return {
         success: true,
         data: {
-          hasAccount: false,
-          onboarded: false,
-          chargesEnabled: false,
-          payoutsEnabled: false,
-          detailsSubmitted: false,
+          hasAccount: true,
+          onboarded,
+          chargesEnabled,
+          payoutsEnabled,
+          detailsSubmitted,
         },
       };
+    } catch (err) {
+      return {
+        success: false,
+        error: safeActionError(
+          err,
+          "We couldn't process the Stripe action. Please try again.",
+        ),
+      };
     }
-
-    // Fetch live status from Stripe
-    const account = await stripe.accounts.retrieve(user.stripeAccountId);
-    const chargesEnabled = account.charges_enabled ?? false;
-    const payoutsEnabled = account.payouts_enabled ?? false;
-    const detailsSubmitted = account.details_submitted ?? false;
-    const onboarded = chargesEnabled && detailsSubmitted;
-
-    // Sync onboarded status if changed
-    if (onboarded !== user.isStripeOnboarded) {
-      await userRepository.update(authedUser.id, {
-        isStripeOnboarded: onboarded,
-      });
-    }
-
-    return {
-      success: true,
-      data: {
-        hasAccount: true,
-        onboarded,
-        chargesEnabled,
-        payoutsEnabled,
-        detailsSubmitted,
-      },
-    };
-  } catch (err) {
-    return {
-      success: false,
-      error: safeActionError(
-        err,
-        "We couldn't process the Stripe action. Please try again.",
-      ),
-    };
-  }
+  }); // end withActionContext
 }

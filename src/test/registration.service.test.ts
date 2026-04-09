@@ -104,6 +104,11 @@ vi.mock("@/modules/users/user.repository", () => ({
       .mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
         fn(db),
       ),
+    // API route helpers (added when routes migrated off direct db imports)
+    findForMobileAuth: vi.fn().mockResolvedValue(null),
+    findForApiAuth: vi.fn().mockResolvedValue(null),
+    findByVerificationToken: vi.fn().mockResolvedValue(null),
+    markEmailVerified: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -394,13 +399,12 @@ describe("emailVerification (GET /api/verify-email)", () => {
   };
 
   it("verifies email successfully with valid token", async () => {
-    vi.mocked(db.user.findFirst).mockResolvedValue({
+    vi.mocked(userRepository.findByVerificationToken).mockResolvedValue({
       id: "user-1",
       email: "user@test.com",
       displayName: "Test User",
       emailVerified: null,
-    } as never);
-    vi.mocked(db.user.update).mockResolvedValue({} as never);
+    });
 
     const response = await verifyEmailGET(makeRequest("valid-token-hex"));
 
@@ -409,7 +413,7 @@ describe("emailVerification (GET /api/verify-email)", () => {
   });
 
   it("redirects to error page with invalid token (not found in DB)", async () => {
-    vi.mocked(db.user.findFirst).mockResolvedValue(null);
+    vi.mocked(userRepository.findByVerificationToken).mockResolvedValue(null);
 
     const response = await verifyEmailGET(makeRequest("bad-token"));
 
@@ -425,12 +429,12 @@ describe("emailVerification (GET /api/verify-email)", () => {
   });
 
   it("redirects to homepage when email is already verified", async () => {
-    vi.mocked(db.user.findFirst).mockResolvedValue({
+    vi.mocked(userRepository.findByVerificationToken).mockResolvedValue({
       id: "user-1",
       email: "user@test.com",
       displayName: "Test User",
       emailVerified: new Date("2024-01-01"),
-    } as never);
+    });
 
     const response = await verifyEmailGET(makeRequest("already-used-token"));
 
@@ -441,38 +445,29 @@ describe("emailVerification (GET /api/verify-email)", () => {
   });
 
   it("sets emailVerified and clears token after successful verification", async () => {
-    vi.mocked(db.user.findFirst).mockResolvedValue({
+    vi.mocked(userRepository.findByVerificationToken).mockResolvedValue({
       id: "user-1",
       email: "user@test.com",
       displayName: "Test User",
       emailVerified: null,
-    } as never);
-    vi.mocked(db.user.update).mockResolvedValue({} as never);
+    });
 
     await verifyEmailGET(makeRequest("valid-token"));
 
-    expect(db.user.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "user-1" },
-        data: expect.objectContaining({
-          emailVerified: expect.any(Date),
-          emailVerifyToken: null,
-          emailVerifyExpires: null,
-        }),
-      }),
-    );
+    // Repository method markEmailVerified is called with the correct userId
+    expect(userRepository.markEmailVerified).toHaveBeenCalledWith("user-1");
   });
 
   it("token query uses expiry filter so expired tokens are not found", async () => {
-    // The route queries: { emailVerifyToken: token, emailVerifyExpires: { gt: now } }
-    // Expired tokens return null from findFirst (simulated here)
-    vi.mocked(db.user.findFirst).mockResolvedValue(null); // expired → not found
+    // The route calls findByVerificationToken which filters by expiry internally.
+    // Expired tokens return null (simulated here).
+    vi.mocked(userRepository.findByVerificationToken).mockResolvedValue(null); // expired → not found
 
     const response = await verifyEmailGET(makeRequest("expired-token"));
 
     expect(response.status).toBe(302);
     expect(response.headers.get("Location")).toContain("error=invalid");
-    expect(db.user.update).not.toHaveBeenCalled();
+    expect(userRepository.markEmailVerified).not.toHaveBeenCalled();
   });
 });
 
@@ -747,7 +742,7 @@ describe("POST /api/v1/auth/token — mobile token issuance", () => {
   });
 
   it("issues Bearer token with valid email + password", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(dbUser as never);
+    vi.mocked(userRepository.findForMobileAuth).mockResolvedValue(dbUser);
 
     const response = await tokenPOST(
       makeRequest({ email: "mobile@test.com", password: "pass" }),
@@ -760,7 +755,7 @@ describe("POST /api/v1/auth/token — mobile token issuance", () => {
   });
 
   it("fails with wrong password (401)", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(dbUser as never);
+    vi.mocked(userRepository.findForMobileAuth).mockResolvedValue(dbUser);
     vi.mocked(verifyPassword).mockResolvedValue(false);
 
     const response = await tokenPOST(
@@ -773,7 +768,7 @@ describe("POST /api/v1/auth/token — mobile token issuance", () => {
   });
 
   it("fails for non-existent user (401, timing-safe)", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(null);
+    vi.mocked(userRepository.findForMobileAuth).mockResolvedValue(null);
     vi.mocked(verifyPassword).mockResolvedValue(false);
 
     const response = await tokenPOST(
@@ -784,10 +779,10 @@ describe("POST /api/v1/auth/token — mobile token issuance", () => {
   });
 
   it("fails for banned user (403)", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue({
+    vi.mocked(userRepository.findForMobileAuth).mockResolvedValue({
       ...dbUser,
       isBanned: true,
-    } as never);
+    });
 
     const response = await tokenPOST(
       makeRequest({ email: "mobile@test.com", password: "pass" }),
@@ -799,7 +794,7 @@ describe("POST /api/v1/auth/token — mobile token issuance", () => {
   });
 
   it("token payload includes correct userId (sub claim)", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(dbUser as never);
+    vi.mocked(userRepository.findForMobileAuth).mockResolvedValue(dbUser);
 
     const response = await tokenPOST(
       makeRequest({ email: "mobile@test.com", password: "pass" }),
@@ -814,7 +809,7 @@ describe("POST /api/v1/auth/token — mobile token issuance", () => {
   });
 
   it("token is stored in Redis with jti key for revocation", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(dbUser as never);
+    vi.mocked(userRepository.findForMobileAuth).mockResolvedValue(dbUser);
 
     await tokenPOST(
       makeRequest({ email: "mobile@test.com", password: "pass" }),
@@ -902,15 +897,15 @@ describe("mobile token revocation", () => {
     const payloadBefore = await verifyMobileToken(token);
     expect(payloadBefore).not.toBeNull();
 
-    // Mock requireApiUser's db lookup
-    vi.mocked(db.user.findUnique).mockResolvedValue({
+    // Mock requireApiUser's repository lookup (findForApiAuth)
+    vi.mocked(userRepository.findForApiAuth).mockResolvedValue({
       id: testUser.id,
       email: testUser.email,
       isAdmin: false,
       isBanned: false,
       isSellerEnabled: true,
       isStripeOnboarded: false,
-    } as never);
+    });
 
     const request = new Request("http://localhost/api/v1/auth/logout", {
       method: "POST",

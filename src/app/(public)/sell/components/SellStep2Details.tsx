@@ -17,6 +17,8 @@ interface SellStep2DetailsProps {
   onCategoryChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onSubcategoryChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onConditionChange: (value: Condition) => void;
+  onTitleBlur?: () => void;
+  onDescriptionBlur?: () => void;
 }
 
 export default function SellStep2Details({
@@ -31,6 +33,8 @@ export default function SellStep2Details({
   onCategoryChange,
   onSubcategoryChange,
   onConditionChange,
+  onTitleBlur,
+  onDescriptionBlur,
 }: SellStep2DetailsProps) {
   const activeCat = CATEGORIES.find((c) => c.id === categoryId);
 
@@ -47,6 +51,7 @@ export default function SellStep2Details({
         label="Title"
         value={title}
         onChange={onTitleChange}
+        onBlur={onTitleBlur}
         placeholder="e.g. Sony WH-1000XM5 Noise-Cancelling Headphones"
         maxLength={100}
         required
@@ -58,6 +63,7 @@ export default function SellStep2Details({
         label="Description"
         value={description}
         onChange={onDescriptionChange}
+        onBlur={onDescriptionBlur}
         placeholder="Describe the item's condition, what's included, any issues, reason for selling..."
         required
         error={errors.description}

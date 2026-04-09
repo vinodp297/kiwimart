@@ -3,7 +3,7 @@
 
 import { AppError } from "@/shared/errors";
 import { auth } from "@/lib/auth";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { verifyMobileToken } from "@/lib/mobile-auth";
 import {
   rateLimit,
@@ -52,15 +52,6 @@ export function handleApiError(e: unknown, origin?: string | null): Response {
   );
 }
 
-const USER_SELECT = {
-  id: true,
-  email: true,
-  isAdmin: true,
-  isBanned: true,
-  isSellerEnabled: true,
-  isStripeOnboarded: true,
-} as const;
-
 export async function requireApiUser(request?: Request) {
   // 1. Try Authorization header first (mobile clients)
   if (request) {
@@ -72,10 +63,7 @@ export async function requireApiUser(request?: Request) {
         throw AppError.unauthenticated();
       }
 
-      const user = await db.user.findUnique({
-        where: { id: payload.sub, deletedAt: null },
-        select: USER_SELECT,
-      });
+      const user = await userRepository.findForApiAuth(payload.sub);
       if (!user) throw AppError.unauthenticated();
       if (user.isBanned) throw AppError.banned();
       return user;
@@ -90,13 +78,7 @@ export async function requireApiUser(request?: Request) {
 
   // Fresh DB lookup — same pattern as requireUser().
   // Session tokens may be stale: soft-deleted or banned users must be rejected.
-  const user = await db.user.findUnique({
-    where: {
-      id: session.user.id,
-      deletedAt: null, // Reject soft-deleted accounts
-    },
-    select: USER_SELECT,
-  });
+  const user = await userRepository.findForApiAuth(session.user.id);
 
   if (!user) {
     throw AppError.unauthenticated();

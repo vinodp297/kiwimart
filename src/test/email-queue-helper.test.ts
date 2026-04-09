@@ -61,6 +61,8 @@ vi.mock("@/lib/queue", () => ({
 
 vi.mock("@/lib/request-context", () => ({
   getRequestContext: () => mockGetRequestContext(),
+  // runWithRequestContext is used by emailWorker — pass through to fn() directly
+  runWithRequestContext: (_ctx: unknown, fn: () => unknown) => fn(),
 }));
 
 vi.mock("@/shared/logger", () => ({

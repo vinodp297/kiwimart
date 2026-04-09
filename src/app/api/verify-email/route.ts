@@ -4,7 +4,7 @@
 // Validates token, marks email as verified, sends welcome email, redirects.
 
 import { NextRequest, NextResponse } from "next/server";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
 
@@ -22,18 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Look up user by token (also check not expired)
-    const user = await db.user.findFirst({
-      where: {
-        emailVerifyToken: token,
-        emailVerifyExpires: { gt: new Date() },
-      },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        emailVerified: true,
-      },
-    });
+    const user = await userRepository.findByVerificationToken(token);
 
     if (!user) {
       return NextResponse.redirect(
@@ -47,14 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Mark email as verified and clear the token
-    await db.user.update({
-      where: { id: user.id },
-      data: {
-        emailVerified: new Date(),
-        emailVerifyToken: null,
-        emailVerifyExpires: null,
-      },
-    });
+    await userRepository.markEmailVerified(user.id);
 
     // Send welcome email (fire-and-forget; don't block the redirect)
     const resend = getEmailClient();

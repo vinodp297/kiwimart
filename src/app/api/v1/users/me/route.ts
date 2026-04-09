@@ -8,29 +8,13 @@ import {
   requireApiUser,
 } from "../../_helpers/response";
 import { getCorsHeaders, withCors } from "../../_helpers/cors";
-import db from "@/lib/db";
+import { userService } from "@/modules/users/user.service";
 
 export async function GET(request: Request) {
   try {
     const sessionUser = await requireApiUser();
 
-    const user = await db.user.findUnique({
-      where: { id: sessionUser.id },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        email: true,
-        avatarKey: true,
-        region: true,
-        bio: true,
-        isSellerEnabled: true,
-        isStripeOnboarded: true,
-        idVerified: true,
-        isPhoneVerified: true,
-        createdAt: true,
-      },
-    });
+    const user = await userService.getApiProfile(sessionUser.id);
 
     if (!user) {
       return withCors(

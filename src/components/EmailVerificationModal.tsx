@@ -4,7 +4,8 @@
 // Shown when an unverified user attempts a soft-gated action (watchlist, cart,
 // message seller). Dismissible — user stays on the page.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { createEscapeHandler, findFirstFocusable } from "@/lib/a11y";
 import { useSession } from "next-auth/react";
 import { Button, Alert } from "@/components/ui/primitives";
 import { resendVerificationEmail } from "@/server/actions/auth";
@@ -25,6 +26,20 @@ export default function EmailVerificationModal({
   const [resendCooldown, setResendCooldown] = useState(0);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Escape key closes the modal
+  useEffect(() => {
+    if (!open) return;
+    const handler = createEscapeHandler(onClose);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, onClose]);
+
+  // Move focus to the first interactive element when the modal opens
+  useEffect(() => {
+    if (open) findFirstFocusable(containerRef.current)?.focus();
+  }, [open]);
 
   const email = session?.user?.email ?? "";
 
@@ -76,11 +91,15 @@ export default function EmailVerificationModal({
       className="fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
+      aria-labelledby="email-verify-modal-title"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] shadow-xl w-full max-w-md p-6">
+      <div
+        ref={containerRef}
+        className="bg-white rounded-2xl border border-[#E3E0D9] shadow-xl w-full max-w-md p-6"
+      >
         {/* Header */}
         <div className="flex items-start gap-3 mb-4">
           <div className="shrink-0 mt-0.5 w-9 h-9 rounded-full bg-amber-50 flex items-center justify-center">
@@ -97,7 +116,10 @@ export default function EmailVerificationModal({
             </svg>
           </div>
           <div>
-            <h2 className="text-[15px] font-semibold text-[#141414]">
+            <h2
+              id="email-verify-modal-title"
+              className="text-[15px] font-semibold text-[#141414]"
+            >
               Verify your email to continue
             </h2>
             <p className="text-[13px] text-[#73706A] mt-0.5 leading-relaxed">

@@ -49,7 +49,7 @@ export default function OrderDispatchModal({
   actionLoading: boolean;
 }) {
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} labelledById="dispatch-modal-title">
       {dispatchSuccess ? (
         <div className="text-center py-4">
           <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
@@ -139,7 +139,10 @@ export default function OrderDispatchModal({
             {dispatchStep === 1 && (
               <div className="space-y-4">
                 <div>
-                  <h2 className="font-[family-name:var(--font-playfair)] text-[1.05rem] font-semibold text-[#141414] mb-1">
+                  <h2
+                    id="dispatch-modal-title"
+                    className="font-[family-name:var(--font-playfair)] text-[1.05rem] font-semibold text-[#141414] mb-1"
+                  >
                     Photo your item before packing
                   </h2>
                   <p className="text-[12.5px] text-[#73706A]">

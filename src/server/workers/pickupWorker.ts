@@ -22,6 +22,7 @@ import {
   ORDER_EVENT_TYPES,
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
+import { runWithRequestContext } from "@/lib/request-context";
 
 export function startPickupWorker() {
   if (process.env.VERCEL) {
@@ -34,20 +35,27 @@ export function startPickupWorker() {
   const worker = new Worker<PickupJobData>(
     "pickup",
     async (job) => {
-      const { type, orderId, rescheduleRequestId } = job.data;
-
-      switch (type) {
-        case "PICKUP_SCHEDULE_DEADLINE":
-          return handleScheduleDeadline(orderId);
-        case "PICKUP_WINDOW_EXPIRED":
-          return handleWindowExpired(orderId);
-        case "OTP_EXPIRED":
-          return handleOtpExpired(orderId);
-        case "RESCHEDULE_RESPONSE_EXPIRED":
-          return handleRescheduleExpired(orderId, rescheduleRequestId!);
-        default:
-          logger.warn("pickup.worker.unknown_type", { type, orderId });
-      }
+      const {
+        type,
+        orderId,
+        rescheduleRequestId,
+        correlationId: jobCorrelationId,
+      } = job.data;
+      const correlationId = jobCorrelationId ?? `job:${job.id ?? "unknown"}`;
+      return runWithRequestContext({ correlationId }, async () => {
+        switch (type) {
+          case "PICKUP_SCHEDULE_DEADLINE":
+            return handleScheduleDeadline(orderId);
+          case "PICKUP_WINDOW_EXPIRED":
+            return handleWindowExpired(orderId);
+          case "OTP_EXPIRED":
+            return handleOtpExpired(orderId);
+          case "RESCHEDULE_RESPONSE_EXPIRED":
+            return handleRescheduleExpired(orderId, rescheduleRequestId!);
+          default:
+            logger.warn("pickup.worker.unknown_type", { type, orderId });
+        }
+      }); // end runWithRequestContext
     },
     {
       connection:

@@ -5,7 +5,7 @@
 // the sell wizard or the Stripe setup gate.
 
 import { auth } from "@/lib/auth";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 
@@ -35,14 +35,7 @@ export async function GET() {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        isStripeOnboarded: true,
-        stripeAccountId: true,
-        isSellerEnabled: true,
-      },
-    });
+    const user = await userRepository.findForStripeConnect(session.user.id);
 
     return dep(
       apiOk({

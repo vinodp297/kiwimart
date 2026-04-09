@@ -2,7 +2,7 @@
 // ─── Mobile Token Endpoint ───────────────────────────────────────────────────
 // POST /api/v1/auth/token — exchange email+password for a 30-day Bearer token.
 
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { verifyPassword } from "@/server/lib/password";
 import { signMobileToken } from "@/lib/mobile-auth";
 import { tokenRequestSchema } from "@/modules/auth/auth.schema";
@@ -51,17 +51,7 @@ export async function POST(request: Request) {
     const { email, password } = parsed.data;
 
     // 3. Look up user — timing-safe: always hash even if user doesn't exist
-    const user = await db.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        email: true,
-        passwordHash: true,
-        isAdmin: true,
-        isBanned: true,
-        displayName: true,
-      },
-    });
+    const user = await userRepository.findForMobileAuth(email);
 
     const hashToVerify = user?.passwordHash ?? DUMMY_HASH;
     const passwordValid = await verifyPassword(hashToVerify, password);

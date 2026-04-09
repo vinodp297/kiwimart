@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import db from "@/lib/db";
+import { userRepository } from "@/modules/users/user.repository";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 
@@ -21,10 +21,7 @@ export async function GET(): Promise<NextResponse> {
       );
     }
 
-    const user = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: { stripeAccountId: true },
-    });
+    const user = await userRepository.findStripeStatus(session.user.id);
 
     if (user?.stripeAccountId) {
       // Verify ownership and check live status
@@ -52,9 +49,8 @@ export async function GET(): Promise<NextResponse> {
         (account.details_submitted ?? false) &&
         (account.charges_enabled ?? false);
 
-      await db.user.update({
-        where: { id: session.user.id },
-        data: { isStripeOnboarded: onboarded },
+      await userRepository.update(session.user.id, {
+        isStripeOnboarded: onboarded,
       });
 
       logger.info("stripe.connect.return.synced", {

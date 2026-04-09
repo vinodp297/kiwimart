@@ -11,7 +11,7 @@ import {
   checkApiRateLimit,
 } from "../_helpers/response";
 import { getCorsHeaders, withCors } from "../_helpers/cors";
-import db from "@/lib/db";
+import { orderRepository } from "@/modules/orders/order.repository";
 
 export async function GET(request: Request) {
   // Rate limit: reuse order limiter (5/hr)
@@ -37,21 +37,11 @@ export async function GET(request: Request) {
 
     const { cursor, limit } = query;
 
-    const raw = await db.order.findMany({
-      where: { buyerId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      select: {
-        id: true,
-        status: true,
-        totalNzd: true,
-        createdAt: true,
-        listing: {
-          select: { id: true, title: true },
-        },
-      },
-    });
+    const raw = await orderRepository.findByBuyerCursor(
+      user.id,
+      limit + 1,
+      cursor,
+    );
 
     const hasMore = raw.length > limit;
     const orders = hasMore ? raw.slice(0, limit) : raw;

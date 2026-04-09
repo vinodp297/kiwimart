@@ -917,6 +917,50 @@ export class ListingService {
     };
   }
 
+  // ── patchListingViaApi ────────────────────────────────────────────────────
+  // Lightweight PATCH for the REST API — no auto-review, no keyword scan.
+  // Returns the updated listing shape the route needs.
+
+  async patchListingViaApi(
+    listingId: string,
+    userId: string,
+    update: Prisma.ListingUncheckedUpdateInput,
+  ): Promise<
+    | {
+        ok: true;
+        listing: {
+          id: string;
+          title: string;
+          status: string;
+          priceNzd: number;
+          updatedAt: Date;
+        };
+      }
+    | { ok: false; error: string; statusCode: number }
+  > {
+    const existing = await listingRepository.findByIdForDelete(listingId);
+
+    if (!existing) {
+      return { ok: false, error: "Listing not found", statusCode: 404 };
+    }
+    if (existing.sellerId !== userId) {
+      return { ok: false, error: "Not your listing", statusCode: 403 };
+    }
+
+    const updated = await listingRepository.updateListing(listingId, update);
+
+    return {
+      ok: true,
+      listing: {
+        id: updated.id,
+        title: updated.title,
+        status: updated.status,
+        priceNzd: updated.priceNzd,
+        updatedAt: updated.updatedAt,
+      },
+    };
+  }
+
   // ── Private: runAutoReviewFlow ────────────────────────────────────────────
 
   private async runAutoReviewFlow(

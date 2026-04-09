@@ -3,8 +3,7 @@
 // GET  /api/v1/reviews — list reviews (public, cursor pagination)
 // POST /api/v1/reviews — create a review for a completed order (buyer or seller)
 
-import { Prisma } from "@prisma/client";
-import db from "@/lib/db";
+import { reviewRepository } from "@/modules/reviews/review.repository";
 import { createReviewSchema } from "@/server/validators";
 import { reviewService } from "@/modules/reviews/review.service";
 import { logger } from "@/shared/logger";
@@ -25,25 +24,17 @@ export async function GET(request: Request) {
     const sellerId = searchParams.get("sellerId") ?? undefined;
     const buyerId = searchParams.get("buyerId") ?? undefined;
 
-    const where: Prisma.ReviewWhereInput = { isApproved: true };
+    const where: { isApproved: true; subjectId?: string; authorId?: string } = {
+      isApproved: true,
+    };
     if (sellerId) where.subjectId = sellerId;
     if (buyerId) where.authorId = buyerId;
 
-    const raw = await db.review.findMany({
+    const raw = await reviewRepository.findApprovedCursor(
       where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        rating: true,
-        comment: true,
-        reply: true,
-        reviewerRole: true,
-        createdAt: true,
-        author: { select: { displayName: true, username: true } },
-      },
-    });
+      limit + 1,
+      cursor,
+    );
 
     const hasMore = raw.length > limit;
     const reviews = hasMore ? raw.slice(0, limit) : raw;

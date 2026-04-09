@@ -3,7 +3,7 @@
 // ─── Cart Count API — lightweight endpoint for NavBar badge polling ──────────
 
 import { auth } from "@/lib/auth";
-import db from "@/lib/db";
+import { cartRepository } from "@/modules/cart/cart.repository";
 import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 
@@ -24,13 +24,7 @@ export async function GET() {
       return dep(apiOk({ count: 0 }));
     }
 
-    const cart = await db.cart.findUnique({
-      where: { userId: session.user.id },
-      select: {
-        expiresAt: true,
-        _count: { select: { items: true } },
-      },
-    });
+    const cart = await cartRepository.findByUserCount(session.user.id);
 
     if (!cart || new Date(cart.expiresAt) < new Date()) {
       return dep(apiOk({ count: 0 }));

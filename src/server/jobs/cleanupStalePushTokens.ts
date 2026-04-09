@@ -8,29 +8,35 @@
 
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { logger } from "@/shared/logger";
+import { runWithRequestContext } from "@/lib/request-context";
 
 export async function cleanupStalePushTokens(): Promise<{
   deleted: number;
   errors: number;
 }> {
-  logger.info("job.cleanup_stale_push_tokens.started");
+  return runWithRequestContext(
+    { correlationId: `cron:cleanupStalePushTokens:${Date.now()}` },
+    async () => {
+      logger.info("job.cleanup_stale_push_tokens.started");
 
-  let deleted = 0;
-  let errors = 0;
+      let deleted = 0;
+      let errors = 0;
 
-  try {
-    deleted = await notificationRepository.deleteInactivePushTokens();
+      try {
+        deleted = await notificationRepository.deleteInactivePushTokens();
 
-    logger.info("job.cleanup_stale_push_tokens.completed", {
-      deleted,
-      retentionDays: 90,
-    });
-  } catch (err) {
-    errors++;
-    logger.error("job.cleanup_stale_push_tokens.failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
+        logger.info("job.cleanup_stale_push_tokens.completed", {
+          deleted,
+          retentionDays: 90,
+        });
+      } catch (err) {
+        errors++;
+        logger.error("job.cleanup_stale_push_tokens.failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
 
-  return { deleted, errors };
+      return { deleted, errors };
+    }, // end runWithRequestContext fn
+  ); // end runWithRequestContext
 }

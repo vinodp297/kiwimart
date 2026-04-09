@@ -104,6 +104,7 @@ export const orderRepository = {
         status: true,
         createdAt: true,
         listingId: true,
+        stripePaymentIntentId: true,
       },
     });
   },
@@ -869,6 +870,49 @@ export const orderRepository = {
           where: { reviewerRole },
           select: { id: true },
         },
+      },
+    });
+  },
+
+  /** Fetch buyer and seller IDs for pickup role determination.
+   * @source src/app/api/v1/pickup/propose/route.ts
+   * @source src/app/api/v1/pickup/reschedule/route.ts */
+  async findParties(id: string): Promise<{
+    buyerId: string;
+    sellerId: string;
+  } | null> {
+    return db.order.findUnique({
+      where: { id },
+      select: { buyerId: true, sellerId: true },
+    });
+  },
+
+  /** Cursor-paginated buyer order list for /api/v1/orders.
+   * @source src/app/api/v1/orders/route.ts */
+  async findByBuyerCursor(
+    buyerId: string,
+    limit: number,
+    cursor?: string,
+  ): Promise<
+    {
+      id: string;
+      status: string;
+      totalNzd: number;
+      createdAt: Date;
+      listing: { id: string; title: string };
+    }[]
+  > {
+    return db.order.findMany({
+      where: { buyerId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        status: true,
+        totalNzd: true,
+        createdAt: true,
+        listing: { select: { id: true, title: true } },
       },
     });
   },

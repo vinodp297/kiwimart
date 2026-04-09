@@ -6,7 +6,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "buyer"); // buyer hasn't onboarded as seller yet
 
     await page.goto("/seller/onboarding");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     // Should show seller hub / onboarding page
     await expect(page.locator("h1, h2").first()).toBeVisible({
@@ -25,7 +25,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "buyer");
 
     await page.goto("/seller/onboarding");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     // Should show Stripe connect button or step
     await expect(
@@ -39,7 +39,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "buyer3"); // emma — has phone verified
 
     await page.goto("/seller/onboarding");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     // Should show phone verification step (complete or pending)
     await expect(
@@ -53,9 +53,10 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "buyer"); // buyer hasn't accepted seller terms
 
     await page.goto("/dashboard/seller");
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState("networkidle");
 
-    // Should either redirect to onboarding or show terms acceptance prompt
+    // Should either redirect to onboarding or show terms acceptance prompt.
+    // Failing means a non-seller user can silently access the seller dashboard.
     const redirectedToOnboarding = page.url().includes("/seller/onboarding");
     const showsTermsPrompt = await page
       .locator("text=/accept.*terms|seller.*terms|agree.*terms|seller hub/i")
@@ -70,7 +71,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "seller"); // mike — fully onboarded seller
 
     await page.goto("/dashboard/seller");
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState("networkidle");
 
     // Should show seller dashboard (not redirected to onboarding)
     await expect(page.locator("h1, h2").first()).toBeVisible({
@@ -92,7 +93,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "seller");
 
     await page.goto("/sell");
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState("networkidle");
 
     // Should show listing creation form
     await expect(page.locator("h1, h2").first()).toBeVisible({
@@ -122,7 +123,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "seller");
 
     await page.goto("/dashboard/seller");
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState("networkidle");
 
     // Look for listings tab or count
     const listingsTab = page
@@ -136,7 +137,7 @@ test.describe("Seller Onboarding Flow", () => {
 
     if (hasListingsTab) {
       await listingsTab.click();
-      await page.waitForTimeout(2000);
+      await page.waitForLoadState("networkidle");
     }
 
     // Should show listings or empty state — no error
@@ -147,7 +148,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "seller");
 
     await page.goto("/account/stripe");
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState("networkidle");
 
     // Should show Stripe account status
     await expect(
@@ -177,7 +178,7 @@ test.describe("Seller Onboarding Flow", () => {
     await loginAs(page, "seller");
 
     await page.goto("/dashboard/seller?tab=payouts");
-    await page.waitForTimeout(3000);
+    await page.waitForLoadState("networkidle");
 
     // Should show payouts section or empty state
     await expect(page.locator("h1, h2").first()).toBeVisible({

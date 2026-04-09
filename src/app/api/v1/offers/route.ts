@@ -3,7 +3,7 @@
 // GET  /api/v1/offers — list offers for the authenticated user (cursor pagination)
 // POST /api/v1/offers — create a new offer on a listing
 
-import db from "@/lib/db";
+import { offerRepository } from "@/modules/offers/offer.repository";
 import { createOfferSchema } from "@/server/validators";
 import { offerService } from "@/modules/offers/offer.service";
 import { getClientIp } from "@/server/lib/rateLimit";
@@ -32,15 +32,11 @@ export async function GET(request: Request) {
           ? { sellerId: user.id }
           : { OR: [{ buyerId: user.id }, { sellerId: user.id }] };
 
-    const raw = await db.offer.findMany({
+    const raw = await offerRepository.findByUserCursor(
       where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { createdAt: "desc" },
-      include: {
-        listing: { select: { id: true, title: true, priceNzd: true } },
-      },
-    });
+      limit + 1,
+      cursor,
+    );
 
     const hasMore = raw.length > limit;
     const offers = hasMore ? raw.slice(0, limit) : raw;

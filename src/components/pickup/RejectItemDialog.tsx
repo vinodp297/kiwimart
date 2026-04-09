@@ -4,7 +4,8 @@
 // ─── Reject Item at Pickup Dialog ───────────────────────────────────────────
 // Modal dialog for buyer to reject an item during pickup.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { createEscapeHandler, findFirstFocusable } from "@/lib/a11y";
 import { Button } from "@/components/ui/primitives";
 import { rejectItemAtPickup } from "@/server/actions/pickup.actions";
 
@@ -47,6 +48,19 @@ export function RejectItemDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Escape key closes the dialog
+  useEffect(() => {
+    const handler = createEscapeHandler(onCancel);
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onCancel]);
+
+  // Move focus to the first interactive element when the dialog opens
+  useEffect(() => {
+    findFirstFocusable(containerRef.current)?.focus();
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     if (!reason) {
@@ -87,11 +101,27 @@ export function RejectItemDialog({
   }, [reason, reasonNote, showConfirm, orderId, onSuccess]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl border border-[#E3E0D9] p-6 w-full max-w-md mx-4 shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reject-dialog-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div
+        ref={containerRef}
+        className="bg-white rounded-2xl border border-[#E3E0D9] p-6 w-full max-w-md mx-4 shadow-xl"
+      >
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xl">⚠️</span>
-          <h2 className="text-lg font-bold text-[#141414]">
+          <span aria-hidden="true" className="text-xl">
+            ⚠️
+          </span>
+          <h2
+            id="reject-dialog-title"
+            className="text-lg font-bold text-[#141414]"
+          >
             Reject this item?
           </h2>
         </div>

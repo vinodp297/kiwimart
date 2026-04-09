@@ -4,7 +4,8 @@
 // Shows the seller exactly how their listing will appear to buyers,
 // reusing the product detail page layout with a "Preview" banner.
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { findFirstFocusable } from "@/lib/a11y";
 import Image from "next/image";
 import type { Condition, ShippingOption, NZRegion } from "@/types";
 import CATEGORIES from "@/data/categories";
@@ -216,12 +217,19 @@ export default function ListingPreviewModal(props: ListingPreviewProps) {
     shipsNationwide,
   } = props;
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // Lock body scroll when open
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
+  }, [open]);
+
+  // Move focus to the first interactive element when the modal opens
+  useEffect(() => {
+    if (open) findFirstFocusable(containerRef.current)?.focus();
   }, [open]);
 
   // Escape to close
@@ -250,7 +258,11 @@ export default function ListingPreviewModal(props: ListingPreviewProps) {
 
   return (
     <div
+      ref={containerRef}
       className="fixed inset-0 z-[8000] bg-black/60 backdrop-blur-sm overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="listing-preview-modal-title"
       onClick={onClose}
     >
       {/* Preview banner */}
@@ -268,7 +280,10 @@ export default function ListingPreviewModal(props: ListingPreviewProps) {
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
-            <span className="text-[13px] font-semibold">
+            <span
+              id="listing-preview-modal-title"
+              className="text-[13px] font-semibold"
+            >
               Preview — This is how your listing will appear to buyers
             </span>
           </div>
