@@ -120,4 +120,112 @@ export const exportRepository = {
       select: { id: true, listingId: true, createdAt: true },
     });
   },
+
+  // ── Methods used by the direct-download export (GET /api/v1/me/export) ──────
+
+  /** Orders where the user was the buyer, most recent first. */
+  async findOrdersAsBuyer(userId: string) {
+    return db.order.findMany({
+      where: { buyerId: userId },
+      select: {
+        id: true,
+        status: true,
+        itemNzd: true,
+        shippingNzd: true,
+        totalNzd: true,
+        fulfillmentType: true,
+        createdAt: true,
+        completedAt: true,
+        cancelledAt: true,
+        cancelReason: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /** Orders where the user was the seller, most recent first. */
+  async findOrdersAsSeller(userId: string) {
+    return db.order.findMany({
+      where: { sellerId: userId },
+      select: {
+        id: true,
+        status: true,
+        itemNzd: true,
+        shippingNzd: true,
+        totalNzd: true,
+        fulfillmentType: true,
+        createdAt: true,
+        completedAt: true,
+        cancelledAt: true,
+        cancelReason: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /** Reviews this user authored (given), most recent first. */
+  async findReviewsGiven(userId: string) {
+    return db.review.findMany({
+      where: { authorId: userId },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        reviewerRole: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /** Reviews this user received as subject, most recent first. */
+  async findReviewsReceived(userId: string) {
+    return db.review.findMany({
+      where: { subjectId: userId },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        reviewerRole: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /**
+   * Messages sent by this user on or after `since` (privacy-conscious window),
+   * most recent first.
+   */
+  async findRecentMessages(userId: string, since: Date) {
+    return db.message.findMany({
+      where: { senderId: userId, createdAt: { gte: since } },
+      select: { id: true, body: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /**
+   * Disputes linked to any order the user participated in (buyer or seller),
+   * most recently opened first.
+   */
+  async findDisputes(userId: string) {
+    return db.dispute.findMany({
+      where: {
+        order: {
+          OR: [{ buyerId: userId }, { sellerId: userId }],
+        },
+      },
+      select: {
+        id: true,
+        orderId: true,
+        reason: true,
+        status: true,
+        openedAt: true,
+        resolvedAt: true,
+        resolution: true,
+      },
+      orderBy: { openedAt: "desc" },
+    });
+  },
 };
