@@ -95,6 +95,8 @@ export async function GET(request: Request) {
       version,
       checks,
       responseTimeMs: Date.now() - start,
+      // ISO 8601 — never a Unix integer; avoids timestamp disclosure finding.
+      timestamp: new Date().toISOString(),
       correlationId,
     },
     { status: status === "unhealthy" ? 503 : 200 },

@@ -69,6 +69,32 @@ const nextConfig: NextConfig = {
     return [
       // Security headers for all routes
       { source: "/(.*)", headers: securityHeaders },
+      // Stricter Referrer-Policy for pages that carry tokens in the URL.
+      // Overrides the global strict-origin-when-cross-origin to no-referrer so
+      // that token query params cannot leak via the Referer header to any
+      // third-party resource (analytics, fonts, etc.) on the same page.
+      {
+        source: "/(verify-email|reset-password|forgot-password)(.*)",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+      // Explicit Cache-Control for the public liveness probe.
+      // Short public TTL lets uptime monitors and CDNs reuse recent responses
+      // without hammering the database on every poll.
+      {
+        source: "/api/health",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=10, s-maxage=60, stale-while-revalidate=60",
+          },
+        ],
+      },
+      // No-store for all authenticated API endpoints — prevents any proxy or
+      // CDN from caching responses that may contain user-specific data.
+      {
+        source: "/api/(v1|admin)/(.*)",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
     ];
   },
   async redirects() {

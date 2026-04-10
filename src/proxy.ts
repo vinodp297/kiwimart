@@ -23,6 +23,16 @@ import { runWithRequestContext } from "@/lib/request-context";
 /** Generate a cryptographically random nonce for CSP per-request. */
 const generateNonce = () => crypto.randomBytes(16).toString("base64");
 
+/**
+ * Apply baseline security headers to middleware-generated redirect responses.
+ * next.config.ts headers() only applies to route handler responses, NOT to
+ * NextResponse.redirect() calls from middleware — so these must be set here.
+ */
+function withSecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  return res;
+}
+
 // Paths that require a session. Matched with exact-segment logic so that
 // /sell blocks /sell and /sell/* but NOT /sellers/* (public seller profiles).
 const PROTECTED_PREFIXES = [
@@ -245,6 +255,7 @@ export const proxy = auth(async function proxyHandler(
             const redirectResponse = NextResponse.redirect(loginUrl);
             redirectResponse.cookies.delete("__Secure-authjs.session-token");
             redirectResponse.cookies.delete("authjs.session-token");
+            withSecurityHeaders(redirectResponse);
             return redirectResponse;
           }
         }
@@ -262,7 +273,7 @@ export const proxy = auth(async function proxyHandler(
     if (isProtected && !isAuthenticated) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("from", pathname);
-      return NextResponse.redirect(loginUrl);
+      return withSecurityHeaders(NextResponse.redirect(loginUrl));
     }
 
     // MFA pending: redirect to /mfa-verify before granting access
@@ -270,16 +281,20 @@ export const proxy = auth(async function proxyHandler(
     if (isProtected && isAuthenticated && sessionUser?.mfaPending) {
       const mfaUrl = new URL("/mfa-verify", request.url);
       mfaUrl.searchParams.set("callbackUrl", pathname);
-      return NextResponse.redirect(mfaUrl);
+      return withSecurityHeaders(NextResponse.redirect(mfaUrl));
     }
 
     // Admin-only routes: redirect non-admins to buyer dashboard
     if (isAdminPath && isAuthenticated && !isAdmin) {
-      return NextResponse.redirect(new URL("/dashboard/buyer", request.url));
+      return withSecurityHeaders(
+        NextResponse.redirect(new URL("/dashboard/buyer", request.url)),
+      );
     }
 
     if (isAuthPath && isAuthenticated) {
-      return NextResponse.redirect(new URL(defaultDashboard, request.url));
+      return withSecurityHeaders(
+        NextResponse.redirect(new URL(defaultDashboard, request.url)),
+      );
     }
 
     // ── Request ID + correlation ID ───────────────────────────────────────────
