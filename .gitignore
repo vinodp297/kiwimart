@@ -55,3 +55,8 @@ next-env.d.ts
 
 # Temp files
 C*UsersvinodAppDataLocalTemp*
+
+*.pdf
+fix-*.js
+generate_*.py
+*_Credentials*
