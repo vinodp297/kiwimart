@@ -29,11 +29,17 @@ export default defineConfig({
         "src/app/api/docs/**",
         "src/infrastructure/config/**",
       ],
+      // ── Coverage thresholds (Testing Sprint D) ──────────────────────────
+      // Set just below actually-achieved numbers so any regression fails CI.
+      // Achieved at the time of raising: statements 46.19 / branches 36.33
+      //                                  functions 41.91 / lines 46.40
+      // Each floor is achieved − ~0.2 to absorb test ordering noise.
+      // Never raise above achieved — inflating thresholds is dishonest.
       thresholds: {
-        lines: 45,
-        functions: 40,
-        branches: 35,
-        statements: 45,
+        lines: 46,
+        functions: 41,
+        branches: 36,
+        statements: 46,
       },
     },
   },

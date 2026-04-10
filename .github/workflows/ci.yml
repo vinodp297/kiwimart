@@ -108,9 +108,68 @@ jobs:
           WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
 
   e2e:
-    name: E2E Tests
+    name: E2E Tests (hermetic)
     runs-on: ubuntu-latest
     needs: [quality]
+    timeout-minutes: 25
+
+    # Spin up a scratch Postgres and Redis just for this job.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: buyzi
+          POSTGRES_PASSWORD: buyzi
+          POSTGRES_DB: buyzi_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U buyzi"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Test database URL contains the word "test" so the global-setup guard
+      # allows schema reset + seeding. Never point this at a real database.
+      DATABASE_URL: postgres://buyzi:buyzi@localhost:5432/buyzi_test
+      DATABASE_DIRECT_URL: postgres://buyzi:buyzi@localhost:5432/buyzi_test
+      TEST_DATABASE_URL: postgres://buyzi:buyzi@localhost:5432/buyzi_test
+      REDIS_URL: redis://localhost:6379
+      NODE_ENV: test
+      NEXTAUTH_SECRET: test-secret-32-chars-minimum-x
+      NEXTAUTH_URL: http://localhost:3001
+      NEXT_PUBLIC_APP_URL: http://localhost:3001
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_x
+      STRIPE_SECRET_KEY: sk_test_x
+      STRIPE_WEBHOOK_SECRET: whsec_test_x
+      PUSHER_APP_ID: test
+      PUSHER_KEY: test
+      PUSHER_SECRET: test
+      PUSHER_CLUSTER: us2
+      NEXT_PUBLIC_PUSHER_KEY: test
+      NEXT_PUBLIC_PUSHER_CLUSTER: us2
+      CLOUDFLARE_ACCOUNT_ID: test
+      R2_BUCKET_NAME: test
+      R2_ACCESS_KEY_ID: test
+      R2_SECRET_ACCESS_KEY: test
+      NEXT_PUBLIC_R2_PUBLIC_URL: https://test.r2.dev
+      UPSTASH_REDIS_REST_URL: https://test.upstash.io
+      UPSTASH_REDIS_REST_TOKEN: test
+      RESEND_API_KEY: re_placeholder
+      EMAIL_FROM: test@test.com
+      CRON_SECRET: test-cron-secret-32-chars-minx
+      WORKER_SECRET: test-worker-secret-32-chars-xx
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -118,9 +177,22 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - name: Run Playwright tests
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests (hermetic)
+        # globalSetup resets the buyzi_test database and seeds fixtures.
+        # webServer builds and starts the app on port 3001.
         run: npx playwright test --reporter=github
-        env:
-          PLAYWRIGHT_BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL }}
-          NODE_ENV: test
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
