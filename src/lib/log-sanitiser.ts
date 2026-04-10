@@ -1,45 +1,106 @@
 // src/lib/log-sanitiser.ts
 // ─── PII Sanitiser for Structured Logs ──────────────────────────────────────
-// Redacts personally identifiable information from log context objects before
-// they are passed to the structured logger.
+// Recursively scrubs personally identifiable information from log context
+// objects before they reach the structured logger.
 //
-// Fields auto-redacted:
-//   • email / *Email / *_email  → first char + *** + @domain
-//   • phone / *Phone / *_phone  → digits masked except last 4
+// Redaction rules:
+//   • email / *Email / *_email / to  → first char + *** + @domain  (redactEmail)
+//   • phone / phoneNumber / *Phone / *_phone → digits masked except last 4
+//   • All other PII_KEYS              → "[redacted]"
 //
-// Usage:
-//   logger.info("some.event", sanitiseLogContext({ email, orderId }))
+// Recursion:
+//   • Plain nested objects are descended into (max depth 5)
+//   • Arrays: each object element is recursed; primitives pass through as-is
+//   • depth > 5 returns the sub-tree unchanged to prevent runaway recursion
 
 import { redactEmail } from "@/server/email/transport";
 
+// Exact-match key names that are always PII.
+// Email/phone key patterns are handled separately with format-aware masking.
+const PII_KEYS = new Set([
+  "password",
+  "token",
+  "secret",
+  "accessToken",
+  "refreshToken",
+  "apiKey",
+  "cardNumber",
+  "irdNumber",
+  "bankAccount",
+  "dateOfBirth",
+  "address",
+  "firstName",
+  "lastName",
+  "fullName",
+  "name",
+]);
+
+function isEmailKey(key: string): boolean {
+  return (
+    key === "email" ||
+    key === "to" ||
+    key.endsWith("Email") ||
+    key.endsWith("_email")
+  );
+}
+
+function isPhoneKey(key: string): boolean {
+  return (
+    key === "phone" ||
+    key === "phoneNumber" ||
+    key.endsWith("Phone") ||
+    key.endsWith("_phone")
+  );
+}
+
+function redactValue(key: string, value: unknown): unknown {
+  if (isEmailKey(key)) {
+    return typeof value === "string" && value.includes("@")
+      ? redactEmail(value)
+      : value;
+  }
+  if (isPhoneKey(key)) {
+    return typeof value === "string"
+      ? value.replace(/\d(?=\d{4})/g, "*")
+      : value;
+  }
+  return "[redacted]";
+}
+
 /**
- * Redacts PII fields in a log context object.
- * Returns a shallow copy with email/phone fields masked.
+ * Recursively redacts PII from a log context object.
+ * The depth parameter is internal — callers should not supply it.
  */
 export function sanitiseLogContext(
-  context: Record<string, unknown>,
+  ctx: Record<string, unknown>,
+  depth = 0,
 ): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(context).map(([key, value]) => {
-      // Redact email fields
-      if (
-        (key === "email" ||
-          key === "to" ||
-          key.endsWith("Email") ||
-          key.endsWith("_email")) &&
-        typeof value === "string" &&
-        value.includes("@")
-      ) {
-        return [key, redactEmail(value)];
-      }
-      // Redact phone fields
-      if (
-        (key === "phone" || key.endsWith("Phone") || key.endsWith("_phone")) &&
-        typeof value === "string"
-      ) {
-        return [key, value.replace(/\d(?=\d{4})/g, "*")];
-      }
-      return [key, value];
-    }),
-  );
+  if (depth > 5) return ctx;
+
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(ctx)) {
+    if (isEmailKey(key) || isPhoneKey(key) || PII_KEYS.has(key)) {
+      result[key] = redactValue(key, value);
+    } else if (
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+    ) {
+      result[key] = sanitiseLogContext(
+        value as Record<string, unknown>,
+        depth + 1,
+      );
+    } else if (Array.isArray(value)) {
+      result[key] = value.map((item) =>
+        item !== null && typeof item === "object"
+          ? sanitiseLogContext(item as Record<string, unknown>, depth + 1)
+          : item,
+      );
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
 }
