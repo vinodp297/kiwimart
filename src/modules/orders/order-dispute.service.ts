@@ -94,7 +94,10 @@ export async function openDispute(
     }
   }
 
-  // Transition Order status + create Dispute record in same transaction
+  // CRITICAL: status transition, dispute creation, and event recording are
+  // atomic — a crash after the transaction commits but before the event write
+  // would leave a dispute record with no DISPUTE_OPENED entry in the timeline,
+  // making the dispute invisible to auto-resolution and support tooling.
   await orderRepository.$transaction(async (tx) => {
     await transitionOrder(
       input.orderId,
@@ -110,6 +113,19 @@ export async function openDispute(
       buyerStatement: input.description,
       evidenceKeys: input.evidenceUrls ?? [],
       buyerId,
+      tx,
+    });
+
+    await orderEventService.recordEvent({
+      orderId: input.orderId,
+      type: ORDER_EVENT_TYPES.DISPUTE_OPENED,
+      actorId: buyerId,
+      actorRole: ACTOR_ROLES.BUYER,
+      summary: `Buyer opened dispute: ${input.reason.replace(/_/g, " ").toLowerCase()}`,
+      metadata: {
+        reason: input.reason,
+        description: input.description.slice(0, 200),
+      },
       tx,
     });
   });
@@ -132,6 +148,7 @@ export async function openDispute(
     });
   }
 
+  // audit() is fire-and-forget — no tx parameter available at this point.
   audit({
     userId: buyerId,
     action: "DISPUTE_OPENED",
@@ -142,18 +159,6 @@ export async function openDispute(
       description: input.description.slice(0, 100),
     },
     ip,
-  });
-
-  orderEventService.recordEvent({
-    orderId: input.orderId,
-    type: ORDER_EVENT_TYPES.DISPUTE_OPENED,
-    actorId: buyerId,
-    actorRole: ACTOR_ROLES.BUYER,
-    summary: `Buyer opened dispute: ${input.reason.replace(/_/g, " ").toLowerCase()}`,
-    metadata: {
-      reason: input.reason,
-      description: input.description.slice(0, 200),
-    },
   });
 
   // Notify seller that a dispute has been opened

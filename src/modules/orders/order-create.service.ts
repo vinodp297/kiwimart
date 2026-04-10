@@ -215,6 +215,9 @@ export async function createOrder(
     /^acct_[A-Za-z0-9]{16,}$/.test(listing.seller.stripeAccountId);
 
   if (!isRealConnectAccount) {
+    // CRITICAL: status transition, listing release, and event are atomic —
+    // a crash after the transaction commits but before the event write would
+    // leave the order in CANCELLED state with no explanation in the timeline.
     await orderRepository.$transaction(async (tx) => {
       await transitionOrder(
         order.id,
@@ -223,8 +226,19 @@ export async function createOrder(
         { tx, fromStatus: "AWAITING_PAYMENT" },
       );
       await orderRepository.releaseListing(listingId, tx);
+      await orderEventService.recordEvent({
+        orderId: order.id,
+        type: ORDER_EVENT_TYPES.CANCELLED,
+        actorId: null,
+        actorRole: ACTOR_ROLES.SYSTEM,
+        summary:
+          "Order cancelled: seller payment account not properly configured",
+        metadata: { trigger: "INVALID_CONNECT_ACCOUNT" },
+        tx,
+      });
     });
 
+    // audit() is fire-and-forget — no tx parameter available at this point.
     audit({
       userId,
       action: "ORDER_STATUS_CHANGED",
@@ -235,16 +249,6 @@ export async function createOrder(
         sellerStripeAccountId: listing.seller.stripeAccountId,
       },
       ip,
-    });
-
-    orderEventService.recordEvent({
-      orderId: order.id,
-      type: ORDER_EVENT_TYPES.CANCELLED,
-      actorId: null,
-      actorRole: ACTOR_ROLES.SYSTEM,
-      summary:
-        "Order cancelled: seller payment account not properly configured",
-      metadata: { trigger: "INVALID_CONNECT_ACCOUNT" },
     });
 
     return {
@@ -268,11 +272,28 @@ export async function createOrder(
       ...(idempotencyKey ? { idempotencyKey } : {}),
     });
 
-    await orderRepository.setStripePaymentIntentId(
-      order.id,
-      paymentResult.paymentIntentId,
-    );
+    // CRITICAL: storing the PaymentIntent ID and the ORDER_CREATED event are
+    // atomic — a crash between the two would leave the order with no PI and no
+    // timeline entry, requiring manual reconciliation.
+    await orderRepository.$transaction(async (tx) => {
+      await orderRepository.setStripePaymentIntentId(
+        order.id,
+        paymentResult.paymentIntentId,
+        tx,
+      );
+      await orderEventService.recordEvent({
+        orderId: order.id,
+        type: ORDER_EVENT_TYPES.ORDER_CREATED,
+        actorId: userId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: `Order placed for "${listing.title}" — ${formatCentsAsNzd(totalNzd)}`,
+        metadata: { listingId: listing.id, totalNzd },
+        tx,
+      });
+    });
 
+    // audit() is fire-and-forget — called after the transaction so the
+    // audit entry does not block the Stripe response being returned to the buyer.
     audit({
       userId,
       action: "ORDER_CREATED",
@@ -280,15 +301,6 @@ export async function createOrder(
       entityId: order.id,
       metadata: { listingId: listing.id, totalNzd },
       ip,
-    });
-
-    orderEventService.recordEvent({
-      orderId: order.id,
-      type: ORDER_EVENT_TYPES.ORDER_CREATED,
-      actorId: userId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary: `Order placed for "${listing.title}" — ${formatCentsAsNzd(totalNzd)}`,
-      metadata: { listingId: listing.id, totalNzd },
     });
 
     // Notifications (fire-and-forget)
@@ -359,6 +371,10 @@ export async function createOrder(
       ip,
     });
 
+    // Fire-and-forget: the transitionOrder() and releaseListing() above are
+    // standalone calls (no $transaction wrapper) in the Stripe-failure cleanup
+    // path. Wrapping them here would require restructuring this error branch —
+    // acceptable risk given this path is already an error recovery scenario.
     orderEventService.recordEvent({
       orderId: order.id,
       type: ORDER_EVENT_TYPES.CANCELLED,
