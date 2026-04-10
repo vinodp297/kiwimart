@@ -95,6 +95,48 @@ const nextConfig: NextConfig = {
         source: "/api/(v1|admin)/(.*)",
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
+      // /_next/image serves optimised images from external origins (Unsplash).
+      // CORP must be 'cross-origin' here — the global 'same-origin' in
+      // securityHeaders would block cross-origin image loads from this endpoint.
+      // X-Content-Type-Options is repeated explicitly as a defence-in-depth
+      // reminder (already inherited from the global rule, but stated here so
+      // intent is clear when reading the image-specific block).
+      {
+        source: "/_next/image",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+      },
+      // Static build assets: long-lived immutable cache + open CORS so that
+      // browsers on any origin (e.g. PWA shell, mobile webview) can load them.
+      // This does NOT conflict with the API-level CORS handling in cors.ts — that
+      // code only runs for /api/ routes, not for /_next/static/ paths.
+      {
+        source: "/_next/static/(.*)",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      // PWA manifest — daily revalidation is sufficient.
+      {
+        source: "/manifest.webmanifest",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400" }],
+      },
+      // robots.txt — daily revalidation; search bots respect this TTL.
+      {
+        source: "/robots.txt",
+        headers: [{ key: "Cache-Control", value: "public, max-age=86400" }],
+      },
+      // sitemap.xml — hourly revalidation; new listings appear within an hour.
+      {
+        source: "/sitemap.xml",
+        headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
+      },
     ];
   },
   async redirects() {

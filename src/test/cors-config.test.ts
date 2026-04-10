@@ -1,9 +1,10 @@
 // src/test/cors-config.test.ts
-// ─── Tests: CORS static headers removal from next.config ─────────────────────
+// ─── Tests: CORS configuration in next.config and withCors() ─────────────────
 // Verifies that:
 //  1. API routes return correct CORS headers via withCors() per-request
 //  2. Invalid origins receive no CORS headers
-//  3. next.config.ts no longer sets static Access-Control-Allow-Origin
+//  3. next.config.ts does NOT set ACAO on API routes (withCors() handles those)
+//     but DOES set ACAO: * on /_next/static/ for PWA/CDN support
 //  4. OPTIONS preflight from allowed origin returns correct CORS headers
 
 import { describe, it, expect, afterEach } from "vitest";
@@ -69,16 +70,39 @@ describe("withCors() — per-request CORS", () => {
   });
 });
 
-// ── Test 3: Static CORS headers are no longer in next.config.ts ─────────────
+// ── Test 3: CORS header placement in next.config.ts ──────────────────────────
+//
+// withCors() handles per-request origin-reflection for /api/ routes.
+// Setting ACAO statically on API routes would produce duplicate headers and
+// bypass the allowlist check.
+//
+// /_next/static/ assets (CSS, JS, fonts) are not handled by withCors() — they
+// should carry ACAO: * so browsers on any origin (PWA shell, mobile webview,
+// CDN edge) can load them without CORS errors.  This does NOT conflict with
+// withCors() because that function only runs inside API route handlers.
 
-describe("next.config.ts — static CORS headers removed", () => {
-  it("does not contain Access-Control-Allow-Origin header definition", () => {
+describe("next.config.ts — CORS header placement", () => {
+  it("does not apply Access-Control-Allow-Origin to API routes or globally", () => {
     const configPath = resolve(process.cwd(), "next.config.ts");
     const content = readFileSync(configPath, "utf-8");
 
-    expect(content).not.toContain("Access-Control-Allow-Origin");
+    // Credentials header and bare corsHeaders variable must never appear
     expect(content).not.toContain("Access-Control-Allow-Credentials");
     expect(content).not.toContain("corsHeaders");
+
+    // ACAO must not appear inside an /api/ source rule
+    const apiCorsMatch = content.match(
+      /source:\s*["']\/api[^"']*["'][^}]*Access-Control-Allow-Origin/s,
+    );
+    expect(apiCorsMatch).toBeNull();
+  });
+
+  it("sets Access-Control-Allow-Origin: * on /_next/static for PWA/CDN support", () => {
+    const configPath = resolve(process.cwd(), "next.config.ts");
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("/_next/static");
+    expect(content).toContain("Access-Control-Allow-Origin");
   });
 
   it("still contains the security headers (X-Frame-Options etc.)", () => {
