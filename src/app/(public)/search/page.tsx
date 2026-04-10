@@ -6,6 +6,7 @@ import LoadingSkeleton from "@/components/LoadingSkeleton";
 import SearchPageClient from "./SearchPageClient";
 import { searchListings } from "@/server/actions/search";
 import { getRegionsWithCoords } from "@/lib/dynamic-lists";
+import CATEGORIES from "@/data/categories";
 import type { SortOption } from "@/types";
 
 export const revalidate = 300;
@@ -22,8 +23,31 @@ export default async function SearchPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const q = typeof sp.q === "string" ? sp.q : undefined;
-  const category = typeof sp.category === "string" ? sp.category : undefined;
+
+  // ── Input sanitisation ────────────────────────────────────────────────────
+  // React JSX automatically escapes values in attributes and text content, so
+  // neither `q` nor `category` can inject HTML when rendered.  These guards
+  // are a defence-in-depth measure: they prevent excessively long values from
+  // reaching the database layer and restrict `category` to known IDs so that
+  // arbitrary strings are never reflected into SQL WHERE clauses.
+  //
+  // ZAP flags /search?q=… and /search?category=… as potential XSS vectors.
+  // Those findings are false positives — React escapes all JSX attribute
+  // values automatically — but the validation below eliminates the
+  // theoretical risk at the input boundary regardless.
+
+  // Limit search query to 200 characters to prevent excessively long DB queries.
+  const rawQ = typeof sp.q === "string" ? sp.q : undefined;
+  const q = rawQ?.slice(0, 200) || undefined;
+
+  // Validate category against the known allowlist derived from CATEGORIES data.
+  // An unrecognised category is silently dropped rather than passed to the DB.
+  const ALLOWED_CATEGORY_IDS = new Set(CATEGORIES.map((c) => c.id));
+  const rawCategory = typeof sp.category === "string" ? sp.category : undefined;
+  const category =
+    rawCategory && ALLOWED_CATEGORY_IDS.has(rawCategory)
+      ? rawCategory
+      : undefined;
   const subcategory =
     typeof sp.subcategory === "string" ? sp.subcategory : undefined;
   const condition = typeof sp.condition === "string" ? sp.condition : undefined;

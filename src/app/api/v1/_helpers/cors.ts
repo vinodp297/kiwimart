@@ -49,6 +49,12 @@ export function getCorsHeaders(
     "Access-Control-Allow-Origin": matched,
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    // Cache preflight for 10 minutes (600 s) so the browser does not send an
+    // OPTIONS request before every actual API call.
+    "Access-Control-Max-Age": "600",
+    // Vary: Origin is mandatory when reflecting a single origin from an
+    // allowlist — CDNs must cache responses separately per-origin to prevent
+    // one origin's CORS response being served to a different origin.
     Vary: "Origin",
   };
 }

@@ -124,6 +124,10 @@ export const proxy = auth(async function proxyHandler(
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
+      // Prevents this site from being embedded in any iframe on any origin.
+      // Stronger than X-Frame-Options (which some user agents ignore) and works
+      // with both same-origin and cross-origin ancestors.
+      "frame-ancestors 'none'",
       "upgrade-insecure-requests",
     ]
       .filter(Boolean)
@@ -145,6 +149,19 @@ export const proxy = auth(async function proxyHandler(
         "max-age=31536000; includeSubDomains; preload",
       );
     }
+
+    // ── Cross-Origin isolation headers ────────────────────────────────────────
+    // COOP: same-origin-allow-popups preserves isolation while allowing Google
+    // OAuth to complete (it uses window.open which requires popup access).
+    // COEP: unsafe-none is the safe fallback — require-corp would block
+    // cross-origin Cloudflare R2 images that do not send CORP headers.
+    // CORP: same-origin prevents other origins embedding our HTML responses.
+    response.headers.set(
+      "Cross-Origin-Opener-Policy",
+      "same-origin-allow-popups",
+    );
+    response.headers.set("Cross-Origin-Embedder-Policy", "unsafe-none");
+    response.headers.set("Cross-Origin-Resource-Policy", "same-origin");
 
     // ── No-store headers for protected pages ──────────────────────────────────
     // Prevents the browser bfcache from restoring a signed-in page after

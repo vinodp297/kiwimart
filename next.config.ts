@@ -15,6 +15,9 @@ function r2Hostname(): string | null {
 const r2Host = r2Hostname();
 
 const nextConfig: NextConfig = {
+  // Remove the X-Powered-By: Next.js header so the technology stack is not
+  // advertised to potential attackers scanning for known framework CVEs.
+  poweredByHeader: false,
   turbopack: {
     root: path.resolve(__dirname),
   },
@@ -50,6 +53,18 @@ const nextConfig: NextConfig = {
         key: "Strict-Transport-Security",
         value: "max-age=63072000; includeSubDomains; preload",
       },
+      // Cross-origin isolation headers (mirrored in proxy.ts for per-request
+      // accuracy; duplicating here ensures they are set even for static assets
+      // that bypass the proxy layer).
+      // COOP: allow-popups required for Google OAuth window.open flows.
+      // COEP: unsafe-none avoids blocking R2 images without CORP headers.
+      // CORP: same-origin prevents other origins embedding our HTML responses.
+      {
+        key: "Cross-Origin-Opener-Policy",
+        value: "same-origin-allow-popups",
+      },
+      { key: "Cross-Origin-Embedder-Policy", value: "unsafe-none" },
+      { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
     ];
     return [
       // Security headers for all routes
