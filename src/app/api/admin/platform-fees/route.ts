@@ -19,7 +19,7 @@ import { invalidateConfig, CONFIG_KEYS } from "@/lib/platform-config";
 import type { ConfigKey } from "@/lib/platform-config";
 import { calculateFees } from "@/modules/payments/fee-calculator";
 import { headers } from "next/headers";
-import { logger } from "@/shared/logger";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 
 export const dynamic = "force-dynamic";
 
@@ -72,11 +72,7 @@ export async function GET() {
       },
     });
   } catch (e) {
-    logger.error("api.error", {
-      path: "GET /api/admin/platform-fees",
-      error: e instanceof Error ? e.message : e,
-    });
-    return apiError("Failed to load fee configs.", 500);
+    return handleRouteError(e, { path: "GET /api/admin/platform-fees" });
   }
 }
 
@@ -191,10 +187,6 @@ export async function PATCH(request: Request) {
 
     return apiOk({ key, value: trimmed });
   } catch (e) {
-    logger.error("api.error", {
-      path: "PATCH /api/admin/platform-fees",
-      error: e instanceof Error ? e.message : e,
-    });
-    return apiError("Failed to update fee config.", 500);
+    return handleRouteError(e, { path: "PATCH /api/admin/platform-fees" });
   }
 }

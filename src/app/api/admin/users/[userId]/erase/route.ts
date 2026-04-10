@@ -7,9 +7,9 @@ import { NextResponse } from "next/server";
 import { performAccountErasure } from "@/modules/users/erasure.service";
 import { requireSuperAdmin } from "@/shared/auth/requirePermission";
 import { rateLimit } from "@/server/lib/rateLimit";
-import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
 import { apiError } from "@/app/api/v1/_helpers/response";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 
 export const dynamic = "force-dynamic";
 
@@ -64,15 +64,6 @@ export async function POST(
       anonymisedEmail: result.anonymisedEmail,
     });
   } catch (e) {
-    if (e instanceof AppError) {
-      return apiError(e.message, e.statusCode, e.code);
-    }
-
-    logger.error("api.error", {
-      path: "/api/admin/users/:userId/erase",
-      error: e instanceof Error ? e.message : e,
-    });
-
-    return apiError("Failed to erase account. Please try again.", 500);
+    return handleRouteError(e, { path: "/api/admin/users/:userId/erase" });
   }
 }

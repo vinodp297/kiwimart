@@ -18,6 +18,7 @@ import {
   sendPasswordResetEmail,
   sendDataExportEmail,
   sendErasureConfirmationEmail,
+  sendErasureRequestEmail,
   sendAdminIdVerificationEmail,
   sendOfferReceivedEmail,
   sendOfferResponseEmail,
@@ -84,6 +85,14 @@ export function startEmailWorker() {
             await sendErasureConfirmationEmail({
               to: data.to,
               displayName: data.displayName,
+            });
+            break;
+
+          case "erasureRequest":
+            await sendErasureRequestEmail({
+              to: data.to,
+              displayName: data.displayName,
+              confirmUrl: data.confirmUrl,
             });
             break;
 

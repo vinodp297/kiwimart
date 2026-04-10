@@ -4,8 +4,8 @@ import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminCursorQuerySchema } from "@/modules/admin/admin.schema";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 import { adminRepository } from "@/modules/admin/admin.repository";
-import { logger } from "@/shared/logger";
 import { withDeprecation } from "@/app/api/_helpers/deprecation";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 import { MS_PER_DAY } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -45,12 +45,8 @@ export async function GET(request: Request) {
 
     return withDeprecation(apiOk({ reports, nextCursor, hasMore }), SUNSET);
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/admin/reports",
-      error: e instanceof Error ? e.message : e,
-    });
     return withDeprecation(
-      apiError("Failed to load reports. Please refresh.", 500),
+      handleRouteError(e, { path: "/api/admin/reports" }),
       SUNSET,
     );
   }

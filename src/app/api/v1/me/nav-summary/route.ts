@@ -6,9 +6,9 @@ import { auth } from "@/lib/auth";
 import { userService } from "@/modules/users/user.service";
 import { cartRepository } from "@/modules/cart/cart.repository";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
-import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "../../_helpers/response";
 import { getCorsHeaders, withCors } from "../../_helpers/cors";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 
 export const dynamic = "force-dynamic";
 
@@ -59,12 +59,8 @@ export async function GET(request: Request) {
     response.headers.set("Cache-Control", "private, no-store");
     return response;
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/v1/me/nav-summary",
-      error: e instanceof Error ? e.message : e,
-    });
     return withCors(
-      apiError("We couldn't load your navigation data. Please try again.", 500),
+      handleRouteError(e, { path: "/api/v1/me/nav-summary" }),
       origin,
     );
   }

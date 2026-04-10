@@ -29,6 +29,7 @@ async function sendEmailDirectly(data: EmailJobData): Promise<void> {
     sendPasswordResetEmail,
     sendDataExportEmail,
     sendErasureConfirmationEmail,
+    sendErasureRequestEmail,
     sendAdminIdVerificationEmail,
     sendOfferReceivedEmail,
     sendOfferResponseEmail,
@@ -73,6 +74,14 @@ async function sendEmailDirectly(data: EmailJobData): Promise<void> {
       await sendErasureConfirmationEmail({
         to: data.to,
         displayName: data.displayName,
+      });
+      break;
+
+    case "erasureRequest":
+      await sendErasureRequestEmail({
+        to: data.to,
+        displayName: data.displayName,
+        confirmUrl: data.confirmUrl,
       });
       break;
 

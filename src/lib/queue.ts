@@ -125,6 +125,13 @@ export type EmailJobData = {
     }
   | { template: "erasureConfirmation"; to: string; displayName: string }
   | {
+      template: "erasureRequest";
+      to: string;
+      displayName: string;
+      /** Confirmation link — user clicks to authorise account deletion. */
+      confirmUrl: string;
+    }
+  | {
       template: "adminIdVerification";
       to: string;
       userId: string;

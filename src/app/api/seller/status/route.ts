@@ -6,9 +6,9 @@
 
 import { auth } from "@/lib/auth";
 import { userRepository } from "@/modules/users/user.repository";
-import { logger } from "@/shared/logger";
-import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
+import { apiOk } from "@/app/api/v1/_helpers/response";
 import { withDeprecation } from "@/app/api/_helpers/deprecation";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 import { MS_PER_DAY } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -42,12 +42,8 @@ export async function GET() {
       SUNSET,
     );
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/seller/status",
-      error: e instanceof Error ? e.message : e,
-    });
     return withDeprecation(
-      apiError("We couldn't check your seller status. Please try again.", 500),
+      handleRouteError(e, { path: "/api/seller/status" }),
       SUNSET,
     );
   }

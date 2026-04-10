@@ -18,6 +18,7 @@ import {
   ACTOR_ROLES,
 } from "@/modules/orders/order-event.service";
 import { stripe } from "@/infrastructure/stripe/client";
+import { withStripeTimeout } from "@/infrastructure/stripe/with-timeout";
 import { userRepository } from "@/modules/users/user.repository";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { MS_PER_HOUR, SECONDS_PER_WEEK } from "@/lib/time";
@@ -590,7 +591,11 @@ export class CartService {
       try {
         const orphanOrder = await cartRepository.findOrderStripePI(order.id);
         if (orphanOrder?.stripePaymentIntentId) {
-          await stripe.paymentIntents.cancel(orphanOrder.stripePaymentIntentId);
+          const piId = orphanOrder.stripePaymentIntentId;
+          await withStripeTimeout(
+            () => stripe.paymentIntents.cancel(piId),
+            "paymentIntents.cancel",
+          );
           logger.info("cart.checkout.orphan_pi.cancelled", {
             orderId: order.id,
             paymentIntentId: orphanOrder.stripePaymentIntentId,

@@ -6,6 +6,7 @@ import { audit } from "@/server/lib/audit";
 import { formatCentsAsNzd } from "@/lib/currency";
 import { paymentService } from "@/modules/payments/payment.service";
 import { stripe } from "@/infrastructure/stripe/client";
+import { withStripeTimeout } from "@/infrastructure/stripe/with-timeout";
 import { transitionOrder } from "./order.transitions";
 import { logger } from "@/shared/logger";
 import { userRepository } from "@/modules/users/user.repository";
@@ -338,7 +339,11 @@ export async function createOrder(
         order.id,
       );
       if (orphanOrder?.stripePaymentIntentId) {
-        await stripe.paymentIntents.cancel(orphanOrder.stripePaymentIntentId);
+        const piId = orphanOrder.stripePaymentIntentId;
+        await withStripeTimeout(
+          () => stripe.paymentIntents.cancel(piId),
+          "paymentIntents.cancel",
+        );
         logger.info("order.orphan_pi.cancelled", {
           orderId: order.id,
           paymentIntentId: orphanOrder.stripePaymentIntentId,

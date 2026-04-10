@@ -25,6 +25,7 @@ import type { PayoutJobData } from "@/lib/queue";
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { stripe } from "@/infrastructure/stripe/client";
+import { withStripeTimeout } from "@/infrastructure/stripe/with-timeout";
 import { logger } from "@/shared/logger";
 import { sendPayoutInitiatedEmail } from "@/server/email";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -155,19 +156,23 @@ export function startPayoutWorker() {
           // multiple payouts). If this job retries after a Stripe success but
           // DB failure, Stripe returns the SAME transfer object — no duplicate
           // payout is created.
-          const transfer = await stripe.transfers.create(
-            {
-              amount: fees.sellerPayout,
-              currency: "nzd",
-              destination: stripeAccountId,
-              metadata: {
-                orderId,
-                payoutId: payout.id,
-                sellerId,
-              },
-              description: `Buyzi payout for order ${orderId}`,
-            },
-            { idempotencyKey: `transfer-${payout.id}` },
+          const transfer = await withStripeTimeout(
+            () =>
+              stripe.transfers.create(
+                {
+                  amount: fees.sellerPayout,
+                  currency: "nzd",
+                  destination: stripeAccountId,
+                  metadata: {
+                    orderId,
+                    payoutId: payout.id,
+                    sellerId,
+                  },
+                  description: `Buyzi payout for order ${orderId}`,
+                },
+                { idempotencyKey: `transfer-${payout.id}` },
+              ),
+            "transfers.create",
           );
 
           // ── DB update ─────────────────────────────────────────────────────

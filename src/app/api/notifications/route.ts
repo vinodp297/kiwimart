@@ -6,8 +6,8 @@
 
 import { auth } from "@/lib/auth";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
-import { logger } from "@/shared/logger";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 import { withDeprecation } from "@/app/api/_helpers/deprecation";
 import { MS_PER_DAY } from "@/lib/time";
 
@@ -32,12 +32,8 @@ export async function GET() {
     withDeprecation(response, SUNSET);
     return response;
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/notifications",
-      error: e instanceof Error ? e.message : e,
-    });
     return withDeprecation(
-      apiError("We couldn't load your notifications. Please try again.", 500),
+      handleRouteError(e, { path: "/api/notifications" }),
       SUNSET,
     );
   }
@@ -63,12 +59,8 @@ export async function PATCH(request: Request) {
 
     return withDeprecation(apiOk(null), SUNSET);
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/notifications",
-      error: e instanceof Error ? e.message : e,
-    });
     return withDeprecation(
-      apiError("We couldn't update your notifications. Please try again.", 500),
+      handleRouteError(e, { path: "/api/notifications" }),
       SUNSET,
     );
   }

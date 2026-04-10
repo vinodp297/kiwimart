@@ -928,6 +928,45 @@ export async function sendErasureConfirmationEmail(params: {
   });
 }
 
+// ── Account Erasure Request (NZ Privacy Act 2020) ────────────────────────────
+
+export async function sendErasureRequestEmail(params: {
+  to: string;
+  displayName: string;
+  confirmUrl: string;
+}): Promise<void> {
+  const html = baseTemplate(
+    `<h1>Confirm account deletion</h1>
+    <p>Kia ora ${esc(params.displayName)},</p>
+    <p>
+      We received a request to permanently delete your ${esc(APP_NAME)} account
+      and all associated personal data in accordance with the
+      <strong>NZ Privacy Act 2020</strong>.
+    </p>
+    <div class="warning">
+      <strong>⚠ This action is permanent and cannot be undone.</strong>
+      All your profile information, messages, and saved items will be deleted.
+    </div>
+    <p>If you made this request, click the button below to confirm:</p>
+    <a href="${esc(params.confirmUrl)}" class="btn">Confirm account deletion →</a>
+    <p style="font-size:12px; color:#9E9A91;">
+      This link expires in 24 hours. If you did not request account deletion,
+      you can safely ignore this email — your account will remain active.
+    </p>
+    <hr class="divider">
+    <p style="font-size:12px; color:#9E9A91;">
+      For privacy enquiries contact
+      <a href="mailto:privacy@buyzi.co.nz" style="color:#D4A843;">privacy@buyzi.co.nz</a>.
+    </p>`,
+    `Confirm deletion of your ${APP_NAME} account`,
+  );
+  await sendTransactionalEmail({
+    to: params.to,
+    subject: `Confirm deletion of your ${APP_NAME} account`,
+    html,
+  });
+}
+
 // ── Admin: ID Verification Notification ──────────────────────────────────────
 
 export async function sendAdminIdVerificationEmail(params: {

@@ -375,6 +375,7 @@ vi.mock("@/server/email", () => ({
   sendOfferResponseEmail: vi.fn().mockResolvedValue(undefined),
   sendDataExportEmail: vi.fn().mockResolvedValue(undefined),
   sendErasureConfirmationEmail: vi.fn().mockResolvedValue(undefined),
+  sendErasureRequestEmail: vi.fn().mockResolvedValue(undefined),
   sendAdminIdVerificationEmail: vi.fn().mockResolvedValue(undefined),
   sendDisputeOpenedEmail: vi.fn().mockResolvedValue(undefined),
 }));

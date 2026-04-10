@@ -27,6 +27,7 @@ const {
   mockSendPasswordResetEmail,
   mockSendDataExportEmail,
   mockSendErasureConfirmationEmail,
+  mockSendErasureRequestEmail,
   mockSendAdminIdVerificationEmail,
   mockSendOfferReceivedEmail,
   mockSendOfferResponseEmail,
@@ -41,6 +42,7 @@ const {
   mockSendPasswordResetEmail: vi.fn(),
   mockSendDataExportEmail: vi.fn(),
   mockSendErasureConfirmationEmail: vi.fn(),
+  mockSendErasureRequestEmail: vi.fn(),
   mockSendAdminIdVerificationEmail: vi.fn(),
   mockSendOfferReceivedEmail: vi.fn(),
   mockSendOfferResponseEmail: vi.fn(),
@@ -84,6 +86,8 @@ vi.mock("@/server/email", () => ({
   sendDataExportEmail: (...args: unknown[]) => mockSendDataExportEmail(...args),
   sendErasureConfirmationEmail: (...args: unknown[]) =>
     mockSendErasureConfirmationEmail(...args),
+  sendErasureRequestEmail: (...args: unknown[]) =>
+    mockSendErasureRequestEmail(...args),
   sendAdminIdVerificationEmail: (...args: unknown[]) =>
     mockSendAdminIdVerificationEmail(...args),
   sendOfferReceivedEmail: (...args: unknown[]) =>

@@ -39,7 +39,8 @@ export type ErrorCode =
   | "CONCURRENT_MODIFICATION"
   | "LOCK_CONTENTION"
   | "LOCK_UNAVAILABLE"
-  | "CONFIGURATION_ERROR";
+  | "CONFIGURATION_ERROR"
+  | "PAYMENT_GATEWAY_TIMEOUT";
 
 export class AppError extends Error {
   constructor(

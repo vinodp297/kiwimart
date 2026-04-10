@@ -4,8 +4,8 @@ import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminUsersQuerySchema } from "@/modules/admin/admin.schema";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 import { adminRepository } from "@/modules/admin/admin.repository";
-import { logger } from "@/shared/logger";
 import { withDeprecation } from "@/app/api/_helpers/deprecation";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 import { MS_PER_DAY } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -41,12 +41,8 @@ export async function GET(request: Request) {
 
     return withDeprecation(apiOk({ users }), SUNSET);
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/admin/users",
-      error: e instanceof Error ? e.message : e,
-    });
     return withDeprecation(
-      apiError("Failed to load user list. Please refresh.", 500),
+      handleRouteError(e, { path: "/api/admin/users" }),
       SUNSET,
     );
   }

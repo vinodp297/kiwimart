@@ -4,6 +4,7 @@
 // Rule: Stripe FIRST, then DB.
 
 import { stripe } from "@/infrastructure/stripe/client";
+import { withStripeTimeout } from "@/infrastructure/stripe/with-timeout";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import { getRequestContext } from "@/lib/request-context";
@@ -57,11 +58,15 @@ export class PaymentService {
 
       // Pass idempotency key to Stripe to prevent duplicate PaymentIntents
       // on double-click or retried requests within the same checkout session.
-      const intent = input.idempotencyKey
-        ? await stripe.paymentIntents.create(intentData, {
-            idempotencyKey: `pi-${input.idempotencyKey}`,
-          })
-        : await stripe.paymentIntents.create(intentData);
+      const intent = await withStripeTimeout(
+        () =>
+          input.idempotencyKey
+            ? stripe.paymentIntents.create(intentData, {
+                idempotencyKey: `pi-${input.idempotencyKey}`,
+              })
+            : stripe.paymentIntents.create(intentData),
+        "paymentIntents.create",
+      );
 
       logger.info("payment.intent.created", {
         orderId: input.orderId,
@@ -74,6 +79,7 @@ export class PaymentService {
         amount: intent.amount,
       };
     } catch (err) {
+      if (err instanceof AppError) throw err;
       logger.error("payment.intent.create_failed", {
         orderId: input.orderId,
         error: err instanceof Error ? err.message : String(err),
@@ -91,7 +97,10 @@ export class PaymentService {
     });
 
     try {
-      await stripe.paymentIntents.capture(input.paymentIntentId);
+      await withStripeTimeout(
+        () => stripe.paymentIntents.capture(input.paymentIntentId),
+        "paymentIntents.capture",
+      );
       logger.info("payment.captured", {
         orderId: input.orderId,
         paymentIntentId: input.paymentIntentId,
@@ -159,6 +168,7 @@ export class PaymentService {
         }
       }
 
+      if (err instanceof AppError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("payment.capture.failed", {
         orderId: input.orderId,
@@ -185,15 +195,20 @@ export class PaymentService {
       const reasonStr = input.reason ?? "no-reason";
       const idempotencyKey = `refund-${input.orderId}-${amountStr}-${reasonStr}`;
 
-      await stripe.refunds.create(
-        { payment_intent: input.paymentIntentId },
-        { idempotencyKey },
+      await withStripeTimeout(
+        () =>
+          stripe.refunds.create(
+            { payment_intent: input.paymentIntentId },
+            { idempotencyKey },
+          ),
+        "refunds.create",
       );
       logger.info("payment.refunded", {
         orderId: input.orderId,
         paymentIntentId: input.paymentIntentId,
       });
     } catch (err) {
+      if (err instanceof AppError) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("payment.refund.failed", {
         orderId: input.orderId,

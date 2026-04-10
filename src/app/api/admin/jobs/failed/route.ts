@@ -10,6 +10,7 @@ import { logger } from "@/shared/logger";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { QUEUE_MAP, VALID_QUEUE_NAMES, type QueueName } from "@/lib/queue";
 import { apiError } from "@/app/api/v1/_helpers/response";
+import { handleRouteError } from "@/server/lib/handle-route-error";
 
 export const dynamic = "force-dynamic";
 
@@ -130,13 +131,6 @@ export async function GET() {
       },
     });
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/admin/jobs/failed",
-      error: e instanceof Error ? e.message : e,
-    });
-    return NextResponse.json(
-      { error: "Failed to fetch failed jobs. Please try again." },
-      { status: 500 },
-    );
+    return handleRouteError(e, { path: "/api/admin/jobs/failed" });
   }
 }
