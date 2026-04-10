@@ -67,16 +67,10 @@ export class AuthService {
       agreedTermsAt: new Date(),
     });
 
-    // Email queued — delivered asynchronously (non-blocking)
     await enqueueEmail({
       template: "welcome",
       to: user.email,
       displayName: user.displayName,
-    }).catch((err) => {
-      logger.warn("user.register.email_queue.failed", {
-        userId: user.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
     });
 
     audit({
@@ -123,18 +117,12 @@ export class AuthService {
     });
 
     const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${rawToken}`;
-    // Email queued — delivered asynchronously (non-blocking)
     await enqueueEmail({
       template: "passwordReset",
       to: user.email,
       displayName: user.displayName,
       resetUrl,
       expiresInMinutes: 60,
-    }).catch((err) => {
-      logger.warn("user.password_reset.email_queue.failed", {
-        userId: user.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
     });
 
     audit({

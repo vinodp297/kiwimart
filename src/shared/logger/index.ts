@@ -17,6 +17,7 @@
 // log line so that request → BullMQ job → Stripe webhook traces are linkable.
 
 import { getRequestContext } from "@/lib/request-context";
+import { sanitiseLogContext } from "@/lib/log-sanitiser";
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal";
 
@@ -29,11 +30,12 @@ function log(level: LogLevel, event: string, context?: LogContext): void {
   // request context (if one is active). Does not override an explicit
   // correlationId already present in the caller-supplied context.
   const requestContext = getRequestContext();
+  const safeContext = context ? sanitiseLogContext(context) : undefined;
   const enrichedContext: LogContext = {
     ...(requestContext?.correlationId
       ? { correlationId: requestContext.correlationId }
       : {}),
-    ...context,
+    ...safeContext,
   };
 
   const entry = {
