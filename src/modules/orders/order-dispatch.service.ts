@@ -95,6 +95,45 @@ export async function confirmDelivery(
       metadata: { newStatus: "COMPLETED", previousStatus: order.status },
       tx,
     });
+
+    // Record delivery confirmation event inside the transaction so the event
+    // write rolls back atomically if anything above fails.
+    if (feedback?.itemAsDescribed) {
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.DELIVERY_CONFIRMED_OK,
+        actorId: buyerId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: "Buyer confirmed delivery — item arrived as described",
+        metadata: { deliveryConfirmed: true, itemAsDescribed: true },
+        tx,
+      });
+    } else if (feedback && !feedback.itemAsDescribed) {
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.DELIVERY_ISSUE_REPORTED,
+        actorId: buyerId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: `Buyer reported delivery issue: ${feedback.issueType?.replace(/_/g, " ").toLowerCase() ?? "unknown"}`,
+        metadata: {
+          deliveryConfirmed: true,
+          itemAsDescribed: false,
+          issueType: feedback.issueType,
+          deliveryPhotos: feedback.deliveryPhotos,
+          notes: feedback.notes,
+        },
+        tx,
+      });
+    }
+
+    await orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.COMPLETED,
+      actorId: buyerId,
+      actorRole: ACTOR_ROLES.BUYER,
+      summary: "Buyer confirmed delivery — payment released to seller",
+      tx,
+    });
   });
 
   // Queue payout processing (3 business days delay)
@@ -123,41 +162,6 @@ export async function confirmDelivery(
   } catch {
     logger.warn("order.payout_queue.failed", { orderId });
   }
-
-  // Record delivery confirmation event with feedback metadata
-  if (feedback?.itemAsDescribed) {
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.DELIVERY_CONFIRMED_OK,
-      actorId: buyerId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary: "Buyer confirmed delivery — item arrived as described",
-      metadata: { deliveryConfirmed: true, itemAsDescribed: true },
-    });
-  } else if (feedback && !feedback.itemAsDescribed) {
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.DELIVERY_ISSUE_REPORTED,
-      actorId: buyerId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary: `Buyer reported delivery issue: ${feedback.issueType?.replace(/_/g, " ").toLowerCase() ?? "unknown"}`,
-      metadata: {
-        deliveryConfirmed: true,
-        itemAsDescribed: false,
-        issueType: feedback.issueType,
-        deliveryPhotos: feedback.deliveryPhotos,
-        notes: feedback.notes,
-      },
-    });
-  }
-
-  orderEventService.recordEvent({
-    orderId,
-    type: ORDER_EVENT_TYPES.COMPLETED,
-    actorId: buyerId,
-    actorRole: ACTOR_ROLES.BUYER,
-    summary: "Buyer confirmed delivery — payment released to seller",
-  });
 
   // If buyer reported an issue, auto-create a DELIVERY_ISSUE interaction
   if (feedback && !feedback.itemAsDescribed && feedback.issueType) {

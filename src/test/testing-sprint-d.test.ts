@@ -210,25 +210,25 @@ describe("Fix 1.3 — auth.service: email queue .catch branches", () => {
     vi.unstubAllEnvs();
   });
 
-  it("register: swallows welcome-email enqueue failure and still returns userId", async () => {
+  it("register: propagates welcome-email enqueue failure — no silent catch", async () => {
     const { authService } = await import("@/modules/users/auth.service");
     const { enqueueEmail } = await import("@/lib/email-queue");
 
     vi.mocked(enqueueEmail).mockRejectedValueOnce(new Error("queue down"));
 
-    const result = await authService.register(
-      {
-        email: "q1@kiwi.test",
-        firstName: "Queue",
-        lastName: "Down",
-        password: "SecurePass123!",
-        hasMarketingConsent: false,
-      } as never,
-      "127.0.0.1",
-    );
+    await expect(
+      authService.register(
+        {
+          email: "q1@kiwi.test",
+          firstName: "Queue",
+          lastName: "Down",
+          password: "SecurePass123!",
+          hasMarketingConsent: false,
+        } as never,
+        "127.0.0.1",
+      ),
+    ).rejects.toThrow("queue down");
 
-    // Key assertion: registration still succeeds despite email failure.
-    expect(result.userId).toBe("new-user-1");
     expect(enqueueEmail).toHaveBeenCalledTimes(1);
   });
 
@@ -247,7 +247,7 @@ describe("Fix 1.3 — auth.service: email queue .catch branches", () => {
     expect(enqueueEmail).not.toHaveBeenCalled();
   });
 
-  it("requestPasswordReset: swallows email queue failure after token created", async () => {
+  it("requestPasswordReset: propagates email queue failure — no silent catch", async () => {
     const { authService } = await import("@/modules/users/auth.service");
     const { userRepository } = await import("@/modules/users/user.repository");
     const { enqueueEmail } = await import("@/lib/email-queue");
@@ -259,12 +259,11 @@ describe("Fix 1.3 — auth.service: email queue .catch branches", () => {
     } as never);
     vi.mocked(enqueueEmail).mockRejectedValueOnce(new Error("smtp down"));
 
-    // Must NOT throw — the catch branch swallows the failure.
     await expect(
       authService.requestPasswordReset("reset@kiwi.test", "127.0.0.1", null),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("smtp down");
 
-    // Token WAS created before the email attempt — the queue catch runs after.
+    // Token WAS created before the email attempt failed.
     expect(userRepository.createResetToken).toHaveBeenCalledTimes(1);
   });
 });
