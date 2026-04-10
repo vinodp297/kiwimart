@@ -7,8 +7,9 @@ import { auth } from "@/lib/auth";
 import { userRepository } from "@/modules/users/user.repository";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse | Response> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -41,9 +42,6 @@ export async function GET(): Promise<NextResponse> {
       path: "/api/stripe/connect/refresh",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      { error: "We couldn't reconnect to Stripe. Please try again." },
-      { status: 500 },
-    );
+    return apiError("We couldn't reconnect to Stripe. Please try again.", 500);
   }
 }

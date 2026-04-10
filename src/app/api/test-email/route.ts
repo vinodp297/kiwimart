@@ -11,6 +11,7 @@ import { requireSuperAdmin } from "@/shared/auth/requirePermission";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { sendPasswordResetEmail } from "@/server/email";
 import { logger } from "@/shared/logger";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET() {
   try {
     await requireSuperAdmin();
   } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return apiError("Forbidden", 403);
   }
 
   try {
@@ -95,9 +96,6 @@ export async function GET() {
       path: "/api/test-email",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      { error: "The test email couldn't be sent. Please try again." },
-      { status: 500 },
-    );
+    return apiError("The test email couldn't be sent. Please try again.", 500);
   }
 }

@@ -4,6 +4,7 @@ import { checkPriceDrops } from "@/server/jobs/priceDropNotifications";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
 import { recordCronRun } from "@/server/lib/cronLogger";
 import { logger } from "@/shared/logger";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -25,6 +26,6 @@ export async function GET(request: Request) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error("price_drop_alerts.cron_error", { error: msg });
     await recordCronRun("price-drop-alerts", "error", startedAt, msg);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    return apiError("Internal error", 500);
   }
 }

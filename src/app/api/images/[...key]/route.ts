@@ -29,6 +29,7 @@ import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 import { auth } from "@/lib/auth";
 import { orderRepository } from "@/modules/orders/order.repository";
 import { logger } from "@/shared/logger";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 // ── Prefix classifications ────────────────────────────────────────────────────
 
@@ -58,16 +59,16 @@ const MIME_TYPES: Record<string, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function unauthorized(): NextResponse {
-  return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+function unauthorized(): Response {
+  return apiError("Unauthorised", 401);
 }
 
-function forbidden(): NextResponse {
-  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+function forbidden(): Response {
+  return apiError("Forbidden", 403);
 }
 
-function notFound(): NextResponse {
-  return NextResponse.json({ error: "Not found" }, { status: 404 });
+function notFound(): Response {
+  return apiError("Not found", 404);
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
@@ -197,6 +198,6 @@ export async function GET(
     logger.error("image_proxy.r2_fetch_failed", {
       error: err instanceof Error ? err.message : String(err),
     });
-    return NextResponse.json({ error: "Failed to load file" }, { status: 500 });
+    return apiError("Failed to load file", 500);
   }
 }

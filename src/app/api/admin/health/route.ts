@@ -18,6 +18,7 @@ import { getRedisClient } from "@/infrastructure/redis/client";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 import { requirePermission } from "@/shared/auth/requirePermission";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -106,7 +107,7 @@ export async function GET() {
   try {
     await requirePermission("VIEW_SYSTEM_HEALTH");
   } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return apiError("Forbidden", 403);
   }
 
   try {

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { userRepository } from "@/modules/users/user.repository";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
+import { fireAndForget } from "@/lib/fire-and-forget";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,8 @@ export async function GET(request: NextRequest) {
     // Send welcome email (fire-and-forget; don't block the redirect)
     const resend = getEmailClient();
     if (resend) {
-      resend.emails
-        .send({
+      fireAndForget(
+        resend.emails.send({
           from: EMAIL_FROM,
           to: user.email ?? "",
           subject: `Welcome to KiwiMart, ${user.displayName}! 🥝`,
@@ -50,8 +51,10 @@ export async function GET(request: NextRequest) {
             name: user.displayName ?? "there",
             appUrl,
           }),
-        })
-        .catch((err) => logger.error("email.welcome.failed", { error: err }));
+        }),
+        "email.welcome",
+        { userId: user.id },
+      );
     }
 
     return NextResponse.redirect(new URL("/?verified=true", request.url));

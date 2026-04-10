@@ -4,6 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -1937,7 +1938,7 @@ export async function GET() {
   if (process.env.NODE_ENV === "production") {
     const session = await auth();
     if (!session?.user?.isAdmin) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return apiError("Not found", 404);
     }
   }
 

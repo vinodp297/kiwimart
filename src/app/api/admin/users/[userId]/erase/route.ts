@@ -9,6 +9,7 @@ import { requireSuperAdmin } from "@/shared/auth/requirePermission";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function POST(
   try {
     admin = await requireSuperAdmin();
   } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return apiError("Forbidden", 403);
   }
 
   try {
@@ -31,12 +32,10 @@ export async function POST(
     try {
       const limit = await rateLimit("adminErase", `admin:${admin.id}:erase`);
       if (!limit.success) {
-        return NextResponse.json(
-          {
-            error: "Too many requests. Please slow down.",
-            code: "RATE_LIMITED",
-          },
-          { status: 429 },
+        return apiError(
+          "Too many requests. Please slow down.",
+          429,
+          "RATE_LIMITED",
         );
       }
     } catch (rlErr) {
@@ -66,10 +65,7 @@ export async function POST(
     });
   } catch (e) {
     if (e instanceof AppError) {
-      return NextResponse.json(
-        { error: e.message, code: e.code },
-        { status: e.statusCode },
-      );
+      return apiError(e.message, e.statusCode, e.code);
     }
 
     logger.error("api.error", {
@@ -77,9 +73,6 @@ export async function POST(
       error: e instanceof Error ? e.message : e,
     });
 
-    return NextResponse.json(
-      { error: "Failed to erase account. Please try again." },
-      { status: 500 },
-    );
+    return apiError("Failed to erase account. Please try again.", 500);
   }
 }

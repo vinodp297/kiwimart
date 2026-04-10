@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 import { logger } from "@/shared/logger";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { QUEUE_MAP, VALID_QUEUE_NAMES, type QueueName } from "@/lib/queue";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export async function GET() {
   try {
     await requirePermission("VIEW_SYSTEM_HEALTH");
   } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return apiError("Forbidden", 403);
   }
 
   try {

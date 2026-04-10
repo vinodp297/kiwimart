@@ -8,6 +8,7 @@ import { logger } from "@/shared/logger";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { QUEUE_MAP, VALID_QUEUE_NAMES, type QueueName } from "@/lib/queue";
+import { apiError } from "@/app/api/v1/_helpers/response";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function POST(
   try {
     admin = await requirePermission("VIEW_SYSTEM_HEALTH");
   } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return apiError("Forbidden", 403);
   }
 
   try {
@@ -35,12 +36,10 @@ export async function POST(
         `admin:${admin.id}:jobRetry`,
       );
       if (!limit.success) {
-        return NextResponse.json(
-          {
-            error: "Too many requests. Please slow down.",
-            code: "RATE_LIMITED",
-          },
-          { status: 429 },
+        return apiError(
+          "Too many requests. Please slow down.",
+          429,
+          "RATE_LIMITED",
         );
       }
     } catch (rlErr) {
@@ -53,11 +52,9 @@ export async function POST(
     }
 
     if (!queueName || !VALID_QUEUE_NAMES.includes(queueName as QueueName)) {
-      return NextResponse.json(
-        {
-          error: `Invalid queueName. Must be one of: ${VALID_QUEUE_NAMES.join(", ")}`,
-        },
-        { status: 400 },
+      return apiError(
+        `Invalid queueName. Must be one of: ${VALID_QUEUE_NAMES.join(", ")}`,
+        400,
       );
     }
 
@@ -65,19 +62,14 @@ export async function POST(
     const job = await queue.getJob(jobId);
 
     if (!job) {
-      return NextResponse.json(
-        { error: `Job ${jobId} not found in ${queueName} queue` },
-        { status: 404 },
-      );
+      return apiError(`Job ${jobId} not found in ${queueName} queue`, 404);
     }
 
     const jobState = await job.getState();
     if (jobState !== "failed") {
-      return NextResponse.json(
-        {
-          error: `Job ${jobId} is in '${jobState}' state, not 'failed'. Only failed jobs can be retried.`,
-        },
-        { status: 400 },
+      return apiError(
+        `Job ${jobId} is in '${jobState}' state, not 'failed'. Only failed jobs can be retried.`,
+        400,
       );
     }
 
@@ -101,9 +93,6 @@ export async function POST(
       path: "/api/admin/jobs/retry",
       error: e instanceof Error ? e.message : e,
     });
-    return NextResponse.json(
-      { error: "Failed to retry job. Please try again." },
-      { status: 500 },
-    );
+    return apiError("Failed to retry job. Please try again.", 500);
   }
 }
