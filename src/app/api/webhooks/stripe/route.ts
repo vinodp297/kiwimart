@@ -11,6 +11,7 @@ import { webhookService } from "@/modules/payments/webhook.service";
 import { logger } from "@/shared/logger";
 import { getRedisClient } from "@/infrastructure/redis/client";
 import { getRequestContext } from "@/lib/request-context";
+import { env } from "@/env";
 
 // Stripe retries for up to 72 hours — keep keys for the full window.
 const WEBHOOK_IDEMPOTENCY_TTL = 259_200; // seconds (72 hours)
@@ -33,7 +34,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET!,
+      env.STRIPE_WEBHOOK_SECRET,
     );
   } catch (err) {
     logger.error("stripe.webhook.signature_failed", {

@@ -4,17 +4,18 @@
 // Private channels (private-user-{userId}) require authentication via
 // /api/pusher/auth endpoint.
 
-import Pusher from 'pusher';
+import Pusher from "pusher";
+import { env } from "@/env";
 
 let _pusherServer: Pusher | null = null;
 
 export function getPusherServer(): Pusher {
   if (!_pusherServer) {
     _pusherServer = new Pusher({
-      appId: process.env.PUSHER_APP_ID!,
-      key: process.env.PUSHER_KEY!,
-      secret: process.env.PUSHER_SECRET!,
-      cluster: process.env.PUSHER_CLUSTER!,
+      appId: env.PUSHER_APP_ID,
+      key: env.PUSHER_KEY,
+      secret: env.PUSHER_SECRET,
+      cluster: env.PUSHER_CLUSTER,
       useTLS: true,
     });
   }

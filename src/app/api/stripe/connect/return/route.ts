@@ -8,16 +8,14 @@ import { auth } from "@/lib/auth";
 import { userRepository } from "@/modules/users/user.repository";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
+import { env } from "@/env";
 
 export async function GET(): Promise<NextResponse> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.redirect(
-        new URL(
-          "/login?from=/account/stripe",
-          process.env.NEXT_PUBLIC_APP_URL!,
-        ),
+        new URL("/login?from=/account/stripe", env.NEXT_PUBLIC_APP_URL),
       );
     }
 
@@ -39,7 +37,7 @@ export async function GET(): Promise<NextResponse> {
         return NextResponse.redirect(
           new URL(
             "/seller/onboarding?error=account_mismatch",
-            process.env.NEXT_PUBLIC_APP_URL!,
+            env.NEXT_PUBLIC_APP_URL,
           ),
         );
       }
@@ -61,7 +59,7 @@ export async function GET(): Promise<NextResponse> {
     }
 
     return NextResponse.redirect(
-      new URL("/account/stripe?success=true", process.env.NEXT_PUBLIC_APP_URL!),
+      new URL("/account/stripe?success=true", env.NEXT_PUBLIC_APP_URL),
     );
   } catch (e) {
     logger.error("api.error", {

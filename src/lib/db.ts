@@ -1,4 +1,5 @@
 import "server-only";
+import { env } from "@/env";
 // src/lib/db.ts
 // ─── Prisma Client Singleton ──────────────────────────────────────────────────
 // Prisma 7 requires a driver adapter — url is no longer passed in schema.prisma.
@@ -26,7 +27,7 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
   const adapter = new PrismaPg({
-    connectionString: process.env.DATABASE_URL!,
+    connectionString: env.DATABASE_URL,
   });
 
   return new PrismaClient({

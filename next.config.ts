@@ -1,3 +1,4 @@
+import "./src/env"; // validate env vars at build time — fails fast with all errors
 import type { NextConfig } from "next";
 import path from "path";
 

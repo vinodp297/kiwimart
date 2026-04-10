@@ -8,16 +8,14 @@ import { userRepository } from "@/modules/users/user.repository";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 import { apiError } from "@/app/api/v1/_helpers/response";
+import { env } from "@/env";
 
 export async function GET(): Promise<NextResponse | Response> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
       return NextResponse.redirect(
-        new URL(
-          "/login?from=/account/stripe",
-          process.env.NEXT_PUBLIC_APP_URL!,
-        ),
+        new URL("/login?from=/account/stripe", env.NEXT_PUBLIC_APP_URL),
       );
     }
 
@@ -25,14 +23,14 @@ export async function GET(): Promise<NextResponse | Response> {
 
     if (!user?.stripeAccountId) {
       return NextResponse.redirect(
-        new URL("/account/stripe", process.env.NEXT_PUBLIC_APP_URL!),
+        new URL("/account/stripe", env.NEXT_PUBLIC_APP_URL),
       );
     }
 
     const accountLink = await stripe.accountLinks.create({
       account: user.stripeAccountId,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
+      refresh_url: `${env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/refresh`,
+      return_url: `${env.NEXT_PUBLIC_APP_URL}/api/stripe/connect/return`,
       type: "account_onboarding",
     });
 

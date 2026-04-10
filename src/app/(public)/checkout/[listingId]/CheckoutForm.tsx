@@ -17,10 +17,9 @@ import {
 import { Button, Input, Select, Alert } from "@/components/ui/primitives";
 import { formatPrice, formatCondition } from "@/lib/utils";
 import { createOrder } from "@/server/actions/orders";
+import { env } from "@/env";
 
-const stripePromise = loadStripe(
-  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!,
-);
+const stripePromise = loadStripe(env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
 
 const NZ_REGIONS_DEFAULT = [
   "Auckland",

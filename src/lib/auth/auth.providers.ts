@@ -14,6 +14,7 @@ import { loginSchema } from "@/server/validators";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { logger } from "@/shared/logger";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
+import { env } from "@/env";
 
 export const credentialsProvider = Credentials({
   credentials: {
@@ -128,7 +129,7 @@ export const credentialsProvider = Credentials({
 });
 
 export const googleProvider = Google({
-  clientId: process.env.GOOGLE_CLIENT_ID!,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+  clientId: env.GOOGLE_CLIENT_ID,
+  clientSecret: env.GOOGLE_CLIENT_SECRET,
   allowDangerousEmailAccountLinking: false,
 });
