@@ -293,7 +293,7 @@ export class AdminService {
 
     // Fire-and-forget dispute resolved emails to both parties
     fireAndForget(
-      orderRepository.findByIdForCancellationEmail(orderId).then((o) => {
+      orderRepository.findByIdForEmail(orderId).then((o) => {
         if (!o) return;
         const resolution =
           favour === "buyer" ? ("BUYER_WON" as const) : ("SELLER_WON" as const);

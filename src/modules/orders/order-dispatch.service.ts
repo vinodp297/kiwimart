@@ -218,8 +218,7 @@ export async function confirmDelivery(
   // Send order completion emails to buyer and seller
   // Email failure must never block the completion — wrap in try/catch
   try {
-    const parties =
-      await orderRepository.findPartiesForCompletionEmail(orderId);
+    const parties = await orderRepository.findByIdForEmail(orderId);
     if (parties) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
       const buyerFirst =

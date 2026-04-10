@@ -14,6 +14,8 @@ import { toCents } from "@/lib/currency";
 import type { Prisma } from "@prisma/client";
 import { listingRepository } from "./listing.repository";
 import { runAutoReviewFlow, notifyPriceDrop } from "./listing-review.service";
+import { invalidateCache } from "@/server/lib/cache";
+import { listingDetailKey } from "./listing-engagement.service";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,7 @@ export async function deleteListing(
   }
 
   await listingRepository.softDelete(listingId);
+  void invalidateCache(listingDetailKey(listingId));
 
   audit({
     userId,
@@ -335,6 +338,7 @@ export async function updateListing(
     );
   }
 
+  void invalidateCache(listingDetailKey(listingId));
   return { ok: true, listingId };
 }
 
@@ -368,6 +372,7 @@ export async function patchListingViaApi(
   }
 
   const updated = await listingRepository.updateListing(listingId, update);
+  void invalidateCache(listingDetailKey(listingId));
 
   return {
     ok: true,

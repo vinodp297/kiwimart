@@ -312,7 +312,7 @@ vi.mock("@/modules/orders/order.repository", () => ({
     findEventsByOrderId: vi.fn().mockResolvedValue([]),
     findFirst: vi.fn(),
     findByIdForCancel: vi.fn(),
-    findByIdForCancellationEmail: vi.fn(),
+    findByIdForEmail: vi.fn(),
     reactivateListingInTx: vi.fn(),
     findForAutoResolutionEvaluate: vi.fn(),
     findForAutoResolutionExecute: vi.fn(),

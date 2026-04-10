@@ -2,7 +2,14 @@
 // ─── Watchlist and view tracking ────────────────────────────────────────────
 
 import { AppError } from "@/shared/errors";
+import { getCached } from "@/server/lib/cache";
+import { SECONDS_PER_MINUTE } from "@/lib/time";
 import { listingRepository } from "./listing.repository";
+
+export const LISTING_DETAIL_CACHE_TTL = SECONDS_PER_MINUTE * 5;
+export function listingDetailKey(id: string) {
+  return `listings:detail:${id}`;
+}
 
 // ── toggleWatch ─────────────────────────────────────────────────────────────
 
@@ -35,11 +42,15 @@ export async function toggleWatch(
 // ── getListingById ──────────────────────────────────────────────────────────
 
 export async function getListingById(id: string) {
-  const listing = await listingRepository.findByIdWithSellerAndImages(id);
+  const listing = await getCached(
+    listingDetailKey(id),
+    () => listingRepository.findByIdWithSellerAndImages(id),
+    LISTING_DETAIL_CACHE_TTL,
+  );
 
   if (!listing) return null;
 
-  // Increment view count (fire-and-forget)
+  // Increment view count (fire-and-forget — does not affect cached data)
   listingRepository.incrementViewCount(id);
 
   return listing;

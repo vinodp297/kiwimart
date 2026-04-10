@@ -130,7 +130,7 @@ export async function cancelOrder(
 
   // Fire-and-forget cancellation emails to both parties
   fireAndForget(
-    orderRepository.findByIdForCancellationEmail(orderId).then((o) => {
+    orderRepository.findByIdForEmail(orderId).then((o) => {
       if (!o) return;
       const refundAmount = order.status === "PAYMENT_HELD" ? o.totalNzd : null;
       const cancelReason = reason ?? "";

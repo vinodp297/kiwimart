@@ -222,7 +222,7 @@ vi.mock("@/modules/orders/order-interaction.service", () => ({
 vi.mock("@/modules/orders/order.repository", () => ({
   orderRepository: {
     findByIdForDelivery: (...a: unknown[]) => mockFindByIdForDelivery(...a),
-    findPartiesForCompletionEmail: (...a: unknown[]) =>
+    findByIdForEmail: (...a: unknown[]) =>
       mockFindPartiesForCompletionEmail(...a),
     findSellerStripeAccount: vi.fn().mockResolvedValue(null),
     findListingTitle: vi.fn().mockResolvedValue({ title: "Vintage Camera" }),

@@ -752,6 +752,7 @@ model Dispute {
 
   @@index([status])
   @@index([openedAt])
+  @@index([status, openedAt])
 }
 
 model DisputeEvidence {
@@ -944,6 +945,7 @@ model Review {
 
   @@unique([orderId, reviewerRole])
   @@index([subjectId])
+  @@index([subjectId, isApproved])
   @@index([authorId])
   @@index([createdAt])
 }
@@ -1047,6 +1049,8 @@ model Payout {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, status])
+  @@index([status, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

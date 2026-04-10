@@ -2,6 +2,7 @@
 // ─── Listing Repository — data access only, no business logic ───────────────
 
 import db, { getClient, type DbClient } from "@/lib/db";
+export type { DbClient };
 import { fireAndForget } from "@/lib/fire-and-forget";
 import { MS_PER_DAY } from "@/lib/time";
 import { Prisma } from "@prisma/client";

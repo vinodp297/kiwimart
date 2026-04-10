@@ -2,6 +2,10 @@
 // ─── Read-only listing operations ───────────────────────────────────────────
 
 import { listingRepository } from "./listing.repository";
+import { getCached } from "@/server/lib/cache";
+import { SECONDS_PER_MINUTE } from "@/lib/time";
+
+const BROWSE_CACHE_TTL = SECONDS_PER_MINUTE * 2;
 
 // ── getBrowseListings ───────────────────────────────────────────────────────
 
@@ -11,7 +15,12 @@ export async function getBrowseListings(params: {
   cursor?: string;
   limit: number;
 }) {
-  return listingRepository.findBrowseListings(params);
+  const key = `listings:browse:${params.category ?? "all"}:${params.q ?? ""}:${params.cursor ?? "start"}:${params.limit}`;
+  return getCached(
+    key,
+    () => listingRepository.findBrowseListings(params),
+    BROWSE_CACHE_TTL,
+  );
 }
 
 // ── getListingForEdit ───────────────────────────────────────────────────────

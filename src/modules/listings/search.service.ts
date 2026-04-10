@@ -11,8 +11,12 @@ import { toCents } from "@/lib/currency";
 import { logger } from "@/shared/logger";
 import { listingRepository } from "./listing.repository";
 import { reviewRepository } from "@/modules/reviews/review.repository";
+import { getCached } from "@/server/lib/cache";
+import { SECONDS_PER_MINUTE } from "@/lib/time";
 import type { ListingCard } from "@/types";
 import type { SearchParams, SearchResult } from "./listing.types";
+
+const SEARCH_CACHE_TTL = SECONDS_PER_MINUTE;
 
 const SearchParamsSchema = z.object({
   query: z.string().max(200).optional(),
@@ -52,8 +56,24 @@ function mapCondition(c: string): ListingCard["condition"] {
 export class SearchService {
   async searchListings(rawParams: SearchParams): Promise<SearchResult> {
     const parseResult = SearchParamsSchema.safeParse(rawParams);
-    const params = parseResult.success ? parseResult.data : {};
+    const params = parseResult.success
+      ? parseResult.data
+      : ({} as z.infer<typeof SearchParamsSchema>);
 
+    // Build a stable, sorted cache key from validated params
+    const cacheKey = `listings:search:${JSON.stringify(
+      Object.fromEntries(
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined)
+          .sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    )}`;
+    return getCached(cacheKey, () => this._doSearch(params), SEARCH_CACHE_TTL);
+  }
+
+  private async _doSearch(
+    params: z.infer<typeof SearchParamsSchema>,
+  ): Promise<SearchResult> {
     const {
       query,
       category,
