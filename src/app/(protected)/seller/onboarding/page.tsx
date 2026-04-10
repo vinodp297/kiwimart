@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { auth } from "@/lib/auth";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import { getSellerTier, getAllSellerTiers } from "@/lib/seller-tiers.server";
 import SellerOnboardingClient from "./SellerOnboardingClient";

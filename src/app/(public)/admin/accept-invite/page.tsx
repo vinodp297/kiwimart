@@ -4,6 +4,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import crypto from "crypto";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { getRoleDisplayName } from "@/lib/permissions";

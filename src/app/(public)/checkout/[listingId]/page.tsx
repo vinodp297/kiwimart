@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import { getImageUrl } from "@/lib/image";
 import { getListValues } from "@/lib/dynamic-lists";

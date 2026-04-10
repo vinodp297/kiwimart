@@ -15,6 +15,7 @@ import type {
   Review,
   ListingCard as ListingCardType,
 } from "@/types";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import { getImageUrl, getDefaultAvatar } from "@/lib/image";
 import { auth } from "@/lib/auth";

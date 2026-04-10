@@ -2,6 +2,7 @@
 // ─── System Status Page ──────────────────────────────────────────────────────
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import { getRedisClient } from "@/infrastructure/redis/client";
 import { logger } from "@/shared/logger";

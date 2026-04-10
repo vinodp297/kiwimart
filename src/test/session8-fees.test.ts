@@ -62,10 +62,7 @@ vi.mock("@/shared/logger", () => ({
 
 // ── Imports ───────────────────────────────────────────────────────────────────
 
-import {
-  calculateFeesSync,
-  calculateFees,
-} from "@/modules/payments/fee-calculator";
+import { calculateFees } from "@/modules/payments/fee-calculator";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminConfigRepository } from "@/modules/admin/admin-config.repository";
 import {

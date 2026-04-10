@@ -609,13 +609,31 @@ export const listingRepository = {
   },
 
   /** Fetch featured active listings sorted by watcher count (homepage). */
-  async findFeaturedListings() {
+  async findFeaturedListings(limit = 12) {
     return db.listing.findMany({
       where: { status: "ACTIVE", deletedAt: null },
       orderBy: { watcherCount: "desc" },
-      take: 12,
+      take: limit,
       select: RECOMMENDATION_SELECT,
     });
+  },
+
+  /** Count all active (published) listings — used for homepage stats strip. */
+  async countActive(): Promise<number> {
+    return db.listing.count({ where: { status: "ACTIVE", deletedAt: null } });
+  },
+
+  /** Group active listings by categoryId — used for homepage category pills. */
+  async groupByCategory(): Promise<{ categoryId: string; count: number }[]> {
+    const rows = await db.listing.groupBy({
+      by: ["categoryId"],
+      where: { status: "ACTIVE", deletedAt: null },
+      _count: { id: true },
+    });
+    return rows.map((r) => ({
+      categoryId: r.categoryId,
+      count: (r._count as { id?: number })?.id ?? 0,
+    }));
   },
 
   /** Full-text search for listing IDs using Postgres tsvector.

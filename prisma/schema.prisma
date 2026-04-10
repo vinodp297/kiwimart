@@ -1507,20 +1507,21 @@ model DynamicListItem {
 // after 90 days of inactivity.
 
 model PushToken {
-  id         String    @id @default(cuid())
-  userId     String
-  token      String    @unique   // FCM/APNs/Web Push token — unique per device
-  platform   String              // "ios" | "android" | "web"
-  deviceId   String?             // optional device identifier for deduplication
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  lastUsedAt DateTime?
+  id          String    @id @default(cuid())
+  userId      String
+  token       String    @unique   // FCM/APNs/Web Push token — kept for push-service calls
+  tokenHash   String    @unique   // SHA-256(token) — canonical unique key for DB lookups
+  platform    String              // "ios" | "android" | "web"
+  deviceId    String?             // optional device identifier for deduplication
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastUsedAt  DateTime?
 
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([token])
+  @@index([tokenHash])
   @@index([isActive, lastUsedAt])
 }
 

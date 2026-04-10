@@ -28,7 +28,6 @@ import {
   calculateFeesSync,
   calculateFees,
 } from "@/modules/payments/fee-calculator";
-import type { FeeBreakdown } from "@/modules/payments/fee-calculator";
 
 // ── calculateFeesSync ────────────────────────────────────────────────────────
 

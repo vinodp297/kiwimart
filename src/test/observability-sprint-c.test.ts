@@ -136,22 +136,24 @@ describe("Fix 1 — runCronJob wrapper", () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("Fix 2 — Homepage fallback logging", () => {
-  it("homepage page.tsx logs homepage.data_fetch_failed on DB failure", async () => {
+  it("homepage data layer logs homepage.data_fetch_failed on DB failure", async () => {
     const fs = await import("fs");
     const path = await import("path");
+    // After Task I4 split, the data-fetching logic lives in home-data.ts
     const source = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/(public)/page.tsx"),
+      path.resolve(process.cwd(), "src/app/(public)/_lib/home-data.ts"),
       "utf8",
     );
     expect(source).toContain("homepage.data_fetch_failed");
     expect(source).toContain("logger.error");
   });
 
-  it("homepage page.tsx sends Sentry alert on fallback with component tag", async () => {
+  it("homepage data layer sends Sentry alert on fallback with component tag", async () => {
     const fs = await import("fs");
     const path = await import("path");
+    // After Task I4 split, the data-fetching logic lives in home-data.ts
     const source = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/(public)/page.tsx"),
+      path.resolve(process.cwd(), "src/app/(public)/_lib/home-data.ts"),
       "utf8",
     );
     expect(source).toContain("@sentry/nextjs");
@@ -159,17 +161,20 @@ describe("Fix 2 — Homepage fallback logging", () => {
     expect(source).toContain('severity: "degraded"');
   });
 
-  it("homepage page.tsx still returns nulls (fallback preserved)", async () => {
+  it("homepage data layer still returns nulls (fallback preserved)", async () => {
     const fs = await import("fs");
     const path = await import("path");
+    // After Task I4 split, the fallback is in fetchHomeData() in home-data.ts.
+    // Variables are null-initialized so they remain null if the try block throws.
     const source = fs.readFileSync(
-      path.resolve(process.cwd(), "src/app/(public)/page.tsx"),
+      path.resolve(process.cwd(), "src/app/(public)/_lib/home-data.ts"),
       "utf8",
     );
-    // The catch block must still return the all-null object shape so the
-    // page renders with mock data instead of a 500.
-    expect(source).toContain("listingCount: null");
-    expect(source).toContain("featuredListings: null");
+    // Null-initialized declarations preserve the fallback-to-mock behaviour.
+    expect(source).toContain("let listingCount");
+    expect(source).toContain("| null = null");
+    // The catch block must still log the error so operators are alerted.
+    expect(source).toContain("homepage.data_fetch_failed");
   });
 });
 
@@ -289,8 +294,9 @@ describe("Fix 4 — Silent catch patterns in critical paths", () => {
   it("order timeline action logs before returning error fallback", async () => {
     const fs = await import("fs");
     const path = await import("path");
+    // After Task I5 split, getOrderTimeline lives in order-query.actions.ts
     const source = fs.readFileSync(
-      path.resolve(process.cwd(), "src/server/actions/orderEvents.ts"),
+      path.resolve(process.cwd(), "src/server/actions/order-query.actions.ts"),
       "utf8",
     );
     expect(source).toContain("order.timeline.fetch_failed");

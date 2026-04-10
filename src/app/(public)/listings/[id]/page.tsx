@@ -24,6 +24,7 @@ import {
   getSimilarListings,
 } from "@/modules/listings/recommendations.service";
 import { auth } from "@/lib/auth";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import SafetyBanner from "@/components/SafetyBanner";
 import PriceHistoryChart from "@/components/PriceHistoryChart";

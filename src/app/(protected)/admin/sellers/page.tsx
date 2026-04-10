@@ -2,6 +2,7 @@
 // ─── Seller Manager Dashboard ─────────────────────────────────────────────────
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 // ApproveIdButton replaced by link to review page
 import type { Metadata } from "next";

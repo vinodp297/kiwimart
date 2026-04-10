@@ -88,7 +88,7 @@ async function validateAndCreateListing(
   userId: string,
   isStripeOnboarded: boolean,
   data: CreateListingInput,
-  ip: string,
+  _ip: string,
 ): Promise<CoreCreateResult | CoreCreateError> {
   // 1. Auth checks
   const userDetails = await userRepository.findForListingAuth(userId);

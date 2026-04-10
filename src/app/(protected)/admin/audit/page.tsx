@@ -2,6 +2,7 @@
 // ─── Audit Log with Pagination & Filtering (Super Admin only) ──────────────
 import Link from "next/link";
 import { requireSuperAdmin } from "@/shared/auth/requirePermission";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import type { Metadata } from "next";
 import type { AuditAction, Prisma } from "@prisma/client";

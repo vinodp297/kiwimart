@@ -285,7 +285,11 @@ export class CartService {
       confirmedPriceVersion?: boolean;
     },
   ): Promise<ServiceResult<{ orderId: string; clientSecret: string }>> {
-    const { idempotencyKey, shippingAddress, confirmedPriceVersion } = input;
+    const {
+      idempotencyKey,
+      shippingAddress,
+      confirmedPriceVersion: _confirmedPriceVersion,
+    } = input;
 
     // Idempotency check
     if (idempotencyKey) {

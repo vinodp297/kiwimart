@@ -166,8 +166,10 @@ const { isPasswordBreached, hashPassword, verifyPassword } =
   await import("@/server/lib/password");
 const { logger } = await import("@/shared/logger");
 const { verifyTurnstile } = await import("@/server/lib/turnstile");
-const { sendVerificationEmail, sendPasswordResetEmail } =
-  await import("@/server/email");
+const {
+  sendVerificationEmail: _sendVerificationEmail,
+  sendPasswordResetEmail,
+} = await import("@/server/email");
 const { rateLimit } = await import("@/server/lib/rateLimit");
 // enqueueEmail is mocked globally by setup.ts; import for assertion
 const { enqueueEmail } = await import("@/lib/email-queue");

@@ -35,7 +35,7 @@ const { POST } = await import("@/app/api/v1/auth/refresh/route");
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const OLD_JTI = "old-jti-abc123";
-const NEW_JTI = "new-jti-xyz789";
+const _NEW_JTI = "new-jti-xyz789";
 const USER_ID = "user-refresh-test";
 const OLD_EXP = Math.floor(Date.now() / 1000) + 3600; // expires in 1 hour
 

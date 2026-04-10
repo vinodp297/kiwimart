@@ -10,7 +10,7 @@
 // W5: cron jobs generate a correlationId with cron:{name}:{timestamp} format
 // W6: correlationId is available via getRequestContext() inside nested service calls
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import "./setup";
 import {
   runWithRequestContext,

@@ -9,7 +9,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { getCorsHeaders, withCors } from "@/app/api/v1/_helpers/cors";
+import { withCors } from "@/app/api/v1/_helpers/cors";
 
 const ALLOWED = "https://buyzi.co.nz";
 const DISALLOWED = "https://evil.com";

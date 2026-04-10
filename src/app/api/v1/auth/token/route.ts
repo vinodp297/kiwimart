@@ -1,6 +1,6 @@
 // src/app/api/v1/auth/token/route.ts
 // ─── Mobile Token Endpoint ───────────────────────────────────────────────────
-// POST /api/v1/auth/token — exchange email+password for a 30-day Bearer token.
+// POST /api/v1/auth/token — exchange email+password for a 7-day Bearer token.
 
 import { userRepository } from "@/modules/users/user.repository";
 import { verifyPassword } from "@/server/lib/password";

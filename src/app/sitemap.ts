@@ -1,4 +1,5 @@
 import { MetadataRoute } from "next";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 
 export const revalidate = 86400; // 24 hours

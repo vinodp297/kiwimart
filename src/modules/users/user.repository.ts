@@ -957,4 +957,9 @@ export const userRepository = {
       },
     });
   },
+
+  /** Count all non-deleted users — used for homepage stats strip. */
+  async countActive(): Promise<number> {
+    return db.user.count({ where: { deletedAt: null } });
+  },
 };

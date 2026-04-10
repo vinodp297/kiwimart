@@ -89,7 +89,9 @@ export async function processImage(
   // file, a server-side script with forged magic bytes, or any buffer that cannot
   // be interpreted as an image will throw here. This is the primary defence-in-depth
   // layer for malformed uploads that slip past the magic byte check at upload time.
+  // eslint-disable-next-line no-useless-assignment
   let origWidth = 0;
+  // eslint-disable-next-line no-useless-assignment
   let origHeight = 0;
   try {
     const meta = await sharp(originalBuffer).metadata();

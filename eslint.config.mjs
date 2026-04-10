@@ -41,11 +41,19 @@ export default tseslint.config(
       'no-useless-assignment': 'warn',
     },
   },
-  // ── Architecture: services and actions must not import db directly ──────────
+  // ── Architecture: services, actions, and pages must not import db directly ──
   // All DB access must go through repositories (services → repositories → db).
   // Repositories themselves are excluded from this rule.
+  // src/app/** is included so that page/route/component files cannot bypass the
+  // layered architecture by calling db directly — they must go via server actions
+  // or data-fetching helpers that use repositories.
   {
-    files: ['src/modules/**/*.ts', 'src/server/actions/**/*.ts'],
+    files: [
+      'src/modules/**/*.ts',
+      'src/server/actions/**/*.ts',
+      'src/app/**/*.ts',
+      'src/app/**/*.tsx',
+    ],
     ignores: ['src/modules/**/*.repository.ts'],
     rules: {
       'no-restricted-imports': [

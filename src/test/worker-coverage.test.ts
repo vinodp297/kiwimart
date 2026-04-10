@@ -42,10 +42,7 @@ vi.mock("@/server/lib/rateLimit", async (importOriginal) => {
   };
 });
 
-import {
-  calculateFeesSync,
-  MINIMUM_PAYOUT_CENTS,
-} from "@/modules/payments/fee-calculator";
+import { calculateFeesSync } from "@/modules/payments/fee-calculator";
 import { getClientIp } from "@/server/lib/rateLimit";
 
 // ── fee-calculator: minimum payout invariant ────────────────────────────────

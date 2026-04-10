@@ -15,10 +15,7 @@ import http from "http";
 
 vi.mock("server-only", () => ({}));
 
-import {
-  scanForMalware,
-  type ScanResult,
-} from "@/server/actions/imageProcessor";
+import { scanForMalware } from "@/server/actions/imageProcessor";
 
 describe("Fix 1 — scanForMalware content analysis", () => {
   it("detects PE (Windows executable) header in file", async () => {

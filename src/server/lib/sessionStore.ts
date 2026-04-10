@@ -9,11 +9,12 @@
 //
 // Fail-open by default; fail-closed for admin operations via options.failClosed.
 
-import { getRedisClient } from '@/infrastructure/redis/client'
-import { logger } from '@/shared/logger'
+import { getRedisClient } from "@/infrastructure/redis/client";
+import { logger } from "@/shared/logger";
+import { WEB_SESSION_TTL_SECONDS } from "@/lib/auth-constants";
 
-const SESSION_VERSION_PREFIX = 'session:version:'
-const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
+const SESSION_VERSION_PREFIX = "session:version:";
+const SESSION_TTL = WEB_SESSION_TTL_SECONDS;
 
 /**
  * Get the current valid session version for a user.
@@ -24,25 +25,28 @@ const SESSION_TTL = 60 * 60 * 24 * 30 // 30 days
  */
 export async function getSessionVersion(
   userId: string,
-  options?: { failClosed?: boolean }
+  options?: { failClosed?: boolean },
 ): Promise<number> {
   try {
-    const redis = getRedisClient()
-    const version = await redis.get(`${SESSION_VERSION_PREFIX}${userId}`)
-    return version ? parseInt(version as string, 10) : 0
+    const redis = getRedisClient();
+    const version = await redis.get(`${SESSION_VERSION_PREFIX}${userId}`);
+    return version ? parseInt(version as string, 10) : 0;
   } catch (e) {
     if (options?.failClosed) {
-      logger.warn('sessionStore: Redis unavailable, failing CLOSED for privileged operation', {
-        userId,
-        error: e instanceof Error ? e.message : String(e),
-      })
-      return Infinity // Force session invalid — blocks all tokens
+      logger.warn(
+        "sessionStore: Redis unavailable, failing CLOSED for privileged operation",
+        {
+          userId,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      );
+      return Infinity; // Force session invalid — blocks all tokens
     }
-    logger.warn('sessionStore.getVersion.failed', {
+    logger.warn("sessionStore.getVersion.failed", {
       userId,
       error: e instanceof Error ? e.message : String(e),
-    })
-    return 0 // fail open
+    });
+    return 0; // fail open
   }
 }
 
@@ -52,16 +56,16 @@ export async function getSessionVersion(
  */
 export async function invalidateAllSessions(userId: string): Promise<number> {
   try {
-    const redis = getRedisClient()
-    const newVersion = await redis.incr(`${SESSION_VERSION_PREFIX}${userId}`)
-    await redis.expire(`${SESSION_VERSION_PREFIX}${userId}`, SESSION_TTL)
-    logger.info('sessionStore.invalidated', { userId, newVersion })
-    return newVersion
+    const redis = getRedisClient();
+    const newVersion = await redis.incr(`${SESSION_VERSION_PREFIX}${userId}`);
+    await redis.expire(`${SESSION_VERSION_PREFIX}${userId}`, SESSION_TTL);
+    logger.info("sessionStore.invalidated", { userId, newVersion });
+    return newVersion;
   } catch (e) {
-    logger.warn('sessionStore.invalidate.failed', {
+    logger.warn("sessionStore.invalidate.failed", {
       userId,
       error: e instanceof Error ? e.message : String(e),
-    })
-    return 0
+    });
+    return 0;
   }
 }

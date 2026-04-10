@@ -14,6 +14,7 @@
 //     8. deleteInactivePushTokens removes tokens inactive for 90+ days
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { hashPushToken } from "@/lib/push-token-hash";
 
 vi.mock("server-only", () => ({}));
 
@@ -308,7 +309,8 @@ describe("notificationRepository — push token methods", () => {
     expect(result.isActive).toBe(true);
 
     const upsertCall = vi.mocked(db.pushToken.upsert).mock.calls[0]![0]!;
-    expect(upsertCall.where).toEqual({ token: MOCK_TOKEN });
+    // Task I6: upsert uses tokenHash (SHA-256) as the unique lookup key, not raw token
+    expect(upsertCall.where).toEqual({ tokenHash: hashPushToken(MOCK_TOKEN) });
     // Token must never appear in logs — verify we don't accidentally store prefix
     expect(MOCK_TOKEN_PREFIX).toHaveLength(8);
   });
@@ -316,8 +318,9 @@ describe("notificationRepository — push token methods", () => {
   it("deactivatePushToken sets isActive: false without hard-deleting", async () => {
     await notificationRepository.deactivatePushToken(MOCK_TOKEN);
 
+    // Task I6: deactivate uses tokenHash for the where clause, not raw token
     expect(db.pushToken.updateMany).toHaveBeenCalledWith({
-      where: { token: MOCK_TOKEN },
+      where: { tokenHash: hashPushToken(MOCK_TOKEN) },
       data: { isActive: false },
     });
     // Hard delete must NOT be called

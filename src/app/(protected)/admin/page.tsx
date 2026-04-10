@@ -5,6 +5,7 @@ import Link from "next/link";
 import SystemHealthWidget from "@/components/admin/SystemHealthWidget";
 import ApproveIdButton from "./ApproveIdButton";
 import { requireAnyAdmin } from "@/shared/auth/requirePermission";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import { formatPrice } from "@/lib/utils";
 import { OrderVolumeChart } from "@/components/admin/OrderVolumeChart";

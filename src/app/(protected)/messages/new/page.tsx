@@ -7,6 +7,7 @@
 
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import { getImageUrl } from "@/lib/image";
 import { NewMessageForm } from "./NewMessageForm";

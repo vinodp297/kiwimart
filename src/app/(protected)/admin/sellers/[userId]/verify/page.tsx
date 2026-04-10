@@ -4,6 +4,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
+// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
 import db from "@/lib/db";
 import {
   approveIdVerification,

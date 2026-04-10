@@ -1,6 +1,7 @@
 import db, { getClient, type DbClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { userRepository } from "@/modules/users/user.repository";
+import { hashPushToken } from "@/lib/push-token-hash";
 
 // ── Push token types ────────────────────────────────────────────────────────
 
@@ -163,6 +164,9 @@ export const notificationRepository = {
    * Upsert a push token for a user.
    * If the token already exists (e.g. after app reinstall with the same token),
    * update lastUsedAt and re-activate it. If new, create it.
+   *
+   * The SHA-256 hash of the token is used as the DB unique key (tokenHash).
+   * The raw token is also stored so the push-service caller can read it back.
    * Token is never logged — only the first 8 characters for diagnostics.
    */
   async upsertPushToken(
@@ -171,8 +175,10 @@ export const notificationRepository = {
     platform: PushPlatform,
     deviceId?: string,
   ): Promise<PushTokenRow> {
-    return db.pushToken.upsert({
-      where: { token },
+    const tokenHash = hashPushToken(token);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (db.pushToken as any).upsert({
+      where: { tokenHash },
       update: {
         userId,
         platform,
@@ -183,6 +189,7 @@ export const notificationRepository = {
       create: {
         userId,
         token,
+        tokenHash,
         platform,
         deviceId: deviceId ?? null,
         isActive: true,
@@ -198,8 +205,10 @@ export const notificationRepository = {
    * hard-deletes tokens that have been inactive for 90+ days.
    */
   async deactivatePushToken(token: string): Promise<void> {
-    await db.pushToken.updateMany({
-      where: { token },
+    const tokenHash = hashPushToken(token);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db.pushToken as any).updateMany({
+      where: { tokenHash },
       data: { isActive: false },
     });
   },

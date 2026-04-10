@@ -2,7 +2,6 @@
 // ─── Admin Dispute Data Service ──────────────────────────────────────────
 // Fetches categorised dispute queues and detailed case views for admin.
 
-import { Prisma } from "@prisma/client";
 import { adminDisputesRepository } from "./admin-disputes.repository";
 import { trustMetricsService } from "@/modules/trust/trust-metrics.service";
 import { analyzeInconsistencies } from "@/modules/disputes/inconsistency-analysis.service";
