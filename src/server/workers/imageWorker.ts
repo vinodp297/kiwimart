@@ -25,9 +25,9 @@ import { runWithRequestContext } from "@/lib/request-context";
 
 export function startImageWorker() {
   if (process.env.VERCEL) {
-    console.error(
-      "worker.image: workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
-    );
+    logger.error("worker.image.vercel_unsupported", {
+      error: "Workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
+    });
     return;
   }
   const worker = new Worker<ImageJobData>(

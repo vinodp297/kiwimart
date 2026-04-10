@@ -30,6 +30,7 @@ import {
   resolveDispute as resolveDisputeRecord,
   setAutoResolving,
 } from "@/server/services/dispute/dispute.service";
+import { withLock } from "@/server/lib/distributedLock";
 
 // ── Scoring Configuration ─────────────────────────────────────────────────
 // All weights in one place — easy to extract to DB/env later.
@@ -606,356 +607,382 @@ export class AutoResolutionService {
 
     if (!order) throw new Error(`Order ${orderId} not found`);
 
-    // Fetch dispute record for resolution updates
-    const dispute = await getDisputeByOrderId(orderId);
+    // Fetch dispute record before acquiring the lock so we have its ID for
+    // the lock key. The record is re-fetched INSIDE the lock to verify status.
+    const disputeForLock = await getDisputeByOrderId(orderId);
+    const lockKey = disputeForLock
+      ? `dispute:${disputeForLock.id}`
+      : `dispute:order:${orderId}`;
 
-    if (evaluation.decision === "AUTO_REFUND") {
-      // Stripe refund FIRST — never mark REFUNDED unless money actually moved.
-      if (order.stripePaymentIntentId) {
-        try {
-          await paymentService.refundPayment({
-            paymentIntentId: order.stripePaymentIntentId,
-            orderId: order.id,
-            reason: "Auto-resolved dispute: buyer refund",
-          });
-        } catch (err) {
-          logger.error("auto-resolution.refund_failed", {
-            orderId,
-            error: err instanceof Error ? err.message : String(err),
-          });
+    await withLock(
+      lockKey,
+      async () => {
+        // Re-fetch inside the lock — an admin or another worker may have
+        // already resolved this dispute between queueing and execution.
+        const dispute = await getDisputeByOrderId(orderId);
 
-          // Refund failed — keep order in DISPUTED for manual review.
-          // Do NOT transition to REFUNDED.
-          orderEventService.recordEvent({
+        if (
+          disputeForLock &&
+          (!dispute || dispute.status !== "AUTO_RESOLVING")
+        ) {
+          logger.info("dispute.auto_resolve.skipped", {
+            disputeId: disputeForLock.id,
+            currentStatus: dispute?.status ?? "not_found",
             orderId,
-            type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
-            actorId: null,
-            actorRole: ACTOR_ROLES.SYSTEM,
-            summary:
-              "Auto-resolution refund failed — order flagged for manual review",
-            metadata: {
-              decision: "AUTO_REFUND",
-              error: err instanceof Error ? err.message : String(err),
-              status: "REFUND_FAILED",
-            },
           });
           return;
         }
-      }
 
-      try {
-        await orderRepository.$transaction(async (tx) => {
-          await transitionOrder(
-            orderId,
-            "REFUNDED",
-            {},
-            { tx, fromStatus: "DISPUTED" },
-          );
-          if (dispute) {
-            await resolveDisputeRecord({
-              disputeId: dispute.id,
-              decision: "BUYER_WON",
-              resolvedBy: "SYSTEM",
-              tx,
+        if (evaluation.decision === "AUTO_REFUND") {
+          // Stripe refund FIRST — never mark REFUNDED unless money actually moved.
+          if (order.stripePaymentIntentId) {
+            try {
+              await paymentService.refundPayment({
+                paymentIntentId: order.stripePaymentIntentId,
+                orderId: order.id,
+                reason: "Auto-resolved dispute: buyer refund",
+              });
+            } catch (err) {
+              logger.error("auto-resolution.refund_failed", {
+                orderId,
+                error: err instanceof Error ? err.message : String(err),
+              });
+
+              // Refund failed — keep order in DISPUTED for manual review.
+              // Do NOT transition to REFUNDED.
+              orderEventService.recordEvent({
+                orderId,
+                type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+                actorId: null,
+                actorRole: ACTOR_ROLES.SYSTEM,
+                summary:
+                  "Auto-resolution refund failed — order flagged for manual review",
+                metadata: {
+                  decision: "AUTO_REFUND",
+                  error: err instanceof Error ? err.message : String(err),
+                  status: "REFUND_FAILED",
+                },
+              });
+              return;
+            }
+          }
+
+          try {
+            await orderRepository.$transaction(async (tx) => {
+              await transitionOrder(
+                orderId,
+                "REFUNDED",
+                {},
+                { tx, fromStatus: "DISPUTED" },
+              );
+              if (dispute) {
+                await resolveDisputeRecord({
+                  disputeId: dispute.id,
+                  decision: "BUYER_WON",
+                  resolvedBy: "SYSTEM",
+                  tx,
+                });
+              }
+
+              // CRITICAL: audit and event inside the transaction so they roll back
+              // atomically if the transition or dispute resolution fails.
+              await orderEventService.recordEvent({
+                orderId,
+                type: ORDER_EVENT_TYPES.REFUNDED,
+                actorId: null,
+                actorRole: ACTOR_ROLES.SYSTEM,
+                summary: `Auto-resolved: Full refund to buyer. Score: ${evaluation.score}`,
+                metadata: {
+                  decision: "AUTO_REFUND",
+                  score: evaluation.score,
+                  factors: evaluation.factors,
+                  status: "EXECUTED",
+                },
+                tx,
+              });
+
+              await audit({
+                userId: null,
+                action: "DISPUTE_RESOLVED",
+                entityType: "Order",
+                entityId: orderId,
+                metadata: {
+                  trigger: "AUTO_RESOLUTION",
+                  decision: "AUTO_REFUND",
+                  score: evaluation.score,
+                },
+                tx,
+              });
+            });
+          } catch {
+            logger.warn("auto-resolution.transition_failed", {
+              orderId,
+              target: "REFUNDED",
             });
           }
 
-          // CRITICAL: audit and event inside the transaction so they roll back
-          // atomically if the transition or dispute resolution fails.
-          await orderEventService.recordEvent({
-            orderId,
-            type: ORDER_EVENT_TYPES.REFUNDED,
-            actorId: null,
-            actorRole: ACTOR_ROLES.SYSTEM,
-            summary: `Auto-resolved: Full refund to buyer. Score: ${evaluation.score}`,
-            metadata: {
-              decision: "AUTO_REFUND",
-              score: evaluation.score,
-              factors: evaluation.factors,
-              status: "EXECUTED",
-            },
-            tx,
-          });
+          // Restore listing
+          if (order.listing) {
+            fireAndForget(
+              listingRepository.restoreFromSold(order.listing.id),
+              "autoResolution.restoreFromSold",
+              { orderId, listingId: order.listing.id },
+            );
+          }
 
-          await audit({
-            userId: null,
-            action: "DISPUTE_RESOLVED",
-            entityType: "Order",
-            entityId: orderId,
-            metadata: {
-              trigger: "AUTO_RESOLUTION",
-              decision: "AUTO_REFUND",
-              score: evaluation.score,
-            },
-            tx,
-          });
-        });
-      } catch {
-        logger.warn("auto-resolution.transition_failed", {
-          orderId,
-          target: "REFUNDED",
-        });
-      }
+          fireAndForget(
+            createNotification({
+              userId: order.buyerId,
+              type: "SYSTEM",
+              title: "Dispute resolved — refund issued",
+              body: `Your dispute has been resolved in your favour. A full refund of ${formatCentsAsNzd(order.totalNzd)} is being processed.`,
+              orderId,
+              link: `/orders/${orderId}`,
+            }),
+            "autoResolution.refund.notify.buyer",
+            { orderId, userId: order.buyerId },
+          );
 
-      // Restore listing
-      if (order.listing) {
-        fireAndForget(
-          listingRepository.restoreFromSold(order.listing.id),
-          "autoResolution.restoreFromSold",
-          { orderId, listingId: order.listing.id },
-        );
-      }
+          fireAndForget(
+            createNotification({
+              userId: order.sellerId,
+              type: "SYSTEM",
+              title: "Dispute resolved — refund to buyer",
+              body: `The dispute on "${order.listing?.title}" has been resolved with a refund to the buyer.`,
+              orderId,
+              link: `/orders/${orderId}`,
+            }),
+            "autoResolution.refund.notify.seller",
+            { orderId, userId: order.sellerId },
+          );
 
-      fireAndForget(
-        createNotification({
-          userId: order.buyerId,
-          type: "SYSTEM",
-          title: "Dispute resolved — refund issued",
-          body: `Your dispute has been resolved in your favour. A full refund of ${formatCentsAsNzd(order.totalNzd)} is being processed.`,
-          orderId,
-          link: `/orders/${orderId}`,
-        }),
-        "autoResolution.refund.notify.buyer",
-        { orderId, userId: order.buyerId },
-      );
+          // Fire-and-forget AUTO_REFUND emails to both parties
+          fireAndForget(
+            userRepository
+              .findManyEmailContactsByIds([order.buyerId, order.sellerId])
+              .then((users) => {
+                const buyer = users.find((u) => u.id === order.buyerId);
+                const seller = users.find((u) => u.id === order.sellerId);
+                if (buyer) {
+                  fireAndForget(
+                    sendDisputeResolvedEmail({
+                      to: buyer.email,
+                      recipientName: buyer.displayName ?? "there",
+                      recipientRole: "buyer",
+                      orderId,
+                      listingTitle: order.listing?.title ?? "your item",
+                      resolution: "BUYER_WON",
+                      refundAmount: order.totalNzd,
+                      adminNote: null,
+                    }),
+                    "autoResolution.refund.email.buyer",
+                    { orderId },
+                  );
+                }
+                if (seller) {
+                  fireAndForget(
+                    sendDisputeResolvedEmail({
+                      to: seller.email,
+                      recipientName: seller.displayName ?? "there",
+                      recipientRole: "seller",
+                      orderId,
+                      listingTitle: order.listing?.title ?? "your item",
+                      resolution: "BUYER_WON",
+                      refundAmount: null,
+                      adminNote: null,
+                    }),
+                    "autoResolution.refund.email.seller",
+                    { orderId },
+                  );
+                }
+              }),
+            "autoResolution.refund.emailLookup",
+            { orderId },
+          );
+        } else if (evaluation.decision === "AUTO_DISMISS") {
+          // Stripe capture FIRST — never mark COMPLETED unless money actually moved.
+          if (order.stripePaymentIntentId) {
+            try {
+              await paymentService.capturePayment({
+                paymentIntentId: order.stripePaymentIntentId,
+                orderId: order.id,
+              });
+            } catch (err) {
+              logger.error("auto-resolution.capture_failed", {
+                orderId,
+                error: err instanceof Error ? err.message : String(err),
+              });
 
-      fireAndForget(
-        createNotification({
-          userId: order.sellerId,
-          type: "SYSTEM",
-          title: "Dispute resolved — refund to buyer",
-          body: `The dispute on "${order.listing?.title}" has been resolved with a refund to the buyer.`,
-          orderId,
-          link: `/orders/${orderId}`,
-        }),
-        "autoResolution.refund.notify.seller",
-        { orderId, userId: order.sellerId },
-      );
-
-      // Fire-and-forget AUTO_REFUND emails to both parties
-      fireAndForget(
-        userRepository
-          .findManyEmailContactsByIds([order.buyerId, order.sellerId])
-          .then((users) => {
-            const buyer = users.find((u) => u.id === order.buyerId);
-            const seller = users.find((u) => u.id === order.sellerId);
-            if (buyer) {
-              fireAndForget(
-                sendDisputeResolvedEmail({
-                  to: buyer.email,
-                  recipientName: buyer.displayName ?? "there",
-                  recipientRole: "buyer",
-                  orderId,
-                  listingTitle: order.listing?.title ?? "your item",
-                  resolution: "BUYER_WON",
-                  refundAmount: order.totalNzd,
-                  adminNote: null,
-                }),
-                "autoResolution.refund.email.buyer",
-                { orderId },
-              );
+              // Capture failed — keep order in DISPUTED for manual review.
+              // Do NOT transition to COMPLETED.
+              orderEventService.recordEvent({
+                orderId,
+                type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+                actorId: null,
+                actorRole: ACTOR_ROLES.SYSTEM,
+                summary:
+                  "Auto-resolution capture failed — order flagged for manual review",
+                metadata: {
+                  decision: "AUTO_DISMISS",
+                  error: err instanceof Error ? err.message : String(err),
+                  status: "CAPTURE_FAILED",
+                },
+              });
+              return;
             }
-            if (seller) {
-              fireAndForget(
-                sendDisputeResolvedEmail({
-                  to: seller.email,
-                  recipientName: seller.displayName ?? "there",
-                  recipientRole: "seller",
-                  orderId,
-                  listingTitle: order.listing?.title ?? "your item",
-                  resolution: "BUYER_WON",
-                  refundAmount: null,
-                  adminNote: null,
-                }),
-                "autoResolution.refund.email.seller",
-                { orderId },
-              );
-            }
-          }),
-        "autoResolution.refund.emailLookup",
-        { orderId },
-      );
-    } else if (evaluation.decision === "AUTO_DISMISS") {
-      // Stripe capture FIRST — never mark COMPLETED unless money actually moved.
-      if (order.stripePaymentIntentId) {
-        try {
-          await paymentService.capturePayment({
-            paymentIntentId: order.stripePaymentIntentId,
-            orderId: order.id,
-          });
-        } catch (err) {
-          logger.error("auto-resolution.capture_failed", {
-            orderId,
-            error: err instanceof Error ? err.message : String(err),
-          });
+          }
 
-          // Capture failed — keep order in DISPUTED for manual review.
-          // Do NOT transition to COMPLETED.
+          try {
+            await orderRepository.$transaction(async (tx) => {
+              await transitionOrder(
+                orderId,
+                "COMPLETED",
+                { completedAt: new Date() },
+                { tx, fromStatus: "DISPUTED" },
+              );
+              if (dispute) {
+                await resolveDisputeRecord({
+                  disputeId: dispute.id,
+                  decision: "SELLER_WON",
+                  resolvedBy: "SYSTEM",
+                  tx,
+                });
+              }
+
+              // CRITICAL: audit and event inside the transaction so they roll back
+              // atomically if the transition or dispute resolution fails.
+              await orderEventService.recordEvent({
+                orderId,
+                type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
+                actorId: null,
+                actorRole: ACTOR_ROLES.SYSTEM,
+                summary: `Auto-resolved: Dismissed in seller's favour. Score: ${evaluation.score}`,
+                metadata: {
+                  decision: "AUTO_DISMISS",
+                  score: evaluation.score,
+                  factors: evaluation.factors,
+                  status: "EXECUTED",
+                },
+                tx,
+              });
+
+              await audit({
+                userId: null,
+                action: "DISPUTE_RESOLVED",
+                entityType: "Order",
+                entityId: orderId,
+                metadata: {
+                  trigger: "AUTO_RESOLUTION",
+                  decision: "AUTO_DISMISS",
+                  score: evaluation.score,
+                },
+                tx,
+              });
+            });
+          } catch {
+            logger.warn("auto-resolution.dismiss_failed", { orderId });
+          }
+
+          fireAndForget(
+            createNotification({
+              userId: order.buyerId,
+              type: "SYSTEM",
+              title: "Dispute resolved",
+              body: "After review, the dispute has been resolved in the seller's favour. Payment will be released.",
+              orderId,
+              link: `/orders/${orderId}`,
+            }),
+            "autoResolution.dismiss.notify.buyer",
+            { orderId, userId: order.buyerId },
+          );
+
+          fireAndForget(
+            createNotification({
+              userId: order.sellerId,
+              type: "ORDER_COMPLETED",
+              title: "Dispute resolved in your favour",
+              body: `The dispute on "${order.listing?.title}" has been dismissed. Payment is being released.`,
+              orderId,
+              link: `/orders/${orderId}`,
+            }),
+            "autoResolution.dismiss.notify.seller",
+            { orderId, userId: order.sellerId },
+          );
+
+          // Fire-and-forget AUTO_DISMISS emails to both parties
+          fireAndForget(
+            userRepository
+              .findManyEmailContactsByIds([order.buyerId, order.sellerId])
+              .then((users) => {
+                const buyer = users.find((u) => u.id === order.buyerId);
+                const seller = users.find((u) => u.id === order.sellerId);
+                if (buyer) {
+                  fireAndForget(
+                    sendDisputeResolvedEmail({
+                      to: buyer.email,
+                      recipientName: buyer.displayName ?? "there",
+                      recipientRole: "buyer",
+                      orderId,
+                      listingTitle: order.listing?.title ?? "your item",
+                      resolution: "SELLER_WON",
+                      refundAmount: null,
+                      adminNote: null,
+                    }),
+                    "autoResolution.dismiss.email.buyer",
+                    { orderId },
+                  );
+                }
+                if (seller) {
+                  fireAndForget(
+                    sendDisputeResolvedEmail({
+                      to: seller.email,
+                      recipientName: seller.displayName ?? "there",
+                      recipientRole: "seller",
+                      orderId,
+                      listingTitle: order.listing?.title ?? "your item",
+                      resolution: "SELLER_WON",
+                      refundAmount: null,
+                      adminNote: null,
+                    }),
+                    "autoResolution.dismiss.email.seller",
+                    { orderId },
+                  );
+                }
+              }),
+            "autoResolution.dismiss.emailLookup",
+            { orderId },
+          );
+        } else if (evaluation.decision === "FLAG_FRAUD") {
           orderEventService.recordEvent({
             orderId,
-            type: ORDER_EVENT_TYPES.DISPUTE_RESPONDED,
+            type: ORDER_EVENT_TYPES.FRAUD_FLAGGED,
             actorId: null,
             actorRole: ACTOR_ROLES.SYSTEM,
-            summary:
-              "Auto-resolution capture failed — order flagged for manual review",
+            summary: `Fraud warning flagged. Score: ${evaluation.score}`,
             metadata: {
-              decision: "AUTO_DISMISS",
-              error: err instanceof Error ? err.message : String(err),
-              status: "CAPTURE_FAILED",
-            },
-          });
-          return;
-        }
-      }
-
-      try {
-        await orderRepository.$transaction(async (tx) => {
-          await transitionOrder(
-            orderId,
-            "COMPLETED",
-            { completedAt: new Date() },
-            { tx, fromStatus: "DISPUTED" },
-          );
-          if (dispute) {
-            await resolveDisputeRecord({
-              disputeId: dispute.id,
-              decision: "SELLER_WON",
-              resolvedBy: "SYSTEM",
-              tx,
-            });
-          }
-
-          // CRITICAL: audit and event inside the transaction so they roll back
-          // atomically if the transition or dispute resolution fails.
-          await orderEventService.recordEvent({
-            orderId,
-            type: ORDER_EVENT_TYPES.DISPUTE_RESOLVED,
-            actorId: null,
-            actorRole: ACTOR_ROLES.SYSTEM,
-            summary: `Auto-resolved: Dismissed in seller's favour. Score: ${evaluation.score}`,
-            metadata: {
-              decision: "AUTO_DISMISS",
+              decision: "FLAG_FRAUD",
               score: evaluation.score,
               factors: evaluation.factors,
-              status: "EXECUTED",
+              status: "FLAGGED",
             },
-            tx,
           });
-
-          await audit({
+          audit({
             userId: null,
-            action: "DISPUTE_RESOLVED",
+            action: "FRAUD_FLAGGED",
             entityType: "Order",
             entityId: orderId,
-            metadata: {
-              trigger: "AUTO_RESOLUTION",
-              decision: "AUTO_DISMISS",
-              score: evaluation.score,
-            },
-            tx,
+            metadata: { trigger: "AUTO_RESOLUTION", score: evaluation.score },
           });
-        });
-      } catch {
-        logger.warn("auto-resolution.dismiss_failed", { orderId });
-      }
+        }
 
-      fireAndForget(
-        createNotification({
-          userId: order.buyerId,
-          type: "SYSTEM",
-          title: "Dispute resolved",
-          body: "After review, the dispute has been resolved in the seller's favour. Payment will be released.",
+        logger.info("auto-resolution.executed", {
           orderId,
-          link: `/orders/${orderId}`,
-        }),
-        "autoResolution.dismiss.notify.buyer",
-        { orderId, userId: order.buyerId },
-      );
-
-      fireAndForget(
-        createNotification({
-          userId: order.sellerId,
-          type: "ORDER_COMPLETED",
-          title: "Dispute resolved in your favour",
-          body: `The dispute on "${order.listing?.title}" has been dismissed. Payment is being released.`,
-          orderId,
-          link: `/orders/${orderId}`,
-        }),
-        "autoResolution.dismiss.notify.seller",
-        { orderId, userId: order.sellerId },
-      );
-
-      // Fire-and-forget AUTO_DISMISS emails to both parties
-      fireAndForget(
-        userRepository
-          .findManyEmailContactsByIds([order.buyerId, order.sellerId])
-          .then((users) => {
-            const buyer = users.find((u) => u.id === order.buyerId);
-            const seller = users.find((u) => u.id === order.sellerId);
-            if (buyer) {
-              fireAndForget(
-                sendDisputeResolvedEmail({
-                  to: buyer.email,
-                  recipientName: buyer.displayName ?? "there",
-                  recipientRole: "buyer",
-                  orderId,
-                  listingTitle: order.listing?.title ?? "your item",
-                  resolution: "SELLER_WON",
-                  refundAmount: null,
-                  adminNote: null,
-                }),
-                "autoResolution.dismiss.email.buyer",
-                { orderId },
-              );
-            }
-            if (seller) {
-              fireAndForget(
-                sendDisputeResolvedEmail({
-                  to: seller.email,
-                  recipientName: seller.displayName ?? "there",
-                  recipientRole: "seller",
-                  orderId,
-                  listingTitle: order.listing?.title ?? "your item",
-                  resolution: "SELLER_WON",
-                  refundAmount: null,
-                  adminNote: null,
-                }),
-                "autoResolution.dismiss.email.seller",
-                { orderId },
-              );
-            }
-          }),
-        "autoResolution.dismiss.emailLookup",
-        { orderId },
-      );
-    } else if (evaluation.decision === "FLAG_FRAUD") {
-      orderEventService.recordEvent({
-        orderId,
-        type: ORDER_EVENT_TYPES.FRAUD_FLAGGED,
-        actorId: null,
-        actorRole: ACTOR_ROLES.SYSTEM,
-        summary: `Fraud warning flagged. Score: ${evaluation.score}`,
-        metadata: {
-          decision: "FLAG_FRAUD",
+          decision: evaluation.decision,
           score: evaluation.score,
-          factors: evaluation.factors,
-          status: "FLAGGED",
-        },
-      });
-      audit({
-        userId: null,
-        action: "FRAUD_FLAGGED",
-        entityType: "Order",
-        entityId: orderId,
-        metadata: { trigger: "AUTO_RESOLUTION", score: evaluation.score },
-      });
-    }
-
-    logger.info("auto-resolution.executed", {
-      orderId,
-      decision: evaluation.decision,
-      score: evaluation.score,
-    });
+        });
+      },
+      { ttlSeconds: 120 },
+    ); // end withLock
   }
 }
 

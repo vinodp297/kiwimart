@@ -11,6 +11,7 @@
 import { auth } from "@/lib/auth";
 import db from "@/lib/db";
 import { AppError } from "@/shared/errors";
+import { logger } from "@/shared/logger";
 
 export type AuthenticatedUser = {
   id: string;
@@ -59,10 +60,10 @@ export async function requireUser(): Promise<AuthenticatedUser> {
     await db.session
       .deleteMany({ where: { userId: user.id } })
       .catch((err: unknown) => {
-        console.error(
-          "[requireUser] session cleanup failed",
-          err instanceof Error ? err.message : String(err),
-        );
+        logger.error("require_user.session_cleanup_failed", {
+          userId: user.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
     throw AppError.banned();
   }

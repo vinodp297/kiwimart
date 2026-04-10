@@ -164,7 +164,7 @@ describe("PaymentService", () => {
 
       expect(mockStripeRefund).toHaveBeenCalledWith(
         { payment_intent: "pi_to_refund" },
-        { idempotencyKey: "refund-order-1" },
+        { idempotencyKey: "refund-order-1-full-no-reason" },
       );
     });
 

@@ -27,9 +27,9 @@ import { fireAndForget } from "@/lib/fire-and-forget";
 
 export function startPickupWorker() {
   if (process.env.VERCEL) {
-    console.error(
-      "worker.pickup: workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
-    );
+    logger.error("worker.pickup.vercel_unsupported", {
+      error: "Workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
+    });
     return;
   }
 

@@ -28,6 +28,7 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 import { auth } from "@/lib/auth";
 import { orderRepository } from "@/modules/orders/order.repository";
+import { logger } from "@/shared/logger";
 
 // ── Prefix classifications ────────────────────────────────────────────────────
 
@@ -193,7 +194,9 @@ export async function GET(
       return notFound();
     }
     // Never log the key value — it may contain user IDs or order IDs
-    console.error("[Image Proxy] Error fetching file from R2");
+    logger.error("image_proxy.r2_fetch_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json({ error: "Failed to load file" }, { status: 500 });
   }
 }

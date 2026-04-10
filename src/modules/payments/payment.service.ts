@@ -178,11 +178,16 @@ export class PaymentService {
     });
 
     try {
+      // Idempotency key includes amount and reason so that a partial refund
+      // followed by a full refund (or two partial refunds for different amounts)
+      // are treated as distinct Stripe requests rather than silent no-ops.
+      const amountStr = input.amountNzd?.toString() ?? "full";
+      const reasonStr = input.reason ?? "no-reason";
+      const idempotencyKey = `refund-${input.orderId}-${amountStr}-${reasonStr}`;
+
       await stripe.refunds.create(
         { payment_intent: input.paymentIntentId },
-        // Idempotency key prevents duplicate refund records on network retry.
-        // Scoped to orderId — each order can only be refunded once.
-        { idempotencyKey: `refund-${input.orderId}` },
+        { idempotencyKey },
       );
       logger.info("payment.refunded", {
         orderId: input.orderId,

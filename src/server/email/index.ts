@@ -5,6 +5,7 @@
 
 import { sendTransactionalEmail } from "./transport";
 import { formatCentsAsNzd } from "@/lib/currency";
+import { logger } from "@/shared/logger";
 
 // ── Email configuration from environment ─────────────────────────────────────
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
@@ -28,9 +29,9 @@ const LISTING_POLICY_PATH_CFG =
   process.env.LISTING_POLICY_PATH ?? "/policies/listing-guidelines";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
 if (!process.env.NEXT_PUBLIC_APP_URL) {
-  console.error(
-    "[email] NEXT_PUBLIC_APP_URL is not set — email links will be broken",
-  );
+  logger.error("email.config.app_url_missing", {
+    error: "NEXT_PUBLIC_APP_URL is not set — email links will be broken",
+  });
 }
 
 // ── Helper: HTML-escape ───────────────────────────────────────────────────────

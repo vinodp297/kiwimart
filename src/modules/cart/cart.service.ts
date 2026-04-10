@@ -36,7 +36,7 @@ async function safeRedisSet(key: string, value: string): Promise<void> {
   try {
     await getRedisClient().set(key, value, { ex: CART_REDIS_TTL });
   } catch (err) {
-    console.error("[cart] redis set failed (non-fatal)", {
+    logger.error("cart.redis_set_failed", {
       key,
       error: err instanceof Error ? err.message : String(err),
     });
@@ -47,7 +47,7 @@ async function safeRedisDel(key: string): Promise<void> {
   try {
     await getRedisClient().del(key);
   } catch (err) {
-    console.error("[cart] redis del failed (non-fatal)", {
+    logger.error("cart.redis_del_failed", {
       key,
       error: err instanceof Error ? err.message : String(err),
     });

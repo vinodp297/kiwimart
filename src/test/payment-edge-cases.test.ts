@@ -283,7 +283,7 @@ describe("PaymentService — edge cases", () => {
 
       expect(mockStripeRefund).toHaveBeenCalledWith(
         { payment_intent: "pi_refund" },
-        { idempotencyKey: "refund-order-unique-42" },
+        { idempotencyKey: "refund-order-unique-42-full-no-reason" },
       );
     });
 

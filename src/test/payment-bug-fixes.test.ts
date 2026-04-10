@@ -128,6 +128,7 @@ function mockDispute() {
   return {
     id: "dispute-1",
     orderId: "order-1",
+    status: "AUTO_RESOLVING",
     reason: "ITEM_NOT_RECEIVED",
     openedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
     sellerStatement: null,

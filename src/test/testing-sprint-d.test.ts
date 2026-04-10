@@ -29,6 +29,7 @@ describe("Fix 1.1 — requireUser: session cleanup catch branch", () => {
   it("still throws banned() when db.session.deleteMany rejects", async () => {
     const { requireUser } = await import("@/server/lib/requireUser");
     const { auth } = await import("@/lib/auth");
+    const { logger } = await import("@/shared/logger");
 
     vi.mocked(auth).mockResolvedValue({
       user: { id: "banned-1" },
@@ -48,19 +49,19 @@ describe("Fix 1.1 — requireUser: session cleanup catch branch", () => {
       new Error("redis/db hiccup"),
     );
 
-    // Swallow the console.error noise this branch emits.
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
     await expect(requireUser()).rejects.toThrow(/suspended/i);
 
-    // The catch branch ran — it logged to console.error.
-    expect(consoleSpy).toHaveBeenCalled();
-    consoleSpy.mockRestore();
+    // The catch branch now routes through logger.error, not console.error.
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+      "require_user.session_cleanup_failed",
+      expect.objectContaining({ userId: "banned-1" }),
+    );
   });
 
   it("logs the error message string (not the raw Error object)", async () => {
     const { requireUser } = await import("@/server/lib/requireUser");
     const { auth } = await import("@/lib/auth");
+    const { logger } = await import("@/shared/logger");
 
     vi.mocked(auth).mockResolvedValue({
       user: { id: "banned-2" },
@@ -77,12 +78,13 @@ describe("Fix 1.1 — requireUser: session cleanup catch branch", () => {
     // Non-Error rejection exercises the `String(err)` branch.
     vi.mocked(db.session.deleteMany).mockRejectedValue("string failure");
 
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(requireUser()).rejects.toThrow(/suspended/i);
 
-    const logged = consoleSpy.mock.calls.map((c) => c.join(" ")).join("|");
-    expect(logged).toContain("string failure");
-    consoleSpy.mockRestore();
+    // logger.error must have been called and the error string captured.
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+      "require_user.session_cleanup_failed",
+      expect.objectContaining({ error: "string failure" }),
+    );
   });
 });
 

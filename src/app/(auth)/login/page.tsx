@@ -18,6 +18,7 @@ import { signIn } from "next-auth/react";
 import Script from "next/script";
 import { loginSchema } from "@/server/validators";
 import { Button, Input, Alert, Divider } from "@/components/ui/primitives";
+import { safeRedirect } from "@/lib/safe-redirect";
 
 declare global {
   interface Window {
@@ -32,7 +33,7 @@ declare global {
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("from") ?? "/dashboard/buyer";
+  const redirectTo = safeRedirect(searchParams.get("from"), "/dashboard/buyer");
   const errorParam = searchParams.get("error");
   const registeredParam = searchParams.get("registered");
   const verifiedParam = searchParams.get("verified");
@@ -203,10 +204,11 @@ export default function LoginPage() {
         return;
       }
 
-      const fromParam = searchParams.get("from");
       const isFirstLogin = !!verifiedParam || !!registeredParam;
-      window.location.href =
-        fromParam || (isFirstLogin ? "/welcome" : "/dashboard/buyer");
+      window.location.href = safeRedirect(
+        searchParams.get("from"),
+        isFirstLogin ? "/welcome" : "/dashboard/buyer",
+      );
     } catch {
       setError(
         "We couldn't sign you in. Please check your internet connection and try again.",

@@ -36,9 +36,9 @@ const VALID_PERFORMANCE_TIERS = new Set<string>(["GOLD", "SILVER", "BRONZE"]);
 
 export function startPayoutWorker() {
   if (process.env.VERCEL) {
-    console.error(
-      "worker.payout: workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
-    );
+    logger.error("worker.payout.vercel_unsupported", {
+      error: "Workers must run on Render.com, not Vercel. See docs/RUNBOOK.md.",
+    });
     return;
   }
   const worker = new Worker<PayoutJobData>(

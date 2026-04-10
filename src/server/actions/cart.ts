@@ -4,6 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // ─── Shopping Cart Server Actions ────────────────────────────────────────────
 
 import { requireUser } from "@/server/lib/requireUser";
+import { logger } from "@/shared/logger";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { cartService } from "@/modules/cart/cart.service";
 import type { CartData, DriftedItem } from "@/modules/cart/cart.service";
@@ -55,9 +56,8 @@ export async function addToCart(
       }
       return { success: true, data: result.data };
     } catch (err) {
-      console.error("[addToCart] unhandled error", {
+      logger.error("cart.add_to_cart.unhandled_error", {
         error: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
       });
       return {
         success: false,

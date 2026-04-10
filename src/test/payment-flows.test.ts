@@ -245,7 +245,7 @@ describe("PaymentService — refundPayment", () => {
 
     expect(mockStripeRefund).toHaveBeenCalledWith(
       { payment_intent: "pi_mock" },
-      { idempotencyKey: "refund-order-1" },
+      { idempotencyKey: "refund-order-1-full-no-reason" },
     );
   });
 
@@ -256,7 +256,7 @@ describe("PaymentService — refundPayment", () => {
     });
 
     expect(mockStripeRefund).toHaveBeenCalledWith(expect.anything(), {
-      idempotencyKey: "refund-order-xyz",
+      idempotencyKey: "refund-order-xyz-full-no-reason",
     });
   });
 

@@ -138,6 +138,7 @@ function mockDispute(overrides: Record<string, unknown> = {}) {
   return {
     id: "dispute-1",
     orderId: "order-1",
+    status: "AUTO_RESOLVING",
     reason: "ITEM_NOT_RECEIVED",
     openedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
     sellerStatement: null,
