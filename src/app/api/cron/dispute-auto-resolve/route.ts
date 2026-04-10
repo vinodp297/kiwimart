@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { processDisputeAutoResolution } from "@/server/jobs/disputeAutoResolve";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
 import { recordCronRun } from "@/server/lib/cronLogger";
-import { logger } from "@/shared/logger";
+import { runCronJob } from "@/lib/cron-monitor";
 
 export const dynamic = "force-dynamic";
 
@@ -17,17 +17,33 @@ export async function GET(request: NextRequest) {
 
   const startedAt = new Date();
   try {
-    const result = await processDisputeAutoResolution();
+    const result = await runCronJob(
+      "processDisputeAutoResolution",
+      async () => {
+        const r = await processDisputeAutoResolution();
+        return {
+          processed:
+            r.coolingExecuted +
+            r.unresponsiveEvaluated +
+            r.interactionsEscalated,
+          ...r,
+        };
+      },
+    );
 
     await recordCronRun("dispute-auto-resolve", "success", startedAt);
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      disputeAutoResolve: result,
+      disputeAutoResolve: {
+        coolingExecuted: result.coolingExecuted,
+        unresponsiveEvaluated: result.unresponsiveEvaluated,
+        interactionsEscalated: result.interactionsEscalated,
+        errors: result.errors,
+      },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    logger.error("cron.dispute_auto_resolve.failed", { error: msg });
     await recordCronRun("dispute-auto-resolve", "error", startedAt, msg);
     return NextResponse.json(
       { success: false, error: "Job failed" },

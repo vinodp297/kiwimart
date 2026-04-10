@@ -10,6 +10,7 @@ import { messageService } from "@/modules/messaging/message.service";
 import { sendMessageSchema } from "@/server/validators";
 import { updateSellerResponseMetrics } from "@/modules/sellers/response-metrics.service";
 import { fireAndForget } from "@/lib/fire-and-forget";
+import { logger } from "@/shared/logger";
 import type { ActionResult } from "@/types";
 
 export async function sendMessage(
@@ -67,7 +68,10 @@ export async function getMyThreads() {
   try {
     const user = await requireUser();
     return await messageService.getMyThreads(user.id);
-  } catch {
+  } catch (error) {
+    logger.error("messages.threads.fetch_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }
@@ -79,7 +83,11 @@ export async function getThreadMessages(
   try {
     const user = await requireUser();
     return await messageService.getThreadMessages(threadId, user.id, options);
-  } catch {
+  } catch (error) {
+    logger.error("messages.thread_messages.fetch_failed", {
+      threadId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { messages: [], hasMore: false };
   }
 }

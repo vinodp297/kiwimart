@@ -6,6 +6,7 @@
 import { requireUser } from "@/server/lib/requireUser";
 import { orderEventService } from "@/modules/orders/order-event.service";
 import { interactionRepository } from "@/modules/orders/interaction.repository";
+import { logger } from "@/shared/logger";
 import type { ActionResult } from "@/types";
 
 export interface TimelineEventData {
@@ -54,7 +55,11 @@ export async function getOrderTimeline(
           : null,
       })),
     };
-  } catch {
+  } catch (error) {
+    logger.error("order.timeline.fetch_failed", {
+      orderId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return {
       success: false,
       error: "Could not load order timeline.",

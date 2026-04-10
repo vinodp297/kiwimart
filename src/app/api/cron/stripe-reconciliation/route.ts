@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runStripeReconciliation } from "@/server/jobs/stripeReconciliation";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
 import { recordCronRun } from "@/server/lib/cronLogger";
-import { logger } from "@/shared/logger";
+import { runCronJob } from "@/lib/cron-monitor";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,10 @@ export async function GET(request: NextRequest) {
 
   const startedAt = new Date();
   try {
-    await runStripeReconciliation();
+    await runCronJob("stripeReconciliation", async () => {
+      await runStripeReconciliation();
+      return { processed: 1 };
+    });
     await recordCronRun("stripe-reconciliation", "success", startedAt);
 
     return NextResponse.json({
@@ -26,7 +29,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    logger.error("cron.stripe_reconciliation.failed", { error: msg });
     await recordCronRun("stripe-reconciliation", "error", startedAt, msg);
     return NextResponse.json(
       { success: false, error: "Job failed" },

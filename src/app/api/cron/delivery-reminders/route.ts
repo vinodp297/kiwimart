@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { processDeliveryReminders } from "@/server/jobs/deliveryReminders";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
 import { recordCronRun } from "@/server/lib/cronLogger";
-import { logger } from "@/shared/logger";
+import { runCronJob } from "@/lib/cron-monitor";
 
 export const dynamic = "force-dynamic";
 
@@ -17,17 +17,27 @@ export async function GET(request: NextRequest) {
 
   const startedAt = new Date();
   try {
-    const result = await processDeliveryReminders();
+    const result = await runCronJob("deliveryReminders", async () => {
+      const r = await processDeliveryReminders();
+      return {
+        processed: r.remindersSent + r.autoCompleted,
+        ...r,
+      };
+    });
 
     await recordCronRun("delivery-reminders", "success", startedAt);
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      deliveryReminders: result,
+      deliveryReminders: {
+        remindersSent: result.remindersSent,
+        autoCompleted: result.autoCompleted,
+        errors: result.errors,
+        skipped: result.skipped,
+      },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    logger.error("cron.delivery_reminders.failed", { error: msg });
     await recordCronRun("delivery-reminders", "error", startedAt, msg);
     return NextResponse.json(
       { success: false, error: "Job failed" },

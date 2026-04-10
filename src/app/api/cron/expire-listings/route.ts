@@ -10,6 +10,7 @@ import {
 } from "@/server/jobs/expireListings";
 import { verifyCronSecret } from "@/server/lib/verifyCronSecret";
 import { recordCronRun } from "@/server/lib/cronLogger";
+import { runCronJob } from "@/lib/cron-monitor";
 import { logger } from "@/shared/logger";
 
 export const dynamic = "force-dynamic";
@@ -23,24 +24,30 @@ export async function GET(request: Request) {
   try {
     logger.info("cron.expire_listings.triggered");
 
-    const [listingResult, offerResult] = await Promise.all([
-      expireListings(),
-      releaseExpiredOfferReservations(),
-    ]);
+    const { listings, offers } = await runCronJob(
+      "expireListings",
+      async () => {
+        const [listingResult, offerResult] = await Promise.all([
+          expireListings(),
+          releaseExpiredOfferReservations(),
+        ]);
+        return {
+          processed: listingResult.expired,
+          listings: listingResult,
+          offers: offerResult,
+        };
+      },
+    );
 
     await recordCronRun("expire-listings", "success", startedAt);
     return NextResponse.json({
       success: true,
-      listings: listingResult,
-      offers: offerResult,
+      listings,
+      offers,
       timestamp: new Date().toISOString(),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    logger.error("api.error", {
-      path: "/api/cron/expire-listings",
-      error: msg,
-    });
     await recordCronRun("expire-listings", "error", startedAt, msg);
     return NextResponse.json(
       { error: "Listing expiration job failed." },

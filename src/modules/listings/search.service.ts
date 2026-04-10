@@ -8,6 +8,7 @@ import { z } from "zod";
 import { getThumbUrl } from "@/lib/image";
 import { haversineKm } from "@/lib/geocoding";
 import { toCents } from "@/lib/currency";
+import { logger } from "@/shared/logger";
 import { listingRepository } from "./listing.repository";
 import { reviewRepository } from "@/modules/reviews/review.repository";
 import type { ListingCard } from "@/types";
@@ -140,8 +141,13 @@ export class SearchService {
           };
         }
         where.id = { in: ftsRankedIds };
-      } catch {
-        // Fall back to ILIKE when tsvector is unavailable
+      } catch (error) {
+        // Fall back to ILIKE when tsvector is unavailable — but observe the
+        // fallback so we know if Postgres FTS is silently broken.
+        logger.warn("search.fts_fallback", {
+          error: error instanceof Error ? error.message : String(error),
+          query: trimmedQuery,
+        });
         where.OR = [
           { title: { contains: trimmedQuery, mode: "insensitive" as const } },
           {

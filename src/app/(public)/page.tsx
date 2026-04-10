@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import db from "@/lib/db";
 import { getImageUrl } from "@/lib/image";
 import { getCached } from "@/server/lib/cache";
+import { logger } from "@/shared/logger";
 import CATEGORIES from "@/data/categories";
 import LISTINGS from "@/data/listings";
 
@@ -177,8 +178,33 @@ async function getHomePageData() {
     ]);
 
     return { listingCount, memberCount, featuredListings, categoryCounts };
-  } catch {
-    // DB unavailable — return nulls to fall back to mock data
+  } catch (error) {
+    // DB/cache failure — the page still renders via mock data, but this is
+    // a production incident signal. Log at error level (auto-forwarded to
+    // Sentry by the logger) and attach a Sentry alert with component +
+    // severity tags so operators can distinguish "homepage degraded" from
+    // other errors in the Sentry dashboard.
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error("homepage.data_fetch_failed", {
+      error: message,
+      component: "homepage",
+      severity: "degraded",
+    });
+
+    // Explicit Sentry tagging — fire-and-forget so the request still returns.
+    import("@sentry/nextjs")
+      .then((Sentry) => {
+        Sentry.captureException(error, {
+          tags: { component: "homepage", severity: "degraded" },
+          level: "warning",
+        });
+      })
+      .catch(() => {
+        // Sentry unavailable — structured log above still records the failure
+      });
+
+    // Preserve the existing fallback behaviour — return nulls so the page
+    // renders with mock data rather than a 500.
     return {
       listingCount: null,
       memberCount: null,
