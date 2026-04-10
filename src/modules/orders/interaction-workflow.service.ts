@@ -22,6 +22,7 @@ import { fireAndForget } from "@/lib/fire-and-forget";
 import { MS_PER_HOUR, MS_PER_DAY } from "@/lib/time";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { interactionRepository } from "./interaction.repository";
+import { orderRepository } from "./order.repository";
 import { toCents, formatCentsAsNzd } from "@/lib/currency";
 
 import type { ServiceResult } from "@/shared/types/service-result";
@@ -91,6 +92,12 @@ export class InteractionWorkflowService {
         }
       }
 
+      // Fire-and-forget: orderService.cancelOrder() already committed the
+      // CANCELLED event inside its own transaction. These two supplemental
+      // events describe WHY the cancellation occurred; there is no DB write
+      // in this scope to be atomic with. Atomising would require pulling
+      // cancelOrder() into an outer transaction — a restructuring beyond
+      // the scope of this tx-threading pass.
       orderEventService.recordEvent({
         orderId,
         type: ORDER_EVENT_TYPES.CANCEL_REQUESTED,
@@ -145,6 +152,10 @@ export class InteractionWorkflowService {
       autoAction: AUTO_ACTIONS.AUTO_APPROVE,
     });
 
+    // Fire-and-forget: createInteraction() writes the interaction row without
+    // exposing a tx handle. Atomising this event with that write would require
+    // OrderInteractionService.createInteraction() to accept tx — a change to
+    // another service outside the scope of this tx-threading pass.
     orderEventService.recordEvent({
       orderId,
       type: ORDER_EVENT_TYPES.CANCEL_REQUESTED,
@@ -233,6 +244,10 @@ export class InteractionWorkflowService {
         }
       }
 
+      // Fire-and-forget: orderService.cancelOrder() committed the order
+      // status transition and its CANCELLED event inside its own transaction.
+      // This supplemental CANCEL_APPROVED event records the responder's
+      // decision; there is no DB write in this scope to be atomic with.
       orderEventService.recordEvent({
         orderId: interaction.orderId,
         type: ORDER_EVENT_TYPES.CANCEL_APPROVED,
@@ -255,6 +270,9 @@ export class InteractionWorkflowService {
         { orderId: order.id, userId: interaction.initiatedById },
       );
     } else {
+      // Fire-and-forget: respondToInteraction() updated the interaction status
+      // inside order-interaction.service.ts without exposing a tx handle.
+      // Threading tx here would require modifying that service — out of scope.
       orderEventService.recordEvent({
         orderId: interaction.orderId,
         type: ORDER_EVENT_TYPES.CANCEL_REJECTED,
@@ -318,6 +336,9 @@ export class InteractionWorkflowService {
       autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
     });
 
+    // Fire-and-forget: createInteraction() writes the interaction row without
+    // exposing a tx handle. Atomising requires OrderInteractionService to
+    // accept tx — out of scope for this tx-threading pass.
     orderEventService.recordEvent({
       orderId,
       type: ORDER_EVENT_TYPES.RETURN_REQUESTED,
@@ -394,18 +415,25 @@ export class InteractionWorkflowService {
     );
 
     if (action === "ACCEPT") {
-      await interactionRepository.updateInteractionResolution(
-        interactionId,
-        "RETURNED",
-      );
+      // CRITICAL: resolution update and event recording are atomic — a crash
+      // between the two would leave the interaction resolved with no timeline
+      // entry, making the approval invisible to buyers.
+      await orderRepository.$transaction(async (tx) => {
+        await interactionRepository.updateInteractionResolution(
+          interactionId,
+          "RETURNED",
+          tx,
+        );
 
-      orderEventService.recordEvent({
-        orderId: interaction.orderId,
-        type: ORDER_EVENT_TYPES.RETURN_APPROVED,
-        actorId: userId,
-        actorRole: ACTOR_ROLES.SELLER,
-        summary: `Seller approved the return request${responseNote ? `: ${responseNote}` : ""}`,
-        metadata: { interactionId },
+        await orderEventService.recordEvent({
+          orderId: interaction.orderId,
+          type: ORDER_EVENT_TYPES.RETURN_APPROVED,
+          actorId: userId,
+          actorRole: ACTOR_ROLES.SELLER,
+          summary: `Seller approved the return request${responseNote ? `: ${responseNote}` : ""}`,
+          metadata: { interactionId },
+          tx,
+        });
       });
 
       fireAndForget(
@@ -446,6 +474,9 @@ export class InteractionWorkflowService {
         { orderId: interaction.orderId },
       );
     } else {
+      // Fire-and-forget: respondToInteraction() updated the interaction status
+      // without exposing a tx handle. Threading tx would require modifying
+      // order-interaction.service.ts — out of scope.
       orderEventService.recordEvent({
         orderId: interaction.orderId,
         type: ORDER_EVENT_TYPES.RETURN_REJECTED,
@@ -551,6 +582,8 @@ export class InteractionWorkflowService {
     });
 
     const label = isBuyer ? "Buyer" : "Seller";
+    // Fire-and-forget: createInteraction() writes the interaction row without
+    // exposing a tx handle — same constraint as requestReturn/requestCancellation.
     orderEventService.recordEvent({
       orderId,
       type: ORDER_EVENT_TYPES.PARTIAL_REFUND_REQUESTED,
@@ -624,18 +657,25 @@ export class InteractionWorkflowService {
     const responderRole = isBuyer ? "Buyer" : "Seller";
 
     if (action === "ACCEPT") {
-      await interactionRepository.updateInteractionResolution(
-        interactionId,
-        "PARTIAL_REFUND",
-      );
+      // CRITICAL: resolution update and event recording are atomic — a crash
+      // between the two would mark the interaction resolved with no event entry,
+      // leaving the refund approval invisible on the order timeline.
+      await orderRepository.$transaction(async (tx) => {
+        await interactionRepository.updateInteractionResolution(
+          interactionId,
+          "PARTIAL_REFUND",
+          tx,
+        );
 
-      orderEventService.recordEvent({
-        orderId: interaction.orderId,
-        type: ORDER_EVENT_TYPES.PARTIAL_REFUND_APPROVED,
-        actorId: userId,
-        actorRole: isBuyer ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
-        summary: `${responderRole} approved the partial refund request`,
-        metadata: { interactionId },
+        await orderEventService.recordEvent({
+          orderId: interaction.orderId,
+          type: ORDER_EVENT_TYPES.PARTIAL_REFUND_APPROVED,
+          actorId: userId,
+          actorRole: isBuyer ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
+          summary: `${responderRole} approved the partial refund request`,
+          metadata: { interactionId },
+          tx,
+        });
       });
 
       fireAndForget(
@@ -651,6 +691,9 @@ export class InteractionWorkflowService {
         { orderId: interaction.orderId, userId: interaction.initiatedById },
       );
     } else if (action === "COUNTER") {
+      // Fire-and-forget: updateInteractionCounter() ran unconditionally above
+      // before the ACCEPT/COUNTER/REJECT branch. The two writes are non-adjacent;
+      // atomising them would require restructuring the control flow — out of scope.
       orderEventService.recordEvent({
         orderId: interaction.orderId,
         type: ORDER_EVENT_TYPES.PARTIAL_REFUND_REQUESTED,
@@ -676,6 +719,8 @@ export class InteractionWorkflowService {
         { orderId: interaction.orderId, userId: interaction.initiatedById },
       );
     } else {
+      // Fire-and-forget: respondToInteraction() updated the interaction status
+      // without exposing a tx handle — out of scope to thread here.
       orderEventService.recordEvent({
         orderId: interaction.orderId,
         type: ORDER_EVENT_TYPES.PARTIAL_REFUND_REQUESTED,
@@ -748,6 +793,9 @@ export class InteractionWorkflowService {
       autoAction: AUTO_ACTIONS.AUTO_APPROVE,
     });
 
+    // Fire-and-forget: createInteraction() writes without exposing a tx handle.
+    // Atomising with that write requires changes to OrderInteractionService —
+    // out of scope for this tx-threading pass.
     orderEventService.recordEvent({
       orderId,
       type: ORDER_EVENT_TYPES.SHIPPING_DELAY_NOTIFIED,
@@ -791,27 +839,36 @@ export class InteractionWorkflowService {
       responseNote,
     );
 
-    if (action === "ACCEPT") {
-      await interactionRepository.updateInteractionResolution(
-        interactionId,
-        "DISMISSED",
-      );
-    }
-
+    // Fetch order before the transaction so the notification body can use
+    // the listing title without a second query inside the tx.
     const order = await interactionRepository.findOrderForWorkflow(
       interaction.orderId,
     );
 
-    orderEventService.recordEvent({
-      orderId: interaction.orderId,
-      type: ORDER_EVENT_TYPES.SHIPPING_DELAY_NOTIFIED,
-      actorId: userId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary:
-        action === "ACCEPT"
-          ? "Buyer acknowledged the shipping delay"
-          : `Buyer did not accept the shipping delay${responseNote ? `: ${responseNote}` : ""}`,
-      metadata: { interactionId, action },
+    // CRITICAL: resolution update (ACCEPT only) and event recording are
+    // atomic — a crash between the two would leave the interaction dismissed
+    // with no timeline entry, hiding the buyer's acknowledgement.
+    await orderRepository.$transaction(async (tx) => {
+      if (action === "ACCEPT") {
+        await interactionRepository.updateInteractionResolution(
+          interactionId,
+          "DISMISSED",
+          tx,
+        );
+      }
+
+      await orderEventService.recordEvent({
+        orderId: interaction.orderId,
+        type: ORDER_EVENT_TYPES.SHIPPING_DELAY_NOTIFIED,
+        actorId: userId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary:
+          action === "ACCEPT"
+            ? "Buyer acknowledged the shipping delay"
+            : `Buyer did not accept the shipping delay${responseNote ? `: ${responseNote}` : ""}`,
+        metadata: { interactionId, action },
+        tx,
+      });
     });
 
     fireAndForget(
