@@ -1,4 +1,3 @@
-"use server";
 // src/server/actions/orders.ts
 // ─── Barrel: re-exports from focused order action files ───────────────────────
 // Import from here (backward-compat) or directly from the focused files:

@@ -90,3 +90,22 @@
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
+
+/* ── Hero grid overlay (moved from inline style to satisfy CSP) ──────────────── */
+.hero-grid-overlay {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 39px,
+      rgba(255, 255, 255, 1) 39px,
+      rgba(255, 255, 255, 1) 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 39px,
+      rgba(255, 255, 255, 1) 39px,
+      rgba(255, 255, 255, 1) 40px
+    );
+}

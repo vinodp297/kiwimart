@@ -23,12 +23,7 @@ export default function HomeHero({ stats }: Props) {
       >
         <div
           aria-hidden
-          className="absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage:
-              "repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(255,255,255,1) 39px,rgba(255,255,255,1) 40px)," +
-              "repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,1) 39px,rgba(255,255,255,1) 40px)",
-          }}
+          className="absolute inset-0 opacity-[0.04] hero-grid-overlay"
         />
         <div
           aria-hidden

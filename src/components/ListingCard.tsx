@@ -8,7 +8,7 @@
 //   • isOffersEnabled chip
 //   • Graceful fallback for listings without sellerUsername
 
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -45,8 +45,30 @@ function priceDrop(current: number, previous: number | null): number {
 
 export default memo(function ListingCard({ listing, priority = false }: Props) {
   const [watched, setWatched] = useState(false);
+  // Time-dependent badges and relative timestamp must be computed client-side
+  // after mount to avoid SSR/hydration mismatch (React error #418).
+  const [justListed, setJustListed] = useState(false);
+  const [dropped, setDropped] = useState(false);
+  const [timeAgo, setTimeAgo] = useState("");
   const { status: sessionStatus } = useSessionSafe();
   const router = useRouter();
+
+  const isSold = listing.status === "sold";
+  const isFree = listing.shippingPrice === 0;
+  const sellerHref = listing.sellerUsername
+    ? `/sellers/${listing.sellerUsername}`
+    : undefined;
+  const urgent = !isSold && listing.isUrgent;
+
+  useEffect(() => {
+    setJustListed(!isSold && isJustListed(listing.createdAt));
+    setDropped(!isSold && isPriceDropped(listing.priceDroppedAt ?? null));
+    setTimeAgo(relativeTime(listing.createdAt));
+  }, [isSold, listing.createdAt, listing.priceDroppedAt]);
+
+  const dropPct = dropped
+    ? priceDrop(listing.price, listing.previousPrice ?? null)
+    : 0;
 
   const handleToggleWatch = useCallback(async () => {
     if (sessionStatus !== "authenticated") {
@@ -61,19 +83,6 @@ export default memo(function ListingCard({ listing, priority = false }: Props) {
       setWatched((w) => !w);
     }
   }, [sessionStatus, router, listing.id]);
-
-  const isSold = listing.status === "sold";
-  const isFree = listing.shippingPrice === 0;
-  const sellerHref = listing.sellerUsername
-    ? `/sellers/${listing.sellerUsername}`
-    : undefined;
-
-  const justListed = !isSold && isJustListed(listing.createdAt);
-  const dropped = !isSold && isPriceDropped(listing.priceDroppedAt ?? null);
-  const dropPct = dropped
-    ? priceDrop(listing.price, listing.previousPrice ?? null)
-    : 0;
-  const urgent = !isSold && listing.isUrgent;
 
   return (
     <article
@@ -340,9 +349,7 @@ export default memo(function ListingCard({ listing, priority = false }: Props) {
                 <span className="text-[10px]">{listing.watcherCount}</span>
               </div>
             )}
-            <span className="text-[10px] text-[#C9C5BC]">
-              {relativeTime(listing.createdAt)}
-            </span>
+            <span className="text-[10px] text-[#C9C5BC]">{timeAgo}</span>
           </div>
         </div>
       </div>
