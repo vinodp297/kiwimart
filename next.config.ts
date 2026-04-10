@@ -1,4 +1,7 @@
-import "./src/env"; // validate env vars at build time — fails fast with all errors
+// env.ts is imported by server-side modules at runtime — validation runs
+// automatically on first server startup and throws with all missing vars listed
+// at once. A static import here would block `next build` on machines that lack
+// production secrets (CI injects them only at deploy, not build time).
 import type { NextConfig } from "next";
 import path from "path";
 

@@ -127,63 +127,67 @@ export async function createOrder(
       : (listing.shippingNzd ?? 0);
   const totalNzd = listing.priceNzd + shippingNzd;
 
-  // Create order + snapshot in transaction
+  // Create order + snapshot in transaction.
+  // timeout: 10 000 ms — touches 3 tables (order, listingSnapshot, payout).
   let order: { id: string };
   try {
-    order = await orderRepository.$transaction(async (tx) => {
-      const initialStatus =
-        fulfillmentType === "CASH_ON_PICKUP"
-          ? "AWAITING_PICKUP"
-          : "AWAITING_PAYMENT";
+    order = await orderRepository.$transaction(
+      async (tx) => {
+        const initialStatus =
+          fulfillmentType === "CASH_ON_PICKUP"
+            ? "AWAITING_PICKUP"
+            : "AWAITING_PAYMENT";
 
-      const created = await orderRepository.createInTx(
-        {
-          buyerId: userId,
-          sellerId: listing.sellerId,
-          listingId: listing.id,
-          itemNzd: listing.priceNzd,
-          shippingNzd,
-          totalNzd,
-          status: initialStatus,
-          fulfillmentType,
-          ...(isPickupOrder ? { pickupStatus: "AWAITING_SCHEDULE" } : {}),
-          ...(idempotencyKey ? { idempotencyKey } : {}),
-          ...(shippingAddress
-            ? {
-                shippingName: shippingAddress.name,
-                shippingLine1: shippingAddress.line1,
-                shippingLine2: shippingAddress.line2,
-                shippingCity: shippingAddress.city,
-                shippingRegion: shippingAddress.region,
-                shippingPostcode: shippingAddress.postcode,
-              }
-            : {}),
-        } as Parameters<typeof orderRepository.createInTx>[0],
-        tx,
-      );
+        const created = await orderRepository.createInTx(
+          {
+            buyerId: userId,
+            sellerId: listing.sellerId,
+            listingId: listing.id,
+            itemNzd: listing.priceNzd,
+            shippingNzd,
+            totalNzd,
+            status: initialStatus,
+            fulfillmentType,
+            ...(isPickupOrder ? { pickupStatus: "AWAITING_SCHEDULE" } : {}),
+            ...(idempotencyKey ? { idempotencyKey } : {}),
+            ...(shippingAddress
+              ? {
+                  shippingName: shippingAddress.name,
+                  shippingLine1: shippingAddress.line1,
+                  shippingLine2: shippingAddress.line2,
+                  shippingCity: shippingAddress.city,
+                  shippingRegion: shippingAddress.region,
+                  shippingPostcode: shippingAddress.postcode,
+                }
+              : {}),
+          } as Parameters<typeof orderRepository.createInTx>[0],
+          tx,
+        );
 
-      await captureListingSnapshot(created.id, listing.id, tx);
+        await captureListingSnapshot(created.id, listing.id, tx);
 
-      // CASH_ON_PICKUP — create a Payout record immediately so the escrow
-      // auto-release job has something to act on once the order is completed.
-      // No Stripe IDs are set because cash orders have no platform payment.
-      if (fulfillmentType === "CASH_ON_PICKUP") {
-        await tx.payout.upsert({
-          where: { orderId: created.id },
-          create: {
-            orderId: created.id,
-            userId: listing.sellerId,
-            amountNzd: totalNzd,
-            platformFeeNzd: 0,
-            stripeFeeNzd: 0,
-            status: "PENDING",
-          },
-          update: {},
-        });
-      }
+        // CASH_ON_PICKUP — create a Payout record immediately so the escrow
+        // auto-release job has something to act on once the order is completed.
+        // No Stripe IDs are set because cash orders have no platform payment.
+        if (fulfillmentType === "CASH_ON_PICKUP") {
+          await tx.payout.upsert({
+            where: { orderId: created.id },
+            create: {
+              orderId: created.id,
+              userId: listing.sellerId,
+              amountNzd: totalNzd,
+              platformFeeNzd: 0,
+              stripeFeeNzd: 0,
+              status: "PENDING",
+            },
+            update: {},
+          });
+        }
 
-      return created;
-    });
+        return created;
+      },
+      { timeout: 10_000, maxWait: 5_000 },
+    );
   } catch (txErr) {
     await orderRepository.releaseListing(listingId).catch((err: unknown) => {
       logger.error("order.listing.release_after_tx_failure.failed", {
@@ -218,25 +222,29 @@ export async function createOrder(
     // CRITICAL: status transition, listing release, and event are atomic —
     // a crash after the transaction commits but before the event write would
     // leave the order in CANCELLED state with no explanation in the timeline.
-    await orderRepository.$transaction(async (tx) => {
-      await transitionOrder(
-        order.id,
-        "CANCELLED",
-        {},
-        { tx, fromStatus: "AWAITING_PAYMENT" },
-      );
-      await orderRepository.releaseListing(listingId, tx);
-      await orderEventService.recordEvent({
-        orderId: order.id,
-        type: ORDER_EVENT_TYPES.CANCELLED,
-        actorId: null,
-        actorRole: ACTOR_ROLES.SYSTEM,
-        summary:
-          "Order cancelled: seller payment account not properly configured",
-        metadata: { trigger: "INVALID_CONNECT_ACCOUNT" },
-        tx,
-      });
-    });
+    // timeout: 10 000 ms — touches 3 tables (order, listing, orderEvent).
+    await orderRepository.$transaction(
+      async (tx) => {
+        await transitionOrder(
+          order.id,
+          "CANCELLED",
+          {},
+          { tx, fromStatus: "AWAITING_PAYMENT" },
+        );
+        await orderRepository.releaseListing(listingId, tx);
+        await orderEventService.recordEvent({
+          orderId: order.id,
+          type: ORDER_EVENT_TYPES.CANCELLED,
+          actorId: null,
+          actorRole: ACTOR_ROLES.SYSTEM,
+          summary:
+            "Order cancelled: seller payment account not properly configured",
+          metadata: { trigger: "INVALID_CONNECT_ACCOUNT" },
+          tx,
+        });
+      },
+      { timeout: 10_000, maxWait: 5_000 },
+    );
 
     // audit() is fire-and-forget — no tx parameter available at this point.
     audit({

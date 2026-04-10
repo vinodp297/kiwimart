@@ -445,11 +445,21 @@ export const orderRepository = {
     });
   },
 
-  /** Run a callback inside a transaction */
+  /** Run a callback inside a transaction.
+   *
+   * @param options.timeout  Max ms the transaction may run (default: 5000).
+   *   Set to 10 000 for complex multi-table transactions at risk of P2028.
+   * @param options.maxWait  Max ms to wait for a connection slot (default: 2000).
+   */
   async $transaction<T>(
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: { timeout?: number; maxWait?: number },
   ): Promise<T> {
-    return db.$transaction(fn);
+    // Only forward options when explicitly provided — avoids passing `undefined`
+    // as a second argument to db.$transaction, which some test assertions check.
+    return options !== undefined
+      ? db.$transaction(fn, options)
+      : db.$transaction(fn);
   },
 
   // ── Order Event methods (wired in order-event.service.ts) ───────────────

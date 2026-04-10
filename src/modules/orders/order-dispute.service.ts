@@ -98,37 +98,41 @@ export async function openDispute(
   // atomic — a crash after the transaction commits but before the event write
   // would leave a dispute record with no DISPUTE_OPENED entry in the timeline,
   // making the dispute invisible to auto-resolution and support tooling.
-  await orderRepository.$transaction(async (tx) => {
-    await transitionOrder(
-      input.orderId,
-      "DISPUTED",
-      { disputeReason: input.reason },
-      { tx, fromStatus: order.status },
-    );
+  // timeout: 10 000 ms — touches 3 tables (order, dispute, orderEvent).
+  await orderRepository.$transaction(
+    async (tx) => {
+      await transitionOrder(
+        input.orderId,
+        "DISPUTED",
+        { disputeReason: input.reason },
+        { tx, fromStatus: order.status },
+      );
 
-    await createDispute({
-      orderId: input.orderId,
-      reason: input.reason,
-      source: "STANDARD",
-      buyerStatement: input.description,
-      evidenceKeys: input.evidenceUrls ?? [],
-      buyerId,
-      tx,
-    });
-
-    await orderEventService.recordEvent({
-      orderId: input.orderId,
-      type: ORDER_EVENT_TYPES.DISPUTE_OPENED,
-      actorId: buyerId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary: `Buyer opened dispute: ${input.reason.replace(/_/g, " ").toLowerCase()}`,
-      metadata: {
+      await createDispute({
+        orderId: input.orderId,
         reason: input.reason,
-        description: input.description.slice(0, 200),
-      },
-      tx,
-    });
-  });
+        source: "STANDARD",
+        buyerStatement: input.description,
+        evidenceKeys: input.evidenceUrls ?? [],
+        buyerId,
+        tx,
+      });
+
+      await orderEventService.recordEvent({
+        orderId: input.orderId,
+        type: ORDER_EVENT_TYPES.DISPUTE_OPENED,
+        actorId: buyerId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: `Buyer opened dispute: ${input.reason.replace(/_/g, " ").toLowerCase()}`,
+        metadata: {
+          reason: input.reason,
+          description: input.description.slice(0, 200),
+        },
+        tx,
+      });
+    },
+    { timeout: 10_000, maxWait: 5_000 },
+  );
 
   // Notify seller directly — BullMQ worker does not run on Vercel serverless
   try {

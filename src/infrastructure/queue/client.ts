@@ -8,6 +8,26 @@ import { logger } from "@/shared/logger";
 
 let _connection: IORedis | null = null;
 
+/**
+ * IORedis retry strategy — retries indefinitely with capped exponential backoff.
+ *
+ * A 10-second Redis blip must NOT kill the worker permanently. Returning null
+ * from retryStrategy terminates the connection for good; we never do that.
+ *
+ * Backoff schedule:
+ *   attempt 1 →  200 ms
+ *   attempt 2 →  400 ms
+ *   attempt 5 → 1000 ms
+ *   attempt 10+ → 5000 ms (cap — never grows beyond 5 seconds)
+ *
+ * Exported for unit testing.
+ */
+export function queueRetryStrategy(times: number): number {
+  const delay = Math.min(times * 200, 5000);
+  logger.warn("redis.reconnecting", { attempt: times, delayMs: delay });
+  return delay;
+}
+
 export function getQueueConnection(): IORedis {
   if (_connection) return _connection;
 
@@ -30,6 +50,7 @@ export function getQueueConnection(): IORedis {
       port: 6379,
       maxRetriesPerRequest: null,
       lazyConnect: true,
+      retryStrategy: queueRetryStrategy,
     });
     return _connection;
   }
@@ -38,10 +59,7 @@ export function getQueueConnection(): IORedis {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
     tls: redisUrl.startsWith("rediss://") ? {} : undefined,
-    retryStrategy: (times: number) => {
-      if (times > 3) return null;
-      return Math.min(times * 200, 2000);
-    },
+    retryStrategy: queueRetryStrategy,
   });
 
   _connection.on("error", (err) => {

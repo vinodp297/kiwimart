@@ -82,49 +82,53 @@ export async function cancelOrder(
 
   const cancelledBy = order.buyerId === userId ? "BUYER" : "SELLER";
 
-  await orderRepository.$transaction(async (tx) => {
-    await transitionOrder(
-      orderId,
-      "CANCELLED",
-      {
-        cancelledBy: order.buyerId === userId ? "BUYER" : "SELLER",
-        cancelReason: reason ?? null,
-        cancelledAt: new Date(),
-      },
-      { tx, fromStatus: order.status },
-    );
+  // timeout: 10 000 ms — touches 4 tables (order, listing, auditLog, orderEvent).
+  await orderRepository.$transaction(
+    async (tx) => {
+      await transitionOrder(
+        orderId,
+        "CANCELLED",
+        {
+          cancelledBy: order.buyerId === userId ? "BUYER" : "SELLER",
+          cancelReason: reason ?? null,
+          cancelledAt: new Date(),
+        },
+        { tx, fromStatus: order.status },
+      );
 
-    // Reactivate the listing
-    if (order.listingId) {
-      await orderRepository.reactivateListingInTx(order.listingId, tx);
-    }
+      // Reactivate the listing
+      if (order.listingId) {
+        await orderRepository.reactivateListingInTx(order.listingId, tx);
+      }
 
-    // CRITICAL: audit and event recording inside the transaction so they
-    // roll back atomically if the transition or listing update fails.
-    await audit({
-      userId,
-      action: "ORDER_STATUS_CHANGED",
-      entityType: "Order",
-      entityId: orderId,
-      metadata: {
-        newStatus: "CANCELLED",
-        cancelledBy,
-        reason,
-      },
-      tx,
-    });
+      // CRITICAL: audit and event recording inside the transaction so they
+      // roll back atomically if the transition or listing update fails.
+      await audit({
+        userId,
+        action: "ORDER_STATUS_CHANGED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: {
+          newStatus: "CANCELLED",
+          cancelledBy,
+          reason,
+        },
+        tx,
+      });
 
-    await orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.CANCELLED,
-      actorId: userId,
-      actorRole:
-        cancelledBy === "BUYER" ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
-      summary: `${cancelledBy === "BUYER" ? "Buyer" : "Seller"} cancelled order${reason ? `: ${reason}` : ""}`,
-      metadata: { cancelledBy, reason },
-      tx,
-    });
-  });
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.CANCELLED,
+        actorId: userId,
+        actorRole:
+          cancelledBy === "BUYER" ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
+        summary: `${cancelledBy === "BUYER" ? "Buyer" : "Seller"} cancelled order${reason ? `: ${reason}` : ""}`,
+        metadata: { cancelledBy, reason },
+        tx,
+      });
+    },
+    { timeout: 10_000, maxWait: 5_000 },
+  );
 
   logger.info("order.cancelled", { orderId, cancelledBy: userId, reason });
 

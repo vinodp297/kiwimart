@@ -74,67 +74,72 @@ export async function confirmDelivery(
     orderId,
   });
 
-  // DB update ONLY after Stripe success — callback form for transitionOrder
-  await orderRepository.$transaction(async (tx) => {
-    await transitionOrder(
-      orderId,
-      "COMPLETED",
-      { completedAt: new Date() },
-      { tx, fromStatus: order.status },
-    );
-    await orderRepository.markPayoutsProcessing(orderId, tx);
-    await orderRepository.markListingSold(order.listingId, tx);
-
-    // CRITICAL: audit inside the transaction so it rolls back atomically
-    // if the transition, payout marking, or listing update fails.
-    await audit({
-      userId: buyerId,
-      action: "ORDER_STATUS_CHANGED",
-      entityType: "Order",
-      entityId: orderId,
-      metadata: { newStatus: "COMPLETED", previousStatus: order.status },
-      tx,
-    });
-
-    // Record delivery confirmation event inside the transaction so the event
-    // write rolls back atomically if anything above fails.
-    if (feedback?.itemAsDescribed) {
-      await orderEventService.recordEvent({
+  // DB update ONLY after Stripe success — callback form for transitionOrder.
+  // timeout: 10 000 ms — this transaction touches 5 tables (order, payout,
+  // listing, auditLog, orderEvent) and can hit Prisma's 5 s default under load.
+  await orderRepository.$transaction(
+    async (tx) => {
+      await transitionOrder(
         orderId,
-        type: ORDER_EVENT_TYPES.DELIVERY_CONFIRMED_OK,
-        actorId: buyerId,
-        actorRole: ACTOR_ROLES.BUYER,
-        summary: "Buyer confirmed delivery — item arrived as described",
-        metadata: { deliveryConfirmed: true, itemAsDescribed: true },
+        "COMPLETED",
+        { completedAt: new Date() },
+        { tx, fromStatus: order.status },
+      );
+      await orderRepository.markPayoutsProcessing(orderId, tx);
+      await orderRepository.markListingSold(order.listingId, tx);
+
+      // CRITICAL: audit inside the transaction so it rolls back atomically
+      // if the transition, payout marking, or listing update fails.
+      await audit({
+        userId: buyerId,
+        action: "ORDER_STATUS_CHANGED",
+        entityType: "Order",
+        entityId: orderId,
+        metadata: { newStatus: "COMPLETED", previousStatus: order.status },
         tx,
       });
-    } else if (feedback && !feedback.itemAsDescribed) {
+
+      // Record delivery confirmation event inside the transaction so the event
+      // write rolls back atomically if anything above fails.
+      if (feedback?.itemAsDescribed) {
+        await orderEventService.recordEvent({
+          orderId,
+          type: ORDER_EVENT_TYPES.DELIVERY_CONFIRMED_OK,
+          actorId: buyerId,
+          actorRole: ACTOR_ROLES.BUYER,
+          summary: "Buyer confirmed delivery — item arrived as described",
+          metadata: { deliveryConfirmed: true, itemAsDescribed: true },
+          tx,
+        });
+      } else if (feedback && !feedback.itemAsDescribed) {
+        await orderEventService.recordEvent({
+          orderId,
+          type: ORDER_EVENT_TYPES.DELIVERY_ISSUE_REPORTED,
+          actorId: buyerId,
+          actorRole: ACTOR_ROLES.BUYER,
+          summary: `Buyer reported delivery issue: ${feedback.issueType?.replace(/_/g, " ").toLowerCase() ?? "unknown"}`,
+          metadata: {
+            deliveryConfirmed: true,
+            itemAsDescribed: false,
+            issueType: feedback.issueType,
+            deliveryPhotos: feedback.deliveryPhotos,
+            notes: feedback.notes,
+          },
+          tx,
+        });
+      }
+
       await orderEventService.recordEvent({
         orderId,
-        type: ORDER_EVENT_TYPES.DELIVERY_ISSUE_REPORTED,
+        type: ORDER_EVENT_TYPES.COMPLETED,
         actorId: buyerId,
         actorRole: ACTOR_ROLES.BUYER,
-        summary: `Buyer reported delivery issue: ${feedback.issueType?.replace(/_/g, " ").toLowerCase() ?? "unknown"}`,
-        metadata: {
-          deliveryConfirmed: true,
-          itemAsDescribed: false,
-          issueType: feedback.issueType,
-          deliveryPhotos: feedback.deliveryPhotos,
-          notes: feedback.notes,
-        },
+        summary: "Buyer confirmed delivery — payment released to seller",
         tx,
       });
-    }
-
-    await orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.COMPLETED,
-      actorId: buyerId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary: "Buyer confirmed delivery — payment released to seller",
-      tx,
-    });
-  });
+    },
+    { timeout: 10_000, maxWait: 5_000 },
+  );
 
   // Queue payout processing (3 business days delay)
   try {
@@ -298,49 +303,53 @@ export async function markDispatched(
     );
   }
 
-  // Wrap transition + audit + event in a single transaction for atomicity
-  await orderRepository.$transaction(async (tx) => {
-    await transitionOrder(
-      input.orderId,
-      "DISPATCHED",
-      {
-        dispatchedAt: new Date(),
-        trackingNumber: input.trackingNumber,
-        trackingUrl: input.trackingUrl ?? null,
-      },
-      { tx, fromStatus: order.status },
-    );
+  // Wrap transition + audit + event in a single transaction for atomicity.
+  // timeout: 10 000 ms — touches 3 tables (order, auditLog, orderEvent).
+  await orderRepository.$transaction(
+    async (tx) => {
+      await transitionOrder(
+        input.orderId,
+        "DISPATCHED",
+        {
+          dispatchedAt: new Date(),
+          trackingNumber: input.trackingNumber,
+          trackingUrl: input.trackingUrl ?? null,
+        },
+        { tx, fromStatus: order.status },
+      );
 
-    // CRITICAL: audit and event inside the transaction so they roll back
-    // atomically if the transition fails.
-    await audit({
-      userId: sellerId,
-      action: "ORDER_STATUS_CHANGED",
-      entityType: "Order",
-      entityId: input.orderId,
-      metadata: {
-        newStatus: "DISPATCHED",
-        trackingNumber: input.trackingNumber,
-      },
-      tx,
-    });
+      // CRITICAL: audit and event inside the transaction so they roll back
+      // atomically if the transition fails.
+      await audit({
+        userId: sellerId,
+        action: "ORDER_STATUS_CHANGED",
+        entityType: "Order",
+        entityId: input.orderId,
+        metadata: {
+          newStatus: "DISPATCHED",
+          trackingNumber: input.trackingNumber,
+        },
+        tx,
+      });
 
-    await orderEventService.recordEvent({
-      orderId: input.orderId,
-      type: ORDER_EVENT_TYPES.DISPATCHED,
-      actorId: sellerId,
-      actorRole: ACTOR_ROLES.SELLER,
-      summary: `Seller dispatched order via ${input.courier} — tracking: ${input.trackingNumber}`,
-      metadata: {
-        trackingNumber: input.trackingNumber,
-        trackingUrl: input.trackingUrl,
-        courier: input.courier,
-        estimatedDeliveryDate: input.estimatedDeliveryDate,
-        dispatchPhotos: input.dispatchPhotos,
-      },
-      tx,
-    });
-  });
+      await orderEventService.recordEvent({
+        orderId: input.orderId,
+        type: ORDER_EVENT_TYPES.DISPATCHED,
+        actorId: sellerId,
+        actorRole: ACTOR_ROLES.SELLER,
+        summary: `Seller dispatched order via ${input.courier} — tracking: ${input.trackingNumber}`,
+        metadata: {
+          trackingNumber: input.trackingNumber,
+          trackingUrl: input.trackingUrl,
+          courier: input.courier,
+          estimatedDeliveryDate: input.estimatedDeliveryDate,
+          dispatchPhotos: input.dispatchPhotos,
+        },
+        tx,
+      });
+    },
+    { timeout: 10_000, maxWait: 5_000 },
+  );
 
   // Notify buyer directly — BullMQ worker does not run on Vercel serverless
   try {

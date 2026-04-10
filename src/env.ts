@@ -113,9 +113,16 @@ function validateEnv(): Env {
     return process.env as unknown as Env;
   }
 
+  // Skip during `next build` — production secrets are injected at deploy time,
+  // not at build time. Server modules are evaluated during the build to collect
+  // page data, so env.ts would throw on any CI machine that builds the app
+  // without all runtime secrets. Validation still runs at server startup.
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return process.env as unknown as Env;
+  }
+
   // Client-side bundles cannot access server-only env vars — skip deep
-  // validation there. Build-time validation (via next.config.ts import)
-  // already covers all variables before any code ships to production.
+  // validation there. Validation runs at server startup covering all variables.
   if (typeof window !== "undefined") {
     return process.env as unknown as Env;
   }
