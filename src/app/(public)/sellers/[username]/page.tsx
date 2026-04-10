@@ -25,6 +25,7 @@ import type { ReviewTagType } from "@/lib/review-tags";
 import { BlockButton } from "@/components/seller/BlockButton";
 import { getSellerTrustProfile } from "@/modules/sellers/trust-score.service";
 import { getResponseLabel } from "@/modules/sellers/response-metrics.service";
+import { logger } from "@/shared/logger";
 
 const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
   top_seller: {
@@ -101,8 +102,9 @@ export async function generateMetadata({
 }: {
   params: Promise<{ username: string }>;
 }): Promise<Metadata> {
+  let username: string | undefined;
   try {
-    const { username } = await params;
+    ({ username } = await params);
     const user = await getSellerByUsername(username);
     if (!user) return { title: "Seller not found" };
     return {
@@ -110,7 +112,10 @@ export async function generateMetadata({
       description: `${user.displayName} is a ${user.idVerified ? "verified" : ""} NZ seller on KiwiMart with ${user._count.reviewsAbout} reviews.`,
     };
   } catch (err) {
-    console.error("[SellerProfile] generateMetadata error:", err);
+    logger.error("sellers.page.generateMetadata.error", {
+      username,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { title: "Seller Profile" };
   }
 }
@@ -133,7 +138,10 @@ export default async function SellerProfilePage({
     user = fetchedUser;
     session = fetchedSession;
   } catch (err) {
-    console.error("[SellerProfile] Failed to load seller data:", err);
+    logger.error("sellers.page.load.failed", {
+      username,
+      error: err instanceof Error ? err.message : String(err),
+    });
     notFound();
   }
   if (!user) notFound();

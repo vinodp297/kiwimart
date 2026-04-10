@@ -17,6 +17,7 @@ import NavNotificationPanel, {
 } from "./nav/NavNotificationPanel";
 import NavUserDropdown, { type NavUser } from "./nav/NavUserDropdown";
 import NavMobileDrawer from "./nav/NavMobileDrawer";
+import { getImageUrl } from "@/lib/image";
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
@@ -46,7 +47,7 @@ export default function NavBar() {
         displayName: session.user.name ?? session.user.email ?? "Account",
         email: session.user.email ?? "",
         isSellerEnabled: session.user.isSellerEnabled,
-        avatarUrl: session.user.image ?? null,
+        avatarUrl: getImageUrl(session.user.avatarKey ?? null),
         isAdmin: session.user.isAdmin,
       }
     : null;

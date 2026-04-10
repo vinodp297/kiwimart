@@ -16,7 +16,7 @@ declare module "next-auth/jwt" {
     isStripeOnboarded?: boolean;
     displayName?: string;
     username?: string;
-    avatarUrl?: string | null;
+    avatarKey?: string | null;
     emailVerified?: string | null;
     idVerified?: boolean;
     mfaPending?: boolean;
@@ -37,7 +37,7 @@ declare module "next-auth" {
       isStripeOnboarded: boolean;
       displayName: string;
       username: string;
-      avatarUrl?: string | null;
+      avatarKey?: string | null;
       // emailVerified kept as Date | null to match Auth.js native type
       // Check truthiness in components: !!session.user.emailVerified
       emailVerified: Date | null;
@@ -53,7 +53,7 @@ declare module "next-auth" {
     isStripeOnboarded?: boolean;
     displayName?: string;
     username?: string;
-    avatarUrl?: string | null;
+    avatarKey?: string | null;
     emailVerified?: Date | null;
     idVerified?: boolean;
   }

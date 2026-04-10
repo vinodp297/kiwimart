@@ -85,14 +85,17 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Cache-Control",
-            value: "public, max-age=10, s-maxage=60, stale-while-revalidate=60",
+            value:
+              "public, max-age=10, s-maxage=60, stale-while-revalidate=60, must-revalidate",
           },
         ],
       },
       // No-store for all authenticated API endpoints — prevents any proxy or
       // CDN from caching responses that may contain user-specific data.
+      // Covers v1/admin (CRUD), auth (session/CSRF tokens), stripe (webhooks
+      // and connect flows), and cron (admin-only triggered routes).
       {
-        source: "/api/(v1|admin)/(.*)",
+        source: "/api/(v1|admin|auth|stripe|cron)/(.*)",
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
       // /_next/image serves optimised images from external origins (Unsplash).

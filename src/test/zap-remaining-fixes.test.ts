@@ -190,11 +190,11 @@ describe("ZAP remaining fixes — Fix 5: Explicit Cache-Control on API routes", 
   });
 
   // ── Test 8b: next.config.ts sets no-store for authenticated API routes ────
-  it("next.config.ts sets Cache-Control: no-store for /api/v1 and /api/admin routes", () => {
+  it("next.config.ts sets Cache-Control: no-store for /api/v1, /api/admin, /api/auth, /api/stripe and /api/cron routes", () => {
     const configPath = path.resolve(process.cwd(), "next.config.ts");
     const content = fs.readFileSync(configPath, "utf-8");
 
-    expect(content).toContain("/api/(v1|admin)/(.*)");
+    expect(content).toContain("/api/(v1|admin|auth|stripe|cron)/(.*)");
     expect(content).toContain('"no-store"');
   });
 });

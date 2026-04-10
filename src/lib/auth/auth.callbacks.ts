@@ -80,7 +80,7 @@ export const callbacks: NonNullable<NextAuthConfig["callbacks"]> = {
         token.isStripeOnboarded = dbUser.isStripeOnboarded;
         token.displayName = dbUser.displayName;
         token.username = dbUser.username;
-        token.avatarUrl = dbUser.avatarKey ?? null;
+        token.avatarKey = dbUser.avatarKey ?? null;
         token.emailVerified = dbUser.emailVerified?.toISOString() ?? null;
         token.idVerified = dbUser.idVerified;
         token.mfaPending = dbUser.isMfaEnabled;
@@ -119,7 +119,7 @@ export const callbacks: NonNullable<NextAuthConfig["callbacks"]> = {
           (token.isStripeOnboarded as boolean) ?? false;
         session.user.displayName = (token.displayName as string) ?? "";
         session.user.username = (token.username as string) ?? "";
-        session.user.avatarUrl = (token.avatarUrl as string | null) ?? null;
+        session.user.avatarKey = (token.avatarKey as string | null) ?? null;
         session.user.emailVerified = token.emailVerified
           ? new Date(token.emailVerified as string)
           : null;
@@ -134,7 +134,7 @@ export const callbacks: NonNullable<NextAuthConfig["callbacks"]> = {
           isStripeOnboarded: boolean;
           displayName: string;
           username: string;
-          avatarUrl?: string | null;
+          avatarKey?: string | null;
           idVerified: boolean;
         };
 
@@ -145,7 +145,7 @@ export const callbacks: NonNullable<NextAuthConfig["callbacks"]> = {
         session.user.isStripeOnboarded = dbUser.isStripeOnboarded;
         session.user.displayName = dbUser.displayName;
         session.user.username = dbUser.username;
-        session.user.avatarUrl = dbUser.avatarUrl ?? null;
+        session.user.avatarKey = dbUser.avatarKey ?? null;
         session.user.emailVerified = dbUser.emailVerified ?? null;
         session.user.idVerified = dbUser.idVerified;
         session.user.mfaPending = false; // OAuth users don't have MFA
