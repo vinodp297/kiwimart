@@ -219,11 +219,9 @@ export class AdminService {
         }
       });
     } catch (lockErr) {
-      // Fail-closed: Redis unavailable in production → surface retry message
-      if (
-        lockErr instanceof Error &&
-        lockErr.message.includes("temporarily unavailable")
-      ) {
+      // Fail-closed: Redis unavailable in production → surface retry message.
+      // Check error code, not message string, to avoid brittle string matching.
+      if (lockErr instanceof AppError && lockErr.code === "LOCK_UNAVAILABLE") {
         throw new AppError(
           "PAYMENT_GATEWAY_ERROR",
           "Service temporarily unavailable. Please try again in a moment.",

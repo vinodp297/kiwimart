@@ -172,10 +172,11 @@ export class OfferService {
           });
         });
       } catch (lockErr) {
-        // Fail-closed: Redis unavailable in production → surface retry message
+        // Fail-closed: Redis unavailable in production → surface retry message.
+        // Check error code, not message string, to avoid brittle string matching.
         if (
-          lockErr instanceof Error &&
-          lockErr.message.includes("temporarily unavailable")
+          lockErr instanceof AppError &&
+          lockErr.code === "LOCK_UNAVAILABLE"
         ) {
           throw new AppError(
             "PAYMENT_GATEWAY_ERROR",

@@ -174,21 +174,19 @@ export async function exportUserData(
     timeStyle: "short",
   });
 
-  // Step 4: Email ONLY the signed URL — the JSON data is never sent via email
+  // Step 4: Email ONLY the signed URL — the JSON data is never sent via email.
+  // Do NOT catch here — if enqueuing fails we must NOT set the cooldown so
+  // the user can retry. The error propagates to the caller.
   await enqueueEmail({
     template: "dataExport",
     to: userEmail,
     displayName: data.profile?.displayName ?? "User",
     downloadUrl,
     expiresAt,
-  }).catch((err) => {
-    logger.warn("export.email_queue.failed", {
-      userId,
-      error: err instanceof Error ? err.message : String(err),
-    });
   });
 
-  // Step 5: Mark the 30-day rate-limit key (after everything else succeeds)
+  // Step 5: Mark the 30-day rate-limit key — only reached when enqueue confirmed.
+  // If step 4 threw, we never reach here, so the user can immediately retry.
   await markExportRequested(userId);
 
   logger.info("account.data_exported", { userId, r2Key });

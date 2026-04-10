@@ -1,13 +1,13 @@
-# KiwiMart — NZ Peer-to-Peer Marketplace
+# Buyzi — NZ Peer-to-Peer Marketplace
 
-![Coverage](https://img.shields.io/badge/coverage-40%25-green)
-![Tests](https://img.shields.io/badge/tests-135%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-46%25-green)
+![Tests](https://img.shields.io/badge/tests-1725%20passing-brightgreen)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue)
 ![Security](https://img.shields.io/badge/security-97%2F100-brightgreen)
 
 ## What Is This
 
-KiwiMart (branded as **Buyzi**) is a peer-to-peer marketplace built for New Zealand buyers and sellers. It provides a full-featured platform for listing, discovering, negotiating, and transacting secondhand goods — with Stripe escrow payments, real-time messaging, trust scoring, dispute resolution, and a mobile-ready REST API. Unlike Trade Me, Buyzi uses a modern escrow-first payment model where funds are held until the buyer confirms delivery, eliminating the risk of non-delivery fraud.
+Buyzi is a peer-to-peer marketplace built for New Zealand buyers and sellers. It provides a full-featured platform for listing, discovering, negotiating, and transacting secondhand goods — with Stripe escrow payments, real-time messaging, trust scoring, dispute resolution, and a mobile-ready REST API. Unlike Trade Me, Buyzi uses a modern escrow-first payment model where funds are held until the buyer confirms delivery, eliminating the risk of non-delivery fraud.
 
 ## Tech Stack
 

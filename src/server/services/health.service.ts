@@ -10,10 +10,20 @@ export interface BusinessMetrics {
   pendingPayouts: number;
   /** Open disputes requiring admin attention. */
   openDisputes: number;
-  /** BullMQ DLQ job count across the critical queues. */
-  failedJobs: number;
+  /**
+   * BullMQ DLQ job count across the critical queues.
+   * null means the queue metrics were unavailable — never substitute 0,
+   * as zero looks healthy when the real value is unknown.
+   */
+  failedJobs: number | null;
   /** ISO timestamp of the oldest PENDING payout, or null if none. */
   oldestPendingPayout: string | null;
+  /**
+   * true  — all metric sources responded; values are authoritative.
+   * false — at least one source (BullMQ) was unavailable; treat failedJobs
+   *         as unknown and surface "degraded" rather than "ok".
+   */
+  metricsAvailable: boolean;
 }
 
 export const healthService = {
@@ -30,8 +40,9 @@ export const healthService = {
    *
    * - pendingPayouts: sellers waiting to be paid
    * - openDisputes: disputes awaiting human review
-   * - failedJobs: DLQ size across BullMQ queues
+   * - failedJobs: DLQ size across BullMQ queues (null = unavailable)
    * - oldestPendingPayout: age of the oldest payout stuck in PENDING
+   * - metricsAvailable: false when any metric source could not be reached
    */
   async getBusinessMetrics(): Promise<BusinessMetrics> {
     const [pendingPayouts, openDisputes, oldestPending] = await Promise.all([
@@ -45,9 +56,10 @@ export const healthService = {
     ]);
 
     // Failed-job count is collected lazily — BullMQ may not be connected in
-    // some environments (build-time, unit tests). On failure we fall back
-    // to 0 so the health endpoint never blocks on a Redis round-trip.
-    let failedJobs = 0;
+    // some environments (build-time, unit tests). On failure we use null (not 0)
+    // so callers can distinguish "zero failed jobs" from "count unavailable".
+    let failedJobs: number | null = null;
+    let metricsAvailable = true;
     try {
       const { QUEUE_MAP } = await import("@/lib/queue");
       const counts = await Promise.all(
@@ -55,8 +67,9 @@ export const healthService = {
       );
       failedJobs = counts.reduce((sum, c) => sum + (c.failed ?? 0), 0);
     } catch {
-      // Queue unavailable — surface zero rather than fail the health probe.
-      // The dependencies.redis check already reports the underlying outage.
+      // Queue unavailable — null signals "unknown", not "zero".
+      // The admin health endpoint surfaces this as "degraded".
+      metricsAvailable = false;
     }
 
     return {
@@ -64,6 +77,7 @@ export const healthService = {
       openDisputes,
       failedJobs,
       oldestPendingPayout: oldestPending?.createdAt.toISOString() ?? null,
+      metricsAvailable,
     };
   },
 };

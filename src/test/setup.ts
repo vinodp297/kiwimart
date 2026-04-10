@@ -94,6 +94,8 @@ vi.mock("@/lib/db", () => {
       upsert: vi.fn(),
       updateMany: vi.fn(),
       count: vi.fn(),
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     report: {
       findUnique: vi.fn(),
@@ -133,6 +135,7 @@ vi.mock("@/lib/db", () => {
       findMany: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue({ id: "dispute-1" }),
       update: vi.fn().mockResolvedValue({}),
+      count: vi.fn().mockResolvedValue(0),
     },
     notification: {
       findMany: vi.fn().mockResolvedValue([]),

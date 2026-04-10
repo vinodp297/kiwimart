@@ -58,6 +58,39 @@ export async function acquireLock(
 }
 
 /**
+ * Internal helper used by withLock to distinguish "lock held" from "Redis unavailable".
+ * Public acquireLock() is unchanged so cron jobs using `if (!lockValue) return` work as before.
+ */
+type LockAcquireResult =
+  | { acquired: true; value: string }
+  | { acquired: false; reason: "held" | "unavailable" };
+
+async function acquireLockWithReason(
+  resource: string,
+  ttlSeconds: number,
+): Promise<LockAcquireResult> {
+  try {
+    const { getRedisClient } = await import("@/infrastructure/redis/client");
+    const redis = getRedisClient();
+    const lockValue = `lock:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const key = `km:lock:${resource}`;
+
+    const result = await redis.set(key, lockValue, {
+      nx: true,
+      ex: ttlSeconds,
+    });
+
+    if (result === "OK") {
+      return { acquired: true, value: lockValue };
+    }
+    return { acquired: false, reason: "held" };
+  } catch {
+    logger.warn("distributedLock.redis_unavailable", { resource });
+    return { acquired: false, reason: "unavailable" };
+  }
+}
+
+/**
  * Release a lock previously acquired via acquireLock().
  * No-op if lockValue is falsy (null/undefined/empty string).
  *
@@ -108,9 +141,9 @@ export async function withLock<T>(
   }
 
   const { failOpen = false, ttlSeconds = 30 } = options ?? {};
-  const lockValue = await acquireLock(resource, ttlSeconds);
+  const result = await acquireLockWithReason(resource, ttlSeconds);
 
-  if (lockValue === null) {
+  if (!result.acquired) {
     if (failOpen) {
       // Caller explicitly opted in to fail-open (non-critical operation)
       logger.warn("distributedLock.lock_unavailable_failopen", {
@@ -130,17 +163,29 @@ export async function withLock<T>(
       return await fn();
     }
 
-    // PRODUCTION fail-closed — lock held or Redis unavailable.
-    // Either way, reject the operation to prevent concurrent mutations.
-    logger.error("distributedLock.lock_unavailable_production", {
+    // PRODUCTION fail-closed — distinguish "held" from "unavailable" so callers
+    // can surface the right HTTP status code without string-matching messages.
+    if (result.reason === "unavailable") {
+      logger.error("distributedLock.redis_unavailable_production", {
+        resource,
+        message: "Redis unavailable in PRODUCTION — failing CLOSED.",
+      });
+      throw new AppError(
+        "LOCK_UNAVAILABLE",
+        "Service temporarily unavailable. Please try again in a moment.",
+        503,
+      );
+    }
+
+    // Lock held by another process
+    logger.warn("distributedLock.lock_contention_production", {
       resource,
       message:
-        "Lock not acquired in PRODUCTION — failing CLOSED. " +
-        "Check Redis connectivity and concurrent execution.",
+        "Lock held by another process — rejecting to prevent concurrent mutation.",
     });
     throw new AppError(
-      "CONCURRENT_MODIFICATION",
-      `Failed to acquire lock for resource: ${resource}`,
+      "LOCK_CONTENTION",
+      `Resource is being modified by another request. Please try again shortly.`,
       409,
     );
   }
@@ -148,6 +193,6 @@ export async function withLock<T>(
   try {
     return await fn();
   } finally {
-    await releaseLock(resource, lockValue);
+    await releaseLock(resource, result.value);
   }
 }

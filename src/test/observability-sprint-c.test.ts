@@ -230,33 +230,35 @@ describe("Fix 3 — SLO business metrics", () => {
     return { status: res.status, body: await res.json() };
   }
 
-  it("health endpoint response includes business metrics block", async () => {
+  // Fix 4 moved business SLO metrics out of the public health endpoint.
+  // The public endpoint now only checks infrastructure (database + Redis).
+  // Business metrics live in /api/admin/health (cached, auth-gated).
+  it("public health endpoint does NOT expose business metrics (moved to admin endpoint)", async () => {
     const { status, body } = await callHealth();
     expect(status).toBe(200);
-    expect(body.business).toMatchObject({
-      pendingPayouts: 5,
-      openDisputes: 1,
-      failedJobs: 0,
-      oldestPendingPayout: null,
-    });
+    // Business metrics must NOT be in the public response
+    expect(body.business).toBeUndefined();
+    // Infra checks are still present
+    expect(body.checks).toMatchObject({ database: "ok", redis: "ok" });
   });
 
-  it("pendingPayouts > 100 flips status to degraded", async () => {
+  it("public health status is ok regardless of pendingPayouts (SLOs checked in admin only)", async () => {
     dbMocks.payout.count.mockResolvedValue(150);
     const { status, body } = await callHealth();
     expect(status).toBe(200);
-    expect(body.status).toBe("degraded");
-    expect((body.business as { pendingPayouts: number }).pendingPayouts).toBe(
-      150,
-    );
+    // Infra is healthy — public endpoint must say ok (no business SLO logic here)
+    expect(body.status).toBe("ok");
+    // No business field exposed
+    expect(body.business).toBeUndefined();
   });
 
-  it("oldest pending payout > 48 h flips status to degraded", async () => {
+  it("public health status is ok regardless of stale payouts (SLOs checked in admin only)", async () => {
     const threeDaysAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
     dbMocks.payout.findFirst.mockResolvedValue({ createdAt: threeDaysAgo });
     const { status, body } = await callHealth();
     expect(status).toBe(200);
-    expect(body.status).toBe("degraded");
+    // Infra is healthy — no payout-age logic in the public endpoint
+    expect(body.status).toBe("ok");
   });
 
   it("existing infra checks are still present in the response", async () => {

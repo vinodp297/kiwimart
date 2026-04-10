@@ -37,6 +37,8 @@ export type ErrorCode =
   | "ERASURE_BLOCKED"
   | "EXPORT_RATE_LIMITED"
   | "CONCURRENT_MODIFICATION"
+  | "LOCK_CONTENTION"
+  | "LOCK_UNAVAILABLE"
   | "CONFIGURATION_ERROR";
 
 export class AppError extends Error {
