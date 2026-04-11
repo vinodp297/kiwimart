@@ -141,8 +141,11 @@ describe("getClientIp", () => {
     expect(getClientIp(headers)).toBe("198.51.100.20");
   });
 
-  it("returns 'unknown' when no IP headers are present", () => {
+  it("returns 'unknown-{uuid}' when no IP headers are present", () => {
     const headers = new Headers();
-    expect(getClientIp(headers)).toBe("unknown");
+    const result = getClientIp(headers);
+    expect(result).toMatch(
+      /^unknown-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
   });
 });

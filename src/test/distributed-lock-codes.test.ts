@@ -6,6 +6,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
+import { createMockRedis } from "./fixtures";
 
 vi.mock("server-only", () => ({}));
 
@@ -16,15 +17,11 @@ vi.mock("@/server/lib/distributedLock", async (importOriginal) => {
 });
 
 // ── Control Redis so we can simulate lock-held vs unavailable.
-const mockRedisSet = vi.fn();
+const _redis = createMockRedis();
+const mockRedisSet = _redis.set;
 
 vi.mock("@/infrastructure/redis/client", () => ({
-  getRedisClient: () => ({
-    set: mockRedisSet,
-    get: vi.fn().mockResolvedValue(null),
-    ping: vi.fn().mockResolvedValue("PONG"),
-    eval: vi.fn().mockResolvedValue(1),
-  }),
+  getRedisClient: () => ({ ..._redis, eval: vi.fn().mockResolvedValue(1) }),
 }));
 
 // Import AFTER mocks are set up

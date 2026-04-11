@@ -1,7 +1,21 @@
 // src/shared/logger/index.ts
 // ─── Structured Logger ────────────────────────────────────────────────────────
 // Development: pretty-printed with emoji indicators
-// Production: JSON format parseable by Vercel / Datadog
+// Production: JSON format parseable by Vercel / BetterStack / Datadog
+//
+// Log shipping — BetterStack (Logtail):
+//   Set LOGTAIL_SOURCE_TOKEN in your environment to enable.
+//   Logs are shipped asynchronously; the logger is fully functional without it.
+//   Token absent → shipping is silently skipped (fail-graceful).
+//
+//   Setup:
+//     1. Create a source in BetterStack > Logs > Sources (select HTTP/JSON).
+//     2. Copy the Source Token into the LOGTAIL_SOURCE_TOKEN env var.
+//     3. In Vercel: Settings > Environment Variables > add LOGTAIL_SOURCE_TOKEN.
+//     4. That's it — structured JSON log lines are sent on every production call.
+//
+//   The ingest endpoint is https://in.logtail.com (no SDK required).
+//   Each line is a JSON object with timestamp, level, event, and context fields.
 //
 // Event naming convention — dot notation: domain.action.outcome
 // Examples:
@@ -18,6 +32,23 @@
 
 import { getRequestContext } from "@/lib/request-context";
 import { sanitiseLogContext } from "@/lib/log-sanitiser";
+
+// ��─ BetterStack (Logtail) log shipping ────────────────────────────────────────
+// Fire-and-forget; never throws. Silently skipped when token is absent.
+function shipToBetterStack(entry: object): void {
+  const token = process.env.LOGTAIL_SOURCE_TOKEN;
+  if (!token) return;
+  fetch("https://in.logtail.com", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(entry),
+  }).catch(() => {
+    // Shipping failure must never propagate — the app keeps running.
+  });
+}
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal";
 
@@ -46,6 +77,11 @@ function log(level: LogLevel, event: string, context?: LogContext): void {
   };
 
   const isDev = process.env.NODE_ENV !== "production";
+
+  if (!isDev) {
+    // Ship every log line to BetterStack (no-op when token absent).
+    shipToBetterStack(entry);
+  }
 
   if (isDev) {
     const emoji: Record<LogLevel, string> = {

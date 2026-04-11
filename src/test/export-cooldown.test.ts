@@ -7,19 +7,17 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
+import { createMockRedis } from "./fixtures";
 
 vi.mock("server-only", () => ({}));
 
 // ── Captured Redis mock — must be module-level so vi.mock factory can close over it ──
-const mockRedisGet = vi.fn().mockResolvedValue(null); // not rate-limited by default
-const mockRedisSet = vi.fn().mockResolvedValue("OK");
+const _redis = createMockRedis();
+const mockRedisGet = _redis.get.mockResolvedValue(null); // not rate-limited by default
+const mockRedisSet = _redis.set.mockResolvedValue("OK");
 
 vi.mock("@/infrastructure/redis/client", () => ({
-  getRedisClient: () => ({
-    get: mockRedisGet,
-    set: mockRedisSet,
-    ping: vi.fn().mockResolvedValue("PONG"),
-  }),
+  getRedisClient: () => _redis,
 }));
 
 // ── Other dependencies ────────────────────────────────────────────────────────

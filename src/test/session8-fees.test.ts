@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
+import { createMockLogger } from "./fixtures";
 
 vi.mock("server-only", () => ({}));
 
@@ -57,7 +58,7 @@ vi.mock("@/modules/admin/admin-config.repository", () => ({
 // ── Mock logger ───────────────────────────────────────────────────────────────
 
 vi.mock("@/shared/logger", () => ({
-  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+  logger: createMockLogger(),
 }));
 
 // ── Imports ───────────────────────────────────────────────────────────────────

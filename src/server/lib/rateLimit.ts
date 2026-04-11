@@ -11,6 +11,7 @@
 
 import { Ratelimit } from "@upstash/ratelimit";
 import { getRedisClient } from "@/infrastructure/redis/client";
+import { logger } from "@/shared/logger";
 
 // ── Rate limit configurations ─────────────────────────────────────────────────
 
@@ -403,12 +404,27 @@ export async function rateLimit(
  * SECURITY: We intentionally do NOT fall back to x-forwarded-for because
  * clients can inject arbitrary values. On Vercel and Cloudflare, the
  * platform-specific headers are always set and trustworthy.
+ *
+ * SECURITY: When no IP can be determined, we return a unique random identifier
+ * (unknown-{uuid}) instead of the string "unknown". Using a shared "unknown"
+ * bucket would allow any client without an IP header to exhaust the rate limit
+ * for ALL other clients in the same situation.
  */
 export function getClientIp(headers: Headers): string {
-  return (
+  const ip =
     headers.get("x-real-ip") ?? // Vercel (most trusted — set by infra)
     headers.get("cf-connecting-ip") ?? // Cloudflare (set by edge, not spoofable)
-    headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ?? // Vercel forwarded
-    "unknown"
-  );
+    headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim(); // Vercel forwarded
+
+  if (ip) return ip;
+
+  // No IP header present — return a unique ID so this request is rate-limited
+  // in its own isolated bucket rather than sharing the "unknown" bucket with
+  // every other IP-less request.
+  const fallbackId = `unknown-${crypto.randomUUID()}`;
+  logger.warn("rate_limit.ip_unknown", {
+    userAgent: headers.get("user-agent") ?? undefined,
+    fallbackId,
+  });
+  return fallbackId;
 }

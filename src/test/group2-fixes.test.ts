@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
+import { createMockLogger, createMockRedis } from "./fixtures";
 
 vi.mock("server-only", () => ({}));
 
@@ -34,22 +35,18 @@ vi.mock("@/modules/users/user.repository", () => ({
 // ── Shared: logger ───────────────────────────────────────────────────────────
 
 vi.mock("@/shared/logger", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: createMockLogger(),
 }));
 
 // ── Shared: Redis ─────────────────────────────────────────────────────────────
 
-const mockRedisGet = vi.fn();
-const mockRedisSet = vi.fn();
-const mockRedisDel = vi.fn();
+const _redis = createMockRedis();
+const mockRedisGet = _redis.get;
+const mockRedisSet = _redis.set;
+const mockRedisDel = _redis.del;
 
 vi.mock("@/infrastructure/redis/client", () => ({
-  getRedisClient: () => ({
-    get: (...a: unknown[]) => mockRedisGet(...a),
-    set: (...a: unknown[]) => mockRedisSet(...a),
-    del: (...a: unknown[]) => mockRedisDel(...a),
-    ping: vi.fn().mockResolvedValue("PONG"),
-  }),
+  getRedisClient: () => _redis,
 }));
 
 // ── Shared: auth ─────────────────────────────────────────────────────────────

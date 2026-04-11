@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
+import { createMockLogger } from "./fixtures";
 
 vi.mock("server-only", () => ({}));
 
@@ -38,7 +39,7 @@ vi.mock("@/infrastructure/stripe/client", () => ({
 // ── Mock: logger ─────────────────────────────────────────────────────────────
 
 vi.mock("@/shared/logger", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: createMockLogger(),
 }));
 
 // ── Mock: request context ─────────────────────────────────────────────────────

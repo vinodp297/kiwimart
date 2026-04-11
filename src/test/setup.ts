@@ -1,8 +1,10 @@
 // src/test/setup.ts
 // ─── Global test setup for Vitest ────────────────────────────────────────────
 // Mocks all external dependencies so unit tests run without DB, Stripe, etc.
+// Shared mock shapes come from src/test/fixtures/index.ts.
 
 import { vi, beforeEach } from "vitest";
+import { createMockLogger, createMockDb } from "./fixtures";
 
 // ── Mock Stripe ──────────────────────────────────────────────────────────────
 // Use shared mock functions so ALL instances (including module-level ones in
@@ -49,184 +51,20 @@ export {
 // db.ts exports both `export const db` (named) and `export default db`.
 // Repositories use the named import `{ db }`, while services use the default.
 // Both must resolve to the same mock object.
+// Shape comes from createMockDb() in ./fixtures — keeping one source of truth.
 vi.mock("@/lib/db", () => {
-  const dbMock = {
-    user: {
-      findUnique: vi
-        .fn()
-        .mockResolvedValue({ emailVerified: new Date("2025-01-01") }),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-      count: vi.fn(),
-      create: vi.fn(),
-    },
-    session: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-    order: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      create: vi.fn(),
-      count: vi.fn(),
-      aggregate: vi.fn(),
-    },
-    listing: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-      create: vi.fn(),
-      count: vi.fn(),
-    },
-    stripeEvent: {
-      create: vi.fn(),
-      findUnique: vi.fn(),
-    },
-    payout: {
-      upsert: vi.fn(),
-      updateMany: vi.fn(),
-      count: vi.fn(),
-      findFirst: vi.fn().mockResolvedValue(null),
-      findMany: vi.fn().mockResolvedValue([]),
-    },
-    report: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-      count: vi.fn(),
-    },
-    offer: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-    },
-    review: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-      groupBy: vi.fn().mockResolvedValue([]),
-    },
-    orderEvent: {
-      create: vi.fn().mockResolvedValue({ id: "evt-1" }),
-      findMany: vi.fn().mockResolvedValue([]),
-      findFirst: vi.fn().mockResolvedValue(null),
-      update: vi.fn().mockResolvedValue({}),
-    },
-    platformConfig: {
-      findUnique: vi.fn().mockResolvedValue({ value: "60" }),
-      findMany: vi.fn().mockResolvedValue([]),
-    },
-    dispute: {
-      findUnique: vi.fn().mockResolvedValue(null),
-      findFirst: vi.fn().mockResolvedValue(null),
-      findMany: vi.fn().mockResolvedValue([]),
-      create: vi.fn().mockResolvedValue({ id: "dispute-1" }),
-      update: vi.fn().mockResolvedValue({}),
-      count: vi.fn().mockResolvedValue(0),
-    },
-    notification: {
-      findMany: vi.fn().mockResolvedValue([]),
-      create: vi.fn().mockResolvedValue({ id: "notif-1" }),
-    },
-    orderInteraction: {
-      findMany: vi.fn().mockResolvedValue([]),
-      findFirst: vi.fn().mockResolvedValue(null),
-      count: vi.fn().mockResolvedValue(0),
-      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
-    },
-    message: {
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-      deleteMany: vi.fn(),
-      count: vi.fn().mockResolvedValue(0),
-    },
-    messageThread: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    },
-    cart: {
-      findUnique: vi.fn().mockResolvedValue(null),
-      findFirst: vi.fn().mockResolvedValue(null),
-      findMany: vi.fn().mockResolvedValue([]),
-      create: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-    cartItem: {
-      findMany: vi.fn().mockResolvedValue([]),
-      create: vi.fn(),
-      delete: vi.fn(),
-    },
-    watchlistItem: {
-      findUnique: vi.fn(),
-      findMany: vi.fn(),
-      create: vi.fn(),
-      delete: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-    blockedUser: {
-      findFirst: vi.fn().mockResolvedValue(null),
-      findMany: vi.fn(),
-      upsert: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-    verificationApplication: {
-      findMany: vi.fn().mockResolvedValue([]),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      create: vi.fn().mockResolvedValue({ id: "va-1" }),
-    },
-    passwordResetToken: {
-      findUnique: vi.fn(),
-      findFirst: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-      updateMany: vi.fn(),
-      deleteMany: vi.fn(),
-    },
-    erasureLog: {
-      create: vi.fn().mockResolvedValue({ id: "erasure-log-1" }),
-      findMany: vi.fn().mockResolvedValue([]),
-      findUnique: vi.fn().mockResolvedValue(null),
-    },
-    pushToken: {
-      upsert: vi.fn().mockResolvedValue({ id: "pt-1" }),
-      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      findMany: vi.fn().mockResolvedValue([]),
-      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
-    },
-    auditLog: {
-      create: vi.fn().mockResolvedValue({ id: "audit-1" }),
-      findMany: vi.fn().mockResolvedValue([]),
-    },
-    $transaction: vi.fn().mockImplementation(async (fnOrArray: unknown) => {
+  const dbMock = createMockDb();
+  // Override $transaction so the callback receives the real mock as `tx`
+  // (not an empty object), matching the transitionOrder / atomic-write pattern.
+  dbMock.$transaction = vi
+    .fn()
+    .mockImplementation(async (fnOrArray: unknown) => {
       if (typeof fnOrArray === "function") {
-        // Execute the callback with the db mock as the transaction client
-        // This is needed for tests that call code using $transaction(async (tx) => {...})
         const self = (await import("@/lib/db")).default;
         return (fnOrArray as (tx: unknown) => Promise<unknown>)(self);
       }
       return [];
-    }),
-    $queryRaw: vi.fn(),
-  };
+    });
   return {
     default: dbMock,
     db: dbMock,
@@ -300,6 +138,8 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
+  JWT_MAX_AGE: 15 * 60,
+  JWT_REFRESH_THRESHOLD: 5 * 60,
 }));
 
 // ── Mock audit ───────────────────────────────────────────────────────────────
@@ -350,13 +190,7 @@ vi.mock("@/server/lib/rateLimit", () => ({
 
 // ── Mock shared logger ───────────────────────────────────────────────────────
 vi.mock("@/shared/logger", () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-  },
+  logger: createMockLogger(),
 }));
 
 // ── Mock Pusher ──────────────────────────────────────────────────────────────

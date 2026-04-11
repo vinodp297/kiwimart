@@ -3,6 +3,7 @@
 // Verifies that rejected promises are logged and do not propagate.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createMockLogger, type MockLogger } from "./fixtures";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/infrastructure/redis/client", () => ({ getRedisClient: vi.fn() }));
@@ -10,6 +11,8 @@ vi.mock("@/lib/request-context", () => ({
   getRequestContext: vi.fn().mockReturnValue(null),
 }));
 
+// vi.mock factories are hoisted — mock functions must use vi.fn() directly here.
+// After the module loads, we re-type via MockLogger to enforce fixture shape.
 const mockLoggerError = vi.fn();
 vi.mock("@/shared/logger", () => ({
   logger: {
@@ -18,10 +21,13 @@ vi.mock("@/shared/logger", () => ({
     warn: vi.fn(),
     error: (...args: unknown[]) => mockLoggerError(...args),
     fatal: vi.fn(),
-  },
+  } satisfies MockLogger,
 }));
 
 import { fireAndForget } from "@/lib/fire-and-forget";
+
+// createMockLogger is available for test helpers that need a fresh logger instance.
+export const freshLogger = () => createMockLogger();
 
 describe("fireAndForget", () => {
   beforeEach(() => {

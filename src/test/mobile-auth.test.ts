@@ -3,23 +3,23 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SignJWT } from "jose";
+import { createMockRedis, createMockLogger } from "./fixtures";
 
 // Set env var before any module is imported (mobile-auth reads it at call time)
 process.env.MOBILE_JWT_SECRET = "test-mobile-jwt-secret-minimum-32-chars-xxxx";
 
 // ── Mock Redis ────────────────────────────────────────────────────────────────
-const mockGet = vi.fn();
-const mockSet = vi.fn();
-const mockDel = vi.fn();
+const _redisBase = createMockRedis();
+const mockGet = _redisBase.get;
+const mockSet = _redisBase.set;
+const mockDel = _redisBase.del;
 const mockSadd = vi.fn();
 const mockSrem = vi.fn();
 const mockSmembers = vi.fn();
 const mockExpire = vi.fn();
 
 const mockRedis = {
-  get: mockGet,
-  set: mockSet,
-  del: mockDel,
+  ...(_redisBase as object),
   sadd: mockSadd,
   srem: mockSrem,
   smembers: mockSmembers,
@@ -33,15 +33,12 @@ vi.mock("@/infrastructure/redis/client", () => ({
 }));
 
 // ── Mock logger ───────────────────────────────────────────────────────────────
-const mockLoggerError = vi.fn();
-const mockLoggerInfo = vi.fn();
+const _logger = createMockLogger();
+const mockLoggerError = _logger.error;
+const _mockLoggerInfo = _logger.info; // retained for type coverage; assertions use logger.info
 
 vi.mock("@/shared/logger", () => ({
-  logger: {
-    info: mockLoggerInfo,
-    error: mockLoggerError,
-    warn: vi.fn(),
-  },
+  logger: _logger,
 }));
 
 // Import AFTER mocks are registered

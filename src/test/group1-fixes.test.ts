@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
+import { createMockLogger } from "./fixtures";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Fix 1 — X-XSS-Protection header value
@@ -105,7 +106,7 @@ vi.mock("@/server/lib/distributedLock", () => ({
 vi.mock("@/server/lib/audit", () => ({ audit: vi.fn() }));
 
 vi.mock("@/shared/logger", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: createMockLogger(),
 }));
 
 vi.mock("@/infrastructure/stripe/client", () => ({

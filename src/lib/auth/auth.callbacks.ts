@@ -10,6 +10,7 @@ import {
 } from "@/server/lib/sessionStore";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
+import { JWT_REFRESH_THRESHOLD } from "@/lib/auth";
 import type { NextAuthConfig } from "next-auth";
 
 export const callbacks: NonNullable<NextAuthConfig["callbacks"]> = {
@@ -93,6 +94,24 @@ export const callbacks: NonNullable<NextAuthConfig["callbacks"]> = {
         : false;
       if (verified) {
         token.mfaPending = false;
+      }
+    }
+
+    // Sliding refresh: if the token was issued more than JWT_REFRESH_THRESHOLD
+    // seconds ago, rotate the jti so the old one is no longer valid. This keeps
+    // active sessions alive without extending the absolute maxAge.
+    const issuedAt = typeof token.iat === "number" ? token.iat : 0;
+    const ageSeconds = Math.floor(Date.now() / 1000) - issuedAt;
+    if (issuedAt > 0 && ageSeconds > JWT_REFRESH_THRESHOLD) {
+      const oldJti = token.jti as string | undefined;
+      const newJti = crypto.randomUUID();
+      token.jti = newJti;
+      // Blocklist the old jti if it exists so it cannot be replayed.
+      if (oldJti && typeof token.exp === "number") {
+        await blockToken(oldJti, token.exp).catch(() => {
+          // Non-critical — if blocklisting fails the old token expires naturally.
+          logger.warn("jwt.refresh.blocklist_failed", { oldJti });
+        });
       }
     }
 
