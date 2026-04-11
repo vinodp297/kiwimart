@@ -45,6 +45,7 @@ vi.mock("@/server/services/dispute/dispute.service", () => ({
 
 vi.mock("@/server/lib/distributedLock", () => ({
   withLock: (...a: unknown[]) => mockWithLock(...(a as never)),
+  withLockAndHeartbeat: (...a: unknown[]) => mockWithLock(...(a as never)),
   acquireLock: vi.fn().mockResolvedValue("mock-lock"),
   releaseLock: vi.fn().mockResolvedValue(undefined),
 }));

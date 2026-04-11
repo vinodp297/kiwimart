@@ -188,3 +188,104 @@ export async function withLock<T>(
     await releaseLock(resource, result.value);
   }
 }
+
+/**
+ * Acquire a lock, run fn() with a periodic heartbeat that extends the TTL,
+ * then release the lock in a finally block.
+ *
+ * Use this instead of withLock when the locked operation may take longer than
+ * ttlSeconds / 2 (e.g. operations that call Stripe under load).
+ *
+ * Heartbeat behaviour:
+ *   - Fires every heartbeatIntervalSeconds (default: ttlSeconds / 3)
+ *   - Reads the current lock value before extending — only extends if we still
+ *     own the lock (compare-before-extend prevents extending a stolen lock)
+ *   - Heartbeat failure is non-fatal: the TTL will expire naturally and another
+ *     worker can take over
+ *
+ * The lock is always released in the finally block regardless of whether fn()
+ * succeeds or throws. The heartbeat is always stopped in finally.
+ *
+ * Throws:
+ *   LOCK_UNAVAILABLE (503) — Redis unavailable during acquisition
+ *   LOCK_CONTENTION  (409) — lock held by another process
+ */
+export async function withLockAndHeartbeat<T>(
+  resource: string,
+  fn: () => Promise<T>,
+  options: {
+    ttlSeconds: number;
+    heartbeatIntervalSeconds?: number;
+  },
+): Promise<T> {
+  const { ttlSeconds } = options;
+  const heartbeatIntervalSeconds =
+    options.heartbeatIntervalSeconds ?? Math.floor(ttlSeconds / 3);
+
+  const { getRedisClient } = await import("@/infrastructure/redis/client");
+  const redis = getRedisClient();
+  const lockValue = `lock:${randomUUID()}`;
+  const key = `km:lock:${resource}`;
+
+  // Acquire lock — SET NX EX (atomic)
+  let acquired: string | null;
+  try {
+    acquired = await redis.set(key, lockValue, {
+      nx: true,
+      ex: ttlSeconds,
+    });
+  } catch {
+    logger.error("distributedLock.redis_unavailable", {
+      resource,
+      message: "Redis unavailable — failing CLOSED.",
+    });
+    throw new AppError(
+      "LOCK_UNAVAILABLE",
+      "Service temporarily unavailable. Please try again in a moment.",
+      503,
+    );
+  }
+
+  if (!acquired) {
+    logger.warn("distributedLock.lock_contention", {
+      resource,
+      message:
+        "Lock held by another process — rejecting to prevent concurrent mutation.",
+    });
+    throw new AppError(
+      "LOCK_CONTENTION",
+      "Resource is being modified by another request. Please try again shortly.",
+      409,
+    );
+  }
+
+  // Heartbeat — extends the TTL every interval while the holder is still alive.
+  // Stopped unconditionally in the finally block.
+  let heartbeatActive = true;
+  const heartbeatTimer = setInterval(() => {
+    if (!heartbeatActive) return;
+    void (async () => {
+      try {
+        // Compare-before-extend: only reset TTL if we still own the lock.
+        // Guards against extending a lock that was released and re-acquired
+        // by another worker during a very slow heartbeat cycle.
+        const current = await redis.get(key);
+        if (current === lockValue) {
+          await redis.expire(key, ttlSeconds);
+        }
+      } catch {
+        // Non-fatal — let the TTL expire naturally if Redis is unreachable.
+        logger.warn("distributedLock.heartbeat_failed", { resource });
+      }
+    })();
+  }, heartbeatIntervalSeconds * 1000);
+
+  try {
+    return await fn();
+  } finally {
+    // Always stop the heartbeat and release the lock — even if fn() throws.
+    heartbeatActive = false;
+    clearInterval(heartbeatTimer);
+    await releaseLock(resource, lockValue);
+  }
+}

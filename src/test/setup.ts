@@ -400,6 +400,11 @@ vi.mock("@/server/lib/distributedLock", async (importOriginal) => {
       .mockImplementation(async (_key: string, fn: () => Promise<unknown>) =>
         fn(),
       ),
+    withLockAndHeartbeat: vi
+      .fn()
+      .mockImplementation(async (_key: string, fn: () => Promise<unknown>) =>
+        fn(),
+      ),
     acquireLock: vi.fn().mockResolvedValue("mock-lock-value"),
     releaseLock: vi.fn().mockResolvedValue(undefined),
   };

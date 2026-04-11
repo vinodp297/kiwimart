@@ -20,6 +20,7 @@
 //   - AT-MOST-ONCE with a broken rollback = silent payment failures.
 
 import type { Stripe } from "@/infrastructure/stripe/client";
+import { getRedisClient } from "@/infrastructure/redis/client";
 import { logger } from "@/shared/logger";
 import { audit } from "@/server/lib/audit";
 import { orderRepository } from "@/modules/orders/order.repository";
@@ -54,6 +55,38 @@ export class WebhookService {
   }
 
   async processEvent(event: Stripe.Event): Promise<void> {
+    // ── Redis SETNX fast-path ──────────────────────────────────────────────
+    // Prevents the full handler running on every duplicate in a retry burst.
+    // NX means "only set if the key does not exist" — atomic in Redis.
+    //   alreadySeen === null  → key already existed → this is a duplicate
+    //   alreadySeen === 'OK'  → key was newly set   → first delivery
+    // 24h TTL matches Stripe's retry window. Fail-open: if Redis throws we
+    // fall through to the DB-backed idempotency check (always the source of truth).
+    const redisKey = `webhook:seen:${event.id}`;
+    try {
+      const redis = getRedisClient();
+      const alreadySeen = await redis.set(redisKey, "1", {
+        ex: 86_400, // 24 hours
+        nx: true, // Only set if not exists
+      });
+
+      if (alreadySeen === null) {
+        // Key existed — duplicate event. Skip the handler entirely.
+        logger.info("webhook.redis_fast_path_hit", {
+          eventId: event.id,
+          type: event.type,
+        });
+        return;
+      }
+    } catch (redisErr) {
+      // Redis unavailable — fall through to the DB unique-constraint path.
+      // Never let a Redis failure block webhook processing.
+      logger.warn("webhook.redis_fast_path_unavailable", {
+        eventId: event.id,
+        error: String(redisErr),
+      });
+    }
+
     // Run the handler FIRST. If it throws, the event is not recorded and
     // Stripe will retry — AT-LEAST-ONCE delivery. Handlers must be idempotent.
     try {

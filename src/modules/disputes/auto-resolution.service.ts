@@ -25,12 +25,12 @@ import {
 } from "@/modules/orders/order-event.service";
 import { trustMetricsService } from "@/modules/trust/trust-metrics.service";
 import { audit } from "@/server/lib/audit";
+import { withLockAndHeartbeat } from "@/server/lib/distributedLock";
 import {
   getDisputeByOrderId,
   resolveDispute as resolveDisputeRecord,
   setAutoResolving,
 } from "@/server/services/dispute/dispute.service";
-import { withLock } from "@/server/lib/distributedLock";
 
 // ── Scoring Configuration ─────────────────────────────────────────────────
 // All weights in one place — easy to extract to DB/env later.
@@ -614,7 +614,7 @@ export class AutoResolutionService {
       ? `dispute:${disputeForLock.id}`
       : `dispute:order:${orderId}`;
 
-    await withLock(
+    await withLockAndHeartbeat(
       lockKey,
       async () => {
         // Re-fetch inside the lock — an admin or another worker may have
@@ -981,8 +981,8 @@ export class AutoResolutionService {
           score: evaluation.score,
         });
       },
-      { ttlSeconds: 120 },
-    ); // end withLock
+      { ttlSeconds: 120, heartbeatIntervalSeconds: 40 },
+    ); // end withLockAndHeartbeat
   }
 }
 
