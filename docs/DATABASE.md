@@ -171,7 +171,7 @@ pg_dump "$(neon connection-string)" \
   --file=backup-$(date +%Y%m%d).dump
 ```
 
-Store in Cloudflare R2 bucket: kiwimart-backups/
+Store in Cloudflare R2 bucket: buyzi-backups/
 Retention: 90 days
 
 ### Migration Rollback Procedure

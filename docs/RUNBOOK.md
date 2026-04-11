@@ -199,14 +199,14 @@ If the automated rollback fails or you need to rollback outside the pipeline:
 ```bash
 # 1. Find the previous deployment ID
 curl -H "Authorization: Bearer $VERCEL_TOKEN" \
-  "https://api.vercel.com/v6/deployments?app=kiwimart&target=production&limit=5&state=READY" \
+  "https://api.vercel.com/v6/deployments?app=buyzi&target=production&limit=5&state=READY" \
   | jq '.deployments[] | {uid, created: .created, url: .url}'
 
 # 2. Promote it back to the production alias
 curl -X POST \
   -H "Authorization: Bearer $VERCEL_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"alias":"kiwimart.vercel.app"}' \
+  -d '{"alias":"buyzi.vercel.app"}' \
   "https://api.vercel.com/v2/deployments/<DEPLOYMENT_ID>/aliases"
 ```
 

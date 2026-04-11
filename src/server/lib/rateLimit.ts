@@ -70,6 +70,19 @@ const orderLimiter = () =>
   });
 
 /**
+ * 60 order-history reads per minute per user — browsing behaviour.
+ * Kept separate from the order-creation limiter so reading order history
+ * does not consume the strict POST budget (5/hr).
+ */
+const orderReadLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(60, "1 m"),
+    prefix: "km:rl:order-read",
+    analytics: true,
+  });
+
+/**
  * 20 evidence uploads per hour per user — separate from order creation so a
  * buyer uploading dispute photos does not burn their order-creation budget.
  */
@@ -272,6 +285,7 @@ export type RateLimitKey =
   | "listing"
   | "offer"
   | "order"
+  | "orderRead"
   | "evidence"
   | "notifications"
   | "disputes"
@@ -340,6 +354,7 @@ export async function rateLimit(
     listing: listingLimiter,
     offer: offerLimiter,
     order: orderLimiter,
+    orderRead: orderReadLimiter,
     evidence: evidenceLimiter,
     notifications: notificationsLimiter,
     disputes: disputeLimiter,

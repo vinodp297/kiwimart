@@ -14,8 +14,9 @@ import { getCorsHeaders, withCors } from "../_helpers/cors";
 import { orderRepository } from "@/modules/orders/order.repository";
 
 export async function GET(request: Request) {
-  // Rate limit: reuse order limiter (5/hr)
-  const rateLimited = await checkApiRateLimit(request, "order");
+  // Separate read budget: 60/min. Does not consume the POST (order-creation)
+  // budget of 5/hr, so browsing order history cannot lock out checkout.
+  const rateLimited = await checkApiRateLimit(request, "orderRead");
   if (rateLimited) return rateLimited;
 
   try {

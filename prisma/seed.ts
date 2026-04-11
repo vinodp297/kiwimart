@@ -3679,25 +3679,9 @@ Platform Config:        ${configCount} keys
 Dynamic List Items:     ${listItemCount}
 ════════════════════════════════════════════════════════════
 
-Test credentials:
-  Buyers:
-    sarah@buyzi.test   / BuyerPass123!   (active orders, dispute history)
-    james@buyzi.test   / BuyerPass123!   (open dispute, pickup OTP active)
-    emma@buyzi.test    / BuyerPass123!   (pickup orders, new order)
-
-  Sellers:
-    mike@buyzi.test    / SellerPass123!  (Gold tier, ID verified, 55 sales)
-    rachel@buyzi.test  / SellerPass123!  (New L1 seller, listings in queue)
-    tom@buyzi.test     / SellerPass123!  (High dispute rate 33%, 4 disputes)
-    aroha@buyzi.test   / SellerPass123!  (Pickup specialist, ID verified)
-
-  Admins:
-    admin@buyzi.test    / AdminPass123!  (Super admin — full access)
-    disputes@buyzi.test / AdminPass123!  (Disputes admin)
-    content@buyzi.test  / AdminPass123!  (Content/Trust & Safety admin)
-    finance@buyzi.test  / AdminPass123!  (Finance admin)
-
-  ℹ️  Active pickup OTP: james@buyzi.test order — code is 123456
+Test accounts seeded — do NOT log credentials here (CI logs are retained).
+  Check .env.local or docs/DEVELOPMENT.md for test account details.
+  Do not run this seed against a production database.
 ════════════════════════════════════════════════════════════
   `);
 }

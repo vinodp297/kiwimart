@@ -1303,7 +1303,14 @@ export const orderRepository = {
         stripePaymentIntentId: { not: null },
         createdAt: { gte: since },
       },
-      select: { id: true, stripePaymentIntentId: true },
+      select: {
+        id: true,
+        stripePaymentIntentId: true,
+        buyerId: true,
+        sellerId: true,
+        listingId: true,
+        createdAt: true,
+      },
       take,
     });
   },
@@ -1340,7 +1347,14 @@ export const orderRepository = {
         stripePaymentIntentId: { not: null },
         createdAt: { lte: cutoff },
       },
-      select: { id: true, stripePaymentIntentId: true },
+      select: {
+        id: true,
+        stripePaymentIntentId: true,
+        buyerId: true,
+        sellerId: true,
+        listingId: true,
+        createdAt: true,
+      },
       take,
       orderBy: { createdAt: "asc" },
     });

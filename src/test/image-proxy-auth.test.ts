@@ -64,12 +64,20 @@ function makeParams(segments: string[]): {
   return { params: Promise.resolve({ key: segments }) };
 }
 
-/** Minimal async-iterable body for the R2 mock response. */
+/** Minimal body for the R2 mock response — supports both streaming and iteration. */
 function makeBody(content = "image-bytes") {
   const buf = Buffer.from(content);
   return {
     [Symbol.asyncIterator]: async function* () {
       yield buf;
+    },
+    transformToWebStream(): ReadableStream<Uint8Array> {
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(buf));
+          controller.close();
+        },
+      });
     },
   };
 }

@@ -161,31 +161,35 @@ export async function GET(
       return notFound();
     }
 
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
-      chunks.push(chunk);
-    }
-    const buffer = Buffer.concat(chunks);
+    // Stream directly — no buffering into memory.
+    // transformToWebStream() returns a ReadableStream that pipes R2 bytes to
+    // the client as they arrive, avoiding Node.js heap pressure under load.
+    const stream = (
+      response.Body as { transformToWebStream(): ReadableStream }
+    ).transformToWebStream();
 
     const ext = r2Key.split(".").pop()?.toLowerCase() ?? "";
     const contentType =
       response.ContentType ?? MIME_TYPES[ext] ?? "application/octet-stream";
 
     // Public files get long-lived cache headers; protected files must not be cached.
-    const isPublicServe = isPublic;
-    const cacheControl = isPublicServe
+    const cacheControl = isPublic
       ? "public, max-age=3600, s-maxage=86400, immutable"
       : "private, no-store";
 
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Content-Length": String(buffer.length),
-        "Cache-Control": cacheControl,
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Cache-Control": cacheControl,
+      "X-Content-Type-Options": "nosniff",
+    };
+    if (response.ContentLength) {
+      headers["Content-Length"] = String(response.ContentLength);
+    }
+    if (response.ETag) {
+      headers["ETag"] = response.ETag;
+    }
+
+    return new NextResponse(stream, { status: 200, headers });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (

@@ -444,7 +444,9 @@ describe("Cron Jobs", () => {
       // Check 1: no awaiting orders
       vi.mocked(db.order.findMany)
         .mockResolvedValueOnce([] as never)
-        // Check 2: stale held order
+        // Check 3 (PI not-found scan, 1hr cutoff): no orders
+        .mockResolvedValueOnce([] as never)
+        // Check 2 (alert, 7-day cutoff): stale held order
         .mockResolvedValueOnce([
           { id: "order-1", stripePaymentIntentId: "pi_cancelled" },
         ] as never);

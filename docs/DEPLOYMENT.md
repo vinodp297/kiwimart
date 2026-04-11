@@ -97,7 +97,7 @@ Defined in `vercel.json`. Vercel automatically invokes these endpoints on schedu
 DATABASE_URL="prisma://accelerate.prisma-data.net/?api_key=..."
 
 # Direct (for migrations only)
-DATABASE_DIRECT_URL="postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/kiwimart?sslmode=require"
+DATABASE_DIRECT_URL="postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/buyzi?sslmode=require"
 ```
 
 ### Running Migrations
@@ -214,7 +214,7 @@ R2 requires CORS for direct browser uploads via presigned URLs. Configure in the
 ### Sentry
 
 - **What it monitors:** Uncaught exceptions, unhandled promise rejections, API errors (5xx), and slow transactions.
-- **How to access:** Log in at [sentry.io](https://sentry.io), select the KiwiMart project.
+- **How to access:** Log in at [sentry.io](https://sentry.io), select the Buyzi project.
 - **Configuration:** Set `NEXT_PUBLIC_SENTRY_DSN` in environment variables. The structured logger forwards `.error()` and `.fatal()` calls to Sentry automatically.
 - **Alerts:** Configure alert rules in Sentry for error rate spikes and new issue notifications.
 
@@ -303,7 +303,7 @@ R2 requires CORS for direct browser uploads via presigned URLs. Configure in the
 1. In Vercel dashboard → Settings → Environment Variables
 2. Add all env vars with Environment = "Preview"
 3. Use staging Neon branch connection string for DATABASE_URL in Preview
-4. Staging URL format: https://kiwimart-git-staging-[team].vercel.app
+4. Staging URL format: https://buyzi-git-staging-[team].vercel.app
 
 ### What Staging Is Used For
 
@@ -325,7 +325,7 @@ These need a persistent long-running process.
 
 1. Create account at railway.app
 2. New Project → Deploy from GitHub repo
-3. Add service → select kiwimart repo
+3. Add service → select buyzi repo
 4. Set start command: `node dist/worker.js`
 5. Add all environment variables from .env.example
    (same as production Vercel env vars)
@@ -367,7 +367,7 @@ Every image request hits R2 storage (slow, costs money at scale).
 
 1. In Cloudflare dashboard → R2 → your bucket
 2. Settings → Custom Domains → Add domain
-3. Add: images.kiwimart.co.nz (or your domain)
+3. Add: images.buyzi.co.nz (or your domain)
 4. This automatically enables Cloudflare CDN caching
 
 ### Update getImageUrl() function
@@ -381,7 +381,7 @@ https://[account].r2.cloudflarestorage.com/[bucket]/
 to:
 
 ```
-https://images.kiwimart.co.nz/
+https://images.buyzi.co.nz/
 ```
 
 (find in src/lib/utils.ts or wherever getImageUrl is defined)
@@ -390,7 +390,7 @@ https://images.kiwimart.co.nz/
 
 In Cloudflare dashboard → Caching → Cache Rules:
 
-- URL pattern: `images.kiwimart.co.nz/*`
+- URL pattern: `images.buyzi.co.nz/*`
 - Cache TTL: 1 year (images are immutable — keyed by hash)
 - Browser TTL: 1 year
 
