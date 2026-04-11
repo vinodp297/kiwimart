@@ -18,6 +18,7 @@ import NavNotificationPanel, {
 import NavUserDropdown, { type NavUser } from "./nav/NavUserDropdown";
 import NavMobileDrawer from "./nav/NavMobileDrawer";
 import { getImageUrl } from "@/lib/image";
+import { clientError } from "@/lib/client-logger";
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
@@ -89,7 +90,7 @@ export default function NavBar() {
         setNotifications(d.notifications ?? []);
       })
       .catch((err) => {
-        console.error("NavBar.fetchNavSummary failed", err);
+        clientError("nav.fetchNavSummary.failed", { error: String(err) });
       });
   }, [isAuthenticated]);
 
@@ -98,7 +99,7 @@ export default function NavBar() {
     const prev = notifications;
     setNotifications((ns) => ns.map((n) => ({ ...n, isRead: true })));
     fetch("/api/v1/notifications", { method: "PATCH" }).catch((err) => {
-      console.error("NavBar.markAllRead failed", err);
+      clientError("nav.markAllRead.failed", { error: String(err) });
       setNotifications(prev);
     });
   }, [notifications]);

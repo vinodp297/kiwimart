@@ -22,6 +22,7 @@ import {
 import { createListing, saveDraft } from "@/server/actions/listings";
 import { createListingSchema } from "@/server/validators";
 import ListingPreviewModal from "./ListingPreviewModal";
+import { clientError } from "@/lib/client-logger";
 
 import type {
   ImagePreview,
@@ -162,7 +163,9 @@ export default function SellPage() {
       });
 
       if (!result.success) {
-        console.error("[Upload] Phase 1 failed (presigned URL):", result.error);
+        clientError("upload.presignedUrl.failed", {
+          error: result.error ?? "unknown",
+        });
         setImages((prev) =>
           prev.map((i) =>
             i.id === img.id
@@ -195,16 +198,16 @@ export default function SellPage() {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
           } else {
-            console.error(
-              `[Upload] R2 PUT failed: status=${xhr.status}`,
-              xhr.responseText?.slice(0, 500),
-            );
+            clientError("upload.r2Put.failed", {
+              status: xhr.status,
+              response: xhr.responseText?.slice(0, 200),
+            });
             reject(new Error(`Upload failed with status ${xhr.status}`));
           }
         });
 
         xhr.addEventListener("error", () => {
-          console.error("[Upload] Network error — likely CORS or connectivity");
+          clientError("upload.network.failed");
           reject(new Error("Network error during upload"));
         });
         xhr.addEventListener("abort", () =>
@@ -228,10 +231,9 @@ export default function SellPage() {
       const confirmResult = await confirmImageUpload({ imageId, r2Key });
 
       if (!confirmResult.success) {
-        console.error(
-          "[Upload] Phase 3 failed (processing):",
-          confirmResult.error,
-        );
+        clientError("upload.processing.failed", {
+          error: confirmResult.error ?? "unknown",
+        });
         setImages((prev) =>
           prev.map((i) =>
             i.id === img.id
@@ -272,7 +274,7 @@ export default function SellPage() {
         ),
       );
     } catch (err) {
-      console.error("[Upload] Uncaught error:", err);
+      clientError("upload.uncaught", { error: String(err) });
       setImages((prev) =>
         prev.map((i) =>
           i.id === img.id

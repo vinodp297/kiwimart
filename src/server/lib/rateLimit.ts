@@ -250,6 +250,18 @@ const adminConfigUpdateLimiter = () =>
     analytics: true,
   });
 
+/**
+ * 10 client error reports per minute per IP.
+ * Fail-open — the right to report errors must never be blocked by Redis issues.
+ */
+const clientErrorsLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(10, "1 m"),
+    prefix: "km:rl:client-errors",
+    analytics: true,
+  });
+
 // ── Rate limit types ──────────────────────────────────────────────────────────
 
 export type RateLimitKey =
@@ -278,7 +290,9 @@ export type RateLimitKey =
   | "adminErase"
   | "adminJobRetry"
   | "adminListingMod"
-  | "adminConfigUpdate";
+  | "adminConfigUpdate"
+  // Client error reporting — fail-open so reporting is never blocked
+  | "clientErrors";
 
 export interface RateLimitResult {
   success: boolean;
@@ -343,11 +357,16 @@ export async function rateLimit(
     adminJobRetry: adminJobRetryLimiter,
     adminListingMod: adminListingModLimiter,
     adminConfigUpdate: adminConfigUpdateLimiter,
+    clientErrors: clientErrorsLimiter,
   };
 
   // Public read endpoints fail OPEN — never block browsing or search because
   // Redis is unavailable. All other endpoints fail closed (throw propagates).
-  const FAIL_OPEN_KEYS = new Set<RateLimitKey>(["publicRead", "publicSearch"]);
+  const FAIL_OPEN_KEYS = new Set<RateLimitKey>([
+    "publicRead",
+    "publicSearch",
+    "clientErrors",
+  ]);
 
   try {
     const limiter = limiterFactories[type]();

@@ -5,6 +5,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { clientError } from "@/lib/client-logger";
 
 export default function RouteError({
   error,
@@ -14,7 +15,10 @@ export default function RouteError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[KiwiMart] Route error:", error.digest ?? error.message);
+    clientError("route.error", {
+      digest: error.digest,
+      error: error.message,
+    });
   }, [error]);
 
   return (

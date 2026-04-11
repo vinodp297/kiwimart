@@ -9,6 +9,7 @@ import { useSessionSafe } from "@/hooks/useSessionSafe";
 import Script from "next/script";
 import { registerUser } from "@/server/actions/auth";
 import { registerSchema } from "@/server/validators";
+import { clientError } from "@/lib/client-logger";
 import {
   Button,
   Input,
@@ -60,7 +61,9 @@ export default function RegisterPage() {
         }
       })
       .catch((err) => {
-        console.error("register.fetchTurnstileConfig failed", err);
+        clientError("register.fetchTurnstileConfig.failed", {
+          error: String(err),
+        });
       });
   }, []);
 

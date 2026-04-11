@@ -7,6 +7,7 @@
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 import Link from "next/link";
+import { clientError } from "@/lib/client-logger";
 
 interface Props {
   error: Error & { digest?: string };
@@ -18,7 +19,10 @@ export default function GlobalError({ error, reset }: Props) {
     if (process.env.NODE_ENV === "production") {
       Sentry.captureException(error);
     }
-    console.error("[KiwiMart] Unhandled error:", error);
+    clientError("global.unhandledError", {
+      digest: error.digest,
+      error: error.message,
+    });
   }, [error]);
 
   return (
