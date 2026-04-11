@@ -1,30 +1,29 @@
 // src/server/jobs/stripeReconciliation.ts
 // ─── Stripe / DB Reconciliation Job ──────────────────────────────────────────
-// Detects discrepancies between Stripe PaymentIntent states and DB order
-// statuses. Run daily via /api/cron/stripe-reconciliation.
+// Detects and auto-fixes discrepancies between Stripe PaymentIntent states and
+// DB order statuses. Run hourly via /api/cron/stripe-reconciliation.
 //
-// All discrepancies are LOGGED ONLY — no auto-fixing.
-// Operations team reviews the logs and resolves manually to avoid
-// unintended side effects from automated state corrections.
+// Check 1: AWAITING_PAYMENT orders >1 hour old with a Stripe PI
+//   Stripe: requires_capture or succeeded → transition to PAYMENT_HELD (webhook missed)
+//   Stripe: canceled                      → transition to CANCELLED, release listing
 //
-// Check 1: Stripe PIs in requires_capture → DB order still AWAITING_PAYMENT
-//   Cause: webhook missed or processed out of order.
-//   Action needed: manually transition order to PAYMENT_HELD.
-//
-// Check 2: DB orders in PAYMENT_HELD → Stripe PI cancelled or failed
-//   Cause: PI expired, refunded outside system, or manual Stripe action.
-//   Action needed: manually cancel order and reconcile funds.
+// Check 2: PAYMENT_HELD orders >7 days old — log for manual review
+//   These may have had funds refunded outside the system or PI expired.
 
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
 import { orderRepository } from "@/modules/orders/order.repository";
+import { transitionOrder } from "@/modules/orders/order.transitions";
+
+const LOCK_KEY = "cron:stripe-reconciliation";
+const LOCK_TTL_SECONDS = 3600; // 1 hour — matches the cron interval
+const BATCH_SIZE = 100;
+const AWAITING_PAYMENT_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+const PAYMENT_HELD_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export async function runStripeReconciliation(): Promise<void> {
-  const LOCK_KEY = "cron:stripe-reconciliation";
-  const LOCK_TTL_SECONDS = 300;
-
   const lock = await acquireLock(LOCK_KEY, LOCK_TTL_SECONDS);
   if (!lock) {
     logger.info("stripe_reconciliation.skipped_lock_held", {
@@ -38,48 +37,89 @@ export async function runStripeReconciliation(): Promise<void> {
     return await runWithRequestContext(
       { correlationId: `cron:runStripeReconciliation:${Date.now()}` },
       async () => {
-        const since = new Date(Date.now() - 24 * 60 * 60 * 1000); // last 24 hours
+        const now = Date.now();
+        const oneHourAgo = new Date(now - AWAITING_PAYMENT_THRESHOLD_MS);
+        const sevenDaysAgo = new Date(now - PAYMENT_HELD_THRESHOLD_MS);
 
         logger.info("stripe.reconciliation.started", {
-          since: since.toISOString(),
+          awaitingCutoff: oneHourAgo.toISOString(),
+          heldCutoff: sevenDaysAgo.toISOString(),
         });
 
-        // ── Check 1: PIs in requires_capture with AWAITING_PAYMENT orders ──────────
-        // Stripe has authorised the payment, but our webhook hasn't updated the DB.
-        // This means the buyer was charged but the order is stuck.
+        let fixed = 0;
+        let flagged = 0;
+
+        // ── Check 1: AWAITING_PAYMENT orders >1 hour old ─────────────────────
+        // Retrieve the Stripe PI for each stale order and auto-fix discrepancies.
         try {
-          const piList = await stripe.paymentIntents.list({
-            limit: 100,
-            created: { gte: Math.floor(since.getTime() / 1000) },
-          });
+          const awaitingOrders =
+            await orderRepository.findAwaitingPaymentWithPiOlderThan(
+              oneHourAgo,
+              BATCH_SIZE,
+            );
 
-          // Collect requires_capture PIs that have an orderId in metadata
-          const captureReadyPIs = piList.data
-            .filter(
-              (pi) => pi.status === "requires_capture" && pi.metadata?.orderId,
-            )
-            .map((pi) => ({ pi, orderId: pi.metadata!.orderId! }));
+          for (const order of awaitingOrders) {
+            try {
+              const pi = await stripe.paymentIntents.retrieve(
+                order.stripePaymentIntentId!,
+              );
 
-          if (captureReadyPIs.length > 0) {
-            // Fetch all relevant orders in a single query instead of N findUnique calls
-            const orderIds = captureReadyPIs.map(({ orderId }) => orderId);
-            const orders = await orderRepository.findStatusesByIds(orderIds);
-            const orderMap = new Map(orders.map((o) => [o.id, o]));
-
-            for (const { pi, orderId } of captureReadyPIs) {
-              const order = orderMap.get(orderId);
-              if (order && order.status === "AWAITING_PAYMENT") {
-                logger.error("stripe.reconciliation.awaiting_but_pi_ready", {
-                  orderId,
-                  stripePaymentIntentId: pi.id,
-                  dbStatus: order.status,
-                  piStatus: pi.status,
-                  requiresManualReview: true,
-                  message:
-                    "Order is AWAITING_PAYMENT but Stripe PI is requires_capture. " +
-                    "Likely a missed webhook — manually transition order to PAYMENT_HELD.",
-                });
+              if (
+                pi.status === "requires_capture" ||
+                pi.status === "succeeded"
+              ) {
+                // Payment authorised — webhook missed. Transition to PAYMENT_HELD.
+                await transitionOrder(
+                  order.id,
+                  "PAYMENT_HELD",
+                  {},
+                  { fromStatus: "AWAITING_PAYMENT" },
+                );
+                logger.info(
+                  "stripe.reconciliation.fixed_awaiting_to_payment_held",
+                  {
+                    orderId: order.id,
+                    piStatus: pi.status,
+                    fix: "AWAITING_PAYMENT → PAYMENT_HELD",
+                  },
+                );
+                fixed++;
+              } else if (pi.status === "canceled") {
+                // PI explicitly cancelled — cancel order and release listing.
+                await transitionOrder(
+                  order.id,
+                  "CANCELLED",
+                  { cancelledAt: new Date() },
+                  { fromStatus: "AWAITING_PAYMENT" },
+                );
+                await orderRepository.releaseListing(order.listingId);
+                logger.info(
+                  "stripe.reconciliation.fixed_awaiting_to_cancelled",
+                  {
+                    orderId: order.id,
+                    piStatus: pi.status,
+                    fix: "AWAITING_PAYMENT → CANCELLED + listing released",
+                  },
+                );
+                fixed++;
+              } else {
+                // Other statuses (requires_payment_method, processing, etc.) —
+                // payment still in flight or failed, log for awareness.
+                logger.warn(
+                  "stripe.reconciliation.awaiting_unexpected_pi_status",
+                  {
+                    orderId: order.id,
+                    piStatus: pi.status,
+                  },
+                );
               }
+            } catch (err) {
+              // P2025 = optimistic lock lost (another process won) — safe to skip.
+              if ((err as { code?: string })?.code === "P2025") continue;
+              logger.warn("stripe.reconciliation.order_fix_failed", {
+                orderId: order.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
             }
           }
         } catch (err) {
@@ -88,60 +128,35 @@ export async function runStripeReconciliation(): Promise<void> {
           });
         }
 
-        // ── Check 2: PAYMENT_HELD orders with cancelled/failed Stripe PI ──────────
-        // DB says the order is paid but Stripe says the PI is no longer active.
-        // Funds may have been refunded externally or the PI may have expired.
+        // ── Check 2: PAYMENT_HELD orders >7 days old ─────────────────────────
+        // These are stale escrow holds. Flag for manual review — do not auto-fix
+        // as they may involve complex fund movements outside the system.
         try {
-          const heldOrders = await orderRepository.findPaymentHeldWithPiSince(
-            since,
-            100,
-          );
+          const heldOrders =
+            await orderRepository.findPaymentHeldWithPiOlderThan(
+              sevenDaysAgo,
+              BATCH_SIZE,
+            );
 
-          // Retrieve all PIs in parallel instead of sequentially
-          await Promise.all(
-            heldOrders
-              .filter((order) => order.stripePaymentIntentId)
-              .map(async (order) => {
-                try {
-                  const pi = await stripe.paymentIntents.retrieve(
-                    order.stripePaymentIntentId!,
-                  );
-
-                  // 'canceled' = PI explicitly cancelled (e.g. external refund or expiry)
-                  // 'requires_payment_method' = payment failed, PI awaiting retry
-                  if (
-                    pi.status === "canceled" ||
-                    pi.status === "requires_payment_method"
-                  ) {
-                    logger.error("stripe.reconciliation.held_but_pi_failed", {
-                      orderId: order.id,
-                      stripePaymentIntentId: order.stripePaymentIntentId,
-                      dbStatus: "PAYMENT_HELD",
-                      piStatus: pi.status,
-                      requiresManualReview: true,
-                      message:
-                        `Order is PAYMENT_HELD but Stripe PI status is ${pi.status}. ` +
-                        "Funds may have been externally refunded or PI expired — manual review required.",
-                    });
-                  }
-                } catch (err) {
-                  logger.warn("stripe.reconciliation.pi_retrieve_failed", {
-                    orderId: order.id,
-                    stripePaymentIntentId: order.stripePaymentIntentId,
-                    error: err instanceof Error ? err.message : String(err),
-                  });
-                }
-              }),
-          );
+          for (const order of heldOrders) {
+            logger.error("stripe.reconciliation.stale_payment_held", {
+              orderId: order.id,
+              stripePaymentIntentId: order.stripePaymentIntentId,
+              requiresManualReview: true,
+              message:
+                "Order has been in PAYMENT_HELD for >7 days — manual review required.",
+            });
+            flagged++;
+          }
         } catch (err) {
           logger.error("stripe.reconciliation.check2_failed", {
             error: err instanceof Error ? err.message : String(err),
           });
         }
 
-        logger.info("stripe.reconciliation.completed");
-      }, // end runWithRequestContext fn
-    ); // end runWithRequestContext
+        logger.info("stripe.reconciliation.completed", { fixed, flagged });
+      },
+    );
   } finally {
     await releaseLock(LOCK_KEY, lock);
   }

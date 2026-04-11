@@ -398,115 +398,118 @@ describe("Cron Jobs", () => {
   // ──────────────────────────────────────────────────────────────────────────
 
   describe("2. Stripe Reconciliation", () => {
-    it("detects AWAITING_PAYMENT order when Stripe PI requires_capture and logs error", async () => {
-      vi.mocked(stripe.paymentIntents.list).mockResolvedValue({
-        data: [
+    it("auto-fixes AWAITING_PAYMENT order to PAYMENT_HELD when Stripe PI is requires_capture", async () => {
+      // Check 1: findAwaitingPaymentWithPiOlderThan → returns stale order
+      vi.mocked(db.order.findMany)
+        .mockResolvedValueOnce([
           {
-            id: "pi_abc123",
-            status: "requires_capture",
-            metadata: { orderId: "order-1" },
+            id: "order-1",
+            stripePaymentIntentId: "pi_abc123",
+            listingId: "listing-1",
           },
-        ],
-      } as never);
-      vi.mocked(db.order.findMany).mockResolvedValue([
-        { id: "order-1", status: "AWAITING_PAYMENT" },
-      ] as never);
-
-      await runStripeReconciliation();
-
-      expect(logger.error).toHaveBeenCalledWith(
-        "stripe.reconciliation.awaiting_but_pi_ready",
-        expect.objectContaining({
-          orderId: "order-1",
-          requiresManualReview: true,
-        }),
-      );
-    });
-
-    it("does not log discrepancy when AWAITING_PAYMENT order has no matching requires_capture PI", async () => {
-      vi.mocked(stripe.paymentIntents.list).mockResolvedValue({
-        data: [
-          {
-            id: "pi_abc123",
-            status: "requires_capture",
-            metadata: { orderId: "order-1" },
-          },
-        ],
-      } as never);
-      // DB order is PAYMENT_HELD (correct state for requires_capture PI)
-      vi.mocked(db.order.findMany).mockResolvedValue([
-        { id: "order-1", status: "PAYMENT_HELD" },
-      ] as never);
-
-      await runStripeReconciliation();
-
-      expect(logger.error).not.toHaveBeenCalledWith(
-        "stripe.reconciliation.awaiting_but_pi_ready",
-        expect.anything(),
-      );
-    });
-
-    it("detects PAYMENT_HELD order with a cancelled Stripe PI and logs error", async () => {
-      // stripe.paymentIntents.list returns no requires_capture PIs (from beforeEach default),
-      // so Check 1 skips db.order.findMany entirely — only Check 2 calls it.
-      vi.mocked(db.order.findMany).mockResolvedValue([
-        { id: "order-1", stripePaymentIntentId: "pi_cancelled" },
-      ] as never);
+        ] as never)
+        // Check 2: findPaymentHeldWithPiOlderThan → no stale held orders
+        .mockResolvedValueOnce([] as never);
 
       vi.mocked(stripe.paymentIntents.retrieve).mockResolvedValue({
-        id: "pi_cancelled",
-        status: "canceled",
+        id: "pi_abc123",
+        status: "requires_capture",
       } as never);
 
       await runStripeReconciliation();
 
+      expect(transitionOrder).toHaveBeenCalledWith(
+        "order-1",
+        "PAYMENT_HELD",
+        {},
+        { fromStatus: "AWAITING_PAYMENT" },
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        "stripe.reconciliation.fixed_awaiting_to_payment_held",
+        expect.objectContaining({ orderId: "order-1" }),
+      );
+    });
+
+    it("does not auto-fix when no stale AWAITING_PAYMENT orders exist", async () => {
+      // Both checks return no orders
+      vi.mocked(db.order.findMany).mockResolvedValue([] as never);
+
+      await runStripeReconciliation();
+
+      expect(transitionOrder).not.toHaveBeenCalled();
+      expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled();
+    });
+
+    it("logs stale PAYMENT_HELD orders as requiring manual review", async () => {
+      // Check 1: no awaiting orders
+      vi.mocked(db.order.findMany)
+        .mockResolvedValueOnce([] as never)
+        // Check 2: stale held order
+        .mockResolvedValueOnce([
+          { id: "order-1", stripePaymentIntentId: "pi_cancelled" },
+        ] as never);
+
+      await runStripeReconciliation();
+
       expect(logger.error).toHaveBeenCalledWith(
-        "stripe.reconciliation.held_but_pi_failed",
+        "stripe.reconciliation.stale_payment_held",
         expect.objectContaining({
           orderId: "order-1",
           requiresManualReview: true,
         }),
       );
+      // Stale held orders must NOT be auto-transitioned
+      expect(transitionOrder).not.toHaveBeenCalled();
     });
 
-    it("handles Stripe API error gracefully when retrieving PI", async () => {
-      // Check 1 skips db.order.findMany (no requires_capture PIs from list);
-      // Check 2 is the only call — use mockResolvedValue instead of Once.
-      vi.mocked(db.order.findMany).mockResolvedValue([
-        { id: "order-1", stripePaymentIntentId: "pi_error" },
-      ] as never);
+    it("handles Stripe API error gracefully when retrieving PI for AWAITING_PAYMENT order", async () => {
+      vi.mocked(db.order.findMany)
+        .mockResolvedValueOnce([
+          {
+            id: "order-1",
+            stripePaymentIntentId: "pi_error",
+            listingId: "l-1",
+          },
+        ] as never)
+        .mockResolvedValueOnce([] as never);
 
       vi.mocked(stripe.paymentIntents.retrieve).mockRejectedValue(
         new Error("Stripe network error"),
       );
 
-      // Should not throw — error is handled internally
+      // Should not throw — error is caught per-order
       await expect(runStripeReconciliation()).resolves.toBeUndefined();
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "stripe.reconciliation.pi_retrieve_failed",
+        "stripe.reconciliation.order_fix_failed",
         expect.objectContaining({ orderId: "order-1" }),
       );
     });
 
-    it("does not modify any orders — reconciliation is log-only", async () => {
-      vi.mocked(stripe.paymentIntents.list).mockResolvedValue({
-        data: [
+    it("auto-fixes AWAITING_PAYMENT order to CANCELLED and releases listing when PI is canceled", async () => {
+      vi.mocked(db.order.findMany)
+        .mockResolvedValueOnce([
           {
-            id: "pi_abc",
-            status: "requires_capture",
-            metadata: { orderId: "order-1" },
+            id: "order-1",
+            stripePaymentIntentId: "pi_can",
+            listingId: "listing-1",
           },
-        ],
+        ] as never)
+        .mockResolvedValueOnce([] as never);
+
+      vi.mocked(stripe.paymentIntents.retrieve).mockResolvedValue({
+        id: "pi_can",
+        status: "canceled",
       } as never);
-      vi.mocked(db.order.findMany).mockResolvedValue([
-        { id: "order-1", status: "AWAITING_PAYMENT" },
-      ] as never);
 
       await runStripeReconciliation();
 
-      expect(db.order.update).not.toHaveBeenCalled();
-      expect(db.order.updateMany).not.toHaveBeenCalled();
+      expect(transitionOrder).toHaveBeenCalledWith(
+        "order-1",
+        "CANCELLED",
+        { cancelledAt: expect.any(Date) },
+        { fromStatus: "AWAITING_PAYMENT" },
+      );
     });
   });
 

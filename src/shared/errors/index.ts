@@ -42,7 +42,9 @@ export type ErrorCode =
   | "CONFIGURATION_ERROR"
   | "PAYMENT_GATEWAY_TIMEOUT"
   | "USERNAME_GENERATION_FAILED"
-  | "REGISTRATION_FAILED";
+  | "REGISTRATION_FAILED"
+  | "STEP_UP_REQUIRED"
+  | "FORBIDDEN";
 
 export class AppError extends Error {
   constructor(

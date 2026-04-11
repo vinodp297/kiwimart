@@ -7,6 +7,7 @@ import { interactionRepository } from "./interaction.repository";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 import type { Prisma } from "@prisma/client";
+import type { DbClient } from "./order.repository";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -47,15 +48,21 @@ export interface CreateInteractionInput {
   details?: Record<string, unknown>;
   expiresAt: Date;
   autoAction: string;
+  /** Optional transaction client. When provided, all writes participate in the
+   *  caller's transaction so the interaction row and event record are atomic. */
+  tx?: DbClient;
 }
 
 // ── Service ─────────────────────────────────────────────────────────────────
 
 export class OrderInteractionService {
   async createInteraction(input: CreateInteractionInput) {
+    const { tx } = input;
+
     // Validate order exists and user is a party
     const order = await interactionRepository.findOrderForInteraction(
       input.orderId,
+      tx,
     );
 
     if (!order) throw AppError.notFound("Order");
@@ -73,6 +80,7 @@ export class OrderInteractionService {
     const existing = await interactionRepository.findPendingByTypeAndOrder(
       input.orderId,
       input.type,
+      tx,
     );
 
     if (existing) {
@@ -83,18 +91,21 @@ export class OrderInteractionService {
       );
     }
 
-    const interaction = await interactionRepository.createInteraction({
-      orderId: input.orderId,
-      type: input.type,
-      initiatedById: input.initiatedById,
-      initiatorRole: input.initiatorRole,
-      reason: input.reason,
-      details: (input.details ?? undefined) as
-        | Prisma.InputJsonValue
-        | undefined,
-      expiresAt: input.expiresAt,
-      autoAction: input.autoAction,
-    });
+    const interaction = await interactionRepository.createInteraction(
+      {
+        orderId: input.orderId,
+        type: input.type,
+        initiatedById: input.initiatedById,
+        initiatorRole: input.initiatorRole,
+        reason: input.reason,
+        details: (input.details ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
+        expiresAt: input.expiresAt,
+        autoAction: input.autoAction,
+      },
+      tx,
+    );
 
     logger.info("interaction.created", {
       interactionId: interaction.id,

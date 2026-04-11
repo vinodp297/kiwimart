@@ -90,11 +90,11 @@ describe("Audit fixes batch 2 — Fix 8: layered architecture (workers/jobs/serv
   });
 
   // ── 9. stripeReconciliation — refactored ─────────────────────────────────
-  it("stripeReconciliation.ts uses orderRepository instead of db", () => {
+  it("stripeReconciliation.ts uses orderRepository (DB-driven auto-fix) instead of db", () => {
     const src = read("src/server/jobs/stripeReconciliation.ts");
     expect(src).not.toMatch(/from\s+["']@\/lib\/db["']/);
-    expect(src).toContain("orderRepository.findStatusesByIds");
-    expect(src).toContain("orderRepository.findPaymentHeldWithPiSince");
+    expect(src).toContain("orderRepository.findAwaitingPaymentWithPiOlderThan");
+    expect(src).toContain("orderRepository.findPaymentHeldWithPiOlderThan");
   });
 
   // ── 10. withTransaction helper exists at src/lib (outside lint scope) ────

@@ -142,31 +142,31 @@ export class InteractionWorkflowService {
     // Create interaction for seller to respond
     const expiresAt = new Date(Date.now() + 48 * MS_PER_HOUR);
 
-    const interaction = await orderInteractionService.createInteraction({
-      orderId,
-      type: INTERACTION_TYPES.CANCEL_REQUEST,
-      initiatedById: userId,
-      initiatorRole: initiatorRole as "BUYER" | "SELLER",
-      reason,
-      expiresAt,
-      autoAction: AUTO_ACTIONS.AUTO_APPROVE,
-    });
-
-    // Fire-and-forget: createInteraction() writes the interaction row without
-    // exposing a tx handle. Atomising this event with that write would require
-    // OrderInteractionService.createInteraction() to accept tx — a change to
-    // another service outside the scope of this tx-threading pass.
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.CANCEL_REQUESTED,
-      actorId: userId,
-      actorRole: isBuyer ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
-      summary: `${initiatorRole === "BUYER" ? "Buyer" : "Seller"} requested cancellation: ${reason}`,
-      metadata: {
+    const interaction = await orderRepository.$transaction(async (tx) => {
+      const created = await orderInteractionService.createInteraction({
+        orderId,
+        type: INTERACTION_TYPES.CANCEL_REQUEST,
+        initiatedById: userId,
+        initiatorRole: initiatorRole as "BUYER" | "SELLER",
         reason,
-        interactionId: interaction.id,
-        expiresAt: expiresAt.toISOString(),
-      },
+        expiresAt,
+        autoAction: AUTO_ACTIONS.AUTO_APPROVE,
+        tx,
+      });
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.CANCEL_REQUESTED,
+        actorId: userId,
+        actorRole: isBuyer ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
+        summary: `${initiatorRole === "BUYER" ? "Buyer" : "Seller"} requested cancellation: ${reason}`,
+        metadata: {
+          reason,
+          interactionId: created.id,
+          expiresAt: expiresAt.toISOString(),
+        },
+        tx,
+      });
+      return created;
     });
 
     fireAndForget(
@@ -325,27 +325,28 @@ export class InteractionWorkflowService {
     );
     const expiresAt = new Date(Date.now() + returnResponseHours * MS_PER_HOUR);
 
-    const interaction = await orderInteractionService.createInteraction({
-      orderId,
-      type: INTERACTION_TYPES.RETURN_REQUEST,
-      initiatedById: userId,
-      initiatorRole: "BUYER",
-      reason,
-      details,
-      expiresAt,
-      autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
-    });
-
-    // Fire-and-forget: createInteraction() writes the interaction row without
-    // exposing a tx handle. Atomising requires OrderInteractionService to
-    // accept tx — out of scope for this tx-threading pass.
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.RETURN_REQUESTED,
-      actorId: userId,
-      actorRole: ACTOR_ROLES.BUYER,
-      summary: `Buyer requested a return: ${reason}`,
-      metadata: { interactionId: interaction.id, ...details },
+    const interaction = await orderRepository.$transaction(async (tx) => {
+      const created = await orderInteractionService.createInteraction({
+        orderId,
+        type: INTERACTION_TYPES.RETURN_REQUEST,
+        initiatedById: userId,
+        initiatorRole: "BUYER",
+        reason,
+        details,
+        expiresAt,
+        autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
+        tx,
+      });
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.RETURN_REQUESTED,
+        actorId: userId,
+        actorRole: ACTOR_ROLES.BUYER,
+        summary: `Buyer requested a return: ${reason}`,
+        metadata: { interactionId: created.id, ...details },
+        tx,
+      });
+      return created;
     });
 
     fireAndForget(
@@ -570,30 +571,33 @@ export class InteractionWorkflowService {
       Date.now() + partialRefundResponseHours * MS_PER_HOUR,
     );
 
-    const interaction = await orderInteractionService.createInteraction({
-      orderId,
-      type: INTERACTION_TYPES.PARTIAL_REFUND_REQUEST,
-      initiatedById: userId,
-      initiatorRole: initiatorRole as "BUYER" | "SELLER",
-      reason,
-      details: { requestedAmount: amountCents, currency: "NZD" },
-      expiresAt,
-      autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
-    });
-
     const label = isBuyer ? "Buyer" : "Seller";
-    // Fire-and-forget: createInteraction() writes the interaction row without
-    // exposing a tx handle — same constraint as requestReturn/requestCancellation.
-    orderEventService.recordEvent({
-      orderId,
-      type: ORDER_EVENT_TYPES.PARTIAL_REFUND_REQUESTED,
-      actorId: userId,
-      actorRole: isBuyer ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
-      summary: `${label} requested a partial refund of $${amount.toFixed(2)}: ${reason}`,
-      metadata: {
-        interactionId: interaction.id,
-        requestedAmount: amountCents,
-      },
+
+    const interaction = await orderRepository.$transaction(async (tx) => {
+      const created = await orderInteractionService.createInteraction({
+        orderId,
+        type: INTERACTION_TYPES.PARTIAL_REFUND_REQUEST,
+        initiatedById: userId,
+        initiatorRole: initiatorRole as "BUYER" | "SELLER",
+        reason,
+        details: { requestedAmount: amountCents, currency: "NZD" },
+        expiresAt,
+        autoAction: AUTO_ACTIONS.AUTO_ESCALATE,
+        tx,
+      });
+      await orderEventService.recordEvent({
+        orderId,
+        type: ORDER_EVENT_TYPES.PARTIAL_REFUND_REQUESTED,
+        actorId: userId,
+        actorRole: isBuyer ? ACTOR_ROLES.BUYER : ACTOR_ROLES.SELLER,
+        summary: `${label} requested a partial refund of $${amount.toFixed(2)}: ${reason}`,
+        metadata: {
+          interactionId: created.id,
+          requestedAmount: amountCents,
+        },
+        tx,
+      });
+      return created;
     });
 
     fireAndForget(

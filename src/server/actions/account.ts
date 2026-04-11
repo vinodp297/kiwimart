@@ -17,6 +17,7 @@ import { audit } from "@/server/lib/audit";
 import { userRepository } from "@/modules/users/user.repository";
 import { logger } from "@/shared/logger";
 import { hashPassword, verifyPassword } from "@/server/lib/password";
+import { requireStepUpAuth } from "@/server/lib/requireStepUpAuth";
 import type { ActionResult } from "@/types";
 import {
   changePasswordSchema,
@@ -53,6 +54,8 @@ export async function changePassword(
     }
 
     const { currentPassword, newPassword } = parsed.data;
+
+    await requireStepUpAuth(authedUser.id, "password_change");
 
     const user = await userRepository.findPasswordHash(authedUser.id);
 

@@ -629,7 +629,19 @@ export const orderRepository = {
         status: true,
         stripePaymentIntentId: true,
         listingId: true,
+        totalNzd: true,
+        sellerId: true,
+        listing: { select: { title: true } },
       },
+    });
+  },
+
+  /** Attach a Stripe PaymentIntent to an order that was created without one. */
+  async attachPaymentIntent(id: string, piId: string, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.order.update({
+      where: { id },
+      data: { stripePaymentIntentId: piId },
     });
   },
 
@@ -1294,6 +1306,73 @@ export const orderRepository = {
       select: { id: true, stripePaymentIntentId: true },
       take,
     });
+  },
+
+  /** Find AWAITING_PAYMENT orders with a PI created before the cutoff (reconciliation check 1). */
+  async findAwaitingPaymentWithPiOlderThan(
+    cutoff: Date,
+    take: number,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "AWAITING_PAYMENT",
+        stripePaymentIntentId: { not: null },
+        createdAt: { lte: cutoff },
+      },
+      select: { id: true, stripePaymentIntentId: true, listingId: true },
+      take,
+      orderBy: { createdAt: "asc" },
+    });
+  },
+
+  /** Find PAYMENT_HELD orders with a PI created before the cutoff (reconciliation check 2). */
+  async findPaymentHeldWithPiOlderThan(
+    cutoff: Date,
+    take: number,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "PAYMENT_HELD",
+        stripePaymentIntentId: { not: null },
+        createdAt: { lte: cutoff },
+      },
+      select: { id: true, stripePaymentIntentId: true },
+      take,
+      orderBy: { createdAt: "asc" },
+    });
+  },
+
+  /** Count metrics for the admin metrics endpoint (avoids db import in route files). */
+  async countMetrics(
+    awaitingCutoff: Date,
+    heldCutoff: Date,
+  ): Promise<{
+    awaitingPaymentStale: number;
+    paymentHeldStale: number;
+    disputedOpen: number;
+  }> {
+    const [awaitingPaymentStale, paymentHeldStale, disputedOpen] =
+      await Promise.all([
+        db.order.count({
+          where: {
+            status: "AWAITING_PAYMENT",
+            stripePaymentIntentId: { not: null },
+            createdAt: { lte: awaitingCutoff },
+          },
+        }),
+        db.order.count({
+          where: {
+            status: "PAYMENT_HELD",
+            createdAt: { lte: heldCutoff },
+          },
+        }),
+        db.order.count({ where: { status: "DISPUTED" } }),
+      ]);
+    return { awaitingPaymentStale, paymentHeldStale, disputedOpen };
   },
 
   /** Bulk-fetch already-queued auto-resolution events for the given orders. */

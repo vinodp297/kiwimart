@@ -392,6 +392,16 @@ vi.mock("@/server/lib/password", () => ({
   verifyPassword: vi.fn().mockResolvedValue(true),
 }));
 
+// ── Mock step-up MFA auth ────────────────────────────────────────────────────
+// Existing tests that call protected operations (admin refund, changePassword,
+// account deletion) should pass through without needing a Redis step-up token.
+// Tests that specifically test step-up behaviour mock this module locally.
+vi.mock("@/server/lib/requireStepUpAuth", () => ({
+  requireStepUpAuth: vi.fn().mockResolvedValue(undefined),
+  markStepUpVerified: vi.fn().mockResolvedValue(undefined),
+  STEP_UP_TTL_SECONDS: 300,
+}));
+
 // ── Mock distributed lock ─────────────────────────────────────────────────────
 // Makes withLock immediately invoke its callback so DB operations inside locks
 // are exercised in tests without needing a Redis connection.

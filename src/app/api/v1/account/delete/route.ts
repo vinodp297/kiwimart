@@ -6,6 +6,7 @@
 import { performAccountErasure } from "@/modules/users/erasure.service";
 import { userRepository } from "@/modules/users/user.repository";
 import { verifyPassword } from "@/server/lib/password";
+import { requireStepUpAuth } from "@/server/lib/requireStepUpAuth";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { AppError } from "@/shared/errors";
 import { logger } from "@/shared/logger";
@@ -82,6 +83,8 @@ export async function POST(request: Request) {
         request.headers.get("origin"),
       );
     }
+
+    await requireStepUpAuth(user.id, "account_delete");
 
     // Perform the erasure
     await performAccountErasure({

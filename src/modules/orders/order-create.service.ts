@@ -68,14 +68,55 @@ export async function createOrder(
     if (
       existingOrder &&
       existingOrder.status === "AWAITING_PAYMENT" &&
-      existingOrder.stripePaymentIntentId &&
       existingOrder.listingId === listingId
     ) {
-      const clientSecret = await paymentService.getClientSecret(
-        existingOrder.stripePaymentIntentId,
-      );
-      if (clientSecret) {
-        return { ok: true, orderId: existingOrder.id, clientSecret };
+      if (existingOrder.stripePaymentIntentId) {
+        // Order and PI both exist — return the existing client secret.
+        const clientSecret = await paymentService.getClientSecret(
+          existingOrder.stripePaymentIntentId,
+        );
+        if (clientSecret) {
+          return { ok: true, orderId: existingOrder.id, clientSecret };
+        }
+      } else {
+        // NULL PI: order row was created but the Stripe call failed on the first
+        // attempt. Resume using the SAME idempotency key so Stripe deduplicates
+        // the PaymentIntent if it was already created on their side.
+        try {
+          const sellerStatus = await userRepository.findStripeStatus(
+            existingOrder.sellerId,
+          );
+          if (sellerStatus?.stripeAccountId && sellerStatus.isStripeOnboarded) {
+            const paymentResult = await paymentService.createPaymentIntent({
+              amountNzd: existingOrder.totalNzd,
+              sellerId: existingOrder.sellerId,
+              sellerStripeAccountId: sellerStatus.stripeAccountId,
+              orderId: existingOrder.id,
+              listingId: existingOrder.listingId,
+              listingTitle: existingOrder.listing?.title ?? "KiwiMart listing",
+              buyerId: userId,
+              idempotencyKey,
+            });
+            await orderRepository.attachPaymentIntent(
+              existingOrder.id,
+              paymentResult.paymentIntentId,
+            );
+            return {
+              ok: true,
+              orderId: existingOrder.id,
+              clientSecret: paymentResult.clientSecret,
+            };
+          }
+        } catch (resumeErr) {
+          logger.warn("order.create.null_pi_resume_failed", {
+            orderId: existingOrder.id,
+            error:
+              resumeErr instanceof Error
+                ? resumeErr.message
+                : String(resumeErr),
+          });
+          // Fall through — let the caller retry or surface an error below
+        }
       }
     }
   }

@@ -26,6 +26,7 @@ import { orderRepository } from "@/modules/orders/order.repository";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { adminRepository } from "./admin.repository";
 import type { ReportAction, DisputeFavour } from "./admin.types";
+import { requireStepUpAuth } from "@/server/lib/requireStepUpAuth";
 
 export class AdminService {
   async banUser(
@@ -341,6 +342,8 @@ export class AdminService {
     reason: string,
     adminUserId: string,
   ): Promise<void> {
+    await requireStepUpAuth(adminUserId, "refund");
+
     const order = await orderRepository.findWithDisputeContext(orderId);
 
     if (!order) throw AppError.notFound("Order");
