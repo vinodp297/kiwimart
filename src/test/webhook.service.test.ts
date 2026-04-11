@@ -42,12 +42,13 @@ describe("WebhookService", () => {
 
   describe("processEvent", () => {
     it("processes payment_intent.succeeded", async () => {
-      vi.mocked(db.stripeEvent.create).mockResolvedValue({} as never);
+      // In the new handle-first flow: handler runs, then stripeEvent.create is called.
       // State validation: order must be AWAITING_PAYMENT
       vi.mocked(db.order.findUnique).mockResolvedValue({
         status: "AWAITING_PAYMENT",
       } as never);
       vi.mocked(db.$transaction).mockResolvedValue([] as never);
+      vi.mocked(db.stripeEvent.create).mockResolvedValue({} as never);
 
       await webhookService.processEvent({
         id: "evt_pi_success",
@@ -62,22 +63,53 @@ describe("WebhookService", () => {
         },
       } as never);
 
+      // Handler ran first
       expect(db.order.findUnique).toHaveBeenCalled();
       expect(db.$transaction).toHaveBeenCalled();
+      // Event recorded after successful handler
+      expect(db.stripeEvent.create).toHaveBeenCalled();
     });
 
-    it("skips duplicate events", async () => {
+    it("concurrent delivery — handler ran idempotently, P2002 on mark does not throw", async () => {
+      // In the new flow: handler runs first (idempotently), then mark returns false (P2002).
+      // The event data has no orderId → handler is a no-op (early return).
       const p2002 = new Error("Unique constraint") as Error & { code: string };
       p2002.code = "P2002";
       vi.mocked(db.stripeEvent.create).mockRejectedValue(p2002);
 
-      await webhookService.processEvent({
-        id: "evt_dup",
-        type: "payment_intent.succeeded",
-        data: { object: {} },
-      } as never);
+      // Must resolve without error — P2002 on mark means concurrent delivery
+      // already recorded it, which is harmless because the handler is idempotent.
+      await expect(
+        webhookService.processEvent({
+          id: "evt_dup",
+          type: "payment_intent.succeeded",
+          data: { object: { id: "pi_dup", metadata: {}, amount: 0 } },
+        } as never),
+      ).resolves.toBeUndefined();
+    });
 
-      expect(db.$transaction).not.toHaveBeenCalled();
+    it("handler failure — event not recorded, Stripe can retry", async () => {
+      // Simulate a DB error inside the handler
+      vi.mocked(db.order.findUnique).mockRejectedValue(
+        new Error("DB connection lost"),
+      );
+
+      await expect(
+        webhookService.processEvent({
+          id: "evt_fail",
+          type: "payment_intent.succeeded",
+          data: {
+            object: {
+              id: "pi_fail",
+              metadata: { orderId: "order-1", sellerId: "seller-1" },
+              amount: 5000,
+            },
+          },
+        } as never),
+      ).rejects.toThrow("DB connection lost");
+
+      // Event must NOT be recorded — Stripe retries must be allowed
+      expect(db.stripeEvent.create).not.toHaveBeenCalled();
     });
 
     it("processes account.updated", async () => {

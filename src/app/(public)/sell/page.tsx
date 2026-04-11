@@ -315,7 +315,7 @@ export default function SellPage() {
       const allowed = imageFiles.slice(0, remaining);
 
       const previews: ImagePreview[] = allowed.map((f) => ({
-        id: `${f.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        id: crypto.randomUUID(),
         url: URL.createObjectURL(f),
         file: f,
         r2Key: null,

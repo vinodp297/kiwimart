@@ -3,15 +3,21 @@
 // Handles Stripe webhook events. Framework-free — no Next.js imports.
 //
 // Idempotency strategy: AT-LEAST-ONCE with idempotent handlers.
-//   1. Handler runs FIRST — if it throws, event is NOT marked processed,
-//      so Stripe retries will re-deliver it.
-//   2. Handler is idempotent via transitionOrder() optimistic locking —
-//      a second delivery harmlessly gets P2025 (count=0).
-//   3. AFTER handler succeeds, markEventProcessed() records the event ID.
-//      Duplicate check (P2002) short-circuits future deliveries.
 //
-// Previous pattern (mark BEFORE handle) was at-most-once — a handler failure
-// after marking permanently skipped the event, leaving orders stuck.
+//   FLOW: handle FIRST → mark AFTER success
+//
+//   1. Run the handler. If it throws, do NOT record the event — Stripe will
+//      retry and the handler will re-run. This is AT-LEAST-ONCE delivery.
+//   2. Handlers are idempotent via transitionOrder() optimistic locking:
+//      a concurrent delivery sees count=0 on updateMany and returns early.
+//   3. After the handler succeeds, insert the event ID with a unique
+//      constraint. P2002 means a concurrent delivery already recorded it —
+//      harmless because step 2 made the second run a no-op.
+//
+// Previous pattern (mark BEFORE handle, delete on failure) was broken:
+//   - Delete rollback had a race window: concurrent delivery B sees the row,
+//     skips, then delivery A's rollback deletes it → event permanently lost.
+//   - AT-MOST-ONCE with a broken rollback = silent payment failures.
 
 import type { Stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
@@ -48,14 +54,8 @@ export class WebhookService {
   }
 
   async processEvent(event: Stripe.Event): Promise<void> {
-    // Duplicate check FIRST — skip if already successfully processed
-    const isNew = await this.markEventProcessed(event.id, event.type);
-    if (!isNew) return;
-
-    // Handler runs AFTER duplicate check. If the handler throws, the event
-    // row is already inserted, so we delete it in the catch to allow Stripe
-    // retries. Handlers are idempotent (optimistic locking) so re-delivery
-    // is safe.
+    // Run the handler FIRST. If it throws, the event is not recorded and
+    // Stripe will retry — AT-LEAST-ONCE delivery. Handlers must be idempotent.
     try {
       switch (event.type) {
         case "payment_intent.amount_capturable_updated":
@@ -82,20 +82,29 @@ export class WebhookService {
           break;
       }
     } catch (handlerError) {
-      // Handler failed — DELETE the event record so Stripe retry is not
-      // blocked by the idempotency check. The handler is idempotent so
-      // re-processing on retry is safe.
-      try {
-        await orderRepository.deleteStripeEvent(event.id);
-      } catch {
-        // If delete also fails, the event is stuck as "processed".
-        // The daily reconciliation cron will detect the mismatch.
-        logger.error("webhook.event.rollback_failed", {
-          eventId: event.id,
-          type: event.type,
-        });
-      }
+      // Handler failed — do NOT record the event. Stripe will retry and the
+      // handler will re-run. No rollback needed because nothing was written.
+      logger.error("stripe.webhook.handler_failed", {
+        eventId: event.id,
+        type: event.type,
+        error:
+          handlerError instanceof Error
+            ? handlerError.message
+            : String(handlerError),
+      });
       throw handlerError;
+    }
+
+    // Mark as processed AFTER the handler succeeds. P2002 means a concurrent
+    // delivery already recorded the event — harmless because the handler ran
+    // idempotently (optimistic locking made the second delivery a no-op).
+    const isNew = await this.markEventProcessed(event.id, event.type);
+    if (!isNew) {
+      logger.info("stripe.webhook.concurrent_duplicate", {
+        eventId: event.id,
+        type: event.type,
+        note: "Handler ran idempotently; concurrent delivery already recorded this event",
+      });
     }
   }
 

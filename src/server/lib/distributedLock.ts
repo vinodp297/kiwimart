@@ -16,6 +16,7 @@
 // Lock release uses a Lua script (compare-and-delete) to ensure only the
 // process that acquired the lock can release it.
 
+import { randomUUID } from "crypto";
 import { logger } from "@/shared/logger";
 import { AppError } from "@/shared/errors";
 
@@ -35,7 +36,7 @@ export async function acquireLock(
   try {
     const { getRedisClient } = await import("@/infrastructure/redis/client");
     const redis = getRedisClient();
-    const lockValue = `lock:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const lockValue = `lock:${randomUUID()}`;
     const key = `km:lock:${resource}`;
 
     // SET NX EX — atomic: only set if key doesn't exist, auto-expire after TTL
@@ -72,7 +73,7 @@ async function acquireLockWithReason(
   try {
     const { getRedisClient } = await import("@/infrastructure/redis/client");
     const redis = getRedisClient();
-    const lockValue = `lock:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const lockValue = `lock:${randomUUID()}`;
     const key = `km:lock:${resource}`;
 
     const result = await redis.set(key, lockValue, {
@@ -134,12 +135,6 @@ export async function withLock<T>(
   fn: () => Promise<T>,
   options?: { failOpen?: boolean; ttlSeconds?: number },
 ): Promise<T> {
-  // Tests run in isolation with mocked dependencies — skip Redis entirely
-  // to prevent hanging on a connection that will never resolve.
-  if (process.env.NODE_ENV === "test") {
-    return fn();
-  }
-
   const { failOpen = false, ttlSeconds = 30 } = options ?? {};
   const result = await acquireLockWithReason(resource, ttlSeconds);
 

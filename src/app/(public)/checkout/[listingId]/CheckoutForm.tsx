@@ -73,9 +73,7 @@ export default function CheckoutForm({ listing, regions }: Props) {
 
   // Stable idempotency key — generated once per checkout mount, never changes.
   // Prevents duplicate orders from double-clicks or retried submissions.
-  const idempotencyKey = useRef(
-    `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+  const idempotencyKey = useRef(`checkout-${crypto.randomUUID()}`);
 
   // Shipping address state
   const [name, setName] = useState("");

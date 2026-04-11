@@ -383,18 +383,25 @@ describe("WebhookService — processEvent", () => {
 
   // ── Idempotency ──────────────────────────────────────────────────────────
 
-  it("skips processing when event already processed (duplicate)", async () => {
+  it("concurrent delivery — handler ran idempotently, P2002 on mark is swallowed", async () => {
+    // Simulate concurrent delivery: stripeEvent.create throws P2002 AFTER
+    // the handler already ran (new handle-first AT-LEAST-ONCE flow).
+    // P2002 on mark means the other delivery already recorded it — harmless
+    // because handlers are idempotent (optimistic updateMany returns count=0).
     const p2002 = Object.assign(new Error("Unique constraint"), {
       code: "P2002",
     });
     vi.mocked(db.stripeEvent.create).mockRejectedValue(p2002);
 
     const event = makeEvent("payment_intent.succeeded");
-    await webhookService.processEvent(event);
 
-    // Should not attempt any state transition
-    expect(db.order.findUnique).not.toHaveBeenCalled();
-    expect(db.order.updateMany).not.toHaveBeenCalled();
+    // Must resolve without error — P2002 on mark is NOT a failure
+    await expect(webhookService.processEvent(event)).resolves.toBeUndefined();
+
+    // Handler DID run (order state was checked and transition attempted)
+    expect(db.order.findUnique).toHaveBeenCalled();
+    // Mark was attempted after handler success
+    expect(db.stripeEvent.create).toHaveBeenCalled();
   });
 
   // ── Handler failure rolls back event record ──────────────────────────────

@@ -335,10 +335,15 @@ export const userRepository = {
   /** Create a new user (registration). */
   async create(
     data: Prisma.UserCreateInput,
-  ): Promise<{ id: string; email: string; displayName: string }> {
+  ): Promise<{
+    id: string;
+    email: string;
+    displayName: string;
+    username: string;
+  }> {
     return db.user.create({
       data,
-      select: { id: true, email: true, displayName: true },
+      select: { id: true, email: true, displayName: true, username: true },
     });
   },
 

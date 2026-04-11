@@ -3,6 +3,7 @@ import { safeActionError } from "@/shared/errors";
 // src/server/actions/disputes.ts
 // ─── Dispute Server Actions ─────────────────────────────────────────────────
 
+import crypto from "crypto";
 import { headers } from "next/headers";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { requireUser } from "@/server/lib/requireUser";
@@ -168,7 +169,7 @@ export async function uploadDisputeEvidence(
           : file.type === "image/png"
             ? "png"
             : "webp";
-      const key = `disputes/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const key = `disputes/${user.id}/${crypto.randomUUID()}.${ext}`;
       return { key, buffer, contentType: file.type };
     });
 

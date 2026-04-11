@@ -146,6 +146,11 @@ export default function CartPage() {
     idempotencyKey: string;
   } | null>(null);
   const [acceptingPrices, setAcceptingPrices] = useState(false);
+  // Generated once on mount — never regenerated. A fresh key on every click
+  // would defeat the server-side idempotency check (two clicks = two distinct
+  // keys = two orders). crypto.randomUUID() is available in all browsers that
+  // support Next.js 16.
+  const [idempotencyKey] = useState(() => `cart-${crypto.randomUUID()}`);
 
   const loadCart = useCallback(async () => {
     try {
@@ -208,7 +213,6 @@ export default function CartPage() {
     setCheckingOut(true);
     setError("");
     try {
-      const idempotencyKey = `cart-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const result = await checkoutCart({
         idempotencyKey,
         ...(confirmedPriceVersion ? { confirmedPriceVersion: true } : {}),

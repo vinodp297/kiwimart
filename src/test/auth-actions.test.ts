@@ -219,15 +219,70 @@ describe("registerUser", () => {
     );
   });
 
-  it("generates username collision suffix when taken", async () => {
-    vi.mocked(userRepository.existsByUsername).mockResolvedValue(true);
-    await registerUser(validRegisterInput);
-    // Should still create user — username gets a numeric suffix
-    expect(userRepository.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        username: expect.stringMatching(/^johndoe\d{4}$/),
-      }),
+  // ── Username TOCTOU fix: retry-on-P2002 ────────────────────────────────────
+
+  /** Helper: builds a Prisma P2002 error for the username unique constraint. */
+  function usernameP2002() {
+    return Object.assign(new Error("Unique constraint violated"), {
+      code: "P2002",
+      meta: { target: ["username"] },
+    });
+  }
+
+  it("retries with UUID suffix when first create throws P2002 on username", async () => {
+    const successUser = {
+      id: "user-retry",
+      email: "john@example.com",
+      username: "johndoe-retried",
+      displayName: "John Doe",
+    };
+    vi.mocked(userRepository.create)
+      .mockRejectedValueOnce(usernameP2002())
+      .mockResolvedValueOnce(successUser as never);
+
+    const result = await registerUser(validRegisterInput);
+    expect(result.success).toBe(true);
+    expect(userRepository.create).toHaveBeenCalledTimes(2);
+    // Second call must use a different username (base + UUID suffix)
+    const secondCall = vi.mocked(userRepository.create).mock.calls[1]![0] as {
+      username: string;
+    };
+    expect(secondCall.username).toMatch(/^johndoe[0-9a-f-]{8,}$/);
+  });
+
+  it("throws after 5 consecutive P2002 username collisions", async () => {
+    vi.mocked(userRepository.create).mockRejectedValue(usernameP2002());
+
+    // After 5 attempts all fail → error propagates out of the action
+    await expect(registerUser(validRegisterInput)).rejects.toThrow(
+      "Unique constraint violated",
     );
+    expect(userRepository.create).toHaveBeenCalledTimes(5);
+  });
+
+  it("rethrows P2002 on non-username field without retrying", async () => {
+    const emailP2002 = Object.assign(new Error("Unique constraint on email"), {
+      code: "P2002",
+      meta: { target: ["email"] },
+    });
+    vi.mocked(userRepository.create).mockRejectedValue(emailP2002);
+
+    // Not a username collision → thrown immediately without retrying
+    await expect(registerUser(validRegisterInput)).rejects.toThrow(
+      "Unique constraint on email",
+    );
+    expect(userRepository.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows non-P2002 errors without retrying", async () => {
+    vi.mocked(userRepository.create).mockRejectedValue(
+      new Error("DB connection lost"),
+    );
+
+    await expect(registerUser(validRegisterInput)).rejects.toThrow(
+      "DB connection lost",
+    );
+    expect(userRepository.create).toHaveBeenCalledTimes(1);
   });
 
   it("rejects missing required fields", async () => {

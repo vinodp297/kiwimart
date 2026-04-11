@@ -431,16 +431,13 @@ describe("WebhookService — payment-module-coverage", () => {
   });
 
   // ═════════════════════════════════════════════════════════════════════════
-  // 6. processEvent — handler error deletes stripe event to allow retry
+  // 6. processEvent — handler-first AT-LEAST-ONCE delivery
+  //    Handler runs FIRST; event is recorded AFTER success.
+  //    If the handler throws, the event is NOT recorded → Stripe can retry.
   // ═════════════════════════════════════════════════════════════════════════
 
-  describe("processEvent — handler error deletes stripe event for retry", () => {
-    it("deletes stripe event record when handler throws, then re-throws", async () => {
-      // Add stripeEvent.delete mock (not in default setup)
-      (db.stripeEvent as unknown as Record<string, unknown>).delete = vi
-        .fn()
-        .mockResolvedValue({});
-
+  describe("processEvent — handler error: event not recorded, Stripe can retry", () => {
+    it("does not record stripe event when handler throws, then re-throws", async () => {
       // Handler will fail: transition throws
       vi.mocked(db.order.updateMany).mockRejectedValue(
         new Error("DB connection lost"),
@@ -456,19 +453,11 @@ describe("WebhookService — payment-module-coverage", () => {
         "DB connection lost",
       );
 
-      // Event record deleted so Stripe can retry
-      expect(
-        (db.stripeEvent as unknown as Record<string, ReturnType<typeof vi.fn>>)
-          .delete,
-      ).toHaveBeenCalledWith({ where: { id: "evt_retry_001" } });
+      // Event must NOT be recorded — Stripe must be allowed to retry
+      expect(db.stripeEvent.create).not.toHaveBeenCalled();
     });
 
-    it("re-throws original error even when event delete also fails", async () => {
-      // Both handler and delete fail
-      (db.stripeEvent as unknown as Record<string, unknown>).delete = vi
-        .fn()
-        .mockRejectedValue(new Error("Delete also failed"));
-
+    it("re-throws original handler error without recording the event", async () => {
       vi.mocked(db.order.updateMany).mockRejectedValue(
         new Error("Handler boom"),
       );
@@ -479,17 +468,14 @@ describe("WebhookService — payment-module-coverage", () => {
         "evt_retry_002",
       );
 
-      // Original handler error is re-thrown, not the delete error
       await expect(webhookService.processEvent(event)).rejects.toThrow(
         "Handler boom",
       );
+
+      expect(db.stripeEvent.create).not.toHaveBeenCalled();
     });
 
-    it("deletes event on payment_intent.succeeded handler failure too", async () => {
-      (db.stripeEvent as unknown as Record<string, unknown>).delete = vi
-        .fn()
-        .mockResolvedValue({});
-
+    it("does not record event on payment_intent.succeeded handler failure", async () => {
       vi.mocked(db.order.updateMany).mockRejectedValue(
         new Error("Transition failed"),
       );
@@ -500,17 +486,10 @@ describe("WebhookService — payment-module-coverage", () => {
         "Transition failed",
       );
 
-      expect(
-        (db.stripeEvent as unknown as Record<string, ReturnType<typeof vi.fn>>)
-          .delete,
-      ).toHaveBeenCalledWith({ where: { id: "evt_retry_003" } });
+      expect(db.stripeEvent.create).not.toHaveBeenCalled();
     });
 
-    it("deletes event on payment_intent.payment_failed handler failure", async () => {
-      (db.stripeEvent as unknown as Record<string, unknown>).delete = vi
-        .fn()
-        .mockResolvedValue({});
-
+    it("does not record event on payment_intent.payment_failed handler failure", async () => {
       vi.mocked(db.order.updateMany).mockRejectedValue(
         new Error("Cancel failed"),
       );
@@ -525,10 +504,7 @@ describe("WebhookService — payment-module-coverage", () => {
         "Cancel failed",
       );
 
-      expect(
-        (db.stripeEvent as unknown as Record<string, ReturnType<typeof vi.fn>>)
-          .delete,
-      ).toHaveBeenCalledWith({ where: { id: "evt_retry_004" } });
+      expect(db.stripeEvent.create).not.toHaveBeenCalled();
     });
   });
 });
