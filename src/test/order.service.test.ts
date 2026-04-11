@@ -270,11 +270,12 @@ describe("OrderService", () => {
         success: false,
         error: "Payment setup failed. Please try again.",
       });
-      // Reservation was acquired
+      // Reservation was acquired then released — release call passes
+      // status: ACTIVE and clears reservedUntil (Fix 10).
       expect(db.listing.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ status: "RESERVED" }),
-          data: { status: "ACTIVE" },
+          data: { status: "ACTIVE", reservedUntil: null },
         }),
       );
     });

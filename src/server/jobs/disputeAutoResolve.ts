@@ -6,7 +6,6 @@
 // 2. Re-evaluate unresponsive disputes (seller no response after 72h)
 // 3. Escalate expired OrderInteractions to disputes
 
-import db from "@/lib/db";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -23,6 +22,8 @@ import {
 } from "@/modules/orders/order-event.service";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { fireAndForget } from "@/lib/fire-and-forget";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { interactionRepository } from "@/modules/orders/interaction.repository";
 
 export async function processDisputeAutoResolution(): Promise<{
   coolingExecuted: number;
@@ -58,37 +59,16 @@ export async function processDisputeAutoResolution(): Promise<{
 
         // ── 1. Process queued auto-resolutions past cooling period ────────
         try {
-          const queuedEvents = await db.orderEvent.findMany({
-            where: {
-              type: "AUTO_RESOLVED",
-              metadata: { path: ["status"], equals: "QUEUED" },
-            },
-            take: 100,
-            orderBy: { createdAt: "asc" },
-            select: {
-              id: true,
-              orderId: true,
-              metadata: true,
-              createdAt: true,
-            },
-          });
+          const queuedEvents =
+            await orderRepository.findQueuedAutoResolutionEvents(100);
 
           // ── Bulk-fetch order statuses and counter-evidence (eliminates N+1) ──
           const queuedOrderIds = [
             ...new Set(queuedEvents.map((e) => e.orderId)),
           ];
           const [queuedOrders, counterEvidenceEvents] = await Promise.all([
-            db.order.findMany({
-              where: { id: { in: queuedOrderIds } },
-              select: { id: true, status: true },
-            }),
-            db.orderEvent.findMany({
-              where: {
-                orderId: { in: queuedOrderIds },
-                type: "DISPUTE_RESPONDED",
-              },
-              select: { orderId: true, createdAt: true },
-            }),
+            orderRepository.findStatusesByIds(queuedOrderIds),
+            orderRepository.findCounterEvidenceForOrders(queuedOrderIds),
           ]);
           const orderStatusMap = new Map(
             queuedOrders.map((o) => [o.id, o.status]),
@@ -117,11 +97,9 @@ export async function processDisputeAutoResolution(): Promise<{
               const orderStatus = orderStatusMap.get(event.orderId);
               if (!orderStatus || orderStatus !== "DISPUTED") {
                 // Already resolved by other means — mark event as superseded
-                await db.orderEvent.update({
-                  where: { id: event.id },
-                  data: {
-                    metadata: { ...(meta as object), status: "SUPERSEDED" },
-                  },
+                await orderRepository.updateOrderEventMetadata(event.id, {
+                  ...(meta as object),
+                  status: "SUPERSEDED",
                 });
                 continue;
               }
@@ -140,16 +118,11 @@ export async function processDisputeAutoResolution(): Promise<{
                 );
 
                 // Update the queued event metadata
-                await db.orderEvent.update({
-                  where: { id: event.id },
-                  data: {
-                    metadata: {
-                      ...(meta as object),
-                      status: "RE_EVALUATED",
-                      newDecision: reEval.decision,
-                      newScore: reEval.score,
-                    },
-                  },
+                await orderRepository.updateOrderEventMetadata(event.id, {
+                  ...(meta as object),
+                  status: "RE_EVALUATED",
+                  newDecision: reEval.decision,
+                  newScore: reEval.score,
                 });
 
                 if (reEval.canAutoResolve) {
@@ -180,11 +153,9 @@ export async function processDisputeAutoResolution(): Promise<{
                 });
 
                 // Mark queued event as executed
-                await db.orderEvent.update({
-                  where: { id: event.id },
-                  data: {
-                    metadata: { ...(meta as object), status: "EXECUTED" },
-                  },
+                await orderRepository.updateOrderEventMetadata(event.id, {
+                  ...(meta as object),
+                  status: "EXECUTED",
                 });
 
                 coolingExecuted++;
@@ -213,30 +184,17 @@ export async function processDisputeAutoResolution(): Promise<{
             Date.now() - sellerResponseHours * 60 * 60 * 1000,
           );
 
-          const unresponsive = await db.order.findMany({
-            where: {
-              status: "DISPUTED",
-              dispute: {
-                openedAt: { lte: responseDeadline },
-                sellerRespondedAt: null,
-                resolvedAt: null,
-              },
-            },
-            take: 100,
-            orderBy: { dispute: { openedAt: "asc" } },
-            select: { id: true },
-          });
+          const unresponsive = await orderRepository.findUnresponsiveDisputes(
+            responseDeadline,
+            100,
+          );
 
           // ── Bulk-fetch already-queued events to avoid per-dispute DB calls ──
           const unresponsiveIds = unresponsive.map((d) => d.id);
-          const alreadyQueuedEvents = await db.orderEvent.findMany({
-            where: {
-              orderId: { in: unresponsiveIds },
-              type: "AUTO_RESOLVED",
-              metadata: { path: ["status"], equals: "QUEUED" },
-            },
-            select: { orderId: true },
-          });
+          const alreadyQueuedEvents =
+            await orderRepository.findQueuedAutoResolutionsForOrders(
+              unresponsiveIds,
+            );
           const alreadyQueuedSet = new Set(
             alreadyQueuedEvents.map((e) => e.orderId),
           );
@@ -273,34 +231,13 @@ export async function processDisputeAutoResolution(): Promise<{
         try {
           const now = new Date();
 
-          const expiredInteractions = await db.orderInteraction.findMany({
-            where: {
-              status: "PENDING",
-              expiresAt: { lte: now },
-              autoAction: "AUTO_ESCALATE",
-            },
-            take: 100,
-            include: {
-              order: {
-                select: {
-                  id: true,
-                  buyerId: true,
-                  sellerId: true,
-                  status: true,
-                  listing: { select: { title: true } },
-                },
-              },
-              initiator: { select: { displayName: true } },
-            },
-          });
+          const expiredInteractions =
+            await interactionRepository.findExpiredAutoEscalate(now, 100);
 
           // ── Bulk-mark all expired interactions as ESCALATED ──
           const interactionIds = expiredInteractions.map((i) => i.id);
           if (interactionIds.length > 0) {
-            await db.orderInteraction.updateMany({
-              where: { id: { in: interactionIds } },
-              data: { status: "ESCALATED", resolvedAt: now },
-            });
+            await interactionRepository.bulkMarkEscalated(interactionIds, now);
           }
 
           const reasonMap: Record<string, string> = {

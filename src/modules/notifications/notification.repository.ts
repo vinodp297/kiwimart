@@ -239,4 +239,23 @@ export const notificationRepository = {
     });
     return result.count;
   },
+
+  /**
+   * Bulk-find recent SYSTEM notifications attached to the given orders —
+   * used by the dispatch-reminder cron to dedupe reminders within a 12-hour
+   * cooldown without issuing N findFirst calls.
+   */
+  async findRecentSystemForOrders(
+    orderIds: string[],
+    since: Date,
+  ): Promise<Array<{ orderId: string | null }>> {
+    return db.notification.findMany({
+      where: {
+        orderId: { in: orderIds },
+        type: "SYSTEM",
+        createdAt: { gte: since },
+      },
+      select: { orderId: true },
+    });
+  },
 };

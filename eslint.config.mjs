@@ -41,9 +41,22 @@ export default tseslint.config(
       'no-useless-assignment': 'warn',
     },
   },
-  // ── Architecture: services, actions, and pages must not import db directly ──
+  // ── Architecture: services, actions, pages, workers, jobs must not import db ──
   // All DB access must go through repositories (services → repositories → db).
-  // Repositories themselves are excluded from this rule.
+  //
+  // Excluded paths (ignores):
+  //   - *.repository.ts            — repositories ARE the layer that owns db
+  //   - src/server/lib/audit.ts    — owns the AuditLog table (acts as a repo
+  //                                  for an append-only table; mirrors the
+  //                                  repository contract for audit writes)
+  //   - src/server/lib/cronLogger.ts — owns the CronLog table (same pattern)
+  //   - src/server/lib/requireUser.ts — bootstraps auth state with a fresh
+  //                                  DB lookup; runs before any repository
+  //                                  layer is meaningful
+  //   - src/server/services/health.service.ts — uses $queryRaw for liveness
+  //                                  probes; cannot meaningfully be wrapped
+  //                                  in a typed repository
+  //
   // src/app/** is included so that page/route/component files cannot bypass the
   // layered architecture by calling db directly — they must go via server actions
   // or data-fetching helpers that use repositories.
@@ -51,10 +64,20 @@ export default tseslint.config(
     files: [
       'src/modules/**/*.ts',
       'src/server/actions/**/*.ts',
+      'src/server/workers/**/*.ts',
+      'src/server/jobs/**/*.ts',
+      'src/server/services/**/*.ts',
+      'src/server/lib/**/*.ts',
       'src/app/**/*.ts',
       'src/app/**/*.tsx',
     ],
-    ignores: ['src/modules/**/*.repository.ts'],
+    ignores: [
+      'src/modules/**/*.repository.ts',
+      'src/server/lib/audit.ts',
+      'src/server/lib/cronLogger.ts',
+      'src/server/lib/requireUser.ts',
+      'src/server/services/health.service.ts',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',

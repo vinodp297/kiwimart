@@ -31,8 +31,11 @@ export async function verifyTurnstile(
   token: string,
   remoteIp?: string,
 ): Promise<boolean> {
-  // Always pass in non-production — no real challenges in dev/test
-  if (process.env.NODE_ENV !== "production") {
+  // Turnstile enforcement is opt-in via TURNSTILE_ENFORCED. Replaces the prior
+  // NODE_ENV !== "production" check which silently bypassed verification on
+  // staging environments using NODE_ENV=staging or =preview.
+  const enforced = process.env.TURNSTILE_ENFORCED === "true";
+  if (!enforced) {
     return true;
   }
 

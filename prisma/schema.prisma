@@ -560,7 +560,13 @@ model Listing {
   publishedAt DateTime?
   expiresAt   DateTime?
   soldAt      DateTime?
-  
+
+  // Reservation expiry (Fix 10) — when a listing is RESERVED for an in-flight
+  // checkout, this stores the deadline by which payment must be confirmed.
+  // The release-stale-reservations cron flips reservations back to ACTIVE
+  // once this passes. NULL when not currently reserved.
+  reservedUntil DateTime?
+
   // Timestamps
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -590,6 +596,7 @@ model Listing {
   // Partial index for public browse queries (status=ACTIVE, deletedAt=null)
   @@index([createdAt(sort: Desc), categoryId, region, priceNzd], map: "Listing_active_partial_idx")
   @@index([status, expiresAt], map: "Listing_status_expiresAt_idx")
+  @@index([status, reservedUntil], map: "Listing_status_reservedUntil_idx")
 }
 
 model ListingImage {

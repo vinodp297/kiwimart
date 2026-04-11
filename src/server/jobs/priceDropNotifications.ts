@@ -5,13 +5,14 @@
 // Creates a notification per watcher and updates priceAtWatch to prevent
 // duplicate alerts on the same price drop.
 
-import db from "@/lib/db";
 import { formatCentsAsNzd } from "@/lib/currency";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { fireAndForget } from "@/lib/fire-and-forget";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+import { watchlistRepository } from "@/modules/listings/watchlist.repository";
+import { withTransaction } from "@/lib/transaction";
 
 export async function checkPriceDrops(): Promise<{
   checked: number;
@@ -34,28 +35,7 @@ export async function checkPriceDrops(): Promise<{
       { correlationId: `cron:checkPriceDrops:${Date.now()}` },
       async () => {
         // Fetch all watchlist items with alerts enabled that have a reference price
-        const watchItems = await db.watchlistItem.findMany({
-          where: {
-            isPriceAlertEnabled: true,
-            priceAtWatch: { not: null },
-            listing: {
-              status: "ACTIVE",
-              deletedAt: null,
-            },
-          },
-          select: {
-            id: true,
-            userId: true,
-            priceAtWatch: true,
-            listing: {
-              select: {
-                id: true,
-                title: true,
-                priceNzd: true,
-              },
-            },
-          },
-        });
+        const watchItems = await watchlistRepository.findActivePriceAlerts();
 
         // Filter to items where price has actually dropped
         const droppedItems = watchItems.filter(
@@ -82,14 +62,15 @@ export async function checkPriceDrops(): Promise<{
 
         // Bulk update all priceAtWatch values in one transaction (each item has a different price)
         if (droppedItems.length > 0) {
-          await db.$transaction(
-            droppedItems.map((item) =>
-              db.watchlistItem.update({
-                where: { id: item.id },
-                data: { priceAtWatch: item.listing.priceNzd },
-              }),
-            ),
-          );
+          await withTransaction(async (tx) => {
+            for (const item of droppedItems) {
+              await watchlistRepository.updatePriceAtWatch(
+                item.id,
+                item.listing.priceNzd,
+                tx,
+              );
+            }
+          });
         }
 
         const notified = droppedItems.length;

@@ -1,9 +1,9 @@
 // src/server/jobs/dailyDigest.ts
-import db from "@/lib/db";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+import { adminRepository } from "@/modules/admin/admin.repository";
 
 const LOCK_KEY = "cron:daily-digest";
 const LOCK_TTL_SECONDS = 300;
@@ -24,41 +24,20 @@ export async function sendDailyDigest() {
       async () => {
         const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-        const [
+        const {
           newUsers,
           newOrders,
           completedOrders,
           newDisputes,
-          gmv,
+          gmvTotalNzd,
           newSellers,
-        ] = await Promise.all([
-          db.user.count({ where: { createdAt: { gte: yesterday } } }),
-          db.order.count({ where: { createdAt: { gte: yesterday } } }),
-          db.order.count({
-            where: { status: "COMPLETED", completedAt: { gte: yesterday } },
-          }),
-          db.order.count({
-            where: { status: "DISPUTED", updatedAt: { gte: yesterday } },
-          }),
-          db.order.aggregate({
-            where: { status: "COMPLETED", completedAt: { gte: yesterday } },
-            _sum: { totalNzd: true },
-          }),
-          db.user.count({
-            where: { isSellerEnabled: true, createdAt: { gte: yesterday } },
-          }),
-        ]);
+        } = await adminRepository.getDailyDigestMetrics(yesterday);
 
-        const gmvFormatted = `$${(
-          (gmv._sum.totalNzd ?? 0) / 100
-        ).toLocaleString("en-NZ", {
+        const gmvFormatted = `$${(gmvTotalNzd / 100).toLocaleString("en-NZ", {
           minimumFractionDigits: 2,
         })}`;
 
-        const superAdmins = await db.user.findMany({
-          where: { adminRole: "SUPER_ADMIN" },
-          select: { email: true, displayName: true },
-        });
+        const superAdmins = await adminRepository.findSuperAdmins();
 
         const resend = getEmailClient();
         if (!resend || superAdmins.length === 0) {
@@ -140,7 +119,7 @@ export async function sendDailyDigest() {
 
         logger.info("daily_digest.sent", {
           recipientCount: superAdmins.length,
-          gmv: gmv._sum.totalNzd ?? 0,
+          gmv: gmvTotalNzd,
           newOrders,
           completedOrders,
         });

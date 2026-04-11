@@ -6,11 +6,11 @@
 // Hard reject rules return immediately.
 // Risk flags accumulate a score — score alone never auto-rejects, only queues.
 
-import db from "@/lib/db";
 import { CONFIG_KEYS, getConfigMany } from "@/lib/platform-config";
 import type { ConfigKey } from "@/lib/platform-config";
 import { logger } from "@/shared/logger";
 import { getKeywordLists } from "@/lib/dynamic-lists";
+import { listingRepository } from "@/modules/listings/listing.repository";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -273,14 +273,11 @@ export async function runAutoReview(
   // ════════════════════════════════════════════════════════════════════════════
 
   if (seller.sellerLevel === "LEVEL_1") {
-    const activeCount = await db.listing.count({
-      where: {
-        sellerId: seller.id,
-        id: { not: listing.listingId },
-        status: { in: ["ACTIVE", "PENDING_REVIEW", "NEEDS_CHANGES"] },
-        deletedAt: null,
-      },
-    });
+    const activeCount =
+      await listingRepository.countActiveSlotsForSellerExcluding(
+        seller.id,
+        listing.listingId,
+      );
 
     if (activeCount >= l1MaxActive) {
       return {
@@ -363,16 +360,11 @@ export async function runAutoReview(
       Date.now() - duplicateWindowDays * 24 * 60 * 60 * 1000,
     );
     try {
-      const duplicate = await db.listing.findFirst({
-        where: {
-          id: { not: listing.listingId },
-          sellerId: seller.id,
-          title: { startsWith: titlePrefix, mode: "insensitive" },
-          status: { notIn: ["REMOVED"] },
-          createdAt: { gte: windowAgo },
-          deletedAt: null,
-        },
-        select: { id: true },
+      const duplicate = await listingRepository.findRecentDuplicateBySeller({
+        sellerId: seller.id,
+        excludeListingId: listing.listingId,
+        titlePrefix,
+        since: windowAgo,
       });
 
       if (duplicate) {

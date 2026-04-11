@@ -2,7 +2,7 @@
 // ─── Pickup reschedule response ───────────────────────────────────────────────
 // Exports: respondToReschedule
 
-import db from "@/lib/db";
+import { withTransaction } from "@/lib/transaction";
 import { logger } from "@/shared/logger";
 import { createNotification } from "@/modules/notifications/notification.service";
 import {
@@ -93,7 +93,7 @@ export async function respondToReschedule(params: {
     });
 
     // Create response card in thread
-    await db.$transaction(async (tx) => {
+    await withTransaction(async (tx) => {
       const threadId = await findOrCreateThread(
         order.buyerId,
         order.sellerId,
@@ -172,7 +172,7 @@ export async function respondToReschedule(params: {
   }
 
   if (response === "REJECT") {
-    await db.$transaction(async (tx) => {
+    await withTransaction(async (tx) => {
       await pickupRepository.updateRescheduleRequest(
         rescheduleRequestId,
         {

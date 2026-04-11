@@ -2,6 +2,7 @@
 // src/server/actions/order-create.actions.ts
 // ─── Order creation + evidence upload server actions ──────────────────────────
 
+import { randomUUID } from "crypto";
 import { safeActionError } from "@/shared/errors";
 import { headers } from "next/headers";
 import { requireUser } from "@/server/lib/requireUser";
@@ -11,7 +12,7 @@ import { logger } from "@/shared/logger";
 import { orderService } from "@/modules/orders/order.service";
 import { createOrderSchema as CreateOrderSchema } from "@/server/validators";
 
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { r2, R2_BUCKET } from "@/infrastructure/storage/r2";
 import { validateImageFile } from "@/server/lib/fileValidation";
 
@@ -84,10 +85,13 @@ export async function createOrder(params: {
 // ── uploadOrderEvidence ───────────────────────────────────────────────────────
 
 const EVIDENCE_MAX_SIZE = 5 * 1024 * 1024; // 5MB
-const EVIDENCE_MAX_FILES = parseInt(
-  process.env.DISPUTE_EVIDENCE_MAX_FILES ?? "4",
-  10,
-);
+
+// parseInt with NaN guard — a typo in DISPUTE_EVIDENCE_MAX_FILES (e.g. "four")
+// would yield NaN, and `files.length > NaN` is always false, silently lifting
+// the cap. Fall back to 4 unless the env var parses as a positive integer.
+const _parsed = parseInt(process.env.DISPUTE_EVIDENCE_MAX_FILES ?? "4", 10);
+const EVIDENCE_MAX_FILES =
+  Number.isFinite(_parsed) && _parsed > 0 ? _parsed : 4;
 
 export async function uploadOrderEvidence(
   formData: FormData,
@@ -96,7 +100,9 @@ export async function uploadOrderEvidence(
   try {
     const user = await requireUser();
 
-    const limit = await rateLimit("order", user.id);
+    // Use the dedicated "evidence" bucket — separate from "order" so a buyer
+    // uploading dispute photos does not burn their order-creation budget.
+    const limit = await rateLimit("evidence", user.id);
     if (!limit.success) {
       return {
         success: false,
@@ -144,22 +150,53 @@ export async function uploadOrderEvidence(
           : file.type === "image/png"
             ? "png"
             : "webp";
-      const key = `${context}/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      // crypto.randomUUID() — replaces Date.now()+Math.random() which had a
+      // collision risk under concurrent uploads at millisecond boundaries.
+      const key = `${context}/${user.id}/${randomUUID()}.${ext}`;
       return { key, buffer, contentType: file.type };
     });
 
-    await Promise.all(
-      uploads.map(({ key, buffer, contentType }) =>
-        r2.send(
-          new PutObjectCommand({
-            Bucket: R2_BUCKET,
-            Key: key,
-            Body: buffer,
-            ContentType: contentType,
-          }),
-        ),
-      ),
-    );
+    // Track successful uploads so we can clean them up on partial failure.
+    // Without this, files 1..N already in R2 become orphans with no owning
+    // record if file N+1 fails — accumulating cost and dangling PII.
+    const successfulKeys: string[] = [];
+    try {
+      await Promise.all(
+        uploads.map(async ({ key, buffer, contentType }) => {
+          await r2.send(
+            new PutObjectCommand({
+              Bucket: R2_BUCKET,
+              Key: key,
+              Body: buffer,
+              ContentType: contentType,
+            }),
+          );
+          successfulKeys.push(key);
+        }),
+      );
+    } catch (uploadErr) {
+      if (successfulKeys.length > 0) {
+        await Promise.allSettled(
+          successfulKeys.map((key) =>
+            r2.send(
+              new DeleteObjectCommand({
+                Bucket: R2_BUCKET,
+                Key: key,
+              }),
+            ),
+          ),
+        );
+        logger.error("evidence.partial_upload_cleaned", {
+          userId: user.id,
+          context,
+          cleanedKeys: successfulKeys.length,
+          totalKeys: uploads.length,
+          error:
+            uploadErr instanceof Error ? uploadErr.message : String(uploadErr),
+        });
+      }
+      throw uploadErr;
+    }
 
     const uploadedKeys = uploads.map((u) => u.key);
 

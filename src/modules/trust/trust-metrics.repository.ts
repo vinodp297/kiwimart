@@ -2,7 +2,7 @@
 // ─── Trust Metrics Repository — data access only, no business logic ──────────
 // All DB queries used by trust-metrics.service.ts.
 
-import db from "@/lib/db";
+import db, { getClient, type DbClient } from "@/lib/db";
 
 export const trustMetricsRepository = {
   // ── Cache lookup ───────────────────────────────────────────────────────────
@@ -138,6 +138,49 @@ export const trustMetricsRepository = {
   },
 
   // ── Upsert ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Increment a user's dispute count by one. Optional flags allow the caller
+   * to also bump disputesLast30Days and/or set isFlaggedForFraud — both used
+   * by the pickup worker when penalising no-show counterparties.
+   */
+  async incrementDisputeCount(
+    userId: string,
+    options?: {
+      bumpRecentWindow?: boolean;
+      flagFraud?: boolean;
+      tx?: DbClient;
+    },
+  ): Promise<void> {
+    const client = getClient(options?.tx);
+    const updateData: {
+      disputeCount: { increment: number };
+      disputesLast30Days?: { increment: number };
+      isFlaggedForFraud?: boolean;
+    } = { disputeCount: { increment: 1 } };
+    if (options?.bumpRecentWindow)
+      updateData.disputesLast30Days = { increment: 1 };
+    if (options?.flagFraud) updateData.isFlaggedForFraud = true;
+
+    await client.trustMetrics.upsert({
+      where: { userId },
+      create: {
+        userId,
+        totalOrders: 0,
+        completedOrders: 0,
+        disputeCount: 1,
+        disputeRate: 0,
+        disputesLast30Days: options?.bumpRecentWindow ? 1 : 0,
+        averageResponseHours: null,
+        averageRating: null,
+        dispatchPhotoRate: 0,
+        accountAgeDays: 0,
+        isFlaggedForFraud: options?.flagFraud ?? false,
+        lastComputedAt: new Date(),
+      },
+      update: updateData,
+    });
+  },
 
   /** Upsert computed trust metrics into the cache table. */
   async upsertMetrics(

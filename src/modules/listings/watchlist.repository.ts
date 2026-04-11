@@ -25,4 +25,47 @@ export const watchlistRepository = {
       data: { isPriceAlertEnabled },
     });
   },
+
+  /**
+   * Find every active price-alert watchlist item with a recorded reference
+   * price — used by the price-drop notification cron.
+   */
+  async findActivePriceAlerts(tx?: DbClient) {
+    const client = getClient(tx);
+    return client.watchlistItem.findMany({
+      where: {
+        isPriceAlertEnabled: true,
+        priceAtWatch: { not: null },
+        listing: {
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+      },
+      select: {
+        id: true,
+        userId: true,
+        priceAtWatch: true,
+        listing: {
+          select: {
+            id: true,
+            title: true,
+            priceNzd: true,
+          },
+        },
+      },
+    });
+  },
+
+  /** Update the recorded reference price for a watchlist item. */
+  async updatePriceAtWatch(
+    id: string,
+    priceAtWatch: number,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = getClient(tx);
+    await client.watchlistItem.update({
+      where: { id },
+      data: { priceAtWatch },
+    });
+  },
 };

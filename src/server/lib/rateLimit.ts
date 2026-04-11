@@ -68,6 +68,27 @@ const orderLimiter = () =>
     analytics: true,
   });
 
+/**
+ * 20 evidence uploads per hour per user — separate from order creation so a
+ * buyer uploading dispute photos does not burn their order-creation budget.
+ */
+const evidenceLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(20, "1 h"),
+    prefix: "km:rl:evidence",
+    analytics: true,
+  });
+
+/** 60 notification fetches per minute per user — NavBar polling cadence */
+const notificationsLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(60, "1 m"),
+    prefix: "km:rl:notifications",
+    analytics: true,
+  });
+
 /** 3 disputes per day per user — prevent abuse of the dispute system */
 const disputeLimiter = () =>
   new Ratelimit({
@@ -238,6 +259,8 @@ export type RateLimitKey =
   | "listing"
   | "offer"
   | "order"
+  | "evidence"
+  | "notifications"
   | "disputes"
   | "cart"
   | "review"
@@ -302,6 +325,8 @@ export async function rateLimit(
     listing: listingLimiter,
     offer: offerLimiter,
     order: orderLimiter,
+    evidence: evidenceLimiter,
+    notifications: notificationsLimiter,
     disputes: disputeLimiter,
     cart: cartLimiter,
     review: reviewLimiter,

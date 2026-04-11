@@ -22,7 +22,6 @@
 import { Worker } from "bullmq";
 import { getQueueConnection } from "@/lib/queue";
 import type { PayoutJobData } from "@/lib/queue";
-import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { stripe } from "@/infrastructure/stripe/client";
 import { withStripeTimeout } from "@/infrastructure/stripe/with-timeout";
@@ -32,6 +31,9 @@ import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
 import { calculateFees } from "@/modules/payments/fee-calculator";
 import type { PerformanceTier } from "@/lib/seller-tiers";
+import { payoutRepository } from "@/modules/payments/payout.repository";
+import { userRepository } from "@/modules/users/user.repository";
+import { orderRepository } from "@/modules/orders/order.repository";
 
 const VALID_PERFORMANCE_TIERS = new Set<string>(["GOLD", "SILVER", "BRONZE"]);
 
@@ -76,10 +78,7 @@ export function startPayoutWorker() {
           // ── Idempotency check ─────────────────────────────────────────────
           // Skip if already processing or paid — handles duplicate job delivery
           // and manual retriggers.
-          const payout = await db.payout.findUnique({
-            where: { orderId },
-            select: { id: true, status: true, amountNzd: true },
-          });
+          const payout = await payoutRepository.findByOrderId(orderId);
 
           if (!payout) {
             throw new Error(`Payout not found for order ${orderId}`);
@@ -99,14 +98,7 @@ export function startPayoutWorker() {
           // sellerTierOverride is admin-set; null means no override (use earned tier).
           // For payout purposes we use the stored override as a conservative proxy
           // — full recalculation via trust-score service is not needed here.
-          const sellerUser = await db.user.findUnique({
-            where: { id: sellerId },
-            select: {
-              sellerTierOverride: true,
-              email: true,
-              displayName: true,
-            },
-          });
+          const sellerUser = await userRepository.findSellerForPayout(sellerId);
 
           const sellerTier = (
             sellerUser?.sellerTierOverride &&
@@ -143,10 +135,7 @@ export function startPayoutWorker() {
               platformFee: fees.platformFee,
               stripeFee: fees.stripeFee,
             });
-            await db.payout.update({
-              where: { orderId },
-              data: { status: "MANUAL_REVIEW" },
-            });
+            await payoutRepository.markManualReview(orderId);
             return { requiresManualReview: true };
           }
 
@@ -179,31 +168,41 @@ export function startPayoutWorker() {
           // Store fee breakdown for financial reconciliation.
           // amountNzd remains the gross amount — platformFeeNzd + stripeFeeNzd
           // show what was deducted. sellerPayout = amountNzd - both fees.
-          await db.payout.update({
-            where: { orderId },
-            data: {
-              status: "PROCESSING",
-              stripeTransferId: transfer.id,
-              platformFeeNzd: fees.platformFee,
-              stripeFeeNzd: fees.stripeFee,
-              initiatedAt: new Date(),
-            },
+          await payoutRepository.markProcessingWithTransfer(orderId, {
+            stripeTransferId: transfer.id,
+            platformFeeNzd: fees.platformFee,
+            stripeFeeNzd: fees.stripeFee,
           });
 
           // ── Seller notification ───────────────────────────────────────────
+          // The payout state is already persisted above. Email failure must NOT
+          // throw — if it did, BullMQ would retry the job, the retry would see
+          // status=PROCESSING and return { skipped: true }, permanently silencing
+          // the notification. Log and continue instead.
           if (sellerUser) {
-            const orderForEmail = await db.order.findUnique({
-              where: { id: orderId },
-              select: { listing: { select: { title: true } } },
-            });
-            await sendPayoutInitiatedEmail({
-              to: sellerUser.email,
-              sellerName: sellerUser.displayName ?? "there",
-              amountNzd: fees.sellerPayout,
-              listingTitle: orderForEmail?.listing?.title ?? "your item",
-              orderId,
-              estimatedArrival: "2–3 business days",
-            });
+            try {
+              const listingTitle =
+                await orderRepository.findListingTitleForOrder(orderId);
+              await sendPayoutInitiatedEmail({
+                to: sellerUser.email,
+                sellerName: sellerUser.displayName ?? "there",
+                amountNzd: fees.sellerPayout,
+                listingTitle: listingTitle ?? "your item",
+                orderId,
+                estimatedArrival: "2–3 business days",
+              });
+            } catch (emailErr) {
+              logger.error("payout.email_notification_failed", {
+                payoutId: payout.id,
+                orderId,
+                error:
+                  emailErr instanceof Error
+                    ? emailErr.message
+                    : String(emailErr),
+              });
+              // deliberately not rethrowing — payment state is already
+              // persisted, email failure must not roll back the payout
+            }
           }
 
           // ── Audit ─────────────────────────────────────────────────────────

@@ -1,14 +1,15 @@
 // src/server/services/pickup/pickup-scheduling.types.ts
 // ─── Shared types for the pickup scheduling service layer ────────────────────
 
-import type db from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 // ── Prisma transaction client ─────────────────────────────────────────────────
+// Use Prisma's own TransactionClient type rather than re-deriving from the db
+// instance — this avoids importing @/lib/db here, which would force a runtime
+// dependency on the db singleton through a pure types file and trip the
+// architecture lint rule (services must go via repositories).
 
-export type PrismaTransactionClient = Omit<
-  typeof db,
-  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
->;
+export type PrismaTransactionClient = Prisma.TransactionClient;
 
 // ── Service return type ───────────────────────────────────────────────────────
 

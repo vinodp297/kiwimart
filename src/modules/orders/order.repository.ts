@@ -710,11 +710,29 @@ export const orderRepository = {
     });
   },
 
+  /**
+   * Reserve a listing for an in-flight checkout (Fix 10).
+   *
+   * Sets status=RESERVED and stamps a 10-minute reservation deadline. The
+   * `where` clause matches either an ACTIVE listing OR a RESERVED listing
+   * whose previous reservation has already lapsed — this lets a second buyer
+   * recover inventory that the release-stale-reservations cron has not yet
+   * swept up. updateMany returns count=0 if neither condition holds, which
+   * the caller treats as "listing already taken".
+   */
   async reserveListing(listingId: string, tx?: DbClient) {
     const client = getClient(tx);
+    const now = new Date();
+    const reservedUntil = new Date(now.getTime() + 10 * 60 * 1000);
     return client.listing.updateMany({
-      where: { id: listingId, status: "ACTIVE" },
-      data: { status: "RESERVED" },
+      where: {
+        id: listingId,
+        OR: [
+          { status: "ACTIVE" },
+          { status: "RESERVED", reservedUntil: { lt: now } },
+        ],
+      },
+      data: { status: "RESERVED", reservedUntil },
     });
   },
 
@@ -722,7 +740,7 @@ export const orderRepository = {
     const client = getClient(tx);
     return client.listing.updateMany({
       where: { id: listingId, status: "RESERVED" },
-      data: { status: "ACTIVE" },
+      data: { status: "ACTIVE", reservedUntil: null },
     });
   },
 
@@ -911,6 +929,362 @@ export const orderRepository = {
         createdAt: true,
         listing: { select: { id: true, title: true } },
       },
+    });
+  },
+
+  /**
+   * Find PAYMENT_HELD orders older than the cutoff — used by the dispatch
+   * reminder cron to surface orders the seller has not yet dispatched.
+   */
+  async findUndispatchedOlderThan(cutoff: Date, take: number, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "PAYMENT_HELD",
+        createdAt: { lte: cutoff },
+      },
+      take,
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        sellerId: true,
+        createdAt: true,
+        listing: { select: { title: true } },
+        buyer: { select: { displayName: true } },
+      },
+    });
+  },
+
+  /**
+   * Find DISPATCHED orders eligible for the auto-release escrow cron. Pre-
+   * filters by `dispatchedAt >= cutoff` so we don't scan the full history;
+   * the cron does an in-memory business-day check on the result.
+   */
+  async findDispatchedForAutoRelease(
+    cutoff: Date,
+    take: number,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "DISPATCHED",
+        dispatchedAt: { not: null, gte: cutoff },
+      },
+      take,
+      orderBy: { dispatchedAt: "asc" },
+      select: {
+        id: true,
+        buyerId: true,
+        sellerId: true,
+        totalNzd: true,
+        stripePaymentIntentId: true,
+        dispatchedAt: true,
+        listing: { select: { title: true, id: true } },
+        buyer: { select: { email: true, displayName: true } },
+        seller: { select: { email: true, displayName: true } },
+      },
+    });
+  },
+
+  /**
+   * Find CASH_ON_PICKUP orders that have completed and whose PENDING payout
+   * is awaiting cash-escrow release. Used by autoReleaseEscrow's second loop.
+   */
+  async findCashPickupReadyForPayoutRelease(
+    cutoff: Date,
+    take: number,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "COMPLETED",
+        fulfillmentType: "CASH_ON_PICKUP",
+        completedAt: { not: null, gte: cutoff },
+        payout: { status: "PENDING" },
+      },
+      take,
+      orderBy: { completedAt: "asc" },
+      select: {
+        id: true,
+        sellerId: true,
+        completedAt: true,
+        payout: { select: { id: true, status: true } },
+      },
+    });
+  },
+
+  /**
+   * Look up just the listing title for an order — used by the payout worker
+   * to construct the seller payout-initiated email body.
+   */
+  async findListingTitleForOrder(
+    orderId: string,
+    tx?: DbClient,
+  ): Promise<string | null> {
+    const client = getClient(tx);
+    const order = await client.order.findUnique({
+      where: { id: orderId },
+      select: { listing: { select: { title: true } } },
+    });
+    return order?.listing?.title ?? null;
+  },
+
+  /**
+   * Find DISPATCHED orders for the daily delivery-reminder cron. Returns
+   * the buyer/seller/listing context the cron needs to evaluate
+   * estimatedDeliveryDate and send reminders.
+   */
+  async findDispatchedForReminders(take: number, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "DISPATCHED",
+        dispatchedAt: { not: null },
+      },
+      take,
+      select: {
+        id: true,
+        buyerId: true,
+        sellerId: true,
+        totalNzd: true,
+        stripePaymentIntentId: true,
+        dispatchedAt: true,
+        listing: { select: { title: true, id: true } },
+        buyer: { select: { email: true, displayName: true } },
+      },
+    });
+  },
+
+  /**
+   * Bulk-fetch DISPATCHED + DELIVERY_REMINDER_SENT events for a list of
+   * order ids — used by the delivery-reminder cron to avoid an N+1 query
+   * per order.
+   */
+  async findReminderEventsForOrders(
+    orderIds: string[],
+    tx?: DbClient,
+  ): Promise<
+    Array<{
+      id: string;
+      orderId: string;
+      type: string;
+      metadata: Prisma.JsonValue;
+    }>
+  > {
+    const client = getClient(tx);
+    return client.orderEvent.findMany({
+      where: {
+        orderId: { in: orderIds },
+        type: { in: ["DISPATCHED", "DELIVERY_REMINDER_SENT"] },
+      },
+      select: { id: true, orderId: true, type: true, metadata: true },
+    });
+  },
+
+  /**
+   * Find DISPATCHED orders whose dispatchedAt falls in the given window —
+   * used by the buyer-delivery-reminder cron to identify orders that need a
+   * "please confirm delivery" nudge.
+   */
+  async findDispatchedInWindow(
+    windowStart: Date,
+    windowEnd: Date,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "DISPATCHED",
+        dispatchedAt: { gte: windowStart, lt: windowEnd },
+      },
+      select: {
+        id: true,
+        listing: { select: { title: true } },
+        buyer: { select: { email: true, displayName: true } },
+        trackingNumber: true,
+      },
+    });
+  },
+
+  /**
+   * Find listing IDs that already have an in-flight (paid/dispatched/etc.)
+   * order. Used by the offer reservation cron to avoid releasing a listing
+   * that the buyer has actually paid for in the meantime.
+   */
+  async findListingIdsWithActiveOrders(
+    listingIds: string[],
+    tx?: DbClient,
+  ): Promise<string[]> {
+    const client = getClient(tx);
+    const rows = await client.order.findMany({
+      where: {
+        listingId: { in: listingIds },
+        status: {
+          in: [
+            "PAYMENT_HELD",
+            "DISPATCHED",
+            "DELIVERED",
+            "COMPLETED",
+            "DISPUTED",
+          ],
+        },
+      },
+      select: { listingId: true },
+    });
+    return Array.from(new Set(rows.map((o) => o.listingId)));
+  },
+
+  // ── Auto-resolution / dispute cron methods ─────────────────────────────────
+
+  /** Find queued AUTO_RESOLVED order events past their cooling period (cron). */
+  async findQueuedAutoResolutionEvents(take: number, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.orderEvent.findMany({
+      where: {
+        type: "AUTO_RESOLVED",
+        metadata: { path: ["status"], equals: "QUEUED" },
+      },
+      take,
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        orderId: true,
+        metadata: true,
+        createdAt: true,
+      },
+    });
+  },
+
+  /** Bulk-fetch order id+status for the given ids (cron N+1 elimination). */
+  async findStatusesByIds(orderIds: string[], tx?: DbClient) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: { id: { in: orderIds } },
+      select: { id: true, status: true },
+    });
+  },
+
+  /** Bulk-fetch DISPUTE_RESPONDED events for the given orders (cron N+1 elimination). */
+  async findCounterEvidenceForOrders(orderIds: string[], tx?: DbClient) {
+    const client = getClient(tx);
+    return client.orderEvent.findMany({
+      where: {
+        orderId: { in: orderIds },
+        type: "DISPUTE_RESPONDED",
+      },
+      select: { orderId: true, createdAt: true },
+    });
+  },
+
+  /** Update an order event's metadata (used by the auto-resolution cooling cron). */
+  async updateOrderEventMetadata(
+    eventId: string,
+    metadata: Prisma.InputJsonValue,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.orderEvent.update({
+      where: { id: eventId },
+      data: { metadata },
+    });
+  },
+
+  /** Find DISPUTED orders whose seller has not responded by the deadline. */
+  async findUnresponsiveDisputes(
+    responseDeadline: Date,
+    take: number,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "DISPUTED",
+        dispute: {
+          openedAt: { lte: responseDeadline },
+          sellerRespondedAt: null,
+          resolvedAt: null,
+        },
+      },
+      take,
+      orderBy: { dispute: { openedAt: "asc" } },
+      select: { id: true },
+    });
+  },
+
+  /** Fetch the order context needed by the pickup worker handlers. */
+  async findForPickupHandler(orderId: string, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        buyerId: true,
+        sellerId: true,
+        status: true,
+        pickupStatus: true,
+        totalNzd: true,
+        stripePaymentIntentId: true,
+        listingId: true,
+        listing: { select: { title: true } },
+      },
+    });
+  },
+
+  /** Upsert a payout to PROCESSING for a pickup order completing on the spot. */
+  async upsertPickupPayoutProcessing(
+    orderId: string,
+    sellerId: string,
+    amountNzd: number,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.payout.upsert({
+      where: { orderId },
+      create: {
+        orderId,
+        userId: sellerId,
+        amountNzd,
+        platformFeeNzd: 0,
+        stripeFeeNzd: 0,
+        status: "PROCESSING",
+        initiatedAt: new Date(),
+      },
+      update: {
+        status: "PROCESSING",
+        initiatedAt: new Date(),
+      },
+    });
+  },
+
+  /** Find PAYMENT_HELD orders with a Stripe PI created since the cutoff (reconciliation). */
+  async findPaymentHeldWithPiSince(since: Date, take: number, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.order.findMany({
+      where: {
+        status: "PAYMENT_HELD",
+        stripePaymentIntentId: { not: null },
+        createdAt: { gte: since },
+      },
+      select: { id: true, stripePaymentIntentId: true },
+      take,
+    });
+  },
+
+  /** Bulk-fetch already-queued auto-resolution events for the given orders. */
+  async findQueuedAutoResolutionsForOrders(
+    orderIds: string[],
+    tx?: DbClient,
+  ): Promise<Array<{ orderId: string }>> {
+    const client = getClient(tx);
+    return client.orderEvent.findMany({
+      where: {
+        orderId: { in: orderIds },
+        type: "AUTO_RESOLVED",
+        metadata: { path: ["status"], equals: "QUEUED" },
+      },
+      select: { orderId: true },
     });
   },
 };

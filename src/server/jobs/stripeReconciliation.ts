@@ -15,11 +15,11 @@
 //   Cause: PI expired, refunded outside system, or manual Stripe action.
 //   Action needed: manually cancel order and reconcile funds.
 
-import db from "@/lib/db";
 import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+import { orderRepository } from "@/modules/orders/order.repository";
 
 export async function runStripeReconciliation(): Promise<void> {
   const LOCK_KEY = "cron:stripe-reconciliation";
@@ -63,10 +63,7 @@ export async function runStripeReconciliation(): Promise<void> {
           if (captureReadyPIs.length > 0) {
             // Fetch all relevant orders in a single query instead of N findUnique calls
             const orderIds = captureReadyPIs.map(({ orderId }) => orderId);
-            const orders = await db.order.findMany({
-              where: { id: { in: orderIds } },
-              select: { id: true, status: true },
-            });
+            const orders = await orderRepository.findStatusesByIds(orderIds);
             const orderMap = new Map(orders.map((o) => [o.id, o]));
 
             for (const { pi, orderId } of captureReadyPIs) {
@@ -95,15 +92,10 @@ export async function runStripeReconciliation(): Promise<void> {
         // DB says the order is paid but Stripe says the PI is no longer active.
         // Funds may have been refunded externally or the PI may have expired.
         try {
-          const heldOrders = await db.order.findMany({
-            where: {
-              status: "PAYMENT_HELD",
-              stripePaymentIntentId: { not: null },
-              createdAt: { gte: since },
-            },
-            select: { id: true, stripePaymentIntentId: true },
-            take: 100,
-          });
+          const heldOrders = await orderRepository.findPaymentHeldWithPiSince(
+            since,
+            100,
+          );
 
           // Retrieve all PIs in parallel instead of sequentially
           await Promise.all(

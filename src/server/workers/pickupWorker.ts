@@ -10,7 +10,6 @@
 import { Worker } from "bullmq";
 import { getQueueConnection } from "@/lib/queue";
 import type { PickupJobData } from "@/lib/queue";
-import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
 import { paymentService } from "@/modules/payments/payment.service";
@@ -24,6 +23,12 @@ import {
 } from "@/modules/orders/order-event.service";
 import { runWithRequestContext } from "@/lib/request-context";
 import { fireAndForget } from "@/lib/fire-and-forget";
+import { withTransaction } from "@/lib/transaction";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { trustMetricsRepository } from "@/modules/trust/trust-metrics.repository";
+import { userRepository } from "@/modules/users/user.repository";
+import { pickupRepository } from "@/modules/pickup/pickup.repository";
 
 export function startPickupWorker() {
   if (process.env.VERCEL) {
@@ -86,19 +91,7 @@ export function startPickupWorker() {
 }
 
 async function handleScheduleDeadline(orderId: string): Promise<void> {
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      pickupStatus: true,
-      stripePaymentIntentId: true,
-      listingId: true,
-      listing: { select: { title: true } },
-    },
-  });
+  const order = await orderRepository.findForPickupHandler(orderId);
 
   if (!order) return;
 
@@ -114,7 +107,7 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
     return;
   }
 
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     await transitionOrder(
       orderId,
       "CANCELLED",
@@ -129,11 +122,8 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
     );
 
     if (order.listingId) {
-      await tx.listing
-        .updateMany({
-          where: { id: order.listingId, status: "RESERVED" },
-          data: { status: "ACTIVE" },
-        })
+      await listingRepository
+        .releaseReservation(order.listingId, tx)
         .catch((err: unknown) => {
           logger.error("pickup.listing_reactivate.failed", {
             error: err instanceof Error ? err.message : String(err),
@@ -158,25 +148,8 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
     }
   }
 
-  await db.trustMetrics
-    .upsert({
-      where: { userId: order.sellerId },
-      create: {
-        userId: order.sellerId,
-        totalOrders: 0,
-        completedOrders: 0,
-        disputeCount: 1,
-        disputeRate: 0,
-        disputesLast30Days: 1,
-        averageResponseHours: null,
-        averageRating: null,
-        dispatchPhotoRate: 0,
-        accountAgeDays: 0,
-        isFlaggedForFraud: false,
-        lastComputedAt: new Date(),
-      },
-      update: { disputeCount: { increment: 1 } },
-    })
+  await trustMetricsRepository
+    .incrementDisputeCount(order.sellerId, { bumpRecentWindow: true })
     .catch((err: unknown) => {
       logger.error("pickup.trust_metrics.upsert.failed", {
         error: err instanceof Error ? err.message : String(err),
@@ -230,20 +203,7 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
 }
 
 async function handleWindowExpired(orderId: string): Promise<void> {
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      pickupStatus: true,
-      totalNzd: true,
-      stripePaymentIntentId: true,
-      listingId: true,
-      listing: { select: { title: true } },
-    },
-  });
+  const order = await orderRepository.findForPickupHandler(orderId);
 
   if (!order) return;
 
@@ -256,7 +216,7 @@ async function handleWindowExpired(orderId: string): Promise<void> {
     return;
   }
 
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     await transitionOrder(
       orderId,
       "CANCELLED",
@@ -270,11 +230,8 @@ async function handleWindowExpired(orderId: string): Promise<void> {
     );
 
     if (order.listingId) {
-      await tx.listing
-        .updateMany({
-          where: { id: order.listingId, status: "RESERVED" },
-          data: { status: "ACTIVE" },
-        })
+      await listingRepository
+        .releaseReservation(order.listingId, tx)
         .catch((err: unknown) => {
           logger.error("pickup.listing_reactivate.failed", {
             error: err instanceof Error ? err.message : String(err),
@@ -300,27 +257,10 @@ async function handleWindowExpired(orderId: string): Promise<void> {
   }
 
   // Flag seller for fraud (no-show is a strong signal)
-  await db.trustMetrics
-    .upsert({
-      where: { userId: order.sellerId },
-      create: {
-        userId: order.sellerId,
-        totalOrders: 0,
-        completedOrders: 0,
-        disputeCount: 1,
-        disputeRate: 0,
-        disputesLast30Days: 1,
-        averageResponseHours: null,
-        averageRating: null,
-        dispatchPhotoRate: 0,
-        accountAgeDays: 0,
-        isFlaggedForFraud: true,
-        lastComputedAt: new Date(),
-      },
-      update: {
-        disputeCount: { increment: 1 },
-        isFlaggedForFraud: true,
-      },
+  await trustMetricsRepository
+    .incrementDisputeCount(order.sellerId, {
+      bumpRecentWindow: true,
+      flagFraud: true,
     })
     .catch((err: unknown) => {
       logger.error("pickup.trust_metrics.upsert.failed", {
@@ -357,24 +297,19 @@ async function handleWindowExpired(orderId: string): Promise<void> {
   );
 
   fireAndForget(
-    db.user
-      .findUnique({
-        where: { id: order.buyerId },
-        select: { email: true, displayName: true },
-      })
-      .then((buyer) => {
-        if (!buyer) return;
-        return sendDisputeResolvedEmail({
-          to: buyer.email,
-          recipientName: buyer.displayName ?? "there",
-          recipientRole: "buyer",
-          orderId,
-          listingTitle: order.listing.title,
-          resolution: "BUYER_WON",
-          refundAmount: order.totalNzd,
-          adminNote: null,
-        });
-      }),
+    userRepository.findEmailInfo(order.buyerId).then((buyer) => {
+      if (!buyer) return;
+      return sendDisputeResolvedEmail({
+        to: buyer.email,
+        recipientName: buyer.displayName ?? "there",
+        recipientRole: "buyer",
+        orderId,
+        listingTitle: order.listing.title,
+        resolution: "BUYER_WON",
+        refundAmount: order.totalNzd,
+        adminNote: null,
+      });
+    }),
     "pickup.email.dispute_resolved",
     { orderId },
   );
@@ -398,20 +333,7 @@ async function handleWindowExpired(orderId: string): Promise<void> {
 }
 
 export async function handleOtpExpired(orderId: string): Promise<void> {
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      pickupStatus: true,
-      totalNzd: true,
-      stripePaymentIntentId: true,
-      listingId: true,
-      listing: { select: { title: true } },
-    },
-  });
+  const order = await orderRepository.findForPickupHandler(orderId);
 
   if (!order) return;
 
@@ -444,7 +366,7 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
 
       // Capture failed — transition to DISPUTED for manual review instead
       // of completing the order with no captured payment.
-      await db.$transaction(async (tx) => {
+      await withTransaction(async (tx) => {
         await transitionOrder(
           orderId,
           "DISPUTED",
@@ -489,7 +411,7 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
   }
 
   // Payment captured (or cash order with no PI) — safe to complete.
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     await transitionOrder(
       orderId,
       "COMPLETED",
@@ -503,29 +425,16 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
       { tx, fromStatus: order.status },
     );
 
-    await tx.payout.upsert({
-      where: { orderId },
-      create: {
-        orderId,
-        userId: order.sellerId,
-        amountNzd: order.totalNzd,
-        platformFeeNzd: 0,
-        stripeFeeNzd: 0,
-        status: "PROCESSING",
-        initiatedAt: new Date(),
-      },
-      update: {
-        status: "PROCESSING",
-        initiatedAt: new Date(),
-      },
-    });
+    await orderRepository.upsertPickupPayoutProcessing(
+      orderId,
+      order.sellerId,
+      order.totalNzd,
+      tx,
+    );
 
     if (order.listingId) {
-      await tx.listing
-        .update({
-          where: { id: order.listingId },
-          data: { status: "SOLD", soldAt: new Date() },
-        })
+      await listingRepository
+        .markSold(order.listingId, tx)
         .catch((err: unknown) => {
           logger.error("pickup.listing_sold.failed", {
             error: err instanceof Error ? err.message : String(err),
@@ -536,28 +445,8 @@ export async function handleOtpExpired(orderId: string): Promise<void> {
     }
   });
 
-  await db.trustMetrics
-    .upsert({
-      where: { userId: order.buyerId },
-      create: {
-        userId: order.buyerId,
-        totalOrders: 0,
-        completedOrders: 0,
-        disputeCount: 1,
-        disputeRate: 0,
-        disputesLast30Days: 1,
-        averageResponseHours: null,
-        averageRating: null,
-        dispatchPhotoRate: 0,
-        accountAgeDays: 0,
-        isFlaggedForFraud: false,
-        lastComputedAt: new Date(),
-      },
-      update: {
-        disputeCount: { increment: 1 },
-        disputesLast30Days: { increment: 1 },
-      },
-    })
+  await trustMetricsRepository
+    .incrementDisputeCount(order.buyerId, { bumpRecentWindow: true })
     .catch((err: unknown) => {
       logger.error("pickup.trust_metrics.upsert.failed", {
         error: err instanceof Error ? err.message : String(err),
@@ -617,16 +506,8 @@ async function handleRescheduleExpired(
   orderId: string,
   rescheduleRequestId: string,
 ): Promise<void> {
-  const request = await db.pickupRescheduleRequest.findUnique({
-    where: { id: rescheduleRequestId },
-    select: {
-      id: true,
-      orderId: true,
-      status: true,
-      requestedById: true,
-      requestedByRole: true,
-    },
-  });
+  const request =
+    await pickupRepository.findRescheduleRequest(rescheduleRequestId);
 
   if (!request) return;
 
@@ -639,18 +520,7 @@ async function handleRescheduleExpired(
     return;
   }
 
-  const order = await db.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      buyerId: true,
-      sellerId: true,
-      status: true,
-      stripePaymentIntentId: true,
-      listingId: true,
-      listing: { select: { title: true } },
-    },
-  });
+  const order = await orderRepository.findForPickupHandler(orderId);
 
   if (!order) return;
 
@@ -663,11 +533,12 @@ async function handleRescheduleExpired(
     return;
   }
 
-  await db.$transaction(async (tx) => {
-    await tx.pickupRescheduleRequest.update({
-      where: { id: rescheduleRequestId },
-      data: { status: "EXPIRED" },
-    });
+  await withTransaction(async (tx) => {
+    await pickupRepository.updateRescheduleRequest(
+      rescheduleRequestId,
+      { status: "EXPIRED" },
+      tx,
+    );
 
     await transitionOrder(
       orderId,
@@ -683,11 +554,8 @@ async function handleRescheduleExpired(
     );
 
     if (order.listingId) {
-      await tx.listing
-        .updateMany({
-          where: { id: order.listingId, status: "RESERVED" },
-          data: { status: "ACTIVE" },
-        })
+      await listingRepository
+        .releaseReservation(order.listingId, tx)
         .catch((err: unknown) => {
           logger.error("pickup.listing_reactivate.failed", {
             error: err instanceof Error ? err.message : String(err),
@@ -717,25 +585,8 @@ async function handleRescheduleExpired(
   const requesterRoleLabel =
     request.requestedByRole === "BUYER" ? "buyer" : "seller";
 
-  await db.trustMetrics
-    .upsert({
-      where: { userId: request.requestedById },
-      create: {
-        userId: request.requestedById,
-        totalOrders: 0,
-        completedOrders: 0,
-        disputeCount: 1,
-        disputeRate: 0,
-        disputesLast30Days: 1,
-        averageResponseHours: null,
-        averageRating: null,
-        dispatchPhotoRate: 0,
-        accountAgeDays: 0,
-        isFlaggedForFraud: false,
-        lastComputedAt: new Date(),
-      },
-      update: { disputeCount: { increment: 1 } },
-    })
+  await trustMetricsRepository
+    .incrementDisputeCount(request.requestedById, { bumpRecentWindow: true })
     .catch((err: unknown) => {
       logger.error("pickup.trust_metrics.upsert.failed", {
         error: err instanceof Error ? err.message : String(err),

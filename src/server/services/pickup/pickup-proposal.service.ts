@@ -2,7 +2,7 @@
 // ─── Pickup proposal and acceptance ──────────────────────────────────────────
 // Exports: proposePickupTime, acceptPickupTime
 
-import db from "@/lib/db";
+import { withTransaction } from "@/lib/transaction";
 import { logger } from "@/shared/logger";
 import { createNotification } from "@/modules/notifications/notification.service";
 import {
@@ -97,7 +97,7 @@ export async function proposePickupTime(params: {
   const location =
     order.listing.pickupAddress ?? "Pickup location (see listing)";
 
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     // Update pickup status to SCHEDULING
     await orderRepository.updatePickupFields(
       orderId,
@@ -261,7 +261,7 @@ export async function acceptPickupTime(params: {
   const location =
     order.listing.pickupAddress ?? "Pickup location (see listing)";
 
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     await orderRepository.updatePickupFields(
       orderId,
       {

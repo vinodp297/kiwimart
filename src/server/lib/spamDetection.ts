@@ -11,7 +11,8 @@
 //
 // Returns a SpamScore — callers decide threshold for blocking vs flagging.
 
-import db from '@/lib/db';
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { messageRepository } from "@/modules/messaging/message.repository";
 
 export interface SpamScore {
   /** 0–100 score, higher = more likely spam */
@@ -39,50 +40,46 @@ export async function checkListingSpam(params: {
   let score = 0;
 
   // 1. Account age check — new accounts creating expensive listings
-  const accountAgeDays = (Date.now() - params.accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
+  const accountAgeDays =
+    (Date.now() - params.accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
   if (accountAgeDays < 1 && params.priceNzd > 50000) {
     score += 30;
-    signals.push('new_account_high_value');
+    signals.push("new_account_high_value");
   } else if (accountAgeDays < 7 && params.priceNzd > 100000) {
     score += 20;
-    signals.push('young_account_expensive_listing');
+    signals.push("young_account_expensive_listing");
   }
 
   // 2. Listing velocity — check how many listings created in the last hour
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recentListingCount = await db.listing.count({
-    where: {
-      sellerId: params.userId,
-      createdAt: { gte: oneHourAgo },
-    },
-  });
+  const recentListingCount = await listingRepository.countRecentBySeller(
+    params.userId,
+    oneHourAgo,
+  );
 
   if (recentListingCount >= 10) {
     score += 40;
-    signals.push('high_listing_velocity');
+    signals.push("high_listing_velocity");
   } else if (recentListingCount >= 5) {
     score += 20;
-    signals.push('moderate_listing_velocity');
+    signals.push("moderate_listing_velocity");
   }
 
   // 3. Duplicate title check
-  const duplicateTitle = await db.listing.count({
-    where: {
-      sellerId: params.userId,
-      title: params.title,
-      deletedAt: null,
-    },
-  });
+  const duplicateTitle = await listingRepository.countByExactTitle(
+    params.userId,
+    params.title,
+  );
 
   if (duplicateTitle > 0) {
     score += 25;
-    signals.push('duplicate_title');
+    signals.push("duplicate_title");
   }
 
   // 4. Suspiciously short description for high-value items
   if (params.priceNzd > 10000 && params.description.length < 50) {
     score += 15;
-    signals.push('short_description_high_value');
+    signals.push("short_description_high_value");
   }
 
   return {
@@ -105,34 +102,30 @@ export async function checkMessageSpam(params: {
 
   // 1. Message velocity — check how many messages sent in the last 5 minutes
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-  const recentMessageCount = await db.message.count({
-    where: {
-      senderId: params.userId,
-      createdAt: { gte: fiveMinAgo },
-    },
-  });
+  const recentMessageCount = await messageRepository.countRecentBySender(
+    params.userId,
+    fiveMinAgo,
+  );
 
   if (recentMessageCount >= 20) {
     score += 50;
-    signals.push('message_flooding');
+    signals.push("message_flooding");
   } else if (recentMessageCount >= 10) {
     score += 25;
-    signals.push('high_message_velocity');
+    signals.push("high_message_velocity");
   }
 
   // 2. Check for identical messages sent to different threads
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const identicalMessages = await db.message.count({
-    where: {
-      senderId: params.userId,
-      body: params.body,
-      createdAt: { gte: oneHourAgo },
-    },
-  });
+  const identicalMessages = await messageRepository.countIdenticalBySender(
+    params.userId,
+    params.body,
+    oneHourAgo,
+  );
 
   if (identicalMessages >= 3) {
     score += 35;
-    signals.push('duplicate_messages');
+    signals.push("duplicate_messages");
   }
 
   return {

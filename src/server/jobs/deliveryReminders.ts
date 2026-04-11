@@ -11,7 +11,6 @@
 // Called daily at 4:00 AM UTC by Vercel Cron via /api/cron/delivery-reminders
 // (schedule: "0 4 * * *" in vercel.json).
 
-import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { paymentService } from "@/modules/payments/payment.service";
@@ -26,6 +25,10 @@ import {
 } from "@/modules/orders/order-event.service";
 import { audit } from "@/server/lib/audit";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { payoutRepository } from "@/modules/payments/payout.repository";
+import { withTransaction } from "@/lib/transaction";
 
 const LOCK_KEY = "cron:delivery-reminders";
 const LOCK_TTL_SECONDS = 300; // 5-minute max runtime — well above expected duration
@@ -57,33 +60,13 @@ export async function processDeliveryReminders(): Promise<{
 
         // Find all DISPATCHED orders that have an estimatedDeliveryDate in their
         // DISPATCHED event metadata
-        const dispatchedOrders = await db.order.findMany({
-          where: {
-            status: "DISPATCHED",
-            dispatchedAt: { not: null },
-          },
-          take: 500,
-          select: {
-            id: true,
-            buyerId: true,
-            sellerId: true,
-            totalNzd: true,
-            stripePaymentIntentId: true,
-            dispatchedAt: true,
-            listing: { select: { title: true, id: true } },
-            buyer: { select: { email: true, displayName: true } },
-          },
-        });
+        const dispatchedOrders =
+          await orderRepository.findDispatchedForReminders(500);
 
         // ── Bulk-fetch all order events for these orders (eliminates N+1) ──
         const orderIds = dispatchedOrders.map((o) => o.id);
-        const allEvents = await db.orderEvent.findMany({
-          where: {
-            orderId: { in: orderIds },
-            type: { in: ["DISPATCHED", "DELIVERY_REMINDER_SENT"] },
-          },
-          select: { id: true, orderId: true, type: true, metadata: true },
-        });
+        const allEvents =
+          await orderRepository.findReminderEventsForOrders(orderIds);
 
         // Build lookup: orderId → events grouped by type
         const eventsByOrder = new Map<
@@ -203,21 +186,15 @@ export async function processDeliveryReminders(): Promise<{
               }
 
               try {
-                await db.$transaction(async (tx) => {
+                await withTransaction(async (tx) => {
                   await transitionOrder(
                     order.id,
                     "COMPLETED",
                     { completedAt: new Date() },
                     { tx, fromStatus: "DISPATCHED" },
                   );
-                  await tx.payout.updateMany({
-                    where: { orderId: order.id },
-                    data: { status: "PROCESSING", initiatedAt: new Date() },
-                  });
-                  await tx.listing.update({
-                    where: { id: order.listing.id },
-                    data: { status: "SOLD", soldAt: new Date() },
-                  });
+                  await payoutRepository.markProcessingByOrderId(order.id, tx);
+                  await listingRepository.markSold(order.listing.id, tx);
                 });
               } catch (err) {
                 if ((err as { code?: string }).code === "P2025") {

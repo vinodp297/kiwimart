@@ -1,7 +1,6 @@
 // src/server/services/pickup/pickup-scheduling.helpers.ts
 // ─── Internal helpers shared across all pickup scheduling service files ───────
 
-import db from "@/lib/db";
 import { CONFIG_KEYS, getConfigMany } from "@/lib/platform-config";
 import type {
   SellerRescheduleReason,
@@ -149,6 +148,3 @@ export function reasonLabel(
     .toLowerCase()
     .replace(/^\w/, (c) => c.toUpperCase());
 }
-
-// re-export db for use by service files that only need transaction context
-export { db };

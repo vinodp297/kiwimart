@@ -7,11 +7,12 @@
 // 48h: Firm reminder
 // 72h: Urgent warning
 
-import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 import { notifySellerDispatchReminder } from "@/lib/smartNotifications";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { notificationRepository } from "@/modules/notifications/notification.repository";
 
 export async function sendDispatchReminders(): Promise<{
   sent: number;
@@ -37,23 +38,11 @@ export async function sendDispatchReminders(): Promise<{
         let errors = 0;
 
         // Find PAYMENT_HELD orders older than 24 hours where seller hasn't dispatched
-        const undispatchedOrders = await db.order.findMany({
-          where: {
-            status: "PAYMENT_HELD",
-            createdAt: {
-              lte: new Date(Date.now() - 24 * 60 * 60 * 1000), // At least 24h old
-            },
-          },
-          take: 200,
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            sellerId: true,
-            createdAt: true,
-            listing: { select: { title: true } },
-            buyer: { select: { displayName: true } },
-          },
-        });
+        const undispatchedOrders =
+          await orderRepository.findUndispatchedOlderThan(
+            new Date(Date.now() - 24 * 60 * 60 * 1000),
+            200,
+          );
 
         // Filter to orders in the 24h/48h/72h notification windows (CPU-only, no DB)
         const ordersInWindow = undispatchedOrders
@@ -73,14 +62,11 @@ export async function sendDispatchReminders(): Promise<{
         if (ordersInWindow.length > 0) {
           // Bulk check for existing reminders — single query replaces N findFirst calls
           const windowOrderIds = ordersInWindow.map(({ order }) => order.id);
-          const existingReminders = await db.notification.findMany({
-            where: {
-              orderId: { in: windowOrderIds },
-              type: "SYSTEM",
-              createdAt: { gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
-            },
-            select: { orderId: true },
-          });
+          const existingReminders =
+            await notificationRepository.findRecentSystemForOrders(
+              windowOrderIds,
+              new Date(Date.now() - 12 * 60 * 60 * 1000),
+            );
           const alreadyNotified = new Set(
             existingReminders.map((n) => n.orderId).filter(Boolean),
           );

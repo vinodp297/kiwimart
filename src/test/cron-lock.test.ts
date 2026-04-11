@@ -21,8 +21,8 @@ vi.mock("@/server/lib/distributedLock", () => ({
 
 // ── Mock db ───────────────────────────────────────────────────────────────────
 
-vi.mock("@/lib/db", () => ({
-  default: {
+vi.mock("@/lib/db", () => {
+  const dbStub = {
     order: {
       findMany: vi.fn().mockResolvedValue([]),
     },
@@ -30,11 +30,15 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn().mockResolvedValue([]),
     },
     $transaction: vi.fn().mockImplementation(async (fnOrArray: unknown) => {
-      if (typeof fnOrArray === "function") return fnOrArray({});
+      if (typeof fnOrArray === "function") return fnOrArray(dbStub);
       if (Array.isArray(fnOrArray)) return Promise.all(fnOrArray);
     }),
-  },
-}));
+  };
+  return {
+    default: dbStub,
+    getClient: (tx?: unknown) => tx ?? dbStub,
+  };
+});
 
 // ── Mock paymentService & other dependencies ──────────────────────────────────
 

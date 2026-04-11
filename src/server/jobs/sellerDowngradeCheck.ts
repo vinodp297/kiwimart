@@ -4,12 +4,12 @@
 // count exceeds configurable thresholds and downgrades their performance
 // tier by one level (GOLD→SILVER, SILVER→BRONZE).
 
-import db from "@/lib/db";
 import {
   CONFIG_KEYS,
   getConfigFloat,
   getConfigInt,
 } from "@/lib/platform-config";
+import { userRepository } from "@/modules/users/user.repository";
 import { calculateSellerTier } from "@/lib/seller-tiers.server";
 import type { PerformanceTier } from "@/lib/seller-tiers";
 import { audit } from "@/server/lib/audit";
@@ -54,55 +54,8 @@ export async function runSellerDowngradeCheck(): Promise<{
 
         // Fetch both seller risk groups in parallel (independent queries with different filters)
         const [sellersAtRisk, sellersWithOpenDisputes] = await Promise.all([
-          // Sellers with trust metrics exceeding dispute rate threshold
-          db.user.findMany({
-            where: {
-              isSellerEnabled: true,
-              isBanned: false,
-              sellerTierOverride: null,
-              trustMetrics: {
-                disputeRate: { gt: disputeRateThreshold },
-              },
-            },
-            select: {
-              id: true,
-              trustMetrics: {
-                select: {
-                  completedOrders: true,
-                  totalOrders: true,
-                  averageRating: true,
-                  disputeRate: true,
-                },
-              },
-            },
-          }),
-          // Sellers with too many simultaneously open disputes
-          db.user.findMany({
-            where: {
-              isSellerEnabled: true,
-              isBanned: false,
-              sellerTierOverride: null,
-              sellerOrders: {
-                some: { status: "DISPUTED" },
-              },
-            },
-            select: {
-              id: true,
-              trustMetrics: {
-                select: {
-                  completedOrders: true,
-                  totalOrders: true,
-                  averageRating: true,
-                  disputeRate: true,
-                },
-              },
-              _count: {
-                select: {
-                  sellerOrders: { where: { status: "DISPUTED" } },
-                },
-              },
-            },
-          }),
+          userRepository.findSellersExceedingDisputeRate(disputeRateThreshold),
+          userRepository.findSellersWithOpenDisputes(),
         ]);
 
         // Merge both sets into a unique map
@@ -178,15 +131,11 @@ export async function runSellerDowngradeCheck(): Promise<{
                 ? `Automatic downgrade: dispute rate ${(seller.disputeRate * 100).toFixed(1)}% exceeded ${disputeRateThresholdPct}% threshold`
                 : `Automatic downgrade: ${seller.openDisputeCount} simultaneously open disputes exceeded ${openDisputeThreshold} threshold`;
 
-            await db.user.update({
-              where: { id: seller.id },
-              data: {
-                sellerTierOverride: downgradedTier,
-                sellerTierOverrideReason: reason,
-                sellerTierOverrideAt: new Date(),
-                sellerTierOverrideBy: "SYSTEM",
-              },
-            });
+            await userRepository.applySellerTierDowngrade(
+              seller.id,
+              downgradedTier,
+              reason,
+            );
 
             fireAndForget(
               createNotification({

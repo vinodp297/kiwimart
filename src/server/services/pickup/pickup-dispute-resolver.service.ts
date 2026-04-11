@@ -3,7 +3,7 @@
 // Evaluates pickup rejections and decides: AUTO_REFUND, AUTO_RELEASE, or MANUAL_REVIEW.
 // Called when buyer rejects item at pickup (after seller initiated OTP, before code entry).
 
-import db from "@/lib/db";
+import { withTransaction } from "@/lib/transaction";
 import { logger } from "@/shared/logger";
 import { audit } from "@/server/lib/audit";
 import { paymentService } from "@/modules/payments/payment.service";
@@ -148,7 +148,7 @@ async function executeAutoRefund(
 
   // 2. Update order status + resolve dispute record
   const dispute = await getDisputeByOrderId(order.id);
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     await orderRepository.updatePickupFields(
       order.id,
       { status: "REFUNDED" },

@@ -592,6 +592,25 @@ export const userRepository = {
     });
   },
 
+  /**
+   * Fetch the seller fields needed by the payout worker — tier override (used
+   * for fee calculation), email + display name (used for notification email).
+   */
+  async findSellerForPayout(id: string): Promise<{
+    sellerTierOverride: string | null;
+    email: string;
+    displayName: string | null;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        sellerTierOverride: true,
+        email: true,
+        displayName: true,
+      },
+    });
+  },
+
   // -------------------------------------------------------------------------
   // User service helpers (phone verification + transactions)
   // -------------------------------------------------------------------------
@@ -961,5 +980,95 @@ export const userRepository = {
   /** Count all non-deleted users — used for homepage stats strip. */
   async countActive(): Promise<number> {
     return db.user.count({ where: { deletedAt: null } });
+  },
+
+  // ── Seller downgrade cron methods ─────────────────────────────────────────
+
+  /**
+   * Find sellers whose trustMetrics.disputeRate exceeds the given threshold —
+   * candidates for the daily auto-downgrade cron.
+   */
+  async findSellersExceedingDisputeRate(
+    disputeRateThreshold: number,
+    tx?: DbClient,
+  ) {
+    const client = getClient(tx);
+    return client.user.findMany({
+      where: {
+        isSellerEnabled: true,
+        isBanned: false,
+        sellerTierOverride: null,
+        trustMetrics: {
+          disputeRate: { gt: disputeRateThreshold },
+        },
+      },
+      select: {
+        id: true,
+        trustMetrics: {
+          select: {
+            completedOrders: true,
+            totalOrders: true,
+            averageRating: true,
+            disputeRate: true,
+          },
+        },
+      },
+    });
+  },
+
+  /**
+   * Find sellers with at least one currently DISPUTED order, returning their
+   * disputed-order count — used by the auto-downgrade cron.
+   */
+  async findSellersWithOpenDisputes(tx?: DbClient) {
+    const client = getClient(tx);
+    return client.user.findMany({
+      where: {
+        isSellerEnabled: true,
+        isBanned: false,
+        sellerTierOverride: null,
+        sellerOrders: {
+          some: { status: "DISPUTED" },
+        },
+      },
+      select: {
+        id: true,
+        trustMetrics: {
+          select: {
+            completedOrders: true,
+            totalOrders: true,
+            averageRating: true,
+            disputeRate: true,
+          },
+        },
+        _count: {
+          select: {
+            sellerOrders: { where: { status: "DISPUTED" } },
+          },
+        },
+      },
+    });
+  },
+
+  /**
+   * Apply an automatic seller-tier downgrade — sets the override fields and
+   * stamps the audit reason. Used by the daily downgrade cron.
+   */
+  async applySellerTierDowngrade(
+    sellerId: string,
+    downgradedTier: string,
+    reason: string,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = getClient(tx);
+    await client.user.update({
+      where: { id: sellerId },
+      data: {
+        sellerTierOverride: downgradedTier,
+        sellerTierOverrideReason: reason,
+        sellerTierOverrideAt: new Date(),
+        sellerTierOverrideBy: "SYSTEM",
+      },
+    });
   },
 };

@@ -3,7 +3,6 @@
 // Day 2: gentle nudge — please confirm delivery
 // Day 3: urgent — funds auto-release tomorrow
 
-import db from "@/lib/db";
 import {
   sendDeliveryReminderEmail,
   sendFinalDeliveryReminderEmail,
@@ -11,6 +10,7 @@ import {
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+import { orderRepository } from "@/modules/orders/order.repository";
 
 const LOCK_KEY = "cron:buyer-reminders";
 const LOCK_TTL_SECONDS = 300;
@@ -46,30 +46,8 @@ export async function sendDeliveryReminders(): Promise<void> {
         day3End.setDate(day3End.getDate() - 3);
 
         const [day2Orders, day3Orders] = await Promise.all([
-          db.order.findMany({
-            where: {
-              status: "DISPATCHED",
-              dispatchedAt: { gte: day2Start, lt: day2End },
-            },
-            select: {
-              id: true,
-              listing: { select: { title: true } },
-              buyer: { select: { email: true, displayName: true } },
-              trackingNumber: true,
-            },
-          }),
-          db.order.findMany({
-            where: {
-              status: "DISPATCHED",
-              dispatchedAt: { gte: day3Start, lt: day3End },
-            },
-            select: {
-              id: true,
-              listing: { select: { title: true } },
-              buyer: { select: { email: true, displayName: true } },
-              trackingNumber: true,
-            },
-          }),
+          orderRepository.findDispatchedInWindow(day2Start, day2End),
+          orderRepository.findDispatchedInWindow(day3Start, day3End),
         ]);
 
         logger.info("reminders.started", {

@@ -3,21 +3,43 @@
 // PATCH /api/v1/notifications — mark all as read
 
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { AppError } from "@/shared/errors";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { notificationsQuerySchema } from "@/modules/notifications/notification.schema";
-import { logger } from "@/shared/logger";
-import { apiOk, apiError } from "../_helpers/response";
+import { rateLimit } from "@/server/lib/rateLimit";
+import { handleRouteError } from "@/server/lib/handle-route-error";
+import { apiOk, apiError, requireApiUser } from "../_helpers/response";
 import { getCorsHeaders, withCors } from "../_helpers/cors";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    // Use requireApiUser for consistency with other v1 routes — supports both
+    // mobile Bearer tokens and web session cookies, performs ban checks, and
+    // throws AppError.unauthenticated() so handleRouteError can map to 401.
+    let user;
+    try {
+      user = await requireApiUser(request);
+    } catch (authErr) {
+      // Polled by NavBar — unauthenticated callers get an empty list rather
+      // than a 401, so the navbar does not flash error states between sessions.
+      if (authErr instanceof AppError && authErr.code === "UNAUTHENTICATED") {
+        return withCors(
+          apiOk({ notifications: [], nextCursor: null, hasMore: false }),
+          request.headers.get("origin"),
+        );
+      }
+      throw authErr;
+    }
+
+    // Rate limit — 60 req/min per user. The NavBar polls this endpoint, so it
+    // is the hottest authenticated route on the platform. Without a per-user
+    // limit, a single misbehaving client can exhaust the DB connection pool.
+    const limit = await rateLimit("notifications", `notif:${user.id}`);
+    if (!limit.success) {
       return withCors(
-        apiOk({ notifications: [], nextCursor: null, hasMore: false }),
+        apiError("Too many requests", 429, "RATE_LIMITED"),
         request.headers.get("origin"),
       );
     }
@@ -37,16 +59,16 @@ export async function GET(request: Request) {
       throw err;
     }
 
-    const { cursor, limit } = query;
+    const { cursor, limit: pageLimit } = query;
 
     const raw = await notificationRepository.findByUser(
-      session.user.id,
-      limit + 1,
+      user.id,
+      pageLimit + 1,
       cursor,
     );
 
-    const hasMore = raw.length > limit;
-    const notifications = hasMore ? raw.slice(0, limit) : raw;
+    const hasMore = raw.length > pageLimit;
+    const notifications = hasMore ? raw.slice(0, pageLimit) : raw;
     const nextCursor = hasMore ? (notifications.at(-1)?.id ?? null) : null;
 
     const response = withCors(
@@ -56,12 +78,8 @@ export async function GET(request: Request) {
     response.headers.set("Cache-Control", "private, no-store");
     return response;
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/v1/notifications",
-      error: e instanceof Error ? e.message : e,
-    });
     return withCors(
-      apiError("We couldn't load your notifications. Please try again.", 500),
+      handleRouteError(e, { path: "GET /api/v1/notifications" }),
       request.headers.get("origin"),
     );
   }
@@ -77,24 +95,22 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await requireApiUser(request);
+
+    const limit = await rateLimit("notifications", `notif:${user.id}`);
+    if (!limit.success) {
       return withCors(
-        apiError("Unauthorised", 401),
+        apiError("Too many requests", 429, "RATE_LIMITED"),
         request.headers.get("origin"),
       );
     }
 
-    await notificationRepository.markAllRead(session.user.id);
+    await notificationRepository.markAllRead(user.id);
 
     return withCors(apiOk(null), request.headers.get("origin"));
   } catch (e) {
-    logger.error("api.error", {
-      path: "/api/v1/notifications",
-      error: e instanceof Error ? e.message : e,
-    });
     return withCors(
-      apiError("We couldn't update your notifications. Please try again.", 500),
+      handleRouteError(e, { path: "PATCH /api/v1/notifications" }),
       request.headers.get("origin"),
     );
   }

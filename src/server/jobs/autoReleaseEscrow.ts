@@ -4,7 +4,6 @@
 // Called daily at 2:00 AM UTC by Vercel Cron via /api/cron/auto-release
 // (schedule: "0 2 * * *" in vercel.json).
 
-import db from "@/lib/db";
 import { CONFIG_KEYS, getConfigInt } from "@/lib/platform-config";
 import { audit } from "@/server/lib/audit";
 import { paymentService } from "@/modules/payments/payment.service";
@@ -18,6 +17,9 @@ import {
 } from "@/modules/orders/order-event.service";
 import { runWithRequestContext } from "@/lib/request-context";
 import { orderRepository } from "@/modules/orders/order.repository";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { payoutRepository } from "@/modules/payments/payout.repository";
+import { withTransaction } from "@/lib/transaction";
 
 // ─── Adaptive batching constants ─────────────────────────────────────────────
 const BATCH_SIZE_MIN = 50;
@@ -94,28 +96,11 @@ export async function processAutoReleases(): Promise<{
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - 30);
 
-      const dispatchedOrders = await db.order.findMany({
-        where: {
-          status: "DISPATCHED",
-          dispatchedAt: {
-            not: null,
-            gte: cutoffDate,
-          },
-        },
-        take: batchSize,
-        orderBy: { dispatchedAt: "asc" }, // Process oldest first
-        select: {
-          id: true,
-          buyerId: true,
-          sellerId: true,
-          totalNzd: true,
-          stripePaymentIntentId: true,
-          dispatchedAt: true,
-          listing: { select: { title: true, id: true } },
-          buyer: { select: { email: true, displayName: true } },
-          seller: { select: { email: true, displayName: true } },
-        },
-      });
+      const dispatchedOrders =
+        await orderRepository.findDispatchedForAutoRelease(
+          cutoffDate,
+          batchSize,
+        );
 
       const now = new Date();
       const eligibleOrders = dispatchedOrders.filter((order) => {
@@ -203,21 +188,15 @@ export async function processAutoReleases(): Promise<{
           }
 
           // DB update ONLY AFTER Stripe capture succeeds — callback form for transitionOrder
-          await db.$transaction(async (tx) => {
+          await withTransaction(async (tx) => {
             await transitionOrder(
               order.id,
               "COMPLETED",
               { completedAt: new Date() },
               { tx, fromStatus: "DISPATCHED" },
             );
-            await tx.payout.updateMany({
-              where: { orderId: order.id },
-              data: { status: "PROCESSING", initiatedAt: new Date() },
-            });
-            await tx.listing.update({
-              where: { id: order.listing.id },
-              data: { status: "SOLD", soldAt: new Date() },
-            });
+            await payoutRepository.markProcessingByOrderId(order.id, tx);
+            await listingRepository.markSold(order.listing.id, tx);
 
             // CRITICAL: audit and event inside the transaction so they roll back
             // atomically if the transition, payout, or listing update fails.
@@ -306,27 +285,11 @@ export async function processAutoReleases(): Promise<{
       const cashCutoff = new Date();
       cashCutoff.setDate(cashCutoff.getDate() - 30);
 
-      const cashOrders = await db.order.findMany({
-        where: {
-          status: "COMPLETED",
-          fulfillmentType: "CASH_ON_PICKUP",
-          completedAt: {
-            not: null,
-            gte: cashCutoff,
-          },
-          payout: {
-            status: "PENDING",
-          },
-        },
-        take: batchSize,
-        orderBy: { completedAt: "asc" },
-        select: {
-          id: true,
-          sellerId: true,
-          completedAt: true,
-          payout: { select: { id: true, status: true } },
-        },
-      });
+      const cashOrders =
+        await orderRepository.findCashPickupReadyForPayoutRelease(
+          cashCutoff,
+          batchSize,
+        );
 
       const nowCash = new Date();
       const eligibleCashOrders = cashOrders.filter((order) => {
@@ -361,10 +324,10 @@ export async function processAutoReleases(): Promise<{
             }
 
             try {
-              await db.payout.updateMany({
-                where: { orderId: order.id, status: "PENDING" },
-                data: { status: "PAID", paidAt: new Date() },
-              });
+              await payoutRepository.markPaidByOrderIdIfPending(
+                order.id,
+                new Date(),
+              );
 
               audit({
                 userId: null,

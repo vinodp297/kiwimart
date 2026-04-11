@@ -163,6 +163,40 @@ export const interactionRepository = {
     });
   },
 
+  /** Find expired PENDING interactions with autoAction=AUTO_ESCALATE (cron). */
+  async findExpiredAutoEscalate(now: Date, take: number, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.orderInteraction.findMany({
+      where: {
+        status: "PENDING",
+        expiresAt: { lte: now },
+        autoAction: "AUTO_ESCALATE",
+      },
+      take,
+      include: {
+        order: {
+          select: {
+            id: true,
+            buyerId: true,
+            sellerId: true,
+            status: true,
+            listing: { select: { title: true } },
+          },
+        },
+        initiator: { select: { displayName: true } },
+      },
+    });
+  },
+
+  /** Bulk-mark interactions as ESCALATED with the given resolvedAt. */
+  async bulkMarkEscalated(ids: string[], resolvedAt: Date, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.orderInteraction.updateMany({
+      where: { id: { in: ids } },
+      data: { status: "ESCALATED", resolvedAt },
+    });
+  },
+
   /** Fetch all interactions for an order with party display info. */
   async findAllByOrder(orderId: string, tx?: DbClient) {
     const client = getClient(tx);

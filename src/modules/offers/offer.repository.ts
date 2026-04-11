@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { db, type DbClient, getClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -125,6 +125,40 @@ export const offerRepository = {
         status: "PENDING",
       },
       data: { status: "DECLINED", respondedAt: new Date() },
+    });
+  },
+
+  /**
+   * Find accepted offers whose payment deadline has passed — used by the
+   * release-expired-offer-reservations cron.
+   */
+  async findExpiredAcceptedOffers(
+    now: Date,
+    tx?: DbClient,
+  ): Promise<Array<{ id: string; listingId: string }>> {
+    const client = getClient(tx);
+    return client.offer.findMany({
+      where: {
+        status: "ACCEPTED",
+        paymentDeadlineAt: { lt: now },
+      },
+      select: { id: true, listingId: true },
+    });
+  },
+
+  /**
+   * Bulk-mark a list of accepted offers as EXPIRED. Includes
+   * `status: "ACCEPTED"` as a safety guard so a concurrent decline cannot be
+   * overwritten. Returns the BatchPayload.
+   */
+  async expireAcceptedOffers(
+    offerIds: string[],
+    tx?: DbClient,
+  ): Promise<Prisma.BatchPayload> {
+    const client = getClient(tx);
+    return client.offer.updateMany({
+      where: { id: { in: offerIds }, status: "ACCEPTED" },
+      data: { status: "EXPIRED", updatedAt: new Date() },
     });
   },
 

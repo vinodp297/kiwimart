@@ -2,7 +2,7 @@
 // ─── Pickup reschedule request ────────────────────────────────────────────────
 // Exports: requestReschedule
 
-import db from "@/lib/db";
+import { withTransaction } from "@/lib/transaction";
 import { logger } from "@/shared/logger";
 import { createNotification } from "@/modules/notifications/notification.service";
 import {
@@ -124,7 +124,7 @@ export async function requestReschedule(params: {
 
   let requestId: string;
 
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     // Increment reschedule count and set status to RESCHEDULING
     await orderRepository.updatePickupFields(
       orderId,

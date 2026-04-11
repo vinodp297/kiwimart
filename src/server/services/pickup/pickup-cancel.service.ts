@@ -2,7 +2,7 @@
 // ─── Pickup order cancellation ────────────────────────────────────────────────
 // Exports: cancelPickupOrder
 
-import db from "@/lib/db";
+import { withTransaction } from "@/lib/transaction";
 import { logger } from "@/shared/logger";
 import { audit } from "@/server/lib/audit";
 import { createNotification } from "@/modules/notifications/notification.service";
@@ -74,7 +74,7 @@ export async function cancelPickupOrder(params: {
     }
   }
 
-  await db.$transaction(async (tx) => {
+  await withTransaction(async (tx) => {
     await transitionOrder(
       orderId,
       "CANCELLED",

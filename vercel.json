@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/price-drop-alerts",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/release-stale-reservations",
+      "schedule": "*/5 * * * *"
     }
   ],
   "headers": [

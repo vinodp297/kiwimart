@@ -12,10 +12,13 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  // In non-production environments skip Turnstile entirely — the server
-  // already bypasses verification in dev/test (verifyTurnstile returns true),
-  // so there is no point loading the widget and it can hang on test keys.
-  if (process.env.NODE_ENV !== "production") {
+  // Turnstile is gated by an explicit env flag — TURNSTILE_ENFORCED. Replaces
+  // the previous NODE_ENV !== "production" check which silently disabled bot
+  // protection on staging environments running with NODE_ENV=staging or
+  // NODE_ENV=preview, leaving accounts wide open to credential stuffing on
+  // staging hostnames that share the production user table.
+  const enforced = process.env.TURNSTILE_ENFORCED === "true";
+  if (!enforced) {
     return NextResponse.json({ siteKey: null, active: false });
   }
 

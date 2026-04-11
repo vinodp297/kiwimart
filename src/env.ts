@@ -24,7 +24,12 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
   // ── Auth ────────────────────────────────────────────────────────────────────
-  NEXTAUTH_SECRET: z.string().min(1, "NEXTAUTH_SECRET is required"),
+  NEXTAUTH_SECRET: z
+    .string()
+    .min(
+      32,
+      "NEXTAUTH_SECRET must be at least 32 characters — generate with: openssl rand -base64 32",
+    ),
 
   // ── Redis (Upstash) ─────────────────────────────────────────────────────────
   UPSTASH_REDIS_REST_URL: z
@@ -100,6 +105,24 @@ export const envSchema = z.object({
   // ── Cloudflare Turnstile (optional — CAPTCHA) ───────────────────────────────
   TURNSTILE_SECRET_KEY: z.string().optional(),
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
+
+  // ── Turnstile enforcement flag ──────────────────────────────────────────────
+  // Explicit opt-in. Replaces the previous NODE_ENV !== "production" check
+  // which silently disabled bot protection on staging environments running
+  // with NODE_ENV=staging or NODE_ENV=preview.
+  TURNSTILE_ENFORCED: z
+    .enum(["true", "false"])
+    .optional()
+    .default("false")
+    .transform((val) => val === "true"),
+
+  // ── Dispute evidence upload limit (optional override) ───────────────────────
+  DISPUTE_EVIDENCE_MAX_FILES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(4)
+    .optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

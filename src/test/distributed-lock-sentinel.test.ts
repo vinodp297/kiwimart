@@ -15,16 +15,20 @@ vi.mock("@/server/lib/distributedLock", () => ({
   releaseLock: (...args: unknown[]) => mockReleaseLock(...args),
 }));
 
-vi.mock("@/lib/db", () => ({
-  default: {
+vi.mock("@/lib/db", () => {
+  const dbStub = {
     order: { findMany: vi.fn().mockResolvedValue([]) },
     orderEvent: { findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn().mockImplementation(async (fn: unknown) => {
-      if (typeof fn === "function") return fn({});
+      if (typeof fn === "function") return fn(dbStub);
       if (Array.isArray(fn)) return Promise.all(fn);
     }),
-  },
-}));
+  };
+  return {
+    default: dbStub,
+    getClient: (tx?: unknown) => tx ?? dbStub,
+  };
+});
 
 vi.mock("@/modules/payments/payment.service", () => ({
   paymentService: { capturePayment: vi.fn() },

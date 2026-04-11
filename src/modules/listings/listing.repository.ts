@@ -256,6 +256,155 @@ export const listingRepository = {
     });
   },
 
+  /**
+   * Count seller's listings (excluding the listing being reviewed) across the
+   * statuses that consume an "active slot" — used by the L1 listing limit
+   * enforcement in auto-review.
+   */
+  async countActiveSlotsForSellerExcluding(
+    sellerId: string,
+    excludeListingId: string,
+    tx?: DbClient,
+  ): Promise<number> {
+    const client = getClient(tx);
+    return client.listing.count({
+      where: {
+        sellerId,
+        id: { not: excludeListingId },
+        status: { in: ["ACTIVE", "PENDING_REVIEW", "NEEDS_CHANGES"] },
+        deletedAt: null,
+      },
+    });
+  },
+
+  /**
+   * Mark a listing SOLD with soldAt = now — used by auto-complete flows
+   * (delivery-reminder cron, autoReleaseEscrow). Caller must already have
+   * verified the order transition.
+   */
+  async markSold(id: string, tx?: DbClient) {
+    const client = getClient(tx);
+    return client.listing.update({
+      where: { id },
+      data: { status: "SOLD", soldAt: new Date() },
+    });
+  },
+
+  /**
+   * Bulk-expire ACTIVE listings whose expiresAt has passed. Used by the
+   * daily expireListings cron. Status guard `ACTIVE` makes the update safe
+   * against listings that were already SOLD/RESERVED in a race.
+   */
+  async expireActivePast(
+    now: Date,
+    tx?: DbClient,
+  ): Promise<Prisma.BatchPayload> {
+    const client = getClient(tx);
+    return client.listing.updateMany({
+      where: {
+        status: "ACTIVE",
+        expiresAt: { lt: now },
+        deletedAt: null,
+      },
+      data: { status: "EXPIRED" },
+    });
+  },
+
+  /**
+   * Release listings whose 10-minute checkout reservation has lapsed (Fix 10).
+   * Used by /api/cron/release-stale-reservations.
+   *
+   * Returns the number of listings restored to ACTIVE so the cron can log it.
+   * The compound `status + reservedUntil` index makes this a fast scan.
+   */
+  async releaseStaleReservations(
+    now: Date,
+    tx?: DbClient,
+  ): Promise<Prisma.BatchPayload> {
+    const client = getClient(tx);
+    return client.listing.updateMany({
+      where: {
+        status: "RESERVED",
+        reservedUntil: { lt: now },
+      },
+      data: { status: "ACTIVE", reservedUntil: null },
+    });
+  },
+
+  /**
+   * Bulk-release listings from RESERVED back to ACTIVE — used by the
+   * release-expired-offer-reservations cron. The status guard ensures we
+   * never overwrite a listing that has since been re-reserved.
+   */
+  async bulkReleaseFromReserved(
+    listingIds: string[],
+    tx?: DbClient,
+  ): Promise<Prisma.BatchPayload> {
+    const client = getClient(tx);
+    return client.listing.updateMany({
+      where: { id: { in: listingIds }, status: "RESERVED" },
+      data: { status: "ACTIVE" },
+    });
+  },
+
+  /**
+   * Count listings created by a seller since the given timestamp — used by
+   * the spam detection layer to flag listing-velocity attacks.
+   */
+  async countRecentBySeller(
+    sellerId: string,
+    since: Date,
+    tx?: DbClient,
+  ): Promise<number> {
+    const client = getClient(tx);
+    return client.listing.count({
+      where: { sellerId, createdAt: { gte: since } },
+    });
+  },
+
+  /**
+   * Count how many of a seller's non-deleted listings share an exact title —
+   * used by spam detection to catch duplicate-content uploads.
+   */
+  async countByExactTitle(
+    sellerId: string,
+    title: string,
+    tx?: DbClient,
+  ): Promise<number> {
+    const client = getClient(tx);
+    return client.listing.count({
+      where: { sellerId, title, deletedAt: null },
+    });
+  },
+
+  /**
+   * Find a recent listing from the same seller whose title starts with the
+   * given prefix — used by auto-review's duplicate detection. Returns just
+   * the id (caller only needs to know if a duplicate exists).
+   */
+  async findRecentDuplicateBySeller(
+    params: {
+      sellerId: string;
+      excludeListingId: string;
+      titlePrefix: string;
+      since: Date;
+    },
+    tx?: DbClient,
+  ): Promise<{ id: string } | null> {
+    const client = getClient(tx);
+    return client.listing.findFirst({
+      where: {
+        id: { not: params.excludeListingId },
+        sellerId: params.sellerId,
+        title: { startsWith: params.titlePrefix, mode: "insensitive" },
+        status: { notIn: ["REMOVED"] },
+        createdAt: { gte: params.since },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+  },
+
   async findCategoryById(id: string, tx?: DbClient) {
     const client = getClient(tx);
     return client.category.findUnique({

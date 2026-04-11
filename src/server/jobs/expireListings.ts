@@ -2,10 +2,13 @@
 // ─── Listing Expiry + Offer Reservation Release Jobs ─────────────────────────
 // Run daily via Vercel Cron at 3 AM UTC.
 
-import db from "@/lib/db";
 import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
+import { listingRepository } from "@/modules/listings/listing.repository";
+import { offerRepository } from "@/modules/offers/offer.repository";
+import { orderRepository } from "@/modules/orders/order.repository";
+import { withTransaction } from "@/lib/transaction";
 
 const LOCK_TTL_SECONDS = 300;
 
@@ -37,16 +40,7 @@ export async function expireListings(): Promise<{
         let errors = 0;
 
         try {
-          const result = await db.listing.updateMany({
-            where: {
-              status: "ACTIVE",
-              expiresAt: { lt: now },
-              deletedAt: null,
-            },
-            data: {
-              status: "EXPIRED",
-            },
-          });
+          const result = await listingRepository.expireActivePast(now);
 
           expired = result.count;
 
@@ -100,16 +94,8 @@ export async function releaseExpiredOfferReservations(): Promise<{
         let errors = 0;
 
         // Find accepted offers whose payment window has closed
-        const expiredOffers = await db.offer.findMany({
-          where: {
-            status: "ACCEPTED",
-            paymentDeadlineAt: { lt: now },
-          },
-          select: {
-            id: true,
-            listingId: true,
-          },
-        });
+        const expiredOffers =
+          await offerRepository.findExpiredAcceptedOffers(now);
 
         if (expiredOffers.length === 0) {
           logger.info("job.release_expired_offer_reservations.completed", {
@@ -119,23 +105,11 @@ export async function releaseExpiredOfferReservations(): Promise<{
         }
 
         // Exclude listings that already have a paid order (buyer completed checkout)
-        const paidListingIds = await db.order
-          .findMany({
-            where: {
-              listingId: { in: expiredOffers.map((o) => o.listingId) },
-              status: {
-                in: [
-                  "PAYMENT_HELD",
-                  "DISPATCHED",
-                  "DELIVERED",
-                  "COMPLETED",
-                  "DISPUTED",
-                ],
-              },
-            },
-            select: { listingId: true },
-          })
-          .then((orders) => new Set(orders.map((o) => o.listingId)));
+        const paidListingIds = new Set(
+          await orderRepository.findListingIdsWithActiveOrders(
+            expiredOffers.map((o) => o.listingId),
+          ),
+        );
 
         const trulyExpired = expiredOffers.filter(
           (o) => !paidListingIds.has(o.listingId),
@@ -148,23 +122,15 @@ export async function releaseExpiredOfferReservations(): Promise<{
               ...new Set(trulyExpired.map((o) => o.listingId)),
             ];
 
-            // Bulk update in a single transaction
-            await db.$transaction([
-              db.offer.updateMany({
-                where: {
-                  id: { in: expiredOfferIds },
-                  status: "ACCEPTED", // safety check
-                },
-                data: { status: "EXPIRED", updatedAt: new Date() },
-              }),
-              db.listing.updateMany({
-                where: {
-                  id: { in: expiredListingIds },
-                  status: "RESERVED", // only release if still reserved
-                },
-                data: { status: "ACTIVE" },
-              }),
-            ]);
+            // Bulk update in a single transaction so that an offer is not
+            // marked EXPIRED while its listing remains RESERVED (or vice versa).
+            await withTransaction(async (tx) => {
+              await offerRepository.expireAcceptedOffers(expiredOfferIds, tx);
+              await listingRepository.bulkReleaseFromReserved(
+                expiredListingIds,
+                tx,
+              );
+            });
 
             released = trulyExpired.length;
             logger.info("job.release_expired_offers.bulk", {

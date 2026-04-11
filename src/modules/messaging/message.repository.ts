@@ -238,4 +238,34 @@ export const messageRepository = {
       },
     });
   },
+
+  /**
+   * Count messages a user has sent since the given timestamp — used by the
+   * spam detection layer to flag message flooding.
+   */
+  async countRecentBySender(
+    senderId: string,
+    since: Date,
+    client: DbClient = db,
+  ): Promise<number> {
+    return client.message.count({
+      where: { senderId, createdAt: { gte: since } },
+    });
+  },
+
+  /**
+   * Count how many times a user has sent the exact same body since the given
+   * timestamp — used by spam detection to catch identical-message flooding
+   * across multiple threads.
+   */
+  async countIdenticalBySender(
+    senderId: string,
+    body: string,
+    since: Date,
+    client: DbClient = db,
+  ): Promise<number> {
+    return client.message.count({
+      where: { senderId, body, createdAt: { gte: since } },
+    });
+  },
 };

@@ -464,4 +464,57 @@ export const adminRepository = {
       orderBy: { updatedAt: "asc" },
     });
   },
+
+  /**
+   * Aggregate the daily-digest counters used by the admin daily summary
+   * email cron. Single repository call so the cron file does not need to
+   * import @/lib/db just to issue counts.
+   */
+  async getDailyDigestMetrics(since: Date): Promise<{
+    newUsers: number;
+    newOrders: number;
+    completedOrders: number;
+    newDisputes: number;
+    gmvTotalNzd: number;
+    newSellers: number;
+  }> {
+    const [newUsers, newOrders, completedOrders, newDisputes, gmv, newSellers] =
+      await Promise.all([
+        db.user.count({ where: { createdAt: { gte: since } } }),
+        db.order.count({ where: { createdAt: { gte: since } } }),
+        db.order.count({
+          where: { status: "COMPLETED", completedAt: { gte: since } },
+        }),
+        db.order.count({
+          where: { status: "DISPUTED", updatedAt: { gte: since } },
+        }),
+        db.order.aggregate({
+          where: { status: "COMPLETED", completedAt: { gte: since } },
+          _sum: { totalNzd: true },
+        }),
+        db.user.count({
+          where: { isSellerEnabled: true, createdAt: { gte: since } },
+        }),
+      ]);
+    return {
+      newUsers,
+      newOrders,
+      completedOrders,
+      newDisputes,
+      gmvTotalNzd: gmv._sum.totalNzd ?? 0,
+      newSellers,
+    };
+  },
+
+  /**
+   * Find all super-admin users for system notifications and digest emails.
+   */
+  async findSuperAdmins(): Promise<
+    Array<{ email: string | null; displayName: string | null }>
+  > {
+    return db.user.findMany({
+      where: { adminRole: "SUPER_ADMIN" },
+      select: { email: true, displayName: true },
+    });
+  },
 };
