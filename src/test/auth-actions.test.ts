@@ -250,39 +250,88 @@ describe("registerUser", () => {
     expect(secondCall.username).toMatch(/^johndoe[0-9a-f-]{8,}$/);
   });
 
-  it("throws after 5 consecutive P2002 username collisions", async () => {
+  // ── Fix 1: error envelope — registerUser must NEVER throw to runtime ──────
+
+  it("returns USERNAME_GENERATION_FAILED envelope after 5 consecutive P2002 username collisions", async () => {
     vi.mocked(userRepository.create).mockRejectedValue(usernameP2002());
 
-    // After 5 attempts all fail → error propagates out of the action
-    await expect(registerUser(validRegisterInput)).rejects.toThrow(
-      "Unique constraint violated",
-    );
+    const result = await registerUser(validRegisterInput);
+
+    // Must NOT throw — must return a structured ActionResult envelope
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.code).toBe("USERNAME_GENERATION_FAILED");
+      expect(result.error).toMatch(/username/i);
+    }
     expect(userRepository.create).toHaveBeenCalledTimes(5);
   });
 
-  it("rethrows P2002 on non-username field without retrying", async () => {
+  it("returns REGISTRATION_FAILED envelope on non-username P2002 (does not retry)", async () => {
     const emailP2002 = Object.assign(new Error("Unique constraint on email"), {
       code: "P2002",
       meta: { target: ["email"] },
     });
     vi.mocked(userRepository.create).mockRejectedValue(emailP2002);
 
-    // Not a username collision → thrown immediately without retrying
-    await expect(registerUser(validRegisterInput)).rejects.toThrow(
-      "Unique constraint on email",
-    );
+    const result = await registerUser(validRegisterInput);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // Not a username collision → caught by outer catch as unknown error
+      expect(result.code).toBe("REGISTRATION_FAILED");
+      // Friendly NZ-English message — not a Prisma stack trace
+      expect(result.error).toMatch(/couldn't create your account/i);
+    }
     expect(userRepository.create).toHaveBeenCalledTimes(1);
   });
 
-  it("rethrows non-P2002 errors without retrying", async () => {
+  it("returns REGISTRATION_FAILED envelope on non-P2002 errors (does not retry)", async () => {
     vi.mocked(userRepository.create).mockRejectedValue(
       new Error("DB connection lost"),
     );
 
-    await expect(registerUser(validRegisterInput)).rejects.toThrow(
-      "DB connection lost",
-    );
+    const result = await registerUser(validRegisterInput);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.code).toBe("REGISTRATION_FAILED");
+      expect(result.error).toMatch(/couldn't create your account/i);
+      // Must NOT leak the raw DB error message
+      expect(result.error).not.toMatch(/DB connection lost/i);
+    }
     expect(userRepository.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("friendly NZ-English message — apostrophes, no jargon, no stack traces", async () => {
+    vi.mocked(userRepository.create).mockRejectedValue(
+      new Error("ECONNREFUSED 127.0.0.1:5432"),
+    );
+
+    const result = await registerUser(validRegisterInput);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // British/NZ spelling: "couldn't" with apostrophe, no Americanisms
+      expect(result.error).toContain("couldn't");
+      // No leaked technical detail
+      expect(result.error).not.toMatch(/ECONNREFUSED|127\.0\.0\.1|5432/);
+    }
+  });
+
+  it("success path returns the success envelope (regression guard)", async () => {
+    vi.mocked(userRepository.create).mockResolvedValue({
+      id: "user-happy",
+      email: "john@example.com",
+      username: "johndoe",
+      displayName: "John Doe",
+    } as never);
+
+    const result = await registerUser(validRegisterInput);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.userId).toBe("user-happy");
+    }
   });
 
   it("rejects missing required fields", async () => {

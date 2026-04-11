@@ -10,6 +10,7 @@ import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { verifyTurnstile } from "@/server/lib/turnstile";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
+import { AppError } from "@/shared/errors";
 import { enqueueEmail } from "@/lib/email-queue";
 import { registerSchema } from "@/server/validators";
 import type { ActionResult } from "@/types";
@@ -35,136 +36,169 @@ export async function registerUser(
   raw: unknown,
 ): Promise<ActionResult<{ userId: string }>> {
   return withActionContext(async () => {
-    const reqHeaders = await headers();
-    const ip = getClientIp(reqHeaders);
-    const ua = reqHeaders.get("user-agent") ?? undefined;
+    try {
+      const reqHeaders = await headers();
+      const ip = getClientIp(reqHeaders);
+      const ua = reqHeaders.get("user-agent") ?? undefined;
 
-    const parsed = registerSchema.safeParse(raw);
-    if (!parsed.success) {
-      return {
-        success: false,
-        error: "Please fix the errors below and try again.",
-        fieldErrors: parsed.error.flatten().fieldErrors,
-      };
-    }
-    const data = parsed.data;
+      const parsed = registerSchema.safeParse(raw);
+      if (!parsed.success) {
+        return {
+          success: false,
+          error: "Please fix the errors below and try again.",
+          fieldErrors: parsed.error.flatten().fieldErrors,
+        };
+      }
+      const data = parsed.data;
 
-    // Normalise email — lowercase + trim to prevent case-mismatch with login
-    const normalizedEmail = data.email.toLowerCase().trim();
+      // Normalise email — lowercase + trim to prevent case-mismatch with login
+      const normalizedEmail = data.email.toLowerCase().trim();
 
-    const limit = await rateLimit("register", ip);
-    if (!limit.success) {
-      return {
-        success: false,
-        error: `Too many registration attempts. Try again in ${limit.retryAfter} seconds.`,
-      };
-    }
+      const limit = await rateLimit("register", ip);
+      if (!limit.success) {
+        return {
+          success: false,
+          error: `Too many registration attempts. Try again in ${limit.retryAfter} seconds.`,
+        };
+      }
 
-    // Verify Cloudflare Turnstile — FAIL CLOSED in production.
-    // Empty/missing tokens are rejected. Client gets key via /api/auth/turnstile-config.
-    if (process.env.NODE_ENV === "production") {
-      if (!data.turnstileToken) {
+      // Verify Cloudflare Turnstile — FAIL CLOSED in production.
+      // Empty/missing tokens are rejected. Client gets key via /api/auth/turnstile-config.
+      if (process.env.NODE_ENV === "production") {
+        if (!data.turnstileToken) {
+          return {
+            success: false,
+            error:
+              "Bot verification required. Please complete the security check.",
+          };
+        }
+        const turnstileOk = await verifyTurnstile(data.turnstileToken, ip);
+        if (!turnstileOk) {
+          return {
+            success: false,
+            error: "Bot verification failed. Please try again.",
+          };
+        }
+      }
+
+      // Check password against breach database (k-anonymity — never sends full password).
+      // FAIL OPEN: isPasswordBreached returns false on network errors internally, but this
+      // outer try-catch guards against any unexpected throw.
+      let isCompromised = false;
+      try {
+        isCompromised = await isPasswordBreached(data.password);
+      } catch (err) {
+        logger.warn("auth.register.breach_check_failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      if (isCompromised) {
         return {
           success: false,
           error:
-            "Bot verification required. Please complete the security check.",
+            "This password has appeared in a data breach. Please choose a different password.",
+          fieldErrors: {
+            password: [
+              "This password is known to be compromised. Please choose a different one.",
+            ],
+          },
         };
       }
-      const turnstileOk = await verifyTurnstile(data.turnstileToken, ip);
-      if (!turnstileOk) {
+
+      const emailTaken = await userRepository.existsByEmail(normalizedEmail);
+      if (emailTaken) {
         return {
           success: false,
-          error: "Bot verification failed. Please try again.",
+          error: "An account with this email already exists.",
+          fieldErrors: { email: ["This email is already registered."] },
         };
       }
-    }
 
-    // Check password against breach database (k-anonymity — never sends full password).
-    // FAIL OPEN: isPasswordBreached returns false on network errors internally, but this
-    // outer try-catch guards against any unexpected throw.
-    let isCompromised = false;
-    try {
-      isCompromised = await isPasswordBreached(data.password);
-    } catch (err) {
-      logger.warn("auth.register.breach_check_failed", {
-        error: err instanceof Error ? err.message : String(err),
+      const passwordHash = await hashPassword(data.password);
+
+      const verifyToken = crypto.randomBytes(32).toString("hex");
+      const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      // Generate username — retry on P2002 collision instead of pre-checking with
+      // existsByUsername (which has a TOCTOU race between the check and the insert).
+      const baseUsername = generateUsername(data.firstName, data.lastName);
+      let user!: Awaited<ReturnType<typeof userRepository.create>>;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const candidate =
+          attempt === 0
+            ? baseUsername
+            : `${baseUsername}${crypto.randomUUID().slice(0, 8)}`;
+        try {
+          user = await userRepository.create({
+            email: normalizedEmail,
+            username: candidate,
+            displayName: `${data.firstName} ${data.lastName}`,
+            passwordHash,
+            hasMarketingConsent: data.hasMarketingConsent,
+            agreedTermsAt: new Date(),
+            emailVerifyToken: verifyToken,
+            emailVerifyExpires: verifyExpires,
+          });
+          break;
+        } catch (err) {
+          if (isUsernameP2002(err) && attempt < 4) continue;
+          // 5 username collisions in a row — astronomically unlikely. Surface a
+          // typed error so the outer try/catch converts it to a friendly envelope.
+          if (isUsernameP2002(err)) {
+            throw new AppError(
+              "USERNAME_GENERATION_FAILED",
+              "We couldn't generate a username for your account. Please try a slightly different name.",
+              409,
+            );
+          }
+          throw err;
+        }
+      }
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+      const verifyUrl = `${appUrl}/api/verify-email?token=${verifyToken}`;
+      await enqueueEmail({
+        template: "verification",
+        to: user.email,
+        displayName: user.displayName,
+        verifyUrl,
+      }).catch((err) => {
+        logger.warn("auth.register.email_queue.failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
-    }
-    if (isCompromised) {
+
+      audit({
+        userId: user.id,
+        action: "USER_REGISTER",
+        metadata: { email: user.email, username: user.username },
+        ip,
+        userAgent: ua,
+      });
+
+      return { success: true, data: { userId: user.id } };
+    } catch (err) {
+      // ── Error envelope ────────────────────────────────────────────────────
+      // Any error reaching this point is converted to an ActionResult envelope
+      // — never thrown back to the Next.js runtime (which would render a
+      // generic 500 page with no useful message for the user).
+      if (err instanceof AppError) {
+        logger.warn("auth.register.app_error", {
+          code: err.code,
+          message: err.message,
+        });
+        return { success: false, error: err.message, code: err.code };
+      }
+      logger.error("auth.register.unknown_error", {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       return {
         success: false,
         error:
-          "This password has appeared in a data breach. Please choose a different password.",
-        fieldErrors: {
-          password: [
-            "This password is known to be compromised. Please choose a different one.",
-          ],
-        },
+          "We couldn't create your account just now. Please try again in a moment.",
+        code: "REGISTRATION_FAILED",
       };
     }
-
-    const emailTaken = await userRepository.existsByEmail(normalizedEmail);
-    if (emailTaken) {
-      return {
-        success: false,
-        error: "An account with this email already exists.",
-        fieldErrors: { email: ["This email is already registered."] },
-      };
-    }
-
-    const passwordHash = await hashPassword(data.password);
-
-    const verifyToken = crypto.randomBytes(32).toString("hex");
-    const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    // Generate username — retry on P2002 collision instead of pre-checking with
-    // existsByUsername (which has a TOCTOU race between the check and the insert).
-    const baseUsername = generateUsername(data.firstName, data.lastName);
-    let user!: Awaited<ReturnType<typeof userRepository.create>>;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const candidate =
-        attempt === 0
-          ? baseUsername
-          : `${baseUsername}${crypto.randomUUID().slice(0, 8)}`;
-      try {
-        user = await userRepository.create({
-          email: normalizedEmail,
-          username: candidate,
-          displayName: `${data.firstName} ${data.lastName}`,
-          passwordHash,
-          hasMarketingConsent: data.hasMarketingConsent,
-          agreedTermsAt: new Date(),
-          emailVerifyToken: verifyToken,
-          emailVerifyExpires: verifyExpires,
-        });
-        break;
-      } catch (err) {
-        if (isUsernameP2002(err) && attempt < 4) continue;
-        throw err;
-      }
-    }
-
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-    const verifyUrl = `${appUrl}/api/verify-email?token=${verifyToken}`;
-    await enqueueEmail({
-      template: "verification",
-      to: user.email,
-      displayName: user.displayName,
-      verifyUrl,
-    }).catch((err) => {
-      logger.warn("auth.register.email_queue.failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-
-    audit({
-      userId: user.id,
-      action: "USER_REGISTER",
-      metadata: { email: user.email, username: user.username },
-      ip,
-      userAgent: ua,
-    });
-
-    return { success: true, data: { userId: user.id } };
   }); // end withActionContext
 }

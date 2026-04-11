@@ -354,6 +354,7 @@ export type ActionResult<T = void> =
   | {
       success: false;
       error: string;
+      code?: string;
       reason?: string;
       fieldErrors?: Record<string, string[]>;
     };

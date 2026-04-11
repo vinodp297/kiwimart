@@ -121,14 +121,20 @@ export async function releaseLock(
 /**
  * Acquire a lock, run fn(), release the lock in a finally block.
  *
- * Throws if the lock cannot be acquired (null return from acquireLock).
- * This covers both "held by another process" and "Redis unavailable".
+ * Throws if the lock cannot be acquired. This covers both "held by another
+ * process" (LOCK_CONTENTION → 409) and "Redis unavailable" (LOCK_UNAVAILABLE → 503).
  *
- * Callers should catch this and treat it as "already processing" or
- * "temporarily unavailable".
+ * Behaviour is identical in dev and production — there is NO environment-based
+ * fallback. If you are working locally without Redis, set UPSTASH_REDIS_REST_URL
+ * to a local instance, OR pass `failOpen: true` for the specific call.
+ * Silently bypassing the lock in dev hides bugs that only appear in production.
  *
- * options.failOpen — if true, proceeds without lock when Redis is unavailable
- *   (use only for non-critical, idempotent operations)
+ * options.failOpen — if true, proceeds without lock when the lock cannot be
+ *   acquired (Redis unavailable OR held by another process).
+ *   Use only for genuinely non-critical, idempotent operations. Callers MUST
+ *   set this explicitly — there is no implicit fallback.
+ *
+ * options.ttlSeconds — lock TTL in seconds. Defaults to 30.
  */
 export async function withLock<T>(
   resource: string,
@@ -143,27 +149,18 @@ export async function withLock<T>(
       // Caller explicitly opted in to fail-open (non-critical operation)
       logger.warn("distributedLock.lock_unavailable_failopen", {
         resource,
+        reason: result.reason,
         message: "Proceeding without lock (failOpen: true)",
       });
       return await fn();
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      // Dev — Redis may not be running locally. Proceed without lock so
-      // the app works without a local Redis instance.
-      logger.warn("distributedLock.lock_unavailable_dev", {
-        resource,
-        message: "Lock not acquired in dev — proceeding without lock",
-      });
-      return await fn();
-    }
-
-    // PRODUCTION fail-closed — distinguish "held" from "unavailable" so callers
-    // can surface the right HTTP status code without string-matching messages.
+    // Fail-closed — distinguish "held" from "unavailable" so callers can
+    // surface the right HTTP status code without string-matching messages.
     if (result.reason === "unavailable") {
-      logger.error("distributedLock.redis_unavailable_production", {
+      logger.error("distributedLock.redis_unavailable", {
         resource,
-        message: "Redis unavailable in PRODUCTION — failing CLOSED.",
+        message: "Redis unavailable — failing CLOSED.",
       });
       throw new AppError(
         "LOCK_UNAVAILABLE",
@@ -173,7 +170,7 @@ export async function withLock<T>(
     }
 
     // Lock held by another process
-    logger.warn("distributedLock.lock_contention_production", {
+    logger.warn("distributedLock.lock_contention", {
       resource,
       message:
         "Lock held by another process — rejecting to prevent concurrent mutation.",

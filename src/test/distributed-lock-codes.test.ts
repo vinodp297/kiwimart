@@ -36,8 +36,9 @@ import { AppError } from "@/shared/errors";
 describe("withLock — typed error codes (Fix 3)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Force production mode so withLock doesn't bypass Redis
-    vi.stubEnv("NODE_ENV", "production");
+    // No NODE_ENV stubbing — withLock no longer has a dev fallback. Behaviour
+    // is identical in dev and production. Callers must opt in to fail-open
+    // explicitly via { failOpen: true }.
   });
 
   // Test 1: Lock held by another process → LOCK_CONTENTION (409)
@@ -113,5 +114,70 @@ describe("withLock — typed error codes (Fix 3)", () => {
     await expect(withLock("test-resource", fn)).rejects.toThrow(
       "business logic failure",
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests for explicit failOpen — no NODE_ENV-based dev fallback
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("withLock — explicit failOpen behaviour", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("failOpen: true → runs fn even when Redis is unavailable", async () => {
+    mockRedisSet.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+    const fn = vi.fn().mockResolvedValue("ran-without-lock");
+    const result = await withLock("test-resource", fn, { failOpen: true });
+
+    expect(result).toBe("ran-without-lock");
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
+  it("failOpen: true → runs fn even when lock is held", async () => {
+    mockRedisSet.mockResolvedValueOnce(null); // SET NX returns null = held
+
+    const fn = vi.fn().mockResolvedValue("ran-anyway");
+    const result = await withLock("test-resource", fn, { failOpen: true });
+
+    expect(result).toBe("ran-anyway");
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
+  it("failOpen: false → throws LOCK_UNAVAILABLE when Redis is unavailable", async () => {
+    mockRedisSet.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+    const fn = vi.fn();
+    await expect(
+      withLock("test-resource", fn, { failOpen: false }),
+    ).rejects.toMatchObject({ code: "LOCK_UNAVAILABLE", statusCode: 503 });
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("failOpen unset (default) → fail-closed behaviour applies", async () => {
+    // No NODE_ENV stubbing — proves there is no dev fallback. The default
+    // behaviour is fail-closed in BOTH dev and production.
+    mockRedisSet.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+    const fn = vi.fn();
+    await expect(withLock("test-resource", fn)).rejects.toMatchObject({
+      code: "LOCK_UNAVAILABLE",
+      statusCode: 503,
+    });
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it("releases the lock even when fn throws (lock acquired path)", async () => {
+    // Lock acquired → fn throws → release in finally
+    mockRedisSet.mockResolvedValueOnce("OK");
+
+    const fn = vi.fn().mockRejectedValue(new Error("boom"));
+    await expect(withLock("test-resource", fn)).rejects.toThrow("boom");
+
+    // fn was invoked once (lock was acquired). The release path is exercised
+    // via the eval mock on the shared Redis client mock above.
+    expect(fn).toHaveBeenCalledOnce();
   });
 });

@@ -40,7 +40,9 @@ export type ErrorCode =
   | "LOCK_CONTENTION"
   | "LOCK_UNAVAILABLE"
   | "CONFIGURATION_ERROR"
-  | "PAYMENT_GATEWAY_TIMEOUT";
+  | "PAYMENT_GATEWAY_TIMEOUT"
+  | "USERNAME_GENERATION_FAILED"
+  | "REGISTRATION_FAILED";
 
 export class AppError extends Error {
   constructor(
