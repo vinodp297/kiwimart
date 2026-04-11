@@ -2,8 +2,7 @@
 // ─── Seller Manager Dashboard ─────────────────────────────────────────────────
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { adminService } from "@/modules/admin/admin.service";
 // ApproveIdButton replaced by link to review page
 import type { Metadata } from "next";
 
@@ -13,61 +12,13 @@ export const dynamic = "force-dynamic";
 export default async function SellersPage() {
   await requirePermission("VIEW_SELLERS");
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - 7);
-  weekStart.setHours(0, 0, 0, 0);
-
-  const [
+  const {
     pendingVerifications,
     verifiedToday,
     activeSellers,
     newSellersThisWeek,
     sellers,
-  ] = await Promise.all([
-    db.user.findMany({
-      where: {
-        idSubmittedAt: { not: null },
-        idVerified: false,
-        isBanned: false,
-      },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        idSubmittedAt: true,
-        sellerTermsAcceptedAt: true,
-        isStripeOnboarded: true,
-        createdAt: true,
-        isPhoneVerified: true,
-      },
-      orderBy: { idSubmittedAt: "asc" },
-    }),
-    db.user.count({
-      where: { idVerified: true, idSubmittedAt: { gte: todayStart } },
-    }),
-    db.user.count({ where: { isSellerEnabled: true, isBanned: false } }),
-    db.user.count({
-      where: { isSellerEnabled: true, createdAt: { gte: weekStart } },
-    }),
-    db.user.findMany({
-      where: { isSellerEnabled: true },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        idVerified: true,
-        isPhoneVerified: true,
-        isStripeOnboarded: true,
-        createdAt: true,
-        isSellerEnabled: true,
-        _count: { select: { listings: true, sellerOrders: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-  ]);
+  } = await adminService.getSellerManagementData();
 
   const TIER_LABELS: Record<string, { label: string; color: string }> = {
     id_verified: { label: "ID Verified", color: "bg-[#F5ECD4] text-[#8B6914]" },

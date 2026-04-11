@@ -216,6 +216,52 @@ export class UserService {
   async getNavSummaryUser(userId: string) {
     return userRepository.findForNavSummary(userId);
   }
+
+  // ── Page data methods (called by page.tsx Server Components) ─────────────
+
+  /** Fetch onboarding status for the welcome page. */
+  async getWelcomePageData(userId: string) {
+    return userRepository.findOnboardingStatus(userId);
+  }
+
+  /** Fetch settings + blocked users for the account settings page. */
+  async getSettingsPageData(userId: string) {
+    const [user, blockedUsers] = await Promise.all([
+      userRepository.findForSettings(userId),
+      userRepository.findBlockedUsers(userId),
+    ]);
+    return { user, blockedUsers };
+  }
+
+  /** Fetch all seller hub fields for the seller onboarding page. */
+  async getSellerHubData(userId: string) {
+    return userRepository.findForSellerHub(userId);
+  }
+
+  /** Fetch public seller profile data by username. */
+  async getSellerProfile(username: string) {
+    return userRepository.findPublicSellerPageData(username);
+  }
+
+  /** Check if blockerId has blocked blockedId. */
+  async getBlockStatus(blockerId: string, blockedId: string) {
+    return userRepository.findBlockStatus(blockerId, blockedId);
+  }
+
+  /** Fetch seller business info (NZBN + GST) for the listing detail page. */
+  async getSellerBusinessInfo(sellerId: string) {
+    return userRepository.findBusinessInfo(sellerId);
+  }
+
+  /** Fetch recipient info for the new-message page. */
+  async getMessageRecipient(userId: string) {
+    return userRepository.findForMessageRecipient(userId);
+  }
+
+  /** Fetch email address by user ID (used by the accept-invite page). */
+  async getEmailById(userId: string): Promise<{ email: string } | null> {
+    return userRepository.findEmailById(userId);
+  }
 }
 
 export const userService = new UserService();

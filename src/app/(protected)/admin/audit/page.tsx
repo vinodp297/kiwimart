@@ -2,17 +2,13 @@
 // ─── Audit Log with Pagination & Filtering (Super Admin only) ──────────────
 import Link from "next/link";
 import { requireSuperAdmin } from "@/shared/auth/requirePermission";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { adminService } from "@/modules/admin/admin.service";
 import type { Metadata } from "next";
-import type { AuditAction, Prisma } from "@prisma/client";
 import AuditExport from "./AuditExport";
 import AuditLogTable from "./AuditLogTable";
 
 export const metadata: Metadata = { title: "Audit Log — Admin" };
 export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 50;
 
 export default async function AuditPage(props: {
   searchParams: Promise<{
@@ -32,86 +28,25 @@ export default async function AuditPage(props: {
   const dateTo = searchParams.to || "";
   const userSearch = searchParams.user || "";
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Build WHERE clause
-  const where: Prisma.AuditLogWhereInput = {};
-
-  if (actionFilter) {
-    where.action = actionFilter as AuditAction;
-  }
-  if (dateFrom || dateTo) {
-    where.createdAt = {};
-    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
-    if (dateTo) {
-      const end = new Date(dateTo);
-      end.setHours(23, 59, 59, 999);
-      where.createdAt.lte = end;
-    }
-  }
-  if (userSearch) {
-    where.user = {
-      OR: [
-        { displayName: { contains: userSearch, mode: "insensitive" } },
-        { email: { contains: userSearch, mode: "insensitive" } },
-      ],
-    };
-  }
-
-  const [
+  const {
     auditLogs,
     totalCount,
-    actionsToday,
-    bannedToday,
-    disputesResolvedToday,
-    sellersApprovedToday,
-    actionTypesRaw,
-  ] = await Promise.all([
-    db.auditLog.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        user: {
-          select: { displayName: true, email: true, adminRole: true },
-        },
-      },
-    }),
-    db.auditLog.count({ where }),
-    db.auditLog.count({ where: { createdAt: { gte: today } } }),
-    db.auditLog.count({
-      where: { action: "ADMIN_ACTION", createdAt: { gte: today } },
-    }),
-    db.auditLog.count({
-      where: { action: "DISPUTE_RESOLVED", createdAt: { gte: today } },
-    }),
-    db.auditLog.count({
-      where: {
-        action: "ADMIN_ACTION",
-        entityType: "ID_VERIFICATION",
-        createdAt: { gte: today },
-      },
-    }),
-    db.auditLog.groupBy({
-      by: ["action"],
-      _count: { id: true },
-      orderBy: { _count: { id: "desc" } },
-    }),
-  ]);
-
-  const actionTypes = actionTypesRaw.map((a) => ({
-    action: a.action,
-    count: a._count.id,
-  }));
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+    totalPages,
+    kpis: kpiData,
+    actionTypes,
+  } = await adminService.getAuditLogs({
+    page,
+    actionFilter,
+    dateFrom,
+    dateTo,
+    userSearch,
+  });
 
   const kpis = [
-    { label: "Actions Today", value: actionsToday },
-    { label: "Bans Today", value: bannedToday },
-    { label: "Disputes Resolved", value: disputesResolvedToday },
-    { label: "Sellers Approved", value: sellersApprovedToday },
+    { label: "Actions Today", value: kpiData.actionsToday },
+    { label: "Bans Today", value: kpiData.bannedToday },
+    { label: "Disputes Resolved", value: kpiData.disputesResolvedToday },
+    { label: "Sellers Approved", value: kpiData.sellersApprovedToday },
   ];
 
   // Build query string helper for pagination links

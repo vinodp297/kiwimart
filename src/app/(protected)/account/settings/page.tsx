@@ -1,8 +1,7 @@
 // src/app/(protected)/account/settings/page.tsx
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { userService } from "@/modules/users/user.service";
 import { getListValues } from "@/lib/dynamic-lists";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
@@ -16,27 +15,9 @@ export default async function AccountSettingsPage() {
     redirect("/login?from=/account/settings");
   }
 
-  const [user, blockedUsers] = await Promise.all([
-    db.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        displayName: true,
-        username: true,
-        email: true,
-        emailVerified: true,
-        region: true,
-        bio: true,
-        hasMarketingConsent: true,
-      },
-    }),
-    db.blockedUser.findMany({
-      where: { blockerId: session.user.id },
-      include: {
-        blocked: { select: { id: true, displayName: true, username: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+  const { user, blockedUsers } = await userService.getSettingsPageData(
+    session.user.id,
+  );
 
   if (!user) redirect("/login");
 

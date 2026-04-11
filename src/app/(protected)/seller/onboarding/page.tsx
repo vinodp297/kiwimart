@@ -5,8 +5,7 @@ import { redirect } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { auth } from "@/lib/auth";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { userService } from "@/modules/users/user.service";
 import { getSellerTier, getAllSellerTiers } from "@/lib/seller-tiers.server";
 import SellerOnboardingClient from "./SellerOnboardingClient";
 import type { Metadata } from "next";
@@ -18,32 +17,7 @@ export default async function SellerOnboardingPage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      displayName: true,
-      email: true,
-      isSellerEnabled: true,
-      sellerTermsAcceptedAt: true,
-      isPhoneVerified: true,
-      idVerified: true,
-      idVerifiedAt: true,
-      idSubmittedAt: true,
-      isStripeOnboarded: true,
-      nzbn: true,
-      isGstRegistered: true,
-      gstNumber: true,
-      verificationApplication: {
-        select: {
-          status: true,
-          documentType: true,
-          adminNotes: true,
-          appliedAt: true,
-        },
-      },
-    },
-  });
+  const user = await userService.getSellerHubData(session.user.id);
 
   if (!user) redirect("/auth/signin");
   if (!user.isSellerEnabled) redirect("/dashboard/buyer");

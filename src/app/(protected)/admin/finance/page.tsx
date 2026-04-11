@@ -2,8 +2,7 @@
 // ─── Finance Admin Dashboard ──────────────────────────────────────────────────
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { adminService } from "@/modules/admin/admin.service";
 import { formatPrice } from "@/lib/utils";
 import ExportCSV from "./ExportCSV";
 import { RevenueChart } from "@/components/admin/RevenueChart";
@@ -15,18 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function FinancePage() {
   await requirePermission("VIEW_REVENUE");
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - 7);
-  weekStart.setHours(0, 0, 0, 0);
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const yearStart = new Date(new Date().getFullYear(), 0, 1);
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-  const [
+  const {
     gmvToday,
     gmvWeek,
     gmvMonth,
@@ -43,82 +31,11 @@ export default async function FinancePage() {
     pendingPayouts,
     refundedOrders,
     dailyOrdersRaw,
-  ] = await Promise.all([
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "COMPLETED", completedAt: { gte: todayStart } },
-    }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "COMPLETED", completedAt: { gte: weekStart } },
-    }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "COMPLETED", completedAt: { gte: monthStart } },
-    }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "COMPLETED", completedAt: { gte: yearStart } },
-    }),
-    db.order.count({ where: { status: "COMPLETED" } }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "COMPLETED" },
-    }),
-    db.payout.count({ where: { status: "PROCESSING" } }),
-    db.payout.aggregate({
-      _sum: { amountNzd: true },
-      where: { status: "PROCESSING" },
-    }),
-    db.order.count({
-      where: { status: "REFUNDED", updatedAt: { gte: monthStart } },
-    }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "REFUNDED", updatedAt: { gte: monthStart } },
-    }),
-    db.order.count({ where: { createdAt: { gte: monthStart } } }),
-    db.payout.count({ where: { status: "FAILED" } }),
-    db.order.findMany({
-      where: { status: "COMPLETED" },
-      include: {
-        listing: { select: { title: true } },
-        buyer: { select: { displayName: true } },
-        seller: { select: { displayName: true } },
-        payout: { select: { status: true } },
-      },
-      orderBy: { completedAt: "desc" },
-      take: 50,
-    }),
-    db.payout.findMany({
-      where: { status: "PROCESSING" },
-      include: {
-        order: {
-          include: {
-            seller: { select: { displayName: true, email: true } },
-            listing: { select: { title: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-      take: 100,
-    }),
-    db.order.findMany({
-      where: { status: "REFUNDED" },
-      include: {
-        listing: { select: { title: true } },
-        buyer: { select: { displayName: true } },
-        seller: { select: { displayName: true } },
-      },
-      orderBy: { updatedAt: "desc" },
-      take: 100,
-    }),
-    db.order.findMany({
-      where: { status: "COMPLETED", completedAt: { gte: thirtyDaysAgo } },
-      select: { completedAt: true, totalNzd: true },
-      orderBy: { completedAt: "asc" },
-    }),
-  ]);
+    topSellersGrouped,
+    sellerUsers,
+  } = await adminService.getFinanceDashboard();
+
+  const sellerMap = Object.fromEntries(sellerUsers.map((s) => [s.id, s]));
 
   // Build 30-day revenue chart data
   const dailyRevenueMap = dailyOrdersRaw.reduce(
@@ -136,23 +53,6 @@ export default async function FinancePage() {
     const key = d.toISOString().slice(0, 10);
     revenueChartDays.push({ date: key, revenue: dailyRevenueMap[key] ?? 0 });
   }
-
-  // Top 10 sellers by revenue
-  const topSellersGrouped = await db.order.groupBy({
-    by: ["sellerId"],
-    where: { status: "COMPLETED" },
-    _sum: { totalNzd: true },
-    _count: { id: true },
-    orderBy: { _sum: { totalNzd: "desc" } },
-    take: 10,
-  });
-
-  const sellerIds = topSellersGrouped.map((s) => s.sellerId);
-  const sellerUsers = await db.user.findMany({
-    where: { id: { in: sellerIds } },
-    select: { id: true, displayName: true, email: true, idVerified: true },
-  });
-  const sellerMap = Object.fromEntries(sellerUsers.map((s) => [s.id, s]));
 
   const avgOrderValue =
     completedOrders > 0 ? (gmvAll._sum.totalNzd ?? 0) / completedOrders : 0;

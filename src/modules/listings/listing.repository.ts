@@ -1025,6 +1025,96 @@ export const listingRepository = {
     });
   },
 
+  // ── Page-level data fetchers (called via services, not directly from pages) ──
+
+  /** Fetch listing + seller + first image for the new-message page. */
+  async findForNewMessage(id: string) {
+    return db.listing.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        priceNzd: true,
+        status: true,
+        seller: {
+          select: {
+            id: true,
+            displayName: true,
+            username: true,
+            avatarKey: true,
+          },
+        },
+        images: {
+          orderBy: { order: "asc" as const },
+          select: { r2Key: true },
+          take: 1,
+        },
+      },
+    });
+  },
+
+  /** Fetch listing + seller + first image for the checkout page. */
+  async findForCheckout(id: string) {
+    return db.listing.findUnique({
+      where: { id, status: "ACTIVE", deletedAt: null },
+      select: {
+        id: true,
+        title: true,
+        priceNzd: true,
+        shippingNzd: true,
+        shippingOption: true,
+        region: true,
+        suburb: true,
+        sellerId: true,
+        condition: true,
+        seller: {
+          select: {
+            displayName: true,
+            username: true,
+            stripeAccountId: true,
+            isStripeOnboarded: true,
+          },
+        },
+        images: {
+          where: { order: 0 },
+          select: { r2Key: true },
+          take: 1,
+        },
+      },
+    });
+  },
+
+  /** Fetch active listings for a seller's public profile page. */
+  async findActiveBySellerForProfile(sellerId: string) {
+    return db.listing.findMany({
+      where: { sellerId, status: "ACTIVE", deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 24,
+      select: {
+        id: true,
+        title: true,
+        priceNzd: true,
+        condition: true,
+        categoryId: true,
+        subcategoryName: true,
+        region: true,
+        suburb: true,
+        shippingOption: true,
+        shippingNzd: true,
+        isOffersEnabled: true,
+        status: true,
+        viewCount: true,
+        watcherCount: true,
+        createdAt: true,
+        images: {
+          where: { order: 0, isSafe: true },
+          select: { r2Key: true },
+          take: 1,
+        },
+      },
+    });
+  },
+
   // ── Transaction ───────────────────────────────────────────────────────────
 
   async $transaction<T>(

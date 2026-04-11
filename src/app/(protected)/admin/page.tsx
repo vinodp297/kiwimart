@@ -5,8 +5,7 @@ import Link from "next/link";
 import SystemHealthWidget from "@/components/admin/SystemHealthWidget";
 import ApproveIdButton from "./ApproveIdButton";
 import { requireAnyAdmin } from "@/shared/auth/requirePermission";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { adminService } from "@/modules/admin/admin.service";
 import { formatPrice } from "@/lib/utils";
 import { OrderVolumeChart } from "@/components/admin/OrderVolumeChart";
 import type { Metadata } from "next";
@@ -17,105 +16,28 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const admin = await requireAnyAdmin();
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - 7);
-  weekStart.setHours(0, 0, 0, 0);
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-  // Use Promise.allSettled so a single query failure doesn't crash the page
-  const results = await Promise.allSettled([
-    db.user.count({ where: { isBanned: false } }),
-    db.user.count({ where: { createdAt: { gte: todayStart } } }),
-    db.user.count({ where: { isSellerEnabled: true, isBanned: false } }),
-    db.user.count({
-      where: { isSellerEnabled: true, createdAt: { gte: weekStart } },
-    }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "COMPLETED" },
-    }),
-    db.order.aggregate({
-      _sum: { totalNzd: true },
-      where: { status: "COMPLETED", completedAt: { gte: monthStart } },
-    }),
-    db.order.count({ where: { status: "COMPLETED" } }),
-    db.payout.count({ where: { status: "PROCESSING" } }),
-    db.order.count({ where: { status: "DISPUTED" } }),
-    db.report.count({ where: { status: "OPEN" } }),
-    db.user.count({ where: { isBanned: true } }),
-    db.user.findMany({
-      where: { idSubmittedAt: { not: null }, idVerified: false },
-      select: { id: true, displayName: true, email: true, idSubmittedAt: true },
-      orderBy: { idSubmittedAt: "asc" },
-    }),
-    db.listing.count({ where: { status: "ACTIVE" } }),
-    db.order.count({ where: { createdAt: { gte: todayStart } } }),
-    db.order.count(),
-    db.order.count({ where: { status: "REFUNDED" } }),
-    db.order.findMany({
-      where: { status: "COMPLETED", completedAt: { gte: weekStart } },
-      select: { completedAt: true, totalNzd: true },
-      orderBy: { completedAt: "asc" },
-    }),
-    db.order.findMany({
-      where: { createdAt: { gte: thirtyDaysAgo } },
-      select: { createdAt: true },
-      orderBy: { createdAt: "asc" },
-    }),
-    db.listing.groupBy({
-      by: ["categoryId"],
-      where: { status: "ACTIVE", deletedAt: null },
-      _count: { id: true },
-      orderBy: { _count: { id: "desc" } },
-    }),
-    db.category.findMany({ select: { id: true, name: true } }),
-  ]);
-
-  // Extract values with safe defaults for any rejected promises
-  function val<T>(r: PromiseSettledResult<T>, fallback: T): T {
-    return r.status === "fulfilled" ? r.value : fallback;
-  }
-  const emptyAggregate = { _sum: { totalNzd: null } };
-
-  const totalUsers = val(results[0], 0);
-  const newUsersToday = val(results[1], 0);
-  const activeSellers = val(results[2], 0);
-  const newSellersThisWeek = val(results[3], 0);
-  const gmvAllTime = val(results[4], emptyAggregate);
-  const gmvThisMonth = val(results[5], emptyAggregate);
-  const completedOrders = val(results[6], 0);
-  const pendingPayoutsCount = val(results[7], 0);
-  const openDisputes = val(results[8], 0);
-  const pendingReports = val(results[9], 0);
-  const bannedUsers = val(results[10], 0);
-  const pendingVerifications = val(
-    results[11],
-    [] as {
-      id: string;
-      displayName: string;
-      email: string;
-      idSubmittedAt: Date | null;
-    }[],
-  );
-  const activeListings = val(results[12], 0);
-  const ordersToday = val(results[13], 0);
-  const totalOrders = val(results[14], 0);
-  const refundedOrders = val(results[15], 0);
-  const last7DaysOrders = val(
-    results[16],
-    [] as { completedAt: Date | null; totalNzd: number }[],
-  );
-  const recentOrdersForChart = val(results[17], [] as { createdAt: Date }[]);
-  const categoryStats = val(
-    results[18],
-    [] as { categoryId: string; _count: { id: number } }[],
-  );
-  const categories = val(results[19], [] as { id: string; name: string }[]);
+  const {
+    totalUsers,
+    newUsersToday,
+    activeSellers,
+    newSellersThisWeek,
+    gmvAllTime,
+    gmvThisMonth,
+    completedOrders,
+    pendingPayoutsCount,
+    openDisputes,
+    pendingReports,
+    bannedUsers,
+    pendingVerifications,
+    activeListings,
+    ordersToday,
+    totalOrders,
+    refundedOrders,
+    last7DaysOrders,
+    recentOrdersForChart,
+    categoryStats,
+    categories,
+  } = await adminService.getDashboardData();
 
   const completionRate =
     totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 0;

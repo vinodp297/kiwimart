@@ -517,4 +517,361 @@ export const adminRepository = {
       select: { email: true, displayName: true },
     });
   },
+
+  // ── Dashboard page methods ────────────────────────────────────────────────
+
+  /** Pending ID verifications (slim select for admin dashboard). */
+  async findPendingIdVerifications(): Promise<
+    {
+      id: string;
+      displayName: string;
+      email: string;
+      idSubmittedAt: Date | null;
+    }[]
+  > {
+    return db.user.findMany({
+      where: { idSubmittedAt: { not: null }, idVerified: false },
+      select: { id: true, displayName: true, email: true, idSubmittedAt: true },
+      orderBy: { idSubmittedAt: "asc" },
+    });
+  },
+
+  /** Completed orders since a date (for 7-day revenue table). */
+  async findCompletedOrdersSince(
+    since: Date,
+  ): Promise<{ completedAt: Date | null; totalNzd: number }[]> {
+    return db.order.findMany({
+      where: { status: "COMPLETED", completedAt: { gte: since } },
+      select: { completedAt: true, totalNzd: true },
+      orderBy: { completedAt: "asc" },
+    });
+  },
+
+  /** Orders created since a date (for volume chart). */
+  async findOrdersCreatedSince(since: Date): Promise<{ createdAt: Date }[]> {
+    return db.order.findMany({
+      where: { createdAt: { gte: since } },
+      select: { createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+  },
+
+  /** Active listing counts grouped by category. */
+  async findListingCategoryStats() {
+    return db.listing.groupBy({
+      by: ["categoryId"],
+      where: { status: "ACTIVE", deletedAt: null },
+      _count: { id: true },
+      orderBy: { _count: { id: "desc" } },
+    });
+  },
+
+  /** All categories (id + name). */
+  async findCategoryNames(): Promise<{ id: string; name: string }[]> {
+    return db.category.findMany({ select: { id: true, name: true } });
+  },
+
+  // ── Seller management page methods ────────────────────────────────────────
+
+  /** Pending verifications with full seller fields (for sellers page). */
+  async findPendingVerificationsDetailed(): Promise<
+    {
+      id: string;
+      email: string;
+      displayName: string;
+      idSubmittedAt: Date | null;
+      sellerTermsAcceptedAt: Date | null;
+      isStripeOnboarded: boolean;
+      createdAt: Date;
+      isPhoneVerified: boolean;
+    }[]
+  > {
+    return db.user.findMany({
+      where: {
+        idSubmittedAt: { not: null },
+        idVerified: false,
+        isBanned: false,
+      },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        idSubmittedAt: true,
+        sellerTermsAcceptedAt: true,
+        isStripeOnboarded: true,
+        createdAt: true,
+        isPhoneVerified: true,
+      },
+      orderBy: { idSubmittedAt: "asc" },
+    });
+  },
+
+  /** Count users whose idVerified date is on or after `since`. */
+  async countVerifiedSince(since: Date): Promise<number> {
+    return db.user.count({
+      where: { idVerified: true, idSubmittedAt: { gte: since } },
+    });
+  },
+
+  /** All sellers (limited) for the seller management table. */
+  async findAllSellers(take: number) {
+    return db.user.findMany({
+      where: { isSellerEnabled: true },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        idVerified: true,
+        isPhoneVerified: true,
+        isStripeOnboarded: true,
+        createdAt: true,
+        isSellerEnabled: true,
+        _count: { select: { listings: true, sellerOrders: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+  },
+
+  // ── Verification review page ──────────────────────────────────────────────
+
+  /** Fetch a user + their verification application for the review page. */
+  async findUserWithVerificationApp(userId: string) {
+    return db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        username: true,
+        isPhoneVerified: true,
+        idVerified: true,
+        idSubmittedAt: true,
+        createdAt: true,
+        verificationApplication: true,
+      },
+    });
+  },
+
+  // ── System health page ────────────────────────────────────────────────────
+
+  /** Fetch recent cron log entries for the given job names. */
+  async findCronLogs(
+    jobNames: string[],
+    take: number,
+  ): Promise<{ jobName: string; startedAt: Date; status: string }[]> {
+    return db.cronLog.findMany({
+      where: { jobName: { in: jobNames } },
+      orderBy: { startedAt: "desc" },
+      take,
+      select: { jobName: true, startedAt: true, status: true },
+    });
+  },
+
+  /** Raw database health check — returns true if reachable. */
+  async checkDatabaseHealth(): Promise<{ latencyMs: number; ok: boolean }> {
+    const start = Date.now();
+    try {
+      await db.$queryRaw`SELECT 1`;
+      return { latencyMs: Date.now() - start, ok: true };
+    } catch {
+      return { latencyMs: Date.now() - start, ok: false };
+    }
+  },
+
+  // ── Finance page methods ──────────────────────────────────────────────────
+
+  /** Aggregate order revenue for arbitrary where clause. */
+  async aggregateOrderRevenue(
+    where: Prisma.OrderWhereInput,
+  ): Promise<{ _sum: { totalNzd: number | null } }> {
+    return db.order.aggregate({ _sum: { totalNzd: true }, where });
+  },
+
+  /** Aggregate payout amount for arbitrary where clause. */
+  async aggregatePayoutAmount(
+    where: Prisma.PayoutWhereInput,
+  ): Promise<{ _sum: { amountNzd: number | null } }> {
+    return db.payout.aggregate({ _sum: { amountNzd: true }, where });
+  },
+
+  /** Count payouts matching where clause. */
+  async countPayouts(where: Prisma.PayoutWhereInput): Promise<number> {
+    return db.payout.count({ where });
+  },
+
+  /** Completed orders with buyer/seller/listing relations (transactions table). */
+  async findCompletedOrdersWithRelations(take: number) {
+    return db.order.findMany({
+      where: { status: "COMPLETED" },
+      include: {
+        listing: { select: { title: true } },
+        buyer: { select: { displayName: true } },
+        seller: { select: { displayName: true } },
+        payout: { select: { status: true } },
+      },
+      orderBy: { completedAt: "desc" },
+      take,
+    });
+  },
+
+  /** Processing payouts with order/seller/listing relations. */
+  async findProcessingPayoutsWithRelations(take: number) {
+    return db.payout.findMany({
+      where: { status: "PROCESSING" },
+      include: {
+        order: {
+          include: {
+            seller: { select: { displayName: true, email: true } },
+            listing: { select: { title: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take,
+    });
+  },
+
+  /** Refunded orders with buyer/seller/listing relations. */
+  async findRefundedOrdersWithRelations(take: number) {
+    return db.order.findMany({
+      where: { status: "REFUNDED" },
+      include: {
+        listing: { select: { title: true } },
+        buyer: { select: { displayName: true } },
+        seller: { select: { displayName: true } },
+      },
+      orderBy: { updatedAt: "desc" },
+      take,
+    });
+  },
+
+  /** Top sellers by completed order revenue. */
+  async findTopSellersByRevenue(take: number) {
+    return db.order.groupBy({
+      by: ["sellerId"],
+      where: { status: "COMPLETED" },
+      _sum: { totalNzd: true },
+      _count: { id: true },
+      orderBy: { _sum: { totalNzd: "desc" } },
+      take,
+    });
+  },
+
+  /** Fetch display info for a list of seller IDs. */
+  async findSellerInfo(
+    ids: string[],
+  ): Promise<
+    { id: string; displayName: string; email: string; idVerified: boolean }[]
+  > {
+    if (ids.length === 0) return [];
+    return db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, displayName: true, email: true, idVerified: true },
+    });
+  },
+
+  // ── Audit log page methods ─────────────────────────────────────────────────
+
+  /** Audit logs with user include (for the audit log table). */
+  async findAuditLogsWithUser(
+    where: Prisma.AuditLogWhereInput,
+    skip: number,
+    take: number,
+  ) {
+    return db.auditLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        user: {
+          select: { displayName: true, email: true, adminRole: true },
+        },
+      },
+    });
+  },
+
+  /** Group audit log entries by action (for filter dropdown). */
+  async groupAuditLogsByAction() {
+    return db.auditLog.groupBy({
+      by: ["action"],
+      _count: { id: true },
+      orderBy: { _count: { id: "desc" } },
+    });
+  },
+
+  /** Audit KPI counts since a given date. */
+  async getAuditKpisSince(since: Date): Promise<{
+    actionsToday: number;
+    bannedToday: number;
+    disputesResolvedToday: number;
+    sellersApprovedToday: number;
+  }> {
+    const [
+      actionsToday,
+      bannedToday,
+      disputesResolvedToday,
+      sellersApprovedToday,
+    ] = await Promise.all([
+      db.auditLog.count({ where: { createdAt: { gte: since } } }),
+      db.auditLog.count({
+        where: { action: "ADMIN_ACTION", createdAt: { gte: since } },
+      }),
+      db.auditLog.count({
+        where: { action: "DISPUTE_RESOLVED", createdAt: { gte: since } },
+      }),
+      db.auditLog.count({
+        where: {
+          action: "ADMIN_ACTION",
+          entityType: "ID_VERIFICATION",
+          createdAt: { gte: since },
+        },
+      }),
+    ]);
+    return {
+      actionsToday,
+      bannedToday,
+      disputesResolvedToday,
+      sellersApprovedToday,
+    };
+  },
+
+  // ── Admin invite methods ──────────────────────────────────────────────────
+
+  /** Find an admin invitation by its SHA-256 token hash. */
+  async findAdminInvitationByTokenHash(tokenHash: string) {
+    return db.adminInvitation.findUnique({
+      where: { tokenHash },
+      select: {
+        id: true,
+        email: true,
+        adminRole: true,
+        expiresAt: true,
+        acceptedAt: true,
+        inviter: { select: { displayName: true } },
+      },
+    });
+  },
+
+  /** Grant admin role and mark invitation as accepted (atomic transaction). */
+  async grantAdminRoleFromInvite(
+    userId: string,
+    invitationId: string,
+    adminRole: string,
+  ): Promise<void> {
+    await db.$transaction([
+      db.user.update({
+        where: { id: userId },
+        data: {
+          isAdmin: true,
+          adminRole: adminRole as import("@prisma/client").AdminRole,
+        },
+      }),
+      db.adminInvitation.update({
+        where: { id: invitationId },
+        data: { acceptedAt: new Date() },
+      }),
+    ]);
+  },
 };

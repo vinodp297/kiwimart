@@ -4,8 +4,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { adminService } from "@/modules/admin/admin.service";
 import {
   approveIdVerification,
   rejectIdVerification,
@@ -124,20 +123,7 @@ export default async function VerifyPage({
   await requirePermission("APPROVE_SELLERS");
   const { userId } = await params;
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      displayName: true,
-      email: true,
-      username: true,
-      isPhoneVerified: true,
-      idVerified: true,
-      idSubmittedAt: true,
-      createdAt: true,
-      verificationApplication: true,
-    },
-  });
+  const user = await adminService.getUserForVerification(userId);
 
   if (!user) notFound();
 

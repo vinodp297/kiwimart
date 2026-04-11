@@ -4,9 +4,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import crypto from "crypto";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { adminService } from "@/modules/admin/admin.service";
+import { userService } from "@/modules/users/user.service";
 import { getRoleDisplayName } from "@/lib/permissions";
 import type { Metadata } from "next";
 import type { AdminRole } from "@prisma/client";
@@ -28,17 +28,7 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
   // The raw token is never stored in the DB — only the SHA-256 hash.
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-  const invitation = await db.adminInvitation.findUnique({
-    where: { tokenHash },
-    select: {
-      id: true,
-      email: true,
-      adminRole: true,
-      expiresAt: true,
-      acceptedAt: true,
-      inviter: { select: { displayName: true } },
-    },
-  });
+  const invitation = await adminService.findAdminInvitation(tokenHash);
 
   if (!invitation) {
     return (
@@ -61,23 +51,15 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
 
   if (session?.user?.id) {
     // User is logged in — apply the role to their account
-    const user = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: { email: true },
-    });
+    const user = await userService.getEmailById(session.user.id);
 
     if (user?.email === invitation.email) {
       // Email matches — grant admin access
-      await db.$transaction([
-        db.user.update({
-          where: { id: session.user.id },
-          data: { isAdmin: true, adminRole: invitation.adminRole },
-        }),
-        db.adminInvitation.update({
-          where: { id: invitation.id },
-          data: { acceptedAt: new Date() },
-        }),
-      ]);
+      await adminService.grantAdminRoleFromInvite(
+        session.user.id,
+        invitation.id,
+        invitation.adminRole,
+      );
 
       redirect("/admin");
     }

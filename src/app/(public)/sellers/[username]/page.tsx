@@ -15,11 +15,11 @@ import type {
   Review,
   ListingCard as ListingCardType,
 } from "@/types";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
 import { getImageUrl, getDefaultAvatar } from "@/lib/image";
 import { auth } from "@/lib/auth";
 import type { Session } from "next-auth";
+import { userService } from "@/modules/users/user.service";
+import { getActiveListingsBySeller } from "@/modules/listings/listing-queries.service";
 import { getTagConfig } from "@/lib/review-tags";
 import type { ReviewTagType } from "@/lib/review-tags";
 import { BlockButton } from "@/components/seller/BlockButton";
@@ -51,48 +51,7 @@ const BADGE_CONFIG: Record<SellerBadge, { label: string; colour: string }> = {
 };
 
 async function getSellerByUsername(username: string) {
-  return db.user.findFirst({
-    where: { username, deletedAt: null, isBanned: false },
-    select: {
-      id: true,
-      username: true,
-      displayName: true,
-      avatarKey: true,
-      coverImageKey: true,
-      bio: true,
-      region: true,
-      suburb: true,
-      idVerified: true,
-      isVerifiedSeller: true,
-      avgResponseTimeMinutes: true,
-      responseRate: true,
-      createdAt: true,
-      _count: {
-        select: {
-          sellerOrders: { where: { status: "COMPLETED" } },
-          listings: { where: { status: "ACTIVE", deletedAt: null } },
-          reviewsAbout: { where: { isApproved: true, reviewerRole: "BUYER" } },
-        },
-      },
-      reviewsAbout: {
-        where: { isApproved: true, reviewerRole: "BUYER" },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: {
-          id: true,
-          rating: true,
-          comment: true,
-          createdAt: true,
-          reply: true,
-          author: {
-            select: { displayName: true, username: true, avatarKey: true },
-          },
-          order: { select: { listing: { select: { title: true } } } },
-          tags: { select: { tag: true } },
-        },
-      },
-    },
-  });
+  return userService.getSellerProfile(username);
 }
 
 export const revalidate = 300;
@@ -149,18 +108,12 @@ export default async function SellerProfilePage({
   const currentUserId = session?.user?.id ?? null;
 
   // Fetch block status and trust profile in parallel (independent queries)
-  const [block, fetchedTrustProfile] = await Promise.all([
+  const [isBlocked, fetchedTrustProfile] = await Promise.all([
     currentUserId && currentUserId !== user.id
-      ? db.blockedUser
-          .findFirst({
-            where: { blockerId: currentUserId, blockedId: user.id },
-            select: { id: true },
-          })
-          .catch(() => null)
-      : Promise.resolve(null),
+      ? userService.getBlockStatus(currentUserId, user.id).catch(() => false)
+      : Promise.resolve(false),
     getSellerTrustProfile(user.id).catch(() => null),
   ]);
-  const isBlocked = !!block;
   const trustProfile = fetchedTrustProfile;
 
   // Compute avg rating from reviews
@@ -218,34 +171,7 @@ export default async function SellerProfilePage({
   // Fetch seller's active listings
   let sellerListings: ListingCardType[] = [];
   try {
-    // We can't filter searchListings by sellerId directly, so use a raw query approach
-    const listingRows = await db.listing.findMany({
-      where: { sellerId: user.id, status: "ACTIVE", deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      take: 24,
-      select: {
-        id: true,
-        title: true,
-        priceNzd: true,
-        condition: true,
-        categoryId: true,
-        subcategoryName: true,
-        region: true,
-        suburb: true,
-        shippingOption: true,
-        shippingNzd: true,
-        isOffersEnabled: true,
-        status: true,
-        viewCount: true,
-        watcherCount: true,
-        createdAt: true,
-        images: {
-          where: { order: 0, isSafe: true },
-          select: { r2Key: true },
-          take: 1,
-        },
-      },
-    });
+    const listingRows = await getActiveListingsBySeller(user.id);
 
     const condMap: Record<string, ListingCardType["condition"]> = {
       NEW: "new",

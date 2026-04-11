@@ -24,8 +24,8 @@ import {
   getSimilarListings,
 } from "@/modules/listings/recommendations.service";
 import { auth } from "@/lib/auth";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { userService } from "@/modules/users/user.service";
+import { isUserWatchingListing } from "@/modules/listings/listing-queries.service";
 import SafetyBanner from "@/components/SafetyBanner";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import RecordView from "@/components/RecordView";
@@ -148,12 +148,7 @@ export default async function ListingDetailPage({
     priceHistory,
     isWatching,
   ] = await Promise.all([
-    db.user
-      .findUnique({
-        where: { id: listing.seller.id },
-        select: { nzbn: true, isGstRegistered: true },
-      })
-      .catch(() => null),
+    userService.getSellerBusinessInfo(listing.seller.id).catch(() => null),
     getSellerResponseTime(listing.seller.id).then(
       (r) => r ?? "Response time unknown",
     ),
@@ -165,12 +160,7 @@ export default async function ListingDetailPage({
     })),
     getListingPriceHistory(listing.id).catch(() => []),
     session?.user?.id
-      ? db.watchlistItem
-          .findFirst({
-            where: { userId: session.user.id, listingId: listing.id },
-            select: { id: true },
-          })
-          .catch(() => null)
+      ? isUserWatchingListing(session.user.id, listing.id).catch(() => null)
       : Promise.resolve(null),
   ]);
 

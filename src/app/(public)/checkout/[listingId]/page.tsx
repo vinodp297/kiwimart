@@ -6,8 +6,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { getListingForCheckout } from "@/modules/listings/listing-queries.service";
 import { getImageUrl } from "@/lib/image";
 import { getListValues } from "@/lib/dynamic-lists";
 import NavBar from "@/components/NavBar";
@@ -29,34 +28,8 @@ export default async function CheckoutPage(props: {
     redirect(`/login?from=/checkout/${listingId}`);
   }
 
-  // Load listing from DB
-  const listing = await db.listing.findUnique({
-    where: { id: listingId, status: "ACTIVE", deletedAt: null },
-    select: {
-      id: true,
-      title: true,
-      priceNzd: true,
-      shippingNzd: true,
-      shippingOption: true,
-      region: true,
-      suburb: true,
-      sellerId: true,
-      condition: true,
-      seller: {
-        select: {
-          displayName: true,
-          username: true,
-          stripeAccountId: true,
-          isStripeOnboarded: true,
-        },
-      },
-      images: {
-        where: { order: 0 },
-        select: { r2Key: true },
-        take: 1,
-      },
-    },
-  });
+  // Load listing via service (no direct db import in pages)
+  const listing = await getListingForCheckout(listingId);
 
   if (!listing) {
     return (

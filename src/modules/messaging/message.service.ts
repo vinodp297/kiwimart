@@ -157,6 +157,21 @@ export class MessageService {
     return { threads: page, nextCursor, hasMore };
   }
 
+  /** Find an existing thread between two sorted participants for a listing.
+   *  Returns the thread record or null if no thread exists.
+   *  Used by the new-message page to redirect to an existing conversation. */
+  async findExistingThread(
+    participant1Id: string,
+    participant2Id: string,
+    listingId: string | null,
+  ) {
+    return messageRepository.findThread(
+      participant1Id,
+      participant2Id,
+      listingId,
+    );
+  }
+
   async getThreadMessages(
     threadId: string,
     userId: string,

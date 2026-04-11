@@ -333,9 +333,7 @@ export const userRepository = {
   // -------------------------------------------------------------------------
 
   /** Create a new user (registration). */
-  async create(
-    data: Prisma.UserCreateInput,
-  ): Promise<{
+  async create(data: Prisma.UserCreateInput): Promise<{
     id: string;
     email: string;
     displayName: string;
@@ -1074,6 +1072,164 @@ export const userRepository = {
         sellerTierOverrideAt: new Date(),
         sellerTierOverrideBy: "SYSTEM",
       },
+    });
+  },
+
+  // ── Page-level data fetchers (called via services, not directly from pages) ──
+
+  /** Fetch business registration info for the listing detail seller panel. */
+  async findBusinessInfo(
+    id: string,
+  ): Promise<{ nzbn: string | null; isGstRegistered: boolean } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { nzbn: true, isGstRegistered: true },
+    });
+  },
+
+  /** Fetch settings form fields for the account settings page. */
+  async findForSettings(id: string): Promise<{
+    displayName: string;
+    username: string;
+    email: string;
+    emailVerified: Date | null;
+    region: string | null;
+    bio: string | null;
+    hasMarketingConsent: boolean;
+  } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        displayName: true,
+        username: true,
+        email: true,
+        emailVerified: true,
+        region: true,
+        bio: true,
+        hasMarketingConsent: true,
+      },
+    });
+  },
+
+  /** Fetch blocked users list for the account settings page. */
+  async findBlockedUsers(blockerId: string) {
+    return db.blockedUser.findMany({
+      where: { blockerId },
+      include: {
+        blocked: { select: { id: true, displayName: true, username: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
+  /** Fetch all seller hub fields for the seller onboarding page. */
+  async findForSellerHub(id: string) {
+    return db.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        displayName: true,
+        email: true,
+        isSellerEnabled: true,
+        sellerTermsAcceptedAt: true,
+        isPhoneVerified: true,
+        idVerified: true,
+        idVerifiedAt: true,
+        idSubmittedAt: true,
+        isStripeOnboarded: true,
+        nzbn: true,
+        isGstRegistered: true,
+        gstNumber: true,
+        verificationApplication: {
+          select: {
+            status: true,
+            documentType: true,
+            adminNotes: true,
+            appliedAt: true,
+          },
+        },
+      },
+    });
+  },
+
+  /** Fetch minimal profile for message recipient lookup (non-banned, non-deleted). */
+  async findForMessageRecipient(id: string): Promise<{
+    id: string;
+    displayName: string;
+    username: string;
+    avatarKey: string | null;
+  } | null> {
+    return db.user.findFirst({
+      where: { id, deletedAt: null, isBanned: false },
+      select: { id: true, displayName: true, username: true, avatarKey: true },
+    });
+  },
+
+  /** Fetch public seller profile page data (by username). */
+  async findPublicSellerPageData(username: string) {
+    return db.user.findFirst({
+      where: { username, deletedAt: null, isBanned: false },
+      select: {
+        id: true,
+        username: true,
+        displayName: true,
+        avatarKey: true,
+        coverImageKey: true,
+        bio: true,
+        region: true,
+        suburb: true,
+        idVerified: true,
+        isVerifiedSeller: true,
+        avgResponseTimeMinutes: true,
+        responseRate: true,
+        createdAt: true,
+        _count: {
+          select: {
+            sellerOrders: { where: { status: "COMPLETED" } },
+            listings: { where: { status: "ACTIVE", deletedAt: null } },
+            reviewsAbout: {
+              where: { isApproved: true, reviewerRole: "BUYER" },
+            },
+          },
+        },
+        reviewsAbout: {
+          where: { isApproved: true, reviewerRole: "BUYER" },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            rating: true,
+            comment: true,
+            createdAt: true,
+            reply: true,
+            author: {
+              select: { displayName: true, username: true, avatarKey: true },
+            },
+            order: { select: { listing: { select: { title: true } } } },
+            tags: { select: { tag: true } },
+          },
+        },
+      },
+    });
+  },
+
+  /** Check if blockerId has blocked blockedId (unidirectional). */
+  async findBlockStatus(
+    blockerId: string,
+    blockedId: string,
+  ): Promise<boolean> {
+    const block = await db.blockedUser.findFirst({
+      where: { blockerId, blockedId },
+      select: { id: true },
+    });
+    return block !== null;
+  },
+
+  /** Fetch user email for the admin invite acceptance flow. */
+  async findEmailById(id: string): Promise<{ email: string } | null> {
+    return db.user.findUnique({
+      where: { id },
+      select: { email: true },
     });
   },
 };

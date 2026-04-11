@@ -6,8 +6,7 @@
 
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { userService } from "@/modules/users/user.service";
 import { getListValues } from "@/lib/dynamic-lists";
 import WelcomeWizard from "@/components/onboarding/WelcomeWizard";
 
@@ -19,13 +18,7 @@ export default async function WelcomePage() {
     redirect("/login?from=/welcome");
   }
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      isOnboardingCompleted: true,
-      displayName: true,
-    },
-  });
+  const user = await userService.getWelcomePageData(session.user.id);
 
   if (!user) {
     redirect("/login");

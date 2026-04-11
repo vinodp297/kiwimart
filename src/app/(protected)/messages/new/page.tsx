@@ -7,8 +7,9 @@
 
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { getListingForNewMessage } from "@/modules/listings/listing-queries.service";
+import { userService } from "@/modules/users/user.service";
+import { messageService } from "@/modules/messaging/message.service";
 import { getImageUrl } from "@/lib/image";
 import { NewMessageForm } from "./NewMessageForm";
 
@@ -40,43 +41,10 @@ export default async function NewMessagePage({ searchParams }: Props) {
   }
 
   // ── Listing-specific mode (listingId provided) ────────────────────────────
-  let listing: {
-    id: string;
-    title: string;
-    priceNzd: number;
-    status: string;
-    seller: {
-      id: string;
-      displayName: string;
-      username: string;
-      avatarKey: string | null;
-    };
-    images: { r2Key: string }[];
-  } | null = null;
+  let listing: Awaited<ReturnType<typeof getListingForNewMessage>> = null;
 
   if (listingId) {
-    listing = await db.listing.findUnique({
-      where: { id: listingId },
-      select: {
-        id: true,
-        title: true,
-        priceNzd: true,
-        status: true,
-        seller: {
-          select: {
-            id: true,
-            displayName: true,
-            username: true,
-            avatarKey: true,
-          },
-        },
-        images: {
-          orderBy: { order: "asc" },
-          select: { r2Key: true },
-          take: 1,
-        },
-      },
-    });
+    listing = await getListingForNewMessage(listingId);
 
     if (!listing) {
       redirect("/search");
@@ -97,10 +65,7 @@ export default async function NewMessagePage({ searchParams }: Props) {
   } | null = null;
 
   if (!listingId) {
-    sellerInfo = await db.user.findFirst({
-      where: { id: sellerId, deletedAt: null, isBanned: false },
-      select: { id: true, displayName: true, username: true, avatarKey: true },
-    });
+    sellerInfo = await userService.getMessageRecipient(sellerId);
 
     if (!sellerInfo) {
       redirect("/search");
@@ -110,15 +75,16 @@ export default async function NewMessagePage({ searchParams }: Props) {
   const seller = listing?.seller ?? sellerInfo!;
 
   // Check if thread already exists (service sorts participant IDs)
-  const [p1, p2] = [session.user.id, sellerId].sort();
-  const existingThread = await db.messageThread.findFirst({
-    where: {
-      participant1Id: p1,
-      participant2Id: p2,
-      ...(listingId ? { listingId } : { listingId: null }),
-    },
-    select: { id: true },
-  });
+  // Both session.user.id and sellerId are guaranteed non-null by the guards above.
+  const [p1, p2] = [session.user.id as string, sellerId].sort() as [
+    string,
+    string,
+  ];
+  const existingThread = await messageService.findExistingThread(
+    p1,
+    p2,
+    listingId ?? null,
+  );
 
   // If a thread already exists, open it directly in the messages tab
   if (existingThread) {

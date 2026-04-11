@@ -2,8 +2,7 @@
 // ─── System Status Page ──────────────────────────────────────────────────────
 import Link from "next/link";
 import { requirePermission } from "@/shared/auth/requirePermission";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { adminService } from "@/modules/admin/admin.service";
 import { getRedisClient } from "@/infrastructure/redis/client";
 import { logger } from "@/shared/logger";
 import type { Metadata } from "next";
@@ -56,51 +55,6 @@ const CRON_JOBS: { name: string; schedule: string; scheduleLabel: string }[] = [
   },
 ];
 
-interface CronJobRow {
-  name: string;
-  scheduleLabel: string;
-  lastRunAt: Date | null;
-  lastStatus: "success" | "error" | null;
-}
-
-async function getCronJobStatuses(): Promise<CronJobRow[]> {
-  try {
-    const latestRuns = await db.cronLog.findMany({
-      where: { jobName: { in: CRON_JOBS.map((j) => j.name) } },
-      orderBy: { startedAt: "desc" },
-      take: 200,
-    });
-    const byJob = new Map<string, { startedAt: Date; status: string }>();
-    for (const row of latestRuns) {
-      if (!byJob.has(row.jobName)) {
-        byJob.set(row.jobName, {
-          startedAt: row.startedAt,
-          status: row.status,
-        });
-      }
-    }
-    return CRON_JOBS.map((job) => {
-      const last = byJob.get(job.name);
-      return {
-        name: job.name,
-        scheduleLabel: job.scheduleLabel,
-        lastRunAt: last ? last.startedAt : null,
-        lastStatus: last ? (last.status as "success" | "error") : null,
-      };
-    });
-  } catch (err) {
-    logger.warn("system.cron_jobs.query_failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return CRON_JOBS.map((job) => ({
-      name: job.name,
-      scheduleLabel: job.scheduleLabel,
-      lastRunAt: null,
-      lastStatus: null,
-    }));
-  }
-}
-
 function formatRelative(date: Date | null): string {
   if (!date) return "Never";
   const diffMs = Date.now() - date.getTime();
@@ -121,23 +75,13 @@ interface ServiceStatus {
 }
 
 async function checkDatabase(): Promise<ServiceStatus> {
-  const start = Date.now();
-  try {
-    await db.$queryRaw`SELECT 1`;
-    return {
-      name: "Database",
-      status: "ok",
-      latencyMs: Date.now() - start,
-      detail: "PostgreSQL (Neon)",
-    };
-  } catch (err) {
-    return {
-      name: "Database",
-      status: "error",
-      latencyMs: Date.now() - start,
-      detail: err instanceof Error ? err.message : "Connection failed",
-    };
-  }
+  const result = await adminService.getDatabaseHealth();
+  return {
+    name: "Database",
+    status: result.ok ? "ok" : "error",
+    latencyMs: result.latencyMs,
+    detail: result.ok ? "PostgreSQL (Neon)" : "Connection failed",
+  };
 }
 
 async function checkRedis(): Promise<ServiceStatus> {
@@ -173,7 +117,7 @@ export default async function SystemPage() {
   const [dbStatus, redisStatus, cronJobs] = await Promise.all([
     checkDatabase(),
     checkRedis(),
-    getCronJobStatuses(),
+    adminService.getCronJobStatuses(CRON_JOBS),
   ]);
 
   const services = [dbStatus, redisStatus];

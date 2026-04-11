@@ -23,6 +23,35 @@ export async function getBrowseListings(params: {
   );
 }
 
+// ── getListingForCheckout ──────────────────────────────────────────────────
+
+export async function getListingForCheckout(listingId: string) {
+  return listingRepository.findForCheckout(listingId);
+}
+
+// ── getActiveListingsBySeller ──────────────────────────────────────────────
+
+export async function getActiveListingsBySeller(sellerId: string) {
+  return listingRepository.findActiveBySellerForProfile(sellerId);
+}
+
+// ── getListingForNewMessage ────────────────────────────────────────────────
+
+export async function getListingForNewMessage(listingId: string) {
+  return listingRepository.findForNewMessage(listingId);
+}
+
+// ── isUserWatchingListing ──────────────────────────────────────────────────
+
+/** Check whether a user is watching a specific listing. Returns the watchlist
+ *  item record (truthy) or null if not watching. */
+export async function isUserWatchingListing(
+  userId: string,
+  listingId: string,
+): Promise<{ id: string } | null> {
+  return listingRepository.findWatchlistItem(userId, listingId);
+}
+
 // ── getListingForEdit ───────────────────────────────────────────────────────
 
 export async function getListingForEdit(
