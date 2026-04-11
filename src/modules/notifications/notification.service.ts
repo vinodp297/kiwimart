@@ -28,6 +28,8 @@ export type NotificationType =
   | "LISTING_NEEDS_CHANGES"
   | "LISTING_REJECTED"
   | "LISTING_UNDER_REVIEW"
+  | "CHARGEBACK_OPENED"
+  | "PAYOUT_FAILED"
   | "SYSTEM";
 
 export interface CreateNotificationInput {
@@ -58,6 +60,8 @@ export const NOTIF_ICONS: Record<NotificationType, string> = {
   LISTING_NEEDS_CHANGES: "📝",
   LISTING_REJECTED: "🚫",
   LISTING_UNDER_REVIEW: "🔍",
+  CHARGEBACK_OPENED: "⚠️",
+  PAYOUT_FAILED: "❌",
   SYSTEM: "ℹ️",
 };
 

@@ -117,6 +117,7 @@ enum PayoutStatus {
   PAID
   FAILED
   MANUAL_REVIEW
+  REVERSED
 }
 
 enum DisputeReason {
@@ -146,6 +147,7 @@ enum DisputeStatus {
 enum DisputeSource {
   STANDARD
   PICKUP_REJECTION
+  CHARGEBACK
 }
 
 enum EvidenceUploadedBy {

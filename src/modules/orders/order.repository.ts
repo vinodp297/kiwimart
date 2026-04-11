@@ -250,6 +250,30 @@ export const orderRepository = {
     });
   },
 
+  /** Find an order by its Stripe PaymentIntent ID — used by charge.* webhook handlers. */
+  async findByStripePaymentIntentId(
+    stripePaymentIntentId: string,
+    tx?: DbClient,
+  ): Promise<{
+    id: string;
+    status: string;
+    buyerId: string;
+    sellerId: string;
+    listingId: string | null;
+  } | null> {
+    const client = getClient(tx);
+    return client.order.findFirst({
+      where: { stripePaymentIntentId },
+      select: {
+        id: true,
+        status: true,
+        buyerId: true,
+        sellerId: true,
+        listingId: true,
+      },
+    });
+  },
+
   /** Record a Stripe event ID to enable idempotent webhook processing. */
   async createStripeEvent(id: string, type: string): Promise<void> {
     await db.stripeEvent.create({ data: { id, type } });

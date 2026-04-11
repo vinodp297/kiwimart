@@ -184,6 +184,70 @@ export const payoutRepository = {
   },
 
   /**
+   * Find the most recent PROCESSING payout for a seller identified by their
+   * Stripe Connect account ID — used by the payout.failed webhook handler.
+   * Returns null if no PROCESSING payout exists for this account.
+   */
+  async findLatestProcessingByStripeAccount(
+    stripeAccountId: string,
+    tx?: DbClient,
+  ): Promise<{
+    id: string;
+    orderId: string;
+    userId: string;
+    status: string;
+  } | null> {
+    const client = getClient(tx);
+    return client.payout.findFirst({
+      where: {
+        status: "PROCESSING",
+        user: { stripeAccountId },
+      },
+      orderBy: { initiatedAt: "desc" },
+      select: { id: true, orderId: true, userId: true, status: true },
+    });
+  },
+
+  /**
+   * Look up a payout by its Stripe transfer ID — used by transfer.failed and
+   * transfer.reversed webhook handlers.
+   */
+  async findByStripeTransferId(
+    stripeTransferId: string,
+    tx?: DbClient,
+  ): Promise<{
+    id: string;
+    orderId: string;
+    userId: string;
+    status: string;
+  } | null> {
+    const client = getClient(tx);
+    return client.payout.findUnique({
+      where: { stripeTransferId },
+      select: { id: true, orderId: true, userId: true, status: true },
+    });
+  },
+
+  /**
+   * Mark a payout as REVERSED — used by transfer.reversed webhook handler.
+   * REVERSED means the transfer succeeded but was subsequently reversed by Stripe.
+   */
+  async markReversed(
+    payoutId: string,
+    tx?: DbClient,
+  ): Promise<Prisma.PayoutGetPayload<Record<string, never>>> {
+    const client = getClient(tx);
+    return client.payout.update({
+      where: { id: payoutId },
+      data: {
+        status: "REVERSED",
+        failedAt: new Date(),
+        failReason: "Transfer reversed by Stripe",
+      },
+    });
+  },
+
+  /**
    * Mark a payout as FAILED — used by Stripe reconciliation and worker error
    * handlers when the transfer is confirmed unrecoverable.
    */
