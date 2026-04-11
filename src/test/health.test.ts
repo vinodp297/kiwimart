@@ -177,6 +177,7 @@ describe("/api/health", () => {
     expect(body).toHaveProperty("checks");
     expect(body).toHaveProperty("checks.database");
     expect(body).toHaveProperty("checks.redis");
+    expect(body).toHaveProperty("checks.queue");
     expect(body).toHaveProperty("responseTimeMs");
     expect(body).toHaveProperty("correlationId");
   });

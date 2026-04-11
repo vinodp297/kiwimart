@@ -61,6 +61,15 @@ vi.mock("@/server/actions/imageProcessor", () => ({
 }));
 
 // ── Mock infrastructure ────────────────────────────────────────────────────────
+const mockEnqueueEmail = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/email-queue", () => ({
+  enqueueEmail: (...a: unknown[]) => mockEnqueueEmail(...a),
+}));
+
+vi.mock("@/lib/fire-and-forget", () => ({
+  fireAndForget: vi.fn(),
+}));
+
 vi.mock("@/lib/queue", () => ({
   getQueueConnection: vi.fn().mockReturnValue({}),
 }));
@@ -316,6 +325,7 @@ describe("payoutWorker", () => {
     if (!payoutMock.findUnique) payoutMock.findUnique = vi.fn();
     if (!payoutMock.update) payoutMock.update = vi.fn();
     mockCalculateFees.mockResolvedValue(PAYOUT_FEES);
+    mockEnqueueEmail.mockResolvedValue(undefined);
   });
 
   it("processes a pending payout end-to-end", async () => {
@@ -346,8 +356,9 @@ describe("payoutWorker", () => {
       }),
       expect.objectContaining({ idempotencyKey: "transfer-payout-1" }),
     );
-    expect(mockSendPayoutInitiatedEmail).toHaveBeenCalledWith(
+    expect(mockEnqueueEmail).toHaveBeenCalledWith(
       expect.objectContaining({
+        template: "payoutInitiated",
         to: "seller@test.nz",
         sellerName: "Dave",
         amountNzd: PAYOUT_FEES.sellerPayout,

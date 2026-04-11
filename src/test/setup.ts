@@ -327,8 +327,14 @@ vi.mock("next/cache", () => ({
 
 // ── Mock queue ───────────────────────────────────────────────────────────────
 vi.mock("@/lib/queue", () => ({
-  payoutQueue: { add: vi.fn() },
-  emailQueue: { add: vi.fn() },
+  payoutQueue: { add: vi.fn(), getFailedCount: vi.fn().mockResolvedValue(0) },
+  emailQueue: { add: vi.fn(), getFailedCount: vi.fn().mockResolvedValue(0) },
+  pickupQueue: { add: vi.fn() },
+  imageQueue: { add: vi.fn() },
+  notificationQueue: { add: vi.fn() },
+  getQueueConnection: vi.fn().mockReturnValue({}),
+  QUEUE_MAP: {},
+  VALID_QUEUE_NAMES: [],
 }));
 
 // ── Mock rate limiter ────────────────────────────────────────────────────────

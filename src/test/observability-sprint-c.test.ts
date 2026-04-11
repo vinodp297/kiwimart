@@ -209,6 +209,8 @@ vi.mock("@/infrastructure/redis/client", () => ({
 }));
 
 vi.mock("@/lib/queue", () => ({
+  payoutQueue: { getFailedCount: vi.fn().mockResolvedValue(0) },
+  emailQueue: { getFailedCount: vi.fn().mockResolvedValue(0) },
   QUEUE_MAP: {
     email: { getJobCounts: vi.fn().mockResolvedValue({ failed: 0 }) },
     image: { getJobCounts: vi.fn().mockResolvedValue({ failed: 0 }) },

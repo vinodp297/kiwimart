@@ -26,7 +26,8 @@ import { audit } from "@/server/lib/audit";
 import { stripe } from "@/infrastructure/stripe/client";
 import { withStripeTimeout } from "@/infrastructure/stripe/with-timeout";
 import { logger } from "@/shared/logger";
-import { sendPayoutInitiatedEmail } from "@/server/email";
+import { enqueueEmail } from "@/lib/email-queue";
+import { fireAndForget } from "@/lib/fire-and-forget";
 import { runWithRequestContext } from "@/lib/request-context";
 import { withLockAndHeartbeat } from "@/server/lib/distributedLock";
 import { calculateFees } from "@/modules/payments/fee-calculator";
@@ -194,10 +195,13 @@ export function startPayoutWorker() {
             // status=PROCESSING and return { skipped: true }, permanently silencing
             // the notification. Log and continue instead.
             if (sellerUser) {
+              // Hoist listingTitle so it remains in scope inside catch for retry
+              let listingTitle: string | null = null;
               try {
-                const listingTitle =
+                listingTitle =
                   await orderRepository.findListingTitleForOrder(orderId);
-                await sendPayoutInitiatedEmail({
+                await enqueueEmail({
+                  template: "payoutInitiated",
                   to: sellerUser.email,
                   sellerName: sellerUser.displayName ?? "there",
                   amountNzd: fees.sellerPayout,
@@ -214,8 +218,21 @@ export function startPayoutWorker() {
                       ? emailErr.message
                       : String(emailErr),
                 });
-                // deliberately not rethrowing — payment state is already
-                // persisted, email failure must not roll back the payout
+                // Enqueue via BullMQ so the email retries automatically.
+                // fireAndForget ensures this never throws — payment state is
+                // already persisted and must not be rolled back on email failure.
+                fireAndForget(
+                  enqueueEmail({
+                    template: "payoutInitiated",
+                    to: sellerUser.email,
+                    sellerName: sellerUser.displayName ?? "there",
+                    amountNzd: fees.sellerPayout,
+                    listingTitle: listingTitle ?? "your item",
+                    orderId,
+                    estimatedArrival: "2–3 business days",
+                  }),
+                  "payout.email_retry_enqueue",
+                );
               }
             }
 

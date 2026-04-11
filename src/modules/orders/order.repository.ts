@@ -622,8 +622,8 @@ export const orderRepository = {
 
   async findByIdempotencyKey(key: string, buyerId: string, tx?: DbClient) {
     const client = getClient(tx);
-    return client.order.findFirst({
-      where: { idempotencyKey: key, buyerId },
+    return client.order.findUnique({
+      where: { buyerId_idempotencyKey: { buyerId, idempotencyKey: key } },
       select: {
         id: true,
         status: true,

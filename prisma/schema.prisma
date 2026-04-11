@@ -700,7 +700,7 @@ model Order {
   shippingRegion  String?
   shippingPostcode String?
   
-  idempotencyKey String? @unique
+  idempotencyKey String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -722,6 +722,7 @@ model Order {
   @@index([status])
   @@index([createdAt])
   @@index([status, dispatchedAt])
+  @@unique([buyerId, idempotencyKey])
   @@index([status, createdAt(sort: Desc)])
   @@index([buyerId, status])
   @@index([sellerId, status])

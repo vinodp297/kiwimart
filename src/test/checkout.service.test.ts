@@ -265,8 +265,8 @@ describe("Order Creation", () => {
   });
 
   it("idempotency: same key returns existing order", async () => {
-    // Simulate existing order found by idempotency key
-    vi.mocked(db.order.findFirst).mockResolvedValue({
+    // Simulate existing order found by idempotency key (composite unique lookup)
+    vi.mocked(db.order.findUnique).mockResolvedValue({
       id: "existing-order",
       status: "AWAITING_PAYMENT",
       stripePaymentIntentId: "pi_existing",

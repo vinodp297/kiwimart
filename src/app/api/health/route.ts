@@ -18,6 +18,7 @@
 
 import { healthService } from "@/server/services/health.service";
 import { getRedisClient } from "@/infrastructure/redis/client";
+import { payoutQueue, emailQueue } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,34 @@ async function checkRedis(): Promise<CheckStatus> {
   }
 }
 
+// Degraded if any monitored queue has more than 10 failed jobs (dead-letter).
+// Queue issues never make the overall status "unhealthy" — the app can still
+// serve read requests even if background workers are struggling.
+const QUEUE_FAILED_THRESHOLD = 10;
+
+async function checkQueueHealth(): Promise<CheckStatus> {
+  try {
+    const [payoutFailed, emailFailed] = await withTimeout(
+      () =>
+        Promise.all([
+          payoutQueue.getFailedCount(),
+          emailQueue.getFailedCount(),
+        ]),
+      CHECK_TIMEOUT_MS,
+    );
+    if (
+      payoutFailed > QUEUE_FAILED_THRESHOLD ||
+      emailFailed > QUEUE_FAILED_THRESHOLD
+    ) {
+      return "degraded";
+    }
+    return "ok";
+  } catch (e) {
+    if (e instanceof Error && e.message === "timeout") return "degraded";
+    return "degraded";
+  }
+}
+
 export async function GET(request: Request) {
   const start = Date.now();
 
@@ -67,9 +96,13 @@ export async function GET(request: Request) {
   const correlationId =
     request.headers.get("x-correlation-id") ?? crypto.randomUUID();
 
-  const [database, redis] = await Promise.all([checkDatabase(), checkRedis()]);
+  const [database, redis, queue] = await Promise.all([
+    checkDatabase(),
+    checkRedis(),
+    checkQueueHealth(),
+  ]);
 
-  const checks = { database, redis };
+  const checks = { database, redis, queue };
 
   // Database being unreachable is fatal — the app cannot serve any requests.
   // Redis unreachable is a degraded signal (caching and queues affected).

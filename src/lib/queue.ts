@@ -206,6 +206,17 @@ export type EmailJobData = {
       reason: string;
       description: string;
     }
+  | {
+      /** Sent to the seller when a payout transfer has been initiated. */
+      template: "payoutInitiated";
+      to: string;
+      sellerName: string;
+      /** Payout amount in NZD cents. */
+      amountNzd: number;
+      listingTitle: string;
+      orderId: string;
+      estimatedArrival: string;
+    }
 );
 
 export interface ImageJobData {

@@ -37,6 +37,7 @@ async function sendEmailDirectly(data: EmailJobData): Promise<void> {
     sendOrderCompleteBuyerEmail,
     sendOrderCompleteSellerEmail,
     sendDisputeOpenedEmail,
+    sendPayoutInitiatedEmail,
   } = await import("@/server/email");
 
   switch (data.template) {
@@ -161,6 +162,17 @@ async function sendEmailDirectly(data: EmailJobData): Promise<void> {
         orderId: data.orderId,
         reason: data.reason,
         description: data.description,
+      });
+      break;
+
+    case "payoutInitiated":
+      await sendPayoutInitiatedEmail({
+        to: data.to,
+        sellerName: data.sellerName,
+        amountNzd: data.amountNzd,
+        listingTitle: data.listingTitle,
+        orderId: data.orderId,
+        estimatedArrival: data.estimatedArrival,
       });
       break;
 

@@ -100,6 +100,7 @@ vi.mock("@/server/email", () => ({
   sendOrderCompleteSellerEmail: vi.fn().mockResolvedValue(undefined),
   sendDisputeOpenedEmail: (...args: unknown[]) =>
     mockSendDisputeOpenedEmail(...args),
+  sendPayoutInitiatedEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/server/lib/audit", () => ({

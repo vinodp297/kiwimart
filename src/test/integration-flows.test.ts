@@ -294,7 +294,7 @@ describe("Complete purchase flow — createOrder", () => {
   });
 
   it("returns existing order on idempotency key match", async () => {
-    vi.mocked(db.order.findFirst).mockResolvedValue({
+    vi.mocked(db.order.findUnique).mockResolvedValueOnce({
       id: "order-existing",
       status: "AWAITING_PAYMENT",
       stripePaymentIntentId: "pi_existing",

@@ -220,8 +220,8 @@ export const cartRepository = {
     tx?: DbClient,
   ) {
     const client = getClient(tx);
-    return client.order.findFirst({
-      where: { idempotencyKey, buyerId },
+    return client.order.findUnique({
+      where: { buyerId_idempotencyKey: { buyerId, idempotencyKey } },
       select: { id: true, status: true, stripePaymentIntentId: true },
     });
   },
