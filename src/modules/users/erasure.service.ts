@@ -91,7 +91,13 @@ export async function performAccountErasure(
       tx,
     );
 
-    await tx.message.deleteMany({ where: { senderId: userId } });
+    // Anonymise messages — set senderId to null rather than deleting the row.
+    // Preserves dispute and chargeback evidence while breaking the identity link.
+    // NZ Privacy Act 2020 s22/s23 permits anonymisation as an alternative to deletion.
+    await tx.message.updateMany({
+      where: { senderId: userId },
+      data: { senderId: null },
+    });
 
     await tx.watchlistItem.deleteMany({ where: { userId } });
 

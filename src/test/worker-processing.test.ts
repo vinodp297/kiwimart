@@ -85,6 +85,11 @@ vi.mock("@/lib/request-context", () => ({
 const mockStripeTransfersCreate = vi.fn();
 vi.mock("@/infrastructure/stripe/client", () => ({
   stripe: {
+    accounts: {
+      retrieve: vi
+        .fn()
+        .mockResolvedValue({ id: "acct_test123", payouts_enabled: true }),
+    },
     transfers: {
       create: (...a: unknown[]) => mockStripeTransfersCreate(...a),
     },

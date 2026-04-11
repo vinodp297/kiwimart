@@ -180,7 +180,7 @@ export interface CaseData {
     id: string;
     content: string;
     createdAt: string;
-    sender: { displayName: string };
+    sender: { displayName: string } | null;
   }>;
   autoResolution: AutoResolution | null;
   inconsistencies: Inconsistency[];

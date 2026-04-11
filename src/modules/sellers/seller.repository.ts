@@ -241,7 +241,7 @@ export const sellerRepository = {
    *         src/modules/sellers/response-metrics.service.ts */
   async findMessageThreadsForMetrics(sellerId: string): Promise<
     {
-      messages: { senderId: string; createdAt: Date }[];
+      messages: { senderId: string | null; createdAt: Date }[];
     }[]
   > {
     return db.messageThread.findMany({

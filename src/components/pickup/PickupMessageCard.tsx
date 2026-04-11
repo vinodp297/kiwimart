@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/primitives";
 interface PickupMessageCardProps {
   messageBody: string;
   currentUserId: string;
-  messageSenderId: string;
+  messageSenderId: string | null;
   orderId: string;
 }
 

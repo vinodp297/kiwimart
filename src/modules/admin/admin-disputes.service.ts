@@ -187,7 +187,7 @@ export interface DisputeCaseDetail {
     id: string;
     content: string;
     createdAt: Date;
-    sender: { displayName: string };
+    sender: { displayName: string } | null;
   }>;
   autoResolution: {
     decision: string;

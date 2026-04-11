@@ -18,7 +18,7 @@ export default function CaseViewMessages({ messages }: Props) {
           <div key={m.id} className="py-1.5">
             <div className="flex items-center gap-2">
               <span className="text-[12px] font-semibold text-[#141414]">
-                {m.sender.displayName}
+                {m.sender?.displayName ?? "Deleted User"}
               </span>
               <span className="text-[10.5px] text-[#9E9A91]">
                 {fmtDateTime(m.createdAt)}

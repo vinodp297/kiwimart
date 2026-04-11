@@ -980,10 +980,10 @@ model MessageThread {
 }
 
 model Message {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   threadId  String
-  senderId  String
-  
+  senderId  String?
+
   body String @db.Text
   isRead Boolean @default(false)
   readAt DateTime?
@@ -991,11 +991,11 @@ model Message {
   // Content moderation
   isFlagged  Boolean @default(false)
   flagReason String?
-  
+
   createdAt DateTime @default(now())
 
   thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  sender User          @relation("MessageSender", fields: [senderId], references: [id])
+  sender User?         @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([threadId])
   @@index([senderId])

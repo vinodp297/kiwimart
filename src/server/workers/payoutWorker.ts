@@ -132,6 +132,27 @@ export function startPayoutWorker() {
               return { requiresManualReview: true };
             }
 
+            // ── Seller account validation ───────────────────────────────────
+            // Guard against initiating a transfer to a seller whose Stripe
+            // account has been disabled since the order was placed.
+            // payouts_enabled=false means Stripe will reject the transfer —
+            // better to catch this here and flag for manual review than to
+            // get a Stripe error mid-job.
+            const sellerAccount = await withStripeTimeout(
+              () => stripe.accounts.retrieve(stripeAccountId),
+              "accounts.retrieve",
+            );
+
+            if (!sellerAccount.payouts_enabled) {
+              logger.error("payout.seller_account_disabled", {
+                payoutId: payout.id,
+                orderId,
+                stripeAccountId,
+              });
+              await payoutRepository.markManualReview(orderId);
+              return { skipped: true, reason: "seller_account_disabled" };
+            }
+
             // ── Stripe transfer ─────────────────────────────────────────────
             // idempotencyKey = "transfer-${payout.id}" — payout.id is stable
             // across retries (unlike orderId which could theoretically have

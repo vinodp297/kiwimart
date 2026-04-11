@@ -140,11 +140,14 @@ async function handleScheduleDeadline(orderId: string): Promise<void> {
         paymentIntentId: order.stripePaymentIntentId,
         orderId,
       });
-    } catch (err) {
+    } catch (refundErr) {
       logger.error("pickup.schedule_deadline.refund_failed", {
         orderId,
-        error: err instanceof Error ? err.message : String(err),
+        error:
+          refundErr instanceof Error ? refundErr.message : String(refundErr),
+        requiresManualReconciliation: true,
       });
+      throw refundErr;
     }
   }
 

@@ -33,6 +33,14 @@ const PII_KEYS = new Set([
   "lastName",
   "fullName",
   "name",
+  // Stripe identifiers — treated as PII under the Privacy Act
+  "stripeCustomerId",
+  "stripeAccountId",
+  "paymentIntentId",
+  "stripePaymentIntentId",
+  "chargeId",
+  "transferId",
+  "payoutId",
 ]);
 
 function isEmailKey(key: string): boolean {

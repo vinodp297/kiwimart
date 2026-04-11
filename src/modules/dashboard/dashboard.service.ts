@@ -80,7 +80,7 @@ export interface ThreadRow {
 export interface MessageRow {
   id: string;
   body: string;
-  senderId: string;
+  senderId: string | null;
   senderName: string;
   createdAt: string;
   isRead: boolean;
@@ -308,7 +308,9 @@ class DashboardService {
           body: m.body,
           senderId: m.senderId === userId ? "me" : m.senderId,
           senderName:
-            m.senderId === userId ? "You" : (m.sender.displayName ?? "Unknown"),
+            m.senderId === userId
+              ? "You"
+              : (m.sender?.displayName ?? "Unknown"),
           createdAt: m.createdAt.toISOString(),
           isRead: m.isRead,
         })),
