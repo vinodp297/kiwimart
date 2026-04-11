@@ -198,7 +198,15 @@ export class PaymentService {
       await withStripeTimeout(
         () =>
           stripe.refunds.create(
-            { payment_intent: input.paymentIntentId },
+            {
+              payment_intent: input.paymentIntentId,
+              // When amountNzd is provided this is a partial refund — pass the
+              // amount to Stripe so only the specified cents are returned.
+              // Omitting amount would silently refund the full balance.
+              ...(input.amountNzd !== undefined
+                ? { amount: input.amountNzd }
+                : {}),
+            },
             { idempotencyKey },
           ),
         "refunds.create",

@@ -385,27 +385,29 @@ export class AdminService {
         }
       });
 
-      try {
-        await paymentService.refundPayment({
-          paymentIntentId,
-          orderId,
-          reason: `Partial refund (${formatCentsAsNzd(amountCents)}): ${reason}`,
-        });
-      } catch (err) {
-        logger.error("admin.dispute.partial_refund_failed", {
-          orderId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      await paymentService.refundPayment({
+        paymentIntentId,
+        orderId,
+        amountNzd: amountCents,
+        reason: `Partial refund (${formatCentsAsNzd(amountCents)}): ${reason}`,
+      });
 
-      // Capture remaining amount
+      // Capture the remaining amount (order total minus the partial refund)
+      // so the seller receives what they are owed.
       try {
         await paymentService.capturePayment({
           paymentIntentId,
           orderId,
         });
-      } catch {
-        // Payment may already be captured
+      } catch (captureErr) {
+        // Capture failure after a partial refund is a financial integrity gap —
+        // the refund has moved money but the capture did not complete.
+        // Log at ERROR so it surfaces in Sentry and the ops dashboard.
+        logger.error("admin.partial_refund.capture_failed", {
+          orderId,
+          error: String(captureErr),
+        });
+        throw captureErr;
       }
     });
 

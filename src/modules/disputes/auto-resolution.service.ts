@@ -714,11 +714,16 @@ export class AutoResolutionService {
                 tx,
               });
             });
-          } catch {
-            logger.warn("auto-resolution.transition_failed", {
+          } catch (transitionErr) {
+            // Money has already moved (Stripe refund succeeded) but the DB
+            // state was not updated — requires manual reconciliation.
+            logger.error("auto-resolution.transition_failed", {
               orderId,
               target: "REFUNDED",
+              requiresManualReconciliation: true,
+              error: String(transitionErr),
             });
+            throw transitionErr;
           }
 
           // Restore listing
@@ -879,8 +884,15 @@ export class AutoResolutionService {
                 tx,
               });
             });
-          } catch {
-            logger.warn("auto-resolution.dismiss_failed", { orderId });
+          } catch (transitionErr) {
+            // Money has already moved (Stripe capture succeeded) but the DB
+            // state was not updated — requires manual reconciliation.
+            logger.error("auto-resolution.dismiss_failed", {
+              orderId,
+              requiresManualReconciliation: true,
+              error: String(transitionErr),
+            });
+            throw transitionErr;
           }
 
           fireAndForget(

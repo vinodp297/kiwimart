@@ -188,59 +188,62 @@ describe("payout worker — idempotency key", () => {
 });
 
 describe("payout worker — distributed lock", () => {
-  it("acquires lock before initiating transfer", async () => {
-    const { acquireLock } = await import("@/server/lib/distributedLock");
+  it("withLockAndHeartbeat is called before initiating transfer", async () => {
+    const { withLockAndHeartbeat } =
+      await import("@/server/lib/distributedLock");
 
     await processorRef.fn!(makeJob());
 
-    const acquireOrder =
-      vi.mocked(acquireLock).mock.invocationCallOrder[0] ?? 0;
+    const lockOrder =
+      vi.mocked(withLockAndHeartbeat).mock.invocationCallOrder[0] ?? 0;
     const transferOrder =
       mockTransferCreate.mock.invocationCallOrder[0] ?? Infinity;
-    expect(acquireOrder).toBeLessThan(transferOrder);
+    expect(lockOrder).toBeLessThan(transferOrder);
   });
 
-  it("releases lock after transfer completes", async () => {
-    const { releaseLock } = await import("@/server/lib/distributedLock");
+  it("withLockAndHeartbeat is called with orderId key and correct options", async () => {
+    const { withLockAndHeartbeat } =
+      await import("@/server/lib/distributedLock");
 
-    await processorRef.fn!(makeJob());
+    await processorRef.fn!(makeJob({ orderId: "order-abc" }));
 
-    expect(vi.mocked(releaseLock)).toHaveBeenCalledWith(
+    expect(vi.mocked(withLockAndHeartbeat)).toHaveBeenCalledWith(
       "payout:order-abc",
-      expect.any(String),
+      expect.any(Function),
+      expect.objectContaining({
+        ttlSeconds: 120,
+        heartbeatIntervalSeconds: 40,
+      }),
     );
   });
 
   it("lock failure throws so BullMQ retries the job (not silent complete)", async () => {
-    const { acquireLock } = await import("@/server/lib/distributedLock");
-    vi.mocked(acquireLock).mockResolvedValueOnce(null);
+    const { withLockAndHeartbeat } =
+      await import("@/server/lib/distributedLock");
+    // Simulate lock contention — withLockAndHeartbeat throws on lock miss
+    vi.mocked(withLockAndHeartbeat).mockRejectedValueOnce(
+      new Error("Lock contention — will retry"),
+    );
 
     // Must THROW — BullMQ marks thrown jobs as FAILED and retries.
     // Returning would mark the job COMPLETE with no payout and no error.
-    await expect(processorRef.fn!(makeJob())).rejects.toThrow(
-      "Payout lock not acquired — will retry",
-    );
+    await expect(processorRef.fn!(makeJob())).rejects.toThrow();
 
     // Stripe transfer must NOT have been attempted
     expect(mockTransferCreate).not.toHaveBeenCalled();
   });
 
-  it("thrown error message contains 'will retry'", async () => {
-    const { acquireLock } = await import("@/server/lib/distributedLock");
-    vi.mocked(acquireLock).mockResolvedValueOnce(null);
-
-    await expect(processorRef.fn!(makeJob())).rejects.toThrow(/will retry/);
-  });
-
-  it("lock miss does not release the lock (no lock was acquired)", async () => {
-    const { acquireLock, releaseLock } =
+  it("lock miss does not attempt Stripe transfer", async () => {
+    const { withLockAndHeartbeat } =
       await import("@/server/lib/distributedLock");
-    vi.mocked(acquireLock).mockResolvedValueOnce(null);
+    vi.mocked(withLockAndHeartbeat).mockRejectedValueOnce(
+      new Error("Lock not available"),
+    );
 
     await expect(processorRef.fn!(makeJob())).rejects.toThrow();
 
-    // releaseLock must not be called — there is nothing to release
-    expect(vi.mocked(releaseLock)).not.toHaveBeenCalled();
+    // No transfer attempted when lock was not acquired
+    expect(mockTransferCreate).not.toHaveBeenCalled();
   });
 });
 
