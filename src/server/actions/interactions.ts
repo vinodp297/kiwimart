@@ -6,7 +6,7 @@ import { safeActionError } from "@/shared/errors";
 
 import { requireUser } from "@/server/lib/requireUser";
 import type { ActionResult } from "@/types";
-import { interactionWorkflowService } from "@/modules/orders/interaction-workflow.service";
+import { interactionWorkflowService } from "@/modules/orders/interaction-workflow.instance";
 import {
   requestCancellationSchema,
   respondToCancellationSchema,

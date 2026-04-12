@@ -58,14 +58,14 @@ export default function CareersPage() {
               We&apos;re always keen to hear from talented people. Send your CV
               to{" "}
               <a
-                href="mailto:hello@kiwimart.co.nz"
+                href="mailto:hello@buyzi.co.nz"
                 className="text-[#D4A843] font-semibold hover:text-[#B8912E] transition-colors"
               >
-                hello@kiwimart.co.nz
+                hello@buyzi.co.nz
               </a>
             </p>
             <a
-              href="mailto:hello@kiwimart.co.nz"
+              href="mailto:hello@buyzi.co.nz"
               className="inline-flex items-center gap-2 h-11 px-8 rounded-full
                 bg-[#D4A843] text-[#141414] font-semibold text-[14px]
                 hover:bg-[#B8912E] hover:text-white transition-colors"

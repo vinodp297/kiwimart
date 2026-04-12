@@ -122,7 +122,7 @@ vi.mock("@/infrastructure/email/client", () => ({
       send: vi.fn().mockResolvedValue({ id: "email-sent-1" }),
     },
   }),
-  EMAIL_FROM: "noreply@kiwimart.co.nz",
+  EMAIL_FROM: "noreply@buyzi.co.nz",
 }));
 
 vi.mock("next/server", () => {

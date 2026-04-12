@@ -14,7 +14,7 @@ const openApiSpec = {
     title: "Buyzi API",
     version: "2.0.0",
     description: [
-      "REST API for Buyzi (formerly KiwiMart) — NZ second-hand goods marketplace.",
+      "REST API for Buyzi — NZ second-hand goods marketplace.",
       "",
       "## Authentication",
       "",
@@ -45,7 +45,10 @@ const openApiSpec = {
     ].join("\n"),
   },
   servers: [
-    { url: "https://kiwimart.co.nz", description: "Production" },
+    {
+      url: process.env.NEXT_PUBLIC_APP_URL ?? "https://buyzi.co.nz",
+      description: "Production",
+    },
     { url: "http://localhost:3000", description: "Local development" },
   ],
   tags: [

@@ -426,7 +426,7 @@ export default function SettingsForm({
                   {
                     value: "buyers" as const,
                     label: "Buyers only",
-                    desc: "Only signed-in KiwiMart members can view your profile.",
+                    desc: "Only signed-in Buyzi members can view your profile.",
                   },
                   {
                     value: "private" as const,

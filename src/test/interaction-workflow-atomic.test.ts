@@ -148,7 +148,7 @@ vi.mock("@/modules/orders/interaction.repository", () => ({
 
 // ── Module under test ─────────────────────────────────────────────────────────
 import db from "@/lib/db";
-import { interactionWorkflowService } from "@/modules/orders/interaction-workflow.service";
+import { interactionWorkflowService } from "@/modules/orders/interaction-workflow.instance";
 import { interactionRepository } from "@/modules/orders/interaction.repository";
 import {
   orderEventService,

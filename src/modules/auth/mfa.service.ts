@@ -6,7 +6,9 @@ import crypto from "crypto";
 import { userRepository } from "@/modules/users/user.repository";
 import { encrypt, decrypt } from "@/lib/encryption";
 
-const MFA_ISSUER = "KiwiMart";
+// Changing MFA_ISSUER requires TOTP re-enrollment for all existing users —
+// the issuer is embedded in the otpauth:// URI stored in each user's authenticator app.
+const MFA_ISSUER = "Buyzi";
 const TOTP_PERIOD = 30;
 const TOTP_DIGITS = 6;
 const BACKUP_CODE_COUNT = 10;

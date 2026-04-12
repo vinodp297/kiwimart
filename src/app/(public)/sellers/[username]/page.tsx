@@ -68,7 +68,7 @@ export async function generateMetadata({
     if (!user) return { title: "Seller not found" };
     return {
       title: `${user.displayName} — Seller Profile`,
-      description: `${user.displayName} is a ${user.idVerified ? "verified" : ""} NZ seller on KiwiMart with ${user._count.reviewsAbout} reviews.`,
+      description: `${user.displayName} is a ${user.idVerified ? "verified" : ""} NZ seller on Buyzi with ${user._count.reviewsAbout} reviews.`,
     };
   } catch (err) {
     logger.error("sellers.page.generateMetadata.error", {
@@ -129,7 +129,7 @@ export default async function SellerProfilePage({
     .filter((r) => r.author != null) // skip reviews whose author was hard-deleted
     .map((r) => ({
       id: r.id,
-      buyerName: r.author?.displayName ?? "KiwiMart user",
+      buyerName: r.author?.displayName ?? "Buyzi user",
       buyerUsername: r.author?.username ?? "",
       buyerAvatarUrl: r.author?.avatarKey
         ? getImageUrl(r.author.avatarKey)

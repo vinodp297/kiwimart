@@ -61,7 +61,7 @@ export async function createStripeConnectAccount(): Promise<
           transfers: { requested: true },
         },
         business_profile: {
-          product_description: `KiwiMart seller: ${user.displayName}`,
+          product_description: `Buyzi seller: ${user.displayName}`,
         },
         metadata: {
           userId: user.id,

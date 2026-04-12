@@ -112,7 +112,7 @@ export default function SellStep3Pricing({
         required
         error={errors.price}
         leftAddon={<span className="text-[13px] font-medium">$</span>}
-        hint="Enter the price you want to receive. KiwiMart charges 0% listing fees."
+        hint="Enter the price you want to receive. Buyzi charges 0% listing fees."
       />
 
       {/* Fee breakdown */}
@@ -129,7 +129,7 @@ export default function SellStep3Pricing({
                 value: `$${Number(price).toFixed(2)}`,
               },
               {
-                label: "KiwiMart listing fee",
+                label: "Buyzi listing fee",
                 value: "$0.00",
                 highlight: true,
               },

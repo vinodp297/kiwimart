@@ -20,7 +20,7 @@ const CONTACT_CARDS = [
       </svg>
     ),
     title: "General enquiries",
-    email: "hello@kiwimart.co.nz",
+    email: "hello@buyzi.co.nz",
     description: `For general questions about ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}`,
   },
   {
@@ -55,7 +55,7 @@ const CONTACT_CARDS = [
       </svg>
     ),
     title: "Press & media",
-    email: "press@kiwimart.co.nz",
+    email: "press@buyzi.co.nz",
     description: "Media enquiries and partnership requests",
   },
 ];

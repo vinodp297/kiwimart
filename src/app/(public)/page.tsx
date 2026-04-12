@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} — New Zealand's Trusted Marketplace`,
     description: `Buy and sell with confidence. Secure escrow, ${process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} buyer protection.`,
-    url: "https://kiwimart.co.nz",
+    url: process.env.NEXT_PUBLIC_APP_URL ?? "https://buyzi.co.nz",
     siteName: process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi",
     locale: "en_NZ",
     type: "website",
@@ -33,7 +33,9 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} — New Zealand's Trusted Marketplace`,
   },
-  alternates: { canonical: "https://kiwimart.co.nz" },
+  alternates: {
+    canonical: process.env.NEXT_PUBLIC_APP_URL ?? "https://buyzi.co.nz",
+  },
 };
 
 // Revalidate homepage every hour

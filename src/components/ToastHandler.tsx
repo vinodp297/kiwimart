@@ -18,7 +18,7 @@ export default function ToastHandler() {
 
     if (welcome === "true") {
       toast(
-        "Welcome to KiwiMart! Check your email to unlock buying and selling.",
+        "Welcome to Buyzi! Check your email to unlock buying and selling.",
         {
           duration: 6000,
         },
@@ -31,7 +31,7 @@ export default function ToastHandler() {
     }
 
     if (verified === "true") {
-      toast.success("Email verified! You now have full access to KiwiMart.", {
+      toast.success("Email verified! You now have full access to Buyzi.", {
         duration: 5000,
       });
       const next = new URLSearchParams(params.toString());

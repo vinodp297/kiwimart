@@ -55,6 +55,9 @@ export async function runStripeReconciliation(): Promise<void> {
         let autoFixed = 0;
         let alerted = 0;
         let errors = 0;
+        // Collect IDs cancelled in Check 3 so Check 2 (7-day alert) can skip them.
+        // Prevents spurious stale-hold alerts for orders we just auto-cancelled.
+        const cancelledInCheck3 = new Set<string>();
 
         // ── Check 1: AWAITING_PAYMENT orders >1 hour old ─────────────────────
         // Retrieve the Stripe PI for each stale order and auto-fix discrepancies.
@@ -171,6 +174,7 @@ export async function runStripeReconciliation(): Promise<void> {
                 if (order.listingId) {
                   await orderRepository.releaseListing(order.listingId);
                 }
+                cancelledInCheck3.add(order.id);
                 logger.info(
                   "stripe.reconciliation.fixed_held_to_cancelled_pi_missing",
                   {
@@ -230,6 +234,8 @@ export async function runStripeReconciliation(): Promise<void> {
             );
 
           for (const order of heldOrders) {
+            // Skip orders already auto-cancelled in Check 3 this run.
+            if (cancelledInCheck3.has(order.id)) continue;
             logger.error("stripe.reconciliation.stale_payment_held", {
               orderId: order.id,
               stripePaymentIntentId: order.stripePaymentIntentId,

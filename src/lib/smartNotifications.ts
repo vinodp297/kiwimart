@@ -144,7 +144,7 @@ export function notifySellerMilestone(
       userId: sellerId,
       type: "SYSTEM",
       title: `You've completed ${salesCount} sales!`,
-      body: `Congratulations on reaching ${salesCount} sales on KiwiMart! Keep up the great work.`,
+      body: `Congratulations on reaching ${salesCount} sales on Buyzi! Keep up the great work.`,
       link: "/dashboard/seller",
     }),
     "notification.seller_milestone",

@@ -47,7 +47,7 @@ export async function GET() {
       const { error } = await resend.emails.send({
         from: EMAIL_FROM,
         to: "delivered@resend.dev",
-        subject: "KiwiMart — raw client test",
+        subject: "Buyzi — raw client test",
         html: `<p>Raw transport test sent at ${new Date().toISOString()}</p>`,
       });
       rawSuccess = !error;
@@ -66,7 +66,7 @@ export async function GET() {
       await sendPasswordResetEmail({
         to: "delivered@resend.dev",
         displayName: "Test User",
-        resetUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.vercel.app"}/reset-password?token=test_diagnostic_token`,
+        resetUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://buyzi.co.nz"}/reset-password?token=test_diagnostic_token`,
         expiresInMinutes: 60,
       });
       templateSuccess = true;

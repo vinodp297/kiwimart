@@ -7,9 +7,13 @@
 // Returns null when RESEND_API_KEY is unset or a placeholder string —
 // callers should log to console in dev mode when null is returned.
 
-import { Resend } from 'resend'
+import { Resend } from "resend";
 
-const PLACEHOLDER_VALUES = new Set(['re_placeholder', 'placeholder', 'PLACEHOLDER'])
+const PLACEHOLDER_VALUES = new Set([
+  "re_placeholder",
+  "placeholder",
+  "PLACEHOLDER",
+]);
 
 /**
  * Returns a Resend client initialised with the current RESEND_API_KEY,
@@ -17,12 +21,16 @@ const PLACEHOLDER_VALUES = new Set(['re_placeholder', 'placeholder', 'PLACEHOLDE
  * In production, callers should treat null as a hard error.
  */
 export function getEmailClient(): Resend | null {
-  const key = process.env.RESEND_API_KEY
-  if (!key || PLACEHOLDER_VALUES.has(key) || key.toLowerCase().includes('placeholder')) {
-    return null // Dev / unconfigured — emails are logged to console
+  const key = process.env.RESEND_API_KEY;
+  if (
+    !key ||
+    PLACEHOLDER_VALUES.has(key) ||
+    key.toLowerCase().includes("placeholder")
+  ) {
+    return null; // Dev / unconfigured — emails are logged to console
   }
-  return new Resend(key) // always fresh — no stale-singleton risk
+  return new Resend(key); // always fresh — no stale-singleton risk
 }
 
 export const EMAIL_FROM =
-  process.env.EMAIL_FROM ?? 'KiwiMart <onboarding@resend.dev>'
+  process.env.EMAIL_FROM ?? "Buyzi <onboarding@resend.dev>";

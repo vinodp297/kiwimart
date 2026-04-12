@@ -21,7 +21,7 @@ const REPORT_REASONS = [
   {
     value: "PROHIBITED",
     label: "Prohibited item",
-    desc: "Item is illegal or against KiwiMart policy",
+    desc: "Item is illegal or against Buyzi policy",
   },
   {
     value: "OFFENSIVE",
@@ -63,14 +63,14 @@ function ReportForm() {
             Report submitted
           </h1>
           <p className="text-[#73706A] text-[14px] mb-6 leading-relaxed">
-            Thank you for helping keep KiwiMart safe. Our moderation team will
+            Thank you for helping keep Buyzi safe. Our moderation team will
             review this report within 24 hours.
           </p>
           <a
             href="/"
             className="inline-block bg-[#141414] text-white px-6 py-2.5 rounded-xl text-[14px] font-medium"
           >
-            Back to KiwiMart
+            Back to Buyzi
           </a>
         </div>
       </div>
@@ -134,7 +134,7 @@ function ReportForm() {
                   : "Report a problem"}
             </h1>
             <p className="text-[#73706A] text-[12px]">
-              Help us keep KiwiMart safe
+              Help us keep Buyzi safe
             </p>
           </div>
         </div>

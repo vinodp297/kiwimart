@@ -171,7 +171,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "r2.kiwimart.co.nz",
+        hostname: "r2.buyzi.co.nz",
         pathname: "/**",
       },
       // Dynamically allow whatever domain NEXT_PUBLIC_R2_PUBLIC_URL points to

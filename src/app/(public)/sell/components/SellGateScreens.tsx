@@ -149,7 +149,7 @@ export function EmailGateScreen({ onVerified }: { onVerified: () => void }) {
               List an item
             </h1>
             <p className="text-[13.5px] text-[#73706A]">
-              Verify your email to start selling on KiwiMart.
+              Verify your email to start selling on Buyzi.
             </p>
           </div>
           <EmailVerificationInline onVerified={onVerified} />

@@ -7,7 +7,9 @@ import { getRedisClient } from "@/infrastructure/redis/client";
 import { logger } from "@/shared/logger";
 
 const MFA_VERIFIED_PREFIX = "mfa:verified:";
-const MFA_TTL_SECONDS = 60 * 60; // 1 hour — matches JWT maxAge
+// 1 hour — intentionally longer than JWT maxAge (900 s / 15 min) so that the
+// verified flag survives silent token refreshes within an active session.
+const MFA_TTL_SECONDS = 60 * 60;
 
 /**
  * Mark a JWT as MFA-verified.

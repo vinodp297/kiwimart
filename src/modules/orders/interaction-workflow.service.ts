@@ -1,7 +1,11 @@
 // src/modules/orders/interaction-workflow.service.ts
-// ─── Interaction Workflow Service — barrel re-export ─────────────────────────
-// All workflow logic now lives in ./workflows/. This file re-exports every
-// function so existing callers need no import changes.
+// ─── Interaction Workflow Service — pure barrel re-export ────────────────────
+// All workflow logic lives in ./workflows/. This file re-exports every
+// function so callers that import individual functions need no changes.
+//
+// The InteractionWorkflowService class and singleton live in:
+//   ./interaction-workflow.instance.ts
+// Import from there if you need the service object (e.g. server actions).
 
 export {
   requestCancellation,
@@ -23,35 +27,3 @@ export {
   respondToShippingDelay,
   getOrderInteractions,
 } from "./workflows/shipping-delay-workflow.service";
-
-import {
-  requestCancellation,
-  respondToCancellation,
-} from "./workflows/cancellation-workflow.service";
-import {
-  requestReturn,
-  respondToReturn,
-} from "./workflows/return-flow.service";
-import {
-  requestPartialRefund,
-  respondToPartialRefund,
-} from "./workflows/partial-refund-workflow.service";
-import {
-  notifyShippingDelay,
-  respondToShippingDelay,
-  getOrderInteractions,
-} from "./workflows/shipping-delay-workflow.service";
-
-export class InteractionWorkflowService {
-  requestCancellation = requestCancellation;
-  respondToCancellation = respondToCancellation;
-  requestReturn = requestReturn;
-  respondToReturn = respondToReturn;
-  requestPartialRefund = requestPartialRefund;
-  respondToPartialRefund = respondToPartialRefund;
-  notifyShippingDelay = notifyShippingDelay;
-  respondToShippingDelay = respondToShippingDelay;
-  getOrderInteractions = getOrderInteractions;
-}
-
-export const interactionWorkflowService = new InteractionWorkflowService();

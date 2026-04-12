@@ -10,7 +10,7 @@ import { envSchema, env } from "@/env";
 
 const VALID_ENV = {
   NODE_ENV: "production" as const,
-  DATABASE_URL: "postgresql://user:pass@localhost:5432/kiwimart",
+  DATABASE_URL: "postgresql://user:pass@localhost:5432/buyzi",
   NEXTAUTH_SECRET: "super-secret-nextauth-key-at-least-32-chars",
   UPSTASH_REDIS_REST_URL: "https://redis.upstash.io",
   UPSTASH_REDIS_REST_TOKEN: "upstash-token-abc123",
@@ -22,8 +22,8 @@ const VALID_ENV = {
   CLOUDFLARE_ACCOUNT_ID: "cloudflare-account-id",
   R2_ACCESS_KEY_ID: "r2-access-key-id",
   R2_SECRET_ACCESS_KEY: "r2-secret-access-key",
-  R2_BUCKET_NAME: "kiwimart-listings",
-  NEXT_PUBLIC_APP_URL: "https://app.kiwimart.co.nz",
+  R2_BUCKET_NAME: "buyzi-listings",
+  NEXT_PUBLIC_APP_URL: "https://app.buyzi.co.nz",
   ENCRYPTION_KEY:
     "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
   PUSHER_APP_ID: "1234567",

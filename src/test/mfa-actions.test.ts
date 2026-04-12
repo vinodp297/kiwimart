@@ -70,8 +70,7 @@ describe("initMfaSetup", () => {
     } as never);
     mockSetupMfa.mockResolvedValue({
       secret: "JBSWY3DPEHPK3PXP",
-      qrCodeUrl:
-        "otpauth://totp/KiwiMart:mfa@buyzi.test?secret=JBSWY3DPEHPK3PXP",
+      qrCodeUrl: "otpauth://totp/Buyzi:mfa@buyzi.test?secret=JBSWY3DPEHPK3PXP",
       backupCodes: ["CODE1111", "CODE2222", "CODE3333"],
     });
   });

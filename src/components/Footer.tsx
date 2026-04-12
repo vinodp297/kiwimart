@@ -44,7 +44,7 @@ export default function Footer() {
                 K
               </div>
               <span className="font-[family-name:var(--font-playfair)] text-[1.2rem] tracking-tight">
-                Kiwi<em className="not-italic text-[#D4A843]">Mart</em>
+                Buy<em className="not-italic text-[#D4A843]">zi</em>
               </span>
             </div>
             <p className="text-[12.5px] text-white/50 leading-relaxed">
@@ -55,7 +55,7 @@ export default function Footer() {
             </p>
             <div className="flex gap-3 mt-5">
               <a
-                href="https://facebook.com/kiwimartnz"
+                href="https://facebook.com/buyziNZ"
                 aria-label="Facebook"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -72,7 +72,7 @@ export default function Footer() {
                 </svg>
               </a>
               <a
-                href="https://instagram.com/kiwimartnz"
+                href="https://instagram.com/buyziNZ"
                 aria-label="Instagram"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -89,7 +89,7 @@ export default function Footer() {
                 </svg>
               </a>
               <a
-                href="https://x.com/kiwimartnz"
+                href="https://x.com/buyziNZ"
                 aria-label="X (Twitter)"
                 target="_blank"
                 rel="noopener noreferrer"

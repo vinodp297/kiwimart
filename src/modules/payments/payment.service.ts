@@ -52,8 +52,8 @@ export class PaymentService {
           correlationId: getRequestContext()?.correlationId ?? "unknown",
           ...input.metadata,
         },
-        description: `KiwiMart: ${input.listingTitle}`,
-        statement_descriptor_suffix: "KIWIMART",
+        description: `Buyzi: ${input.listingTitle}`,
+        statement_descriptor_suffix: "BUYZI",
       };
 
       // Pass idempotency key to Stripe to prevent duplicate PaymentIntents

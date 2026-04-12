@@ -1,4 +1,4 @@
-'use client';
+"use client";
 // src/app/(protected)/admin/audit/AuditExport.tsx
 
 interface Entry {
@@ -13,8 +13,16 @@ interface Entry {
 
 export default function AuditExport({ entries }: { entries: Entry[] }) {
   function handleExport() {
-    const header = ['ID', 'Timestamp', 'Actor Email', 'Action', 'Entity Type', 'Entity ID', 'IP'];
-    const rows = entries.map(e => [
+    const header = [
+      "ID",
+      "Timestamp",
+      "Actor Email",
+      "Action",
+      "Entity Type",
+      "Entity ID",
+      "IP",
+    ];
+    const rows = entries.map((e) => [
       e.id,
       new Date(e.createdAt).toISOString(),
       e.userEmail,
@@ -23,12 +31,12 @@ export default function AuditExport({ entries }: { entries: Entry[] }) {
       e.entityId,
       e.ip,
     ]);
-    const csv = [header, ...rows].map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `kiwimart-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `buyzi-audit-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }

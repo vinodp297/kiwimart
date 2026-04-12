@@ -1,6 +1,6 @@
 // src/types/next-auth.d.ts
 // ─── Auth.js Type Augmentation ────────────────────────────────────────────────
-// Adds KiwiMart-specific fields to the Auth.js Session and User types.
+// Adds Buyzi-specific fields to the Auth.js Session and User types.
 // With database sessions, session.user is populated from the DB User row
 // in the session() callback — these types reflect that.
 

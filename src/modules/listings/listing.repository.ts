@@ -1123,3 +1123,26 @@ export const listingRepository = {
     return db.$transaction(fn);
   },
 };
+
+// ── Sitemap helpers (standalone exports — called only from sitemap.ts) ────────
+
+export type SitemapListing = { id: string; updatedAt: Date };
+export type SitemapSeller = { username: string | null; updatedAt: Date };
+
+/** Fetch active listing IDs + timestamps for sitemap generation (max 1 000). */
+export async function getSitemapListings(): Promise<SitemapListing[]> {
+  return db.listing.findMany({
+    where: { status: "ACTIVE", deletedAt: null },
+    select: { id: true, updatedAt: true },
+    orderBy: { watcherCount: "desc" },
+    take: 1000,
+  });
+}
+
+/** Fetch enabled-seller usernames + timestamps for sitemap generation. */
+export async function getSitemapSellers(): Promise<SitemapSeller[]> {
+  return db.user.findMany({
+    where: { isSellerEnabled: true, isBanned: false },
+    select: { username: true, updatedAt: true },
+  });
+}

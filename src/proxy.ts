@@ -127,7 +127,7 @@ export const proxy = auth(async function proxyHandler(
       // nonce-aware and legacy browsers.
       `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
       `style-src 'self' 'nonce-${nonce}'`,
-      "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://*.cloudflarestorage.com https://*.r2.dev https://r2.kiwimart.co.nz https://*.stripe.com",
+      "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://*.cloudflarestorage.com https://*.r2.dev https://r2.buyzi.co.nz https://*.stripe.com",
       "font-src 'self'",
       "connect-src 'self' https://challenges.cloudflare.com https://api.stripe.com https://*.stripe.com https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com wss://*.pusher.com https://*.pusher.com https://*.r2.cloudflarestorage.com",
       "frame-src 'self' https://challenges.cloudflare.com https://js.stripe.com https://hooks.stripe.com",

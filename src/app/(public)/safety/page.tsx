@@ -129,12 +129,12 @@ export default function SafetyPage() {
                 Report a problem
               </a>
               <a
-                href="mailto:safety@kiwimart.co.nz"
+                href="mailto:safety@buyzi.co.nz"
                 className="inline-flex items-center justify-center h-11 px-7 rounded-full
                   border border-white/20 text-white font-semibold text-[14px]
                   hover:border-white/50 transition-colors"
               >
-                Email safety@kiwimart.co.nz
+                Email safety@buyzi.co.nz
               </a>
             </div>
           </div>

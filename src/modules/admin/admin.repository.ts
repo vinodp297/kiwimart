@@ -33,6 +33,31 @@ export type ReportWithRelations = Prisma.ReportGetPayload<{
   };
 }>;
 
+/** Fields needed by the admin layout shell (sidebar + auth guard). */
+export type AdminLayoutUser = {
+  isAdmin: boolean;
+  adminRole: string | null;
+  displayName: string | null;
+  email: string | null;
+  isMfaEnabled: boolean;
+};
+
+/** Fetch the minimal user fields required by the admin layout component. */
+export async function getAdminLayoutUser(
+  userId: string,
+): Promise<AdminLayoutUser | null> {
+  return db.user.findUnique({
+    where: { id: userId },
+    select: {
+      isAdmin: true,
+      adminRole: true,
+      displayName: true,
+      email: true,
+      isMfaEnabled: true,
+    },
+  });
+}
+
 export const adminRepository = {
   // -------------------------------------------------------------------------
   // User management

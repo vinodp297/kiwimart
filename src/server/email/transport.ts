@@ -35,7 +35,7 @@ export async function sendTransactionalEmail({
 
   // Always read from env fresh — never rely on a module-level constant
   // that could have been captured before the env var was available.
-  const from = process.env.EMAIL_FROM ?? "KiwiMart <onboarding@resend.dev>";
+  const from = process.env.EMAIL_FROM ?? "Buyzi <onboarding@resend.dev>";
 
   if (!client) {
     if (process.env.NODE_ENV === "production") {

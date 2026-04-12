@@ -1,12 +1,12 @@
-'use client';
+"use client";
 // src/app/(protected)/admin/finance/ExportCSV.tsx
 
-const BOM = '\uFEFF';
+const BOM = "\uFEFF";
 
 function downloadCSV(csv: string, filename: string) {
-  const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob([BOM + csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.click();
@@ -51,48 +51,81 @@ interface Props {
 
 export default function ExportCSV({ transactions, payouts, refunds }: Props) {
   function exportTransactions() {
-    const headers = ['Order ID', 'Date', 'Item', 'Buyer', 'Seller', 'Amount (NZD)', 'Payout Status'];
-    const rows = transactions.map(r => [
+    const headers = [
+      "Order ID",
+      "Date",
+      "Item",
+      "Buyer",
+      "Seller",
+      "Amount (NZD)",
+      "Payout Status",
+    ];
+    const rows = transactions.map((r) => [
       r.id,
-      r.completedAt ? new Date(r.completedAt).toLocaleDateString('en-NZ') : '',
-      `"${(r.listingTitle ?? '').replace(/"/g, '""')}"`,
-      r.buyerName ?? '',
-      r.sellerName ?? '',
+      r.completedAt ? new Date(r.completedAt).toLocaleDateString("en-NZ") : "",
+      `"${(r.listingTitle ?? "").replace(/"/g, '""')}"`,
+      r.buyerName ?? "",
+      r.sellerName ?? "",
       (r.totalNzd / 100).toFixed(2),
-      r.payoutStatus ?? 'N/A',
+      r.payoutStatus ?? "N/A",
     ]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    downloadCSV(csv, `kiwimart-transactions-${new Date().toISOString().slice(0, 10)}.csv`);
+    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+    downloadCSV(
+      csv,
+      `buyzi-transactions-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
   }
 
   function exportPayouts() {
-    const headers = ['Payout ID', 'Seller', 'Email', 'Item', 'Amount (NZD)', 'Status', 'Initiated', 'Stripe Transfer ID'];
-    const rows = payouts.map(p => [
+    const headers = [
+      "Payout ID",
+      "Seller",
+      "Email",
+      "Item",
+      "Amount (NZD)",
+      "Status",
+      "Initiated",
+      "Stripe Transfer ID",
+    ];
+    const rows = payouts.map((p) => [
       p.id,
-      p.sellerName ?? '',
-      p.sellerEmail ?? '',
+      p.sellerName ?? "",
+      p.sellerEmail ?? "",
       `"${p.listingTitle.replace(/"/g, '""')}"`,
       (p.amountNzd / 100).toFixed(2),
       p.status,
-      p.initiatedAt ? new Date(p.initiatedAt).toLocaleDateString('en-NZ') : '',
-      p.stripeTransferId ?? '',
+      p.initiatedAt ? new Date(p.initiatedAt).toLocaleDateString("en-NZ") : "",
+      p.stripeTransferId ?? "",
     ]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    downloadCSV(csv, `kiwimart-payouts-${new Date().toISOString().slice(0, 10)}.csv`);
+    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+    downloadCSV(
+      csv,
+      `buyzi-payouts-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
   }
 
   function exportRefunds() {
-    const headers = ['Order ID', 'Refunded Date', 'Item', 'Buyer', 'Seller', 'Amount (NZD)'];
-    const rows = refunds.map(r => [
+    const headers = [
+      "Order ID",
+      "Refunded Date",
+      "Item",
+      "Buyer",
+      "Seller",
+      "Amount (NZD)",
+    ];
+    const rows = refunds.map((r) => [
       r.id,
-      new Date(r.updatedAt).toLocaleDateString('en-NZ'),
-      `"${(r.listingTitle ?? '').replace(/"/g, '""')}"`,
-      r.buyerName ?? '',
-      r.sellerName ?? '',
+      new Date(r.updatedAt).toLocaleDateString("en-NZ"),
+      `"${(r.listingTitle ?? "").replace(/"/g, '""')}"`,
+      r.buyerName ?? "",
+      r.sellerName ?? "",
       (r.totalNzd / 100).toFixed(2),
     ]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    downloadCSV(csv, `kiwimart-refunds-${new Date().toISOString().slice(0, 10)}.csv`);
+    const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
+    downloadCSV(
+      csv,
+      `buyzi-refunds-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
   }
 
   return (

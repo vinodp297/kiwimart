@@ -93,7 +93,7 @@ export async function createOrder(
               sellerStripeAccountId: sellerStatus.stripeAccountId,
               orderId: existingOrder.id,
               listingId: existingOrder.listingId,
-              listingTitle: existingOrder.listing?.title ?? "KiwiMart listing",
+              listingTitle: existingOrder.listing?.title ?? "Buyzi listing",
               buyerId: userId,
               idempotencyKey,
             });

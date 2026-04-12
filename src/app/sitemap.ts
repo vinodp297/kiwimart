@@ -1,11 +1,13 @@
 import { MetadataRoute } from "next";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import {
+  getSitemapListings,
+  getSitemapSellers,
+} from "@/modules/listings/listing.repository";
 
 export const revalidate = 86400; // 24 hours
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = "https://kiwimart.co.nz";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://buyzi.co.nz";
 
   const staticPages = [
     { url: baseUrl, priority: 1.0 },
@@ -23,16 +25,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }));
 
   const [listings, sellers] = await Promise.all([
-    db.listing.findMany({
-      where: { status: "ACTIVE", deletedAt: null },
-      select: { id: true, updatedAt: true },
-      orderBy: { watcherCount: "desc" },
-      take: 1000,
-    }),
-    db.user.findMany({
-      where: { isSellerEnabled: true, isBanned: false },
-      select: { username: true, updatedAt: true },
-    }),
+    getSitemapListings(),
+    getSitemapSellers(),
   ]);
 
   const listingPages = listings.map((l) => ({

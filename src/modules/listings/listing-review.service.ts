@@ -234,7 +234,7 @@ export function notifyPriceDrop(
               newPrice: newPriceFormatted,
               savings,
               dropPercent: priceDrop,
-              listingUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz"}/listings/${listingId}`,
+              listingUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://buyzi.co.nz"}/listings/${listingId}`,
             }),
           );
         }

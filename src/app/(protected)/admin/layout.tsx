@@ -3,8 +3,7 @@
 
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-// eslint-disable-next-line no-restricted-imports -- pre-existing page-level DB access, migrate to repository in a dedicated sprint
-import db from "@/lib/db";
+import { getAdminLayoutUser } from "@/modules/admin/admin.repository";
 import AdminNav from "@/components/admin/AdminNav";
 import { getRoleDisplayName, getRoleBadgeColor } from "@/lib/permissions";
 import type { AdminRole } from "@prisma/client";
@@ -24,16 +23,7 @@ export default async function AdminLayout({
     redirect("/mfa-verify");
   }
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      isAdmin: true,
-      adminRole: true,
-      displayName: true,
-      email: true,
-      isMfaEnabled: true,
-    },
-  });
+  const user = await getAdminLayoutUser(session.user.id);
 
   if (!user?.isAdmin || !user.adminRole) {
     redirect("/dashboard/buyer");

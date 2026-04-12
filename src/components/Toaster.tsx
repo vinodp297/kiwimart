@@ -1,6 +1,6 @@
 "use client";
 // src/components/Toaster.tsx
-// Sonner toast wrapper styled to match KiwiMart's design system.
+// Sonner toast wrapper styled to match Buyzi's design system.
 
 import { Toaster as SonnerToaster } from "sonner";
 

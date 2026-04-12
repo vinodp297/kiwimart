@@ -1,4 +1,4 @@
-// ─── KiwiMart — Complete Type Definitions (Sprint 1 + Sprint 2) ──────────────
+// ─── Buyzi — Complete Type Definitions (Sprint 1 + Sprint 2) ─────────────────
 // These types mirror the Prisma schema that will be generated in Sprint 3.
 // Every field name, casing and nullability matches what the ORM will produce,
 // so wiring real data in Sprint 3 requires only swapping the data source.

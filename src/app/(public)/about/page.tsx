@@ -89,14 +89,14 @@ export default function AboutPage() {
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               {[
-                { label: "General enquiries", email: "hello@kiwimart.co.nz" },
+                { label: "General enquiries", email: "hello@buyzi.co.nz" },
                 {
                   label: "Customer support",
                   email:
                     process.env.NEXT_PUBLIC_SUPPORT_EMAIL ??
                     "support@buyzi.co.nz",
                 },
-                { label: "Press & media", email: "press@kiwimart.co.nz" },
+                { label: "Press & media", email: "press@buyzi.co.nz" },
               ].map(({ label, email }) => (
                 <div key={label}>
                   <p className="text-[11px] font-semibold text-white/40 uppercase tracking-wide mb-1">

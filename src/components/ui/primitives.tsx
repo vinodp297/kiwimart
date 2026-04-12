@@ -1,4 +1,4 @@
-// ─── KiwiMart — Shared UI Primitives ─────────────────────────────────────────
+// ─── Buyzi — Shared UI Primitives ────────────────────────────────────────────
 // These are the atomic building blocks used across all Sprint 2 pages.
 // They will be replaced / augmented by shadcn/ui in Sprint 3 — but their
 // prop signatures are intentionally identical to shadcn variants so that

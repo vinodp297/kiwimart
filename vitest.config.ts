@@ -47,9 +47,16 @@ export default defineConfig({
 
         // Critical modules — financial-grade code, higher standards.
         // Thresholds measured against glob-level achieved, not directory display.
+        //
+        // NOTE: the display row "modules/orders" (80.59%/75.18%) covers only
+        // top-level files. The per-glob "src/modules/orders/**" also includes the
+        // workflows/ subdirectory (~25% coverage), giving a combined per-glob of:
+        //   stmts 66.14 / branches 53.69 / funcs 64.82 / lines 66.72
+        // Thresholds below are per-glob achieved − 1.5.
+        //
         // Achieved (per-glob): payments stmts 83.48 / orders stmts 66.14
         //                      orders lines 66.72 / orders branches 53.69
-        //                      distributedLock stmts 80.82
+        //                      distributedLock stmts 83.09
         "src/modules/payments/**": {
           lines: 82,
           functions: 75,
@@ -60,7 +67,7 @@ export default defineConfig({
           lines: 65,
           functions: 63,
           branches: 52,
-          statements: 65,
+          statements: 64,
         },
         "src/server/lib/distributedLock.ts": {
           lines: 79,

@@ -12,7 +12,7 @@ export const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-02-25.clover" as Stripe.LatestApiVersion,
   typescript: true,
   appInfo: {
-    name: "KiwiMart",
+    name: "Buyzi",
     version: "1.0.0",
   },
 });

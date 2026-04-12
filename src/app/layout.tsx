@@ -39,7 +39,7 @@ export const metadata: Metadata = {
   },
   description: `Buy and sell with confidence on ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"}. Secure escrow, ${process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} buyer protection, verified NZ sellers.`,
   metadataBase: new URL(
-    process.env.NEXT_PUBLIC_APP_URL ?? "https://kiwimart.co.nz",
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://buyzi.co.nz",
   ),
   keywords: [
     "marketplace",

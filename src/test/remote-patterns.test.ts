@@ -19,8 +19,8 @@ describe("next.config.ts remotePatterns", () => {
     expect(config).toContain("pub-*.r2.dev");
   });
 
-  it("keeps r2.kiwimart.co.nz (production R2 public URL)", () => {
-    expect(config).toContain("r2.kiwimart.co.nz");
+  it("keeps r2.buyzi.co.nz (production R2 public URL)", () => {
+    expect(config).toContain("r2.buyzi.co.nz");
   });
 
   it("keeps dynamic r2Host derived from NEXT_PUBLIC_R2_PUBLIC_URL", () => {
