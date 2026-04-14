@@ -249,7 +249,10 @@ vi.mock("@/lib/queue", () => ({
 
 const { GET } = await import("@/app/api/health/route");
 
-describe("Fix 3 — BullMQ queue health in /api/health", () => {
+// Queue health was moved from /api/health (liveness) to /api/ready (readiness).
+// /api/health is a pure liveness probe — it must not expose queue state so that
+// load-balancer routing decisions are delegated entirely to /api/ready.
+describe("Fix 3 — BullMQ queue health moved to /api/ready (not in /api/health)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Restore DB mock implementation after clearAllMocks clears one-time overrides
@@ -259,40 +262,44 @@ describe("Fix 3 — BullMQ queue health in /api/health", () => {
     mockEmailGetFailedCount.mockResolvedValue(0);
   });
 
-  it('returns checks.queue "ok" when both queues have ≤10 failed jobs', async () => {
+  it("/api/health response does not contain checks.queue (queue is a readiness concern)", async () => {
     mockPayoutGetFailedCount.mockResolvedValue(5);
     mockEmailGetFailedCount.mockResolvedValue(3);
 
     const res = await GET(new Request("http://localhost/api/health"));
     const body = await res.json();
 
-    expect(body.checks.queue).toBe("ok");
+    // Queue check belongs to /api/ready — not present in liveness probe
+    expect(body.checks).not.toHaveProperty("queue");
     expect(body.status).toBe("ok");
+    expect(res.status).toBe(200);
   });
 
-  it('returns checks.queue "degraded" when payoutQueue has >10 failed jobs', async () => {
+  it("/api/health returns ok even when queue has many failed jobs (queue does not affect liveness)", async () => {
     mockPayoutGetFailedCount.mockResolvedValue(11);
-    mockEmailGetFailedCount.mockResolvedValue(0);
-
-    const res = await GET(new Request("http://localhost/api/health"));
-    const body = await res.json();
-
-    expect(body.checks.queue).toBe("degraded");
-    expect(body.status).toBe("degraded");
-  });
-
-  it('queue "degraded" never causes HTTP 503 — queue issues degrade, not kill', async () => {
-    mockPayoutGetFailedCount.mockResolvedValue(50);
     mockEmailGetFailedCount.mockResolvedValue(50);
 
     const res = await GET(new Request("http://localhost/api/health"));
     const body = await res.json();
 
-    // Queue degradation → 200 (not 503), status "degraded" (not "unhealthy")
+    // Liveness is unaffected by queue failed-job counts
     expect(res.status).toBe(200);
-    expect(body.status).toBe("degraded");
-    expect(body.checks.queue).toBe("degraded");
+    expect(body.status).toBe("ok");
+    expect(body.checks).not.toHaveProperty("queue");
+  });
+
+  it("/api/health always returns HTTP 200 regardless of queue state (liveness only)", async () => {
+    // Even if queues are completely flooded, the process is alive
+    mockPayoutGetFailedCount.mockResolvedValue(1000);
+    mockEmailGetFailedCount.mockResolvedValue(1000);
+
+    const res = await GET(new Request("http://localhost/api/health"));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
     expect(body.checks.database).toBe("ok");
+    expect(body.checks.redis).toBe("ok");
+    expect(body.checks).not.toHaveProperty("queue");
   });
 });
 

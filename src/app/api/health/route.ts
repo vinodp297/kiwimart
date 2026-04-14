@@ -1,24 +1,24 @@
 // src/app/api/health/route.ts
-// ─── Public Liveness Probe ──────────────────────────────────────────────────
-// Cheap-only checks: database SELECT 1 + Redis PING. Each is capped at 3 s.
+// ─── LIVENESS Probe ─────────────────────────────────────────────────────────
+// Tells the orchestrator the process is alive. Always returns HTTP 200 as
+// long as the server can respond — even if a dependency is unhealthy.
+//
+// For load-balancer / traffic-gating decisions use /api/ready (readiness):
+//   • /api/ready returns HTTP 503 when DB, Redis, or BullMQ is unhealthy.
+//
+// Checks run here (DB SELECT 1 + Redis PING) are informational only.
+// Status values "ok" | "degraded" | "unhealthy" appear in the JSON body so
+// monitoring dashboards can report health without affecting routing.
 //
 // Deliberately contains NO business-level metrics (pending payouts, DLQ size,
 // etc.) — those are expensive aggregate queries that amplify DB load during
 // degradation. Use /api/admin/health (SUPER_ADMIN only) for business SLOs.
-//
-// Used by: deploy pipeline verify job, Vercel health checks, Better Uptime.
-//
-// Response rules:
-//   status "ok"        — both infra checks green → HTTP 200
-//   status "degraded"  — a check timed out or Redis unreachable → HTTP 200
-//   status "unhealthy" — database is unreachable (app cannot function) → HTTP 503
 //
 // IMPORTANT: Never expose connection strings, passwords, or internal error
 // messages publicly — check values are limited to ok / degraded / unreachable.
 
 import { healthService } from "@/server/services/health.service";
 import { getRedisClient } from "@/infrastructure/redis/client";
-import { payoutQueue, emailQueue } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
 
@@ -61,34 +61,6 @@ async function checkRedis(): Promise<CheckStatus> {
   }
 }
 
-// Degraded if any monitored queue has more than 10 failed jobs (dead-letter).
-// Queue issues never make the overall status "unhealthy" — the app can still
-// serve read requests even if background workers are struggling.
-const QUEUE_FAILED_THRESHOLD = 10;
-
-async function checkQueueHealth(): Promise<CheckStatus> {
-  try {
-    const [payoutFailed, emailFailed] = await withTimeout(
-      () =>
-        Promise.all([
-          payoutQueue.getFailedCount(),
-          emailQueue.getFailedCount(),
-        ]),
-      CHECK_TIMEOUT_MS,
-    );
-    if (
-      payoutFailed > QUEUE_FAILED_THRESHOLD ||
-      emailFailed > QUEUE_FAILED_THRESHOLD
-    ) {
-      return "degraded";
-    }
-    return "ok";
-  } catch (e) {
-    if (e instanceof Error && e.message === "timeout") return "degraded";
-    return "degraded";
-  }
-}
-
 export async function GET(request: Request) {
   const start = Date.now();
 
@@ -96,16 +68,12 @@ export async function GET(request: Request) {
   const correlationId =
     request.headers.get("x-correlation-id") ?? crypto.randomUUID();
 
-  const [database, redis, queue] = await Promise.all([
-    checkDatabase(),
-    checkRedis(),
-    checkQueueHealth(),
-  ]);
+  const [database, redis] = await Promise.all([checkDatabase(), checkRedis()]);
 
-  const checks = { database, redis, queue };
+  const checks = { database, redis };
 
-  // Database being unreachable is fatal — the app cannot serve any requests.
-  // Redis unreachable is a degraded signal (caching and queues affected).
+  // Compute status for body (informational — HTTP is always 200 for liveness).
+  // Load balancers should poll /api/ready for routing decisions.
   let status: "ok" | "degraded" | "unhealthy";
   if (database === "unreachable") {
     status = "unhealthy";
@@ -122,6 +90,8 @@ export async function GET(request: Request) {
     process.env.npm_package_version ??
     "unknown";
 
+  // Always HTTP 200 — liveness only. Even "unhealthy" returns 200 here because
+  // the process is alive and responding. Use /api/ready for 503 behaviour.
   return Response.json(
     {
       status,
@@ -132,6 +102,6 @@ export async function GET(request: Request) {
       timestamp: new Date().toISOString(),
       correlationId,
     },
-    { status: status === "unhealthy" ? 503 : 200 },
+    { status: 200 },
   );
 }

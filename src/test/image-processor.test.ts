@@ -204,7 +204,8 @@ describe("scanForMalware — content analysis", () => {
 
     expect(typeof result.isSafe).toBe("boolean");
     expect(Array.isArray(result.threats)).toBe(true);
-    expect(["HIGH", "MEDIUM", "LOW"]).toContain(result.confidence);
+    // Scanner uses heuristic content-analysis only (no AV engine)
+    expect(result.confidence).toBe("heuristic");
   });
 
   it("returns isSafe: true for a clean buffer with no threats", async () => {

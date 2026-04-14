@@ -77,7 +77,7 @@ describe("Fix 1 — scanForMalware content analysis", () => {
 
     expect(result.isSafe).toBe(true);
     expect(result.threats).toHaveLength(0);
-    expect(result.confidence).toBe("HIGH");
+    expect(result.confidence).toBe("heuristic");
   });
 
   it("flags oversized file (> 8 MB) as suspicious", async () => {

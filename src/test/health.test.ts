@@ -68,15 +68,17 @@ describe("/api/health", () => {
     expect(body.checks.database).toBe("ok");
   });
 
-  // ── 3. Database unreachable → unhealthy / 503 ────────────────────────────
+  // ── 3. Database unreachable → unhealthy in body / HTTP 200 ──────────────────
+  // Liveness probe always returns 200 — the process is responding even when
+  // the DB is down. Routing decisions belong to /api/ready (readiness probe).
 
-  it("returns status unhealthy and HTTP 503 when database is unreachable", async () => {
+  it("returns status unhealthy in body but HTTP 200 (liveness) when database is unreachable", async () => {
     vi.mocked(db.$queryRaw).mockRejectedValue(new Error("connection refused"));
 
     const res = await GET(makeRequest());
     const body = await res.json();
 
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200); // liveness — always 200
     expect(body.status).toBe("unhealthy");
     expect(body.checks.database).toBe("unreachable");
   });
@@ -177,7 +179,8 @@ describe("/api/health", () => {
     expect(body).toHaveProperty("checks");
     expect(body).toHaveProperty("checks.database");
     expect(body).toHaveProperty("checks.redis");
-    expect(body).toHaveProperty("checks.queue");
+    // queue check was moved to /api/ready (readiness probe)
+    expect(body).not.toHaveProperty("checks.queue");
     expect(body).toHaveProperty("responseTimeMs");
     expect(body).toHaveProperty("correlationId");
   });

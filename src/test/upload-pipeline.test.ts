@@ -239,7 +239,7 @@ describe("scanForMalware", () => {
     const result = await scanForMalware(Buffer.alloc(100), "test.jpg");
     expect(result.isSafe).toBe(true);
     expect(result.threats).toHaveLength(0);
-    expect(result.confidence).toBe("HIGH");
+    expect(result.confidence).toBe("heuristic");
   });
 });
 

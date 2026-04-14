@@ -235,7 +235,16 @@ const ELF_HEADER = Buffer.from([0x7f, 0x45, 0x4c, 0x46]);
 export interface ScanResult {
   isSafe: boolean;
   threats: string[];
-  confidence: "HIGH" | "MEDIUM" | "LOW";
+  /**
+   * Confidence level of the scan result.
+   * "heuristic" — content-analysis only (magic bytes, script injection, size).
+   *               No AV engine is involved; this is defence-in-depth, not a
+   *               full antivirus scan.
+   * "HIGH" | "MEDIUM" | "LOW" — reserved for future AV engine integration.
+   * TODO: integrate ClamAV/VirusTotal for production AV scanning
+   *       (see src/infrastructure/antivirus/ integration point).
+   */
+  confidence: "heuristic" | "HIGH" | "MEDIUM" | "LOW";
 }
 
 export async function scanForMalware(
@@ -278,5 +287,7 @@ export async function scanForMalware(
     logger.warn("upload.threat_detected", { threats, filename });
   }
 
-  return { isSafe, threats, confidence: "HIGH" };
+  // "heuristic" signals content-analysis only — no AV engine ran.
+  // Upgrade to "HIGH" once ClamAV/VirusTotal integration is live.
+  return { isSafe, threats, confidence: "heuristic" };
 }

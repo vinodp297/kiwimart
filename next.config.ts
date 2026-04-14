@@ -94,6 +94,12 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Readiness probe must NEVER be cached — load balancers need a live check
+      // of DB + Redis + BullMQ on every poll to make accurate routing decisions.
+      {
+        source: "/api/ready",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
       // No-store for all authenticated API endpoints — prevents any proxy or
       // CDN from caching responses that may contain user-specific data.
       // Covers v1/admin (CRUD), auth (session/CSRF tokens), stripe (webhooks
