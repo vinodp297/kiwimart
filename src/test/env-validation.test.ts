@@ -34,6 +34,9 @@ const VALID_ENV = {
   NEXT_PUBLIC_PUSHER_CLUSTER: "ap4",
   GOOGLE_CLIENT_ID: "google-client-id.apps.googleusercontent.com",
   GOOGLE_CLIENT_SECRET: "google-client-secret",
+  // 64-char hex — satisfies min(32) + /^[0-9a-fA-F]+$/ requirements
+  MOBILE_JWT_SECRET:
+    "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

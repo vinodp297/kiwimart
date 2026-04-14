@@ -432,16 +432,38 @@ export const listingQueryRepository = {
     }));
   },
 
-  async searchByVector(query: string): Promise<{ id: string }[]> {
-    const MAX_SEARCH_RESULTS = 1000;
+  /**
+   * Return ts_rank-ordered listing IDs from the full-text search index.
+   * Pagination is pushed into SQL so callers never load unbounded ID arrays
+   * into memory. Pass skip=0, take=MAX for bulk ID-collection paths.
+   */
+  async searchByVector(
+    query: string,
+    skip: number,
+    take: number,
+  ): Promise<{ id: string }[]> {
     return db.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Listing"
       WHERE "searchVector" @@ plainto_tsquery('english', ${query})
         AND status = 'ACTIVE'
         AND "deletedAt" IS NULL
       ORDER BY ts_rank("searchVector", plainto_tsquery('english', ${query})) DESC
-      LIMIT ${MAX_SEARCH_RESULTS}
+      LIMIT ${take} OFFSET ${skip}
     `;
+  },
+
+  /**
+   * Total count of FTS-matching active listings — used with searchByVector
+   * for DB-level pagination so the service never loads all IDs into memory.
+   */
+  async countByVector(query: string): Promise<number> {
+    const result = await db.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*) AS count FROM "Listing"
+      WHERE "searchVector" @@ plainto_tsquery('english', ${query})
+        AND status = 'ACTIVE'
+        AND "deletedAt" IS NULL
+    `;
+    return Number(result[0]?.count ?? 0);
   },
 
   async countSearch(where: Prisma.ListingWhereInput): Promise<number> {

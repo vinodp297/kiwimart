@@ -97,6 +97,14 @@ export class SearchService {
     const trimmedQuery = query?.trim() || "";
     const useFts = trimmedQuery.length > 0;
 
+    // For the default-sort + no-radius FTS path we push pagination into the DB
+    // (LIMIT/OFFSET inside searchByVector) so we never hold a 1 000-element
+    // ID array in memory.  All other FTS paths still use the bounded ID-list
+    // approach (max 1 000 IDs) because they need the IDs as a Prisma IN-filter
+    // for secondary sorts or bounding-box queries.
+    const canUseFtsRelevancePagination =
+      useFts && sort === "newest" && !searchLat && !searchLng && !radiusKm;
+
     const where: Prisma.ListingWhereInput = {
       status: "ACTIVE",
       deletedAt: null,
@@ -141,15 +149,21 @@ export class SearchService {
     const useRadiusFilter =
       searchLat != null && searchLng != null && radiusKm != null;
 
-    // ── FTS: collect all relevance-ranked IDs (no cap) ────────────────────
-    // searchByVector returns IDs in ts_rank DESC order. We paginate the ID
-    // array in the service layer so listings beyond any arbitrary position
-    // remain reachable and counts are accurate.
-    let ftsRankedIds: string[] | null = null;
-    if (useFts) {
+    // ── FTS: load ranked IDs (non-relevance paths only) ──────────────────
+    // For the relevance path (sort=newest, no radius) pagination is pushed
+    // into the SQL query — see the useFtsRelevance branch in the fetch
+    // strategy below.  For all other FTS paths we collect up to 1 000 IDs
+    // so they can be used as a Prisma IN-filter alongside secondary sorts
+    // or bounding-box conditions.
+    const MAX_FTS_IDS = 1000;
+    if (useFts && !canUseFtsRelevancePagination) {
       try {
-        const ftsResult = await listingRepository.searchByVector(trimmedQuery);
-        ftsRankedIds = ftsResult.map((r) => r.id);
+        const ftsResult = await listingRepository.searchByVector(
+          trimmedQuery,
+          0,
+          MAX_FTS_IDS,
+        );
+        const ftsRankedIds = ftsResult.map((r) => r.id);
         if (ftsRankedIds.length === 0) {
           return {
             listings: [],
@@ -224,34 +238,59 @@ export class SearchService {
 
     // ── Determine fetch strategy ──────────────────────────────────────────
     // useFtsRelevance: preserve ts_rank order when sort is default and no
-    // radius filter is active. For other sorts or radius, Prisma's orderBy
-    // takes precedence.
-    const useFtsRelevance =
-      ftsRankedIds !== null && sort === "newest" && !useRadiusFilter;
+    // radius filter is active. Pagination is done at the DB level (LIMIT /
+    // OFFSET inside searchByVector) — we never load all ranked IDs into memory.
+    // For other sorts or radius, Prisma's orderBy takes precedence and we use
+    // the bounded ID-list approach populated above.
+    const useFtsRelevance = canUseFtsRelevancePagination;
 
     let rows: Awaited<ReturnType<typeof listingRepository.findSearchResults>>;
     let totalCount: number;
 
     if (useFtsRelevance) {
-      // Slice the ts_rank-ordered ID list for the current page, then fetch
-      // only those listings. Re-sort to restore rank order after Prisma fetch
-      // (IN-list order is not guaranteed by Postgres).
-      const pageIds = ftsRankedIds!.slice(skip, skip + pageSize);
-      [totalCount, rows] = await Promise.all([
-        listingRepository.countSearch(where),
-        pageIds.length
-          ? listingRepository.findSearchResults(
+      // DB-level FTS pagination: fetch only the page's IDs from Postgres, get
+      // the total count in a parallel COUNT query.  Re-sort Prisma results to
+      // restore ts_rank order (IN-list order is not guaranteed by Postgres).
+      try {
+        const [dbCount, pageResults] = await Promise.all([
+          listingRepository.countByVector(trimmedQuery),
+          listingRepository.searchByVector(trimmedQuery, skip, pageSize),
+        ]);
+        totalCount = dbCount;
+        const pageIds = pageResults.map((r) => r.id);
+        rows = pageIds.length
+          ? await listingRepository.findSearchResults(
               { ...where, id: { in: pageIds } },
               orderBy,
               0,
               pageIds.length,
             )
-          : Promise.resolve([]),
-      ]);
-      const rowMap = new Map(rows.map((r) => [r.id, r]));
-      rows = pageIds
-        .map((id) => rowMap.get(id))
-        .filter((r): r is NonNullable<typeof r> => r != null);
+          : [];
+        const rowMap = new Map(rows.map((r) => [r.id, r]));
+        rows = pageIds
+          .map((id) => rowMap.get(id))
+          .filter((r): r is NonNullable<typeof r> => r != null);
+      } catch (ftsErr) {
+        // FTS unavailable — fall back to ILIKE standard path so the search
+        // page still renders rather than returning an error.
+        logger.warn("search.fts_pagination_fallback", {
+          error: ftsErr instanceof Error ? ftsErr.message : String(ftsErr),
+          query: trimmedQuery,
+        });
+        where.OR = [
+          { title: { contains: trimmedQuery, mode: "insensitive" as const } },
+          {
+            description: {
+              contains: trimmedQuery,
+              mode: "insensitive" as const,
+            },
+          },
+        ];
+        [totalCount, rows] = await Promise.all([
+          listingRepository.countSearch(where),
+          listingRepository.findSearchResults(where, orderBy, skip, pageSize),
+        ]);
+      }
     } else if (
       useRadiusFilter &&
       searchLat != null &&

@@ -116,6 +116,25 @@ export const envSchema = z.object({
     .default("false")
     .transform((val) => val === "true"),
 
+  // ── Mobile API JWT ──────────────────────────────────────────────────────────
+  // Used to sign mobile app JWTs (jose HS256). Must be a hex string of at
+  // least 32 characters. Generate with: openssl rand -hex 32
+  MOBILE_JWT_SECRET: z
+    .string()
+    .min(32, "MOBILE_JWT_SECRET must be at least 32 characters")
+    .regex(
+      /^[0-9a-fA-F]+$/,
+      "MOBILE_JWT_SECRET must be a hex string (openssl rand -hex 32)",
+    ),
+
+  // ── Mobile API CORS ─────────────────────────────────────────────────────────
+  // Comma-separated list of allowed origins for the /api/v1 mobile endpoints.
+  // Example: "https://app.buyzi.co.nz,https://staging.buyzi.co.nz"
+  ALLOWED_ORIGINS: z
+    .string()
+    .min(1, "ALLOWED_ORIGINS must contain at least one origin")
+    .optional(),
+
   // ── Dispute evidence upload limit (optional override) ───────────────────────
   DISPUTE_EVIDENCE_MAX_FILES: z.coerce
     .number()

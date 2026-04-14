@@ -307,19 +307,21 @@ describe("banUser — rate limiting", () => {
     expect(adminService.banUser).toHaveBeenCalled();
   });
 
-  it("fails open when rate limiter throws", async () => {
+  it("fails closed when rate limiter throws — ban is blocked, not allowed", async () => {
     vi.mocked(rateLimit).mockRejectedValueOnce(
       new Error("Redis temporarily unavailable"),
     );
 
     const result = await banUser("user-target", "Violation of terms");
 
-    expect(result.success).toBe(true);
-    expect(logger.warn).toHaveBeenCalledWith(
-      "admin:rate-limit-unavailable",
+    // Fail-closed: banUser must NOT proceed when rate limiter is unavailable
+    expect(result.success).toBe(false);
+    expect(logger.error).toHaveBeenCalledWith(
+      "admin.rateLimit.failure",
       expect.objectContaining({ action: "banUser", adminId: "admin-1" }),
     );
-    expect(adminService.banUser).toHaveBeenCalled();
+    // Ban must not have executed
+    expect(adminService.banUser).not.toHaveBeenCalled();
   });
 });
 

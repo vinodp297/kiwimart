@@ -227,19 +227,17 @@ describe("SearchService", () => {
   describe("FTS — full-text search correctness", () => {
     // Test 1: pagination works beyond position 500
     it("pagination works beyond position 500 with no cap on FTS results", async () => {
-      // Simulate 600 FTS matches returned from the database
-      const allIds = Array.from({ length: 600 }, (_, i) => ({
-        id: `id-${i + 1}`,
+      // DB-level pagination: two sequential $queryRaw calls —
+      //   1st: countByVector   → [{ count: 600n }]
+      //   2nd: searchByVector  → 24 IDs for page 2 (LIMIT 24 OFFSET 24)
+      const page2Ids = Array.from({ length: 24 }, (_, i) => ({
+        id: `id-${i + 25}`,
       }));
-      vi.mocked(db.$queryRaw).mockResolvedValue(allIds);
+      vi.mocked(db.$queryRaw)
+        .mockResolvedValueOnce([{ count: BigInt(600) }]) // countByVector
+        .mockResolvedValueOnce(page2Ids); // searchByVector — only page 2
 
-      // count reflects full 600-item set (not just 500)
-      vi.mocked(db.listing.count).mockResolvedValue(600);
-
-      // Page 2 (listings 25–48) — the DB call receives only the page slice
-      const page2Listings = Array.from({ length: 24 }, (_, i) =>
-        makeListing(`id-${i + 25}`),
-      );
+      const page2Listings = page2Ids.map((r) => makeListing(r.id));
       vi.mocked(db.listing.findMany).mockResolvedValue(page2Listings as never);
 
       const result = await searchService.searchListings({
@@ -254,8 +252,8 @@ describe("SearchService", () => {
       expect(result.hasNextPage).toBe(true);
       expect(result.listings).toHaveLength(24);
 
-      // findMany was called with only the 24 IDs for page 2 (ids 25–48)
-      const expectedPageIds = allIds.slice(24, 48).map((r) => r.id);
+      // findMany was called with only the 24 IDs for page 2
+      const expectedPageIds = page2Ids.map((r) => r.id);
       expect(db.listing.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
@@ -267,15 +265,18 @@ describe("SearchService", () => {
 
     // Test 2: total count matches full result set, not a capped subset
     it("total count matches full FTS result set not a 500-item subset", async () => {
-      const allIds = Array.from({ length: 750 }, (_, i) => ({
+      // DB-level pagination: two sequential $queryRaw calls —
+      //   1st: countByVector  → [{ count: 750n }]  (no LIMIT — counts all matches)
+      //   2nd: searchByVector → 24 IDs for page 1  (LIMIT 24 OFFSET 0)
+      const page1Ids = Array.from({ length: 24 }, (_, i) => ({
         id: `id-${i + 1}`,
       }));
-      vi.mocked(db.$queryRaw).mockResolvedValue(allIds);
-      vi.mocked(db.listing.count).mockResolvedValue(750);
+      vi.mocked(db.$queryRaw)
+        .mockResolvedValueOnce([{ count: BigInt(750) }]) // countByVector
+        .mockResolvedValueOnce(page1Ids); // searchByVector — only page 1
+
       vi.mocked(db.listing.findMany).mockResolvedValue(
-        Array.from({ length: 24 }, (_, i) =>
-          makeListing(`id-${i + 1}`),
-        ) as never,
+        page1Ids.map((r) => makeListing(r.id)) as never,
       );
 
       const result = await searchService.searchListings({

@@ -398,20 +398,44 @@ export async function createOrder(
       });
     }
 
-    await transitionOrder(
-      order.id,
-      "CANCELLED",
-      {},
-      { fromStatus: "AWAITING_PAYMENT" },
-    );
-    await orderRepository.releaseListing(listingId).catch((err: unknown) => {
-      logger.error("order.listing.release_after_stripe_failure.failed", {
-        error: err instanceof Error ? err.message : String(err),
-        listingId,
+    // CRITICAL: all three cleanup writes are atomic — if listing release or
+    // the event write fail the order transition is rolled back so the buyer
+    // can retry rather than leaving order/listing in an inconsistent state.
+    // The outer try/catch ensures createOrder always returns { ok: false }
+    // even if the cleanup transaction itself fails (reconciliation will fix it).
+    try {
+      await orderRepository.$transaction(
+        async (tx) => {
+          await transitionOrder(
+            order.id,
+            "CANCELLED",
+            {},
+            { tx, fromStatus: "AWAITING_PAYMENT" },
+          );
+          await orderRepository.releaseListing(listingId, tx);
+          await orderEventService.recordEvent({
+            orderId: order.id,
+            type: ORDER_EVENT_TYPES.CANCELLED,
+            actorId: null,
+            actorRole: ACTOR_ROLES.SYSTEM,
+            summary: "Order cancelled: payment setup failed",
+            metadata: { trigger: "STRIPE_CREATION_FAILED" },
+            tx,
+          });
+        },
+        { timeout: 10_000, maxWait: 5_000 },
+      );
+    } catch (cleanupErr) {
+      // Log cleanup failure — reconciliation job will resolve the inconsistency.
+      logger.error("order.stripe_failure.cleanup_tx_failed", {
         orderId: order.id,
+        error:
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
       });
-    });
+    }
 
+    // audit() is fire-and-forget — no tx parameter, called after the
+    // transaction commits so the audit entry is never rolled back.
     audit({
       userId,
       action: "ORDER_STATUS_CHANGED",
@@ -423,19 +447,6 @@ export async function createOrder(
           stripeErr instanceof Error ? stripeErr.message : String(stripeErr),
       },
       ip,
-    });
-
-    // Fire-and-forget: the transitionOrder() and releaseListing() above are
-    // standalone calls (no $transaction wrapper) in the Stripe-failure cleanup
-    // path. Wrapping them here would require restructuring this error branch —
-    // acceptable risk given this path is already an error recovery scenario.
-    orderEventService.recordEvent({
-      orderId: order.id,
-      type: ORDER_EVENT_TYPES.CANCELLED,
-      actorId: null,
-      actorRole: ACTOR_ROLES.SYSTEM,
-      summary: "Order cancelled: payment setup failed",
-      metadata: { trigger: "STRIPE_CREATION_FAILED" },
     });
 
     return {

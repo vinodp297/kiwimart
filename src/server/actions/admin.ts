@@ -41,6 +41,8 @@ export async function banUser(
       return { success: false, error: "You cannot ban your own account." };
     }
     // Rate limit — 10 ban/unban actions per hour per admin (keyed by admin ID)
+    // Fail-CLOSED: if the rate limiter is unavailable we block the action rather
+    // than silently allowing unlimited bans while Redis is down.
     try {
       const limit = await rateLimit("adminBan", `admin:${admin.id}:banUser`);
       if (!limit.success) {
@@ -50,12 +52,12 @@ export async function banUser(
         };
       }
     } catch (rlErr) {
-      logger.warn("admin:rate-limit-unavailable", {
+      logger.error("admin.rateLimit.failure", {
         action: "banUser",
         adminId: admin.id,
         error: rlErr instanceof Error ? rlErr.message : String(rlErr),
       });
-      // Fail open — allow the action if rate limiter is unavailable
+      throw new Error("RATE_LIMIT_UNAVAILABLE", { cause: rlErr });
     }
     await adminService.banUser(
       parsed.data.userId,
@@ -77,6 +79,8 @@ export async function unbanUser(userId: string): Promise<ActionResult<void>> {
   try {
     const admin = await requirePermission("UNBAN_USERS");
     // Rate limit — 10 ban/unban actions per hour per admin (keyed by admin ID)
+    // Fail-CLOSED: if the rate limiter is unavailable we block the action rather
+    // than silently allowing unlimited unbans while Redis is down.
     try {
       const limit = await rateLimit("adminBan", `admin:${admin.id}:unbanUser`);
       if (!limit.success) {
@@ -86,12 +90,12 @@ export async function unbanUser(userId: string): Promise<ActionResult<void>> {
         };
       }
     } catch (rlErr) {
-      logger.warn("admin:rate-limit-unavailable", {
+      logger.error("admin.rateLimit.failure", {
         action: "unbanUser",
         adminId: admin.id,
         error: rlErr instanceof Error ? rlErr.message : String(rlErr),
       });
-      // Fail open — allow the action if rate limiter is unavailable
+      throw new Error("RATE_LIMIT_UNAVAILABLE", { cause: rlErr });
     }
     await adminService.unbanUser(userId, admin.id);
     return { success: true, data: undefined };
