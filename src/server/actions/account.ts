@@ -158,6 +158,8 @@ export async function deleteAccount(): Promise<ActionResult<void>> {
   try {
     const user = await requireUser();
 
+    await requireStepUpAuth(user.id, "account_delete");
+
     const { performAccountErasure } =
       await import("@/modules/users/erasure.service");
 

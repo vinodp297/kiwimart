@@ -20,7 +20,6 @@ import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
 import { orderRepository } from "@/modules/orders/order.repository";
 import { transitionOrder } from "@/modules/orders/order.transitions";
 import { createNotification } from "@/modules/notifications/notification.service";
-import { fireAndForget } from "@/lib/fire-and-forget";
 
 const LOCK_KEY = "cron:stripe-reconciliation";
 const LOCK_TTL_SECONDS = 3600; // 1 hour — matches the cron interval
@@ -182,30 +181,43 @@ export async function runStripeReconciliation(): Promise<void> {
                     fix: "PAYMENT_HELD → CANCELLED (PI not found on Stripe)",
                   },
                 );
-                fireAndForget(
-                  createNotification({
-                    userId: order.buyerId,
-                    type: "SYSTEM",
-                    title: "Order cancelled",
-                    body: "Your order was cancelled because the payment record could not be found.",
+                await createNotification({
+                  userId: order.buyerId,
+                  type: "SYSTEM",
+                  title: "Order cancelled",
+                  body: "Your order was cancelled because the payment record could not be found.",
+                  orderId: order.id,
+                  link: `/orders/${order.id}`,
+                }).catch((notifyErr) => {
+                  logger.error("reconciliation.notify_cancelled_buyer_failed", {
                     orderId: order.id,
-                    link: `/orders/${order.id}`,
-                  }),
-                  "reconciliation.cancelled_pi_missing.buyer",
-                  { orderId: order.id },
-                );
-                fireAndForget(
-                  createNotification({
-                    userId: order.sellerId,
-                    type: "SYSTEM",
-                    title: "Order cancelled",
-                    body: "An order was cancelled because the associated payment record could not be found.",
-                    orderId: order.id,
-                    link: `/orders/${order.id}`,
-                  }),
-                  "reconciliation.cancelled_pi_missing.seller",
-                  { orderId: order.id },
-                );
+                    error:
+                      notifyErr instanceof Error
+                        ? notifyErr.message
+                        : String(notifyErr),
+                  });
+                  errors++;
+                });
+                await createNotification({
+                  userId: order.sellerId,
+                  type: "SYSTEM",
+                  title: "Order cancelled",
+                  body: "An order was cancelled because the associated payment record could not be found.",
+                  orderId: order.id,
+                  link: `/orders/${order.id}`,
+                }).catch((notifyErr) => {
+                  logger.error(
+                    "reconciliation.notify_cancelled_seller_failed",
+                    {
+                      orderId: order.id,
+                      error:
+                        notifyErr instanceof Error
+                          ? notifyErr.message
+                          : String(notifyErr),
+                    },
+                  );
+                  errors++;
+                });
                 autoFixed++;
               } else {
                 logger.warn("stripe.reconciliation.pi_retrieve_failed", {

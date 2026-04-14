@@ -4,6 +4,7 @@ import { safeActionError } from "@/shared/errors";
 // Business logic delegated to AdminService.
 
 import { requirePermission } from "@/shared/auth/requirePermission";
+import { requireStepUpAuth } from "@/server/lib/requireStepUpAuth";
 import { rateLimit } from "@/server/lib/rateLimit";
 import { logger } from "@/shared/logger";
 import { adminService } from "@/modules/admin/admin.service";
@@ -193,6 +194,7 @@ export async function resolveDisputePartialRefund(
     };
   try {
     const admin = await requirePermission("RESOLVE_DISPUTES");
+    await requireStepUpAuth(admin.id, "refund");
     await adminService.resolveDisputePartialRefund(
       parsed.data.orderId,
       parsed.data.amountCents,

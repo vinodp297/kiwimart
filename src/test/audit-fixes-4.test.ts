@@ -35,24 +35,24 @@ describe("Fix 3 — sitemap.ts DB abstraction", () => {
   });
 
   it("getSitemapListings is exported from listing.repository.ts", () => {
-    const source = read("src/modules/listings/listing.repository.ts");
+    const source = read("src/modules/listings/listing-query.repository.ts");
     expect(source).toContain("export async function getSitemapListings");
   });
 
   it("getSitemapSellers is exported from listing.repository.ts", () => {
-    const source = read("src/modules/listings/listing.repository.ts");
+    const source = read("src/modules/listings/listing-query.repository.ts");
     expect(source).toContain("export async function getSitemapSellers");
   });
 
   it("getSitemapListings returns id and updatedAt", () => {
-    const source = read("src/modules/listings/listing.repository.ts");
+    const source = read("src/modules/listings/listing-query.repository.ts");
     // The select clause must project both id and updatedAt
     expect(source).toMatch(/getSitemapListings[\s\S]{0,300}id:\s*true/);
     expect(source).toMatch(/getSitemapListings[\s\S]{0,300}updatedAt:\s*true/);
   });
 
   it("getSitemapSellers returns username and updatedAt", () => {
-    const source = read("src/modules/listings/listing.repository.ts");
+    const source = read("src/modules/listings/listing-query.repository.ts");
     expect(source).toMatch(/getSitemapSellers[\s\S]{0,300}username:\s*true/);
     expect(source).toMatch(/getSitemapSellers[\s\S]{0,300}updatedAt:\s*true/);
   });

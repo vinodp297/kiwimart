@@ -127,7 +127,7 @@ describe("Audit fixes batch 2 — Fix 10: listing reservedUntil + reconciliation
 
   // ── 13. reserveListing sets the 10-minute deadline + handles stale OR ───
   it("orderRepository.reserveListing stamps reservedUntil and accepts stale RESERVED listings", () => {
-    const src = read("src/modules/orders/order.repository.ts");
+    const src = read("src/modules/orders/order-mutation.repository.ts");
     // Locate the reserveListing function body
     const match = src.match(
       /async reserveListing\(listingId: string,[\s\S]*?\n {2}\},/,
@@ -167,7 +167,9 @@ describe("Audit fixes batch 2 — Fix 10: listing reservedUntil + reconciliation
     expect(entry).toBeDefined();
     expect(entry!.schedule).toBe("*/5 * * * *");
 
-    const listingRepo = read("src/modules/listings/listing.repository.ts");
+    const listingRepo = read(
+      "src/modules/listings/listing-mutation.repository.ts",
+    );
     expect(listingRepo).toContain("releaseStaleReservations");
     expect(listingRepo).toMatch(/reservedUntil:\s*\{\s*lt:/);
   });
