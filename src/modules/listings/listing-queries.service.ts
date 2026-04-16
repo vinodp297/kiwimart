@@ -5,6 +5,10 @@ import { listingRepository } from "./listing.repository";
 import { getCached } from "@/server/lib/cache";
 import { SECONDS_PER_MINUTE } from "@/lib/time";
 
+export type SoldListingRow = Awaited<
+  ReturnType<typeof listingRepository.getSoldListings>
+>[number];
+
 const BROWSE_CACHE_TTL = SECONDS_PER_MINUTE * 2;
 
 // ── getBrowseListings ───────────────────────────────────────────────────────
@@ -95,4 +99,13 @@ export async function getListingForEdit(
       images: listing.images,
     },
   };
+}
+
+// ── getRecentlySoldListings ────────────────────────────────────────────────
+
+/** Returns listings sold in the last 30 days, ordered most-recent first. */
+export async function getRecentlySoldListings(
+  limit = 8,
+): Promise<SoldListingRow[]> {
+  return listingRepository.getSoldListings(limit);
 }

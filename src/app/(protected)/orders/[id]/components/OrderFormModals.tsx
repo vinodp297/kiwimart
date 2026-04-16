@@ -43,8 +43,7 @@ export function CancellationModal({
           Request cancellation
         </h2>
         <p className="text-[13px] text-[#73706A] mb-4">
-          If the order was placed less than 2 hours ago, it will be cancelled
-          immediately. Otherwise, the other party has 48 hours to respond.
+          The other party has 48 hours to accept or reject your request.
         </p>
         <div className="text-left mb-4">
           <label className="text-[12.5px] font-semibold text-[#141414] mb-1 block">
@@ -67,10 +66,10 @@ export function CancellationModal({
             What happens next?
           </p>
           <p className="text-[11.5px] text-amber-700 mt-1">
-            Within the 2-hour free window: order is cancelled immediately and a
-            full refund is issued. After 2 hours: the other party has 48 hours
-            to accept or reject. If no response, the cancellation is
-            auto-approved.
+            If you are within the free-cancellation window, the order is
+            cancelled immediately and a full refund is issued. Otherwise the
+            other party has 48 hours to accept or reject. If no response, the
+            cancellation is auto-approved.
           </p>
         </div>
         <div className="flex flex-col gap-2">

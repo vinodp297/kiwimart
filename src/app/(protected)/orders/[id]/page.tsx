@@ -6,6 +6,7 @@
 import { fetchOrderDetail } from "@/server/actions/orderDetail";
 import { getOrderTimeline } from "@/server/actions/orderEvents";
 import { getOrderInteractions } from "@/server/actions/interactions";
+import { getCancellationStatusAction } from "@/server/actions/order-update.actions";
 import { buildSyntheticEvents } from "./components/order-utils";
 import OrderPageClient, { OrderErrorShell } from "./components/OrderPageClient";
 
@@ -16,12 +17,14 @@ interface Props {
 export default async function OrderDetailPage({ params }: Props) {
   const { id } = await params;
 
-  // Fetch all three data sources in parallel
-  const [orderResult, timelineResult, interactionsResult] = await Promise.all([
-    fetchOrderDetail(id),
-    getOrderTimeline(id),
-    getOrderInteractions(id),
-  ]);
+  // Fetch all data sources in parallel
+  const [orderResult, timelineResult, interactionsResult, cancellationResult] =
+    await Promise.all([
+      fetchOrderDetail(id),
+      getOrderTimeline(id),
+      getOrderInteractions(id),
+      getCancellationStatusAction(id).catch(() => null),
+    ]);
 
   // If the order itself can't be loaded, show error shell
   if (!orderResult.success) {
@@ -47,12 +50,17 @@ export default async function OrderDetailPage({ params }: Props) {
     ? interactionsResult.data
     : [];
 
+  const cancellationStatus = cancellationResult?.success
+    ? cancellationResult.data
+    : null;
+
   return (
     <OrderPageClient
       orderId={id}
       initialOrder={order}
       initialTimeline={timelineEvents}
       initialInteractions={interactions}
+      initialCancellationStatus={cancellationStatus}
     />
   );
 }

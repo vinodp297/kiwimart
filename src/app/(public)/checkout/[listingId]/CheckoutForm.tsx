@@ -15,6 +15,7 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { Button, Input, Select, Alert } from "@/components/ui/primitives";
+import { BuyerProtectionBadge } from "@/components/badges/BuyerProtectionBadge";
 import { formatPrice, formatCondition } from "@/lib/utils";
 import { createOrder } from "@/server/actions/orders";
 import { env } from "@/env";
@@ -590,27 +591,9 @@ function OrderSummary({
         </span>
       </div>
 
-      {/* Escrow info */}
-      <div className="mt-3 bg-[#F8F7F4] rounded-xl p-3">
-        <div className="flex items-start gap-2">
-          <svg
-            className="shrink-0 mt-0.5 text-[#D4A843]"
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-          </svg>
-          <p className="text-[11px] text-[#73706A] leading-relaxed">
-            Payment held in escrow until you confirm delivery. You&apos;re
-            covered by our{" "}
-            {process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000"} Buyer
-            Protection.
-          </p>
-        </div>
+      {/* Buyer protection */}
+      <div className="mt-3">
+        <BuyerProtectionBadge variant="full" />
       </div>
     </div>
   );

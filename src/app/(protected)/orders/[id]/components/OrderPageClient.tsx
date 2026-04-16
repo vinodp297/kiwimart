@@ -37,12 +37,15 @@ import {
   ProblemResolverModal,
 } from "./OrderFormModals";
 import { useOrderActions } from "../hooks/useOrderActions";
+import { CancellationCountdown } from "@/components/orders/CancellationCountdown";
+import type { CancellationStatus } from "@/modules/orders/order-cancel.service";
 
 interface Props {
   orderId: string;
   initialOrder: OrderDetailData;
   initialTimeline: TimelineEvent[];
   initialInteractions: InteractionData[];
+  initialCancellationStatus?: CancellationStatus | null;
 }
 
 export default function OrderPageClient({
@@ -50,6 +53,7 @@ export default function OrderPageClient({
   initialOrder,
   initialTimeline,
   initialInteractions,
+  initialCancellationStatus,
 }: Props) {
   // ── Data state (3 useState — within budget) ──────────────────────────────
   const [order, setOrder] = useState<OrderDetailData>(initialOrder);
@@ -104,6 +108,16 @@ export default function OrderPageClient({
             error={actions.error}
           />
           <OrderStatusCard order={order} timelineEvents={timelineEvents} />
+          {initialCancellationStatus &&
+            initialCancellationStatus.windowType !== "na" && (
+              <div className="mt-3 flex justify-center">
+                <CancellationCountdown
+                  windowType={initialCancellationStatus.windowType}
+                  minutesLeft={initialCancellationStatus.minutesLeft}
+                  canCancel={initialCancellationStatus.canCancel}
+                />
+              </div>
+            )}
           <OrderTimelineComponent
             events={timelineEvents}
             currentStatus={order.status}

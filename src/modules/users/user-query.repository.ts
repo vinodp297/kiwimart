@@ -731,6 +731,7 @@ export const userQueryRepository = {
           take: 5,
           select: {
             id: true,
+            orderId: true,
             rating: true,
             comment: true,
             createdAt: true,

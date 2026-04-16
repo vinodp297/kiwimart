@@ -10,6 +10,10 @@ import { requireUser } from "@/server/lib/requireUser";
 import { listingService } from "@/modules/listings/listing.service";
 import { logger } from "@/shared/logger";
 import {
+  getRecentlySoldListings,
+  type SoldListingRow,
+} from "@/modules/listings/listing-queries.service";
+import {
   createListingSchema,
   updateListingSchema,
   toggleWatchSchema,
@@ -321,4 +325,24 @@ export async function getListingById(id: string) {
   return withActionContext(async () => {
     return listingService.getListingById(id);
   }); // end withActionContext
+}
+
+// ── getRecentlySold ───────────────────────────────────────────────────────────
+// Public — no auth required. Returns listings sold in the last 30 days.
+
+export async function getRecentlySold(
+  limit = 8,
+): Promise<ActionResult<SoldListingRow[]>> {
+  try {
+    const data = await getRecentlySoldListings(limit);
+    return { success: true, data };
+  } catch (err) {
+    logger.error("listings.getRecentlySold.failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      success: false,
+      error: "We couldn't load recently sold listings. Please try again.",
+    };
+  }
 }

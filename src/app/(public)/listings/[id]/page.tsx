@@ -27,6 +27,7 @@ import { auth } from "@/lib/auth";
 import { userService } from "@/modules/users/user.service";
 import { isUserWatchingListing } from "@/modules/listings/listing-queries.service";
 import SafetyBanner from "@/components/SafetyBanner";
+import { BuyerProtectionBadge } from "@/components/badges/BuyerProtectionBadge";
 import PriceHistoryChart from "@/components/PriceHistoryChart";
 import RecordView from "@/components/RecordView";
 import RecentlyViewed from "@/components/RecentlyViewed";
@@ -530,6 +531,9 @@ export default async function ListingDetailPage({
                   CONFIG_KEYS.OFFER_MIN_PERCENTAGE,
                 )}
               />
+
+              {/* Buyer protection */}
+              <BuyerProtectionBadge variant="compact" />
 
               {/* Shipping estimate */}
               <ShippingEstimate sellerRegion={detail.region} />

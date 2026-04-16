@@ -24,6 +24,8 @@ export interface CancellationStatus {
   requiresReason: boolean;
   message: string;
   windowType: "free" | "request" | "closed" | "na";
+  /** Minutes remaining in the free-cancellation window. 0 outside the free window. */
+  minutesLeft: number;
 }
 
 // ── cancelOrder ───────────────────────────────────────────────────────────────
@@ -180,7 +182,8 @@ export async function getCancellationStatus(order: {
     return {
       canCancel: false,
       requiresReason: false,
-      windowType: "na",
+      windowType: "na" as const,
+      minutesLeft: 0,
       message:
         order.status === "DISPATCHED"
           ? "Order already dispatched. Open a dispute if there is an issue."
@@ -202,7 +205,8 @@ export async function getCancellationStatus(order: {
     return {
       canCancel: true,
       requiresReason: false,
-      windowType: "free",
+      windowType: "free" as const,
+      minutesLeft,
       message: `Free cancellation available for another ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""}.`,
     };
   }
@@ -211,7 +215,8 @@ export async function getCancellationStatus(order: {
     return {
       canCancel: true,
       requiresReason: true,
-      windowType: "request",
+      windowType: "request" as const,
+      minutesLeft: 0,
       message: "Cancellation requires a reason after the first hour.",
     };
   }
@@ -219,7 +224,8 @@ export async function getCancellationStatus(order: {
   return {
     canCancel: false,
     requiresReason: false,
-    windowType: "closed",
+    windowType: "closed" as const,
+    minutesLeft: 0,
     message:
       "Cancellation window has closed. Open a dispute if there is an issue.",
   };

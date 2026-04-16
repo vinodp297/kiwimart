@@ -12,6 +12,35 @@ import {
   cancelOrderSchema as CancelOrderSchema,
 } from "@/server/validators";
 import { getListValues } from "@/lib/dynamic-lists";
+import {
+  getCancellationStatus,
+  type CancellationStatus,
+} from "@/modules/orders/order-cancel.service";
+import { orderRepository } from "@/modules/orders/order.repository";
+
+// ── getCancellationStatusAction — returns cancellation window for an order ────
+
+export async function getCancellationStatusAction(
+  orderId: string,
+): Promise<ActionResult<CancellationStatus>> {
+  try {
+    const user = await requireUser();
+    const order = await orderRepository.findByIdForCancel(orderId, user.id);
+    if (!order) {
+      return { success: false, error: "Order not found." };
+    }
+    const status = await getCancellationStatus(order);
+    return { success: true, data: status };
+  } catch (err) {
+    return {
+      success: false,
+      error: safeActionError(
+        err,
+        "We couldn't fetch the cancellation status. Please refresh and try again.",
+      ),
+    };
+  }
+}
 
 // ── confirmDelivery — releases escrow ────────────────────────────────────────
 

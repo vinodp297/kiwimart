@@ -305,6 +305,8 @@ export interface Review {
   createdAt: string;
   sellerReply: string | null;
   tags?: string[];
+  /** True when the reviewer completed a real purchase (orderId present). */
+  isVerifiedPurchase?: boolean;
 }
 
 // ─────────────────────────────── Filters (Search page) ──────────────────────

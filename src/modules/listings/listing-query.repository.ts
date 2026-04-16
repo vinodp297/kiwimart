@@ -420,6 +420,41 @@ export const listingQueryRepository = {
     return db.listing.count({ where: { status: "ACTIVE", deletedAt: null } });
   },
 
+  /**
+   * Returns orders completed in the last 30 days, joined to listing data,
+   * ordered by most recently completed first. Used for the "Recently sold" section.
+   */
+  async getSoldListings(limit = 8) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * MS_PER_DAY);
+    return db.order.findMany({
+      where: {
+        status: "COMPLETED",
+        completedAt: { not: null, gte: thirtyDaysAgo },
+        listing: { deletedAt: null },
+      },
+      orderBy: { completedAt: "desc" },
+      take: limit,
+      select: {
+        completedAt: true,
+        totalNzd: true,
+        listing: {
+          select: {
+            id: true,
+            title: true,
+            priceNzd: true,
+            region: true,
+            suburb: true,
+            images: {
+              where: { order: 0, isSafe: true },
+              select: { r2Key: true },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+  },
+
   async groupByCategory(): Promise<{ categoryId: string; count: number }[]> {
     const rows = await db.listing.groupBy({
       by: ["categoryId"],

@@ -24,6 +24,7 @@ import { getTagConfig } from "@/lib/review-tags";
 import type { ReviewTagType } from "@/lib/review-tags";
 import { BlockButton } from "@/components/seller/BlockButton";
 import { getSellerTrustProfile } from "@/modules/sellers/trust-score.service";
+import { VerifiedPurchaseBadge } from "@/components/badges/VerifiedPurchaseBadge";
 import { getResponseLabel } from "@/modules/sellers/response-metrics.service";
 import { logger } from "@/shared/logger";
 
@@ -140,6 +141,8 @@ export default async function SellerProfilePage({
       createdAt: r.createdAt.toISOString(),
       sellerReply: r.reply,
       tags: r.tags.map((t) => t.tag),
+      // orderId presence → verified purchase; value is NOT forwarded to UI
+      isVerifiedPurchase: r.orderId != null,
     }));
 
   // Build seller shape for display
@@ -603,9 +606,14 @@ export default async function SellerProfilePage({
                             <p className="text-[12.5px] font-semibold text-[#141414]">
                               {review.buyerName}
                             </p>
-                            <p className="text-[11px] text-[#9E9A91]">
-                              {relativeTime(review.createdAt)}
-                            </p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-[11px] text-[#9E9A91]">
+                                {relativeTime(review.createdAt)}
+                              </p>
+                              {review.isVerifiedPurchase && (
+                                <VerifiedPurchaseBadge size="sm" />
+                              )}
+                            </div>
                           </div>
                         </div>
                         <StarRating

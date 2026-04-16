@@ -8,6 +8,7 @@ import { fetchHomeData } from "./_lib/home-data";
 import HomeHero from "./_components/HomeHero";
 import HomeCategories from "./_components/HomeCategories";
 import HomeFeaturedListings from "./_components/HomeFeaturedListings";
+import { RecentlySoldSection } from "@/components/listings/RecentlySoldSection";
 
 export const metadata: Metadata = {
   title: "New Zealand's Trusted Marketplace",
@@ -51,6 +52,8 @@ export default async function HomePage() {
         <HomeHero stats={stats} />
         <HomeCategories categories={visibleCategories} />
         <HomeFeaturedListings featured={featured} />
+        {/* Recently sold — server component, returns null when empty */}
+        <RecentlySoldSection />
         {/* Recently viewed — DB for authed users, localStorage for guests */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <RecentlyViewed maxItems={8} title="Pick up where you left off" />
