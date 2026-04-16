@@ -1,7 +1,7 @@
 // src/app/api/v1/orders/route.ts
 // ─── Orders API ──────────────────────────────────────────────────────────────
 
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { ordersQuerySchema } from "@/modules/orders/order.schema";
 import {
   apiOk,
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     try {
       query = ordersQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
-      if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
         return withCors(
           apiError("Validation failed", 400, "VALIDATION_ERROR"),
           request.headers.get("origin"),

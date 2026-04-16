@@ -1,7 +1,7 @@
 // src/app/api/v1/listings/route.ts
 // ─── Listings API ────────────────────────────────────────────────────────────
 
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { createListingSchema } from "@/server/validators";
 import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import {
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     try {
       query = listingsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
-      if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
         return withCors(
           apiError("Validation failed", 400, "VALIDATION_ERROR"),
           request.headers.get("origin"),

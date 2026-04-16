@@ -9,7 +9,7 @@
 //   amount  integer cents, required, 1–50_000_000
 //   tier    "GOLD" | "SILVER" | "BRONZE" | "STANDARD" (optional, defaults STANDARD)
 
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import {
   apiOk,
   apiError,
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     try {
       params = previewSchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
-      if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
         return withCors(
           apiError("Invalid parameters", 400, "VALIDATION_ERROR"),
           request.headers.get("origin"),

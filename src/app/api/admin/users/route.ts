@@ -1,5 +1,5 @@
 // @deprecated — use /api/v1/ admin endpoints going forward
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { adminUsersQuerySchema } from "@/modules/admin/admin.schema";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     try {
       query = adminUsersQuerySchema.parse(Object.fromEntries(url.searchParams));
     } catch (err) {
-      if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
         return withDeprecation(
           apiError("Validation failed", 400, "VALIDATION_ERROR"),
           SUNSET,

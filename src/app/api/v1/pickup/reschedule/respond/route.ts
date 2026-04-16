@@ -1,7 +1,7 @@
 // src/app/api/v1/pickup/reschedule/respond/route.ts
 // POST /api/v1/pickup/reschedule/respond — Respond to a reschedule request
 
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import {
   apiOk,
   apiError,
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     try {
       body = rescheduleRespondSchema.parse(await request.json());
     } catch (err) {
-      if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
         return withCors(
           apiError("Validation failed", 400, "VALIDATION_ERROR"),
           request.headers.get("origin"),

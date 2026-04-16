@@ -9,7 +9,7 @@
 //   Updates a single fee config key. Rate limited 20/hour.
 //   Requires MANAGE_PLATFORM_CONFIG permission.
 
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { apiOk, apiError } from "@/app/api/v1/_helpers/response";
 import { adminConfigRepository } from "@/modules/admin/admin-config.repository";
@@ -117,7 +117,7 @@ export async function PATCH(request: Request) {
   try {
     params = patchSchema.parse(body);
   } catch (err) {
-    if (err instanceof z.ZodError) {
+    if (err instanceof ZodError) {
       return apiError("Validation failed", 400, "VALIDATION_ERROR");
     }
     throw err;

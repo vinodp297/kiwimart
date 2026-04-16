@@ -2,7 +2,7 @@
 // GET  /api/v1/notifications  — cursor-paginated notifications for NavBar / full list
 // PATCH /api/v1/notifications — mark all as read
 
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { AppError } from "@/shared/errors";
 import { notificationRepository } from "@/modules/notifications/notification.repository";
 import { notificationsQuerySchema } from "@/modules/notifications/notification.schema";
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     try {
       query = notificationsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
-      if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
         return withCors(
           apiError("Validation failed", 400, "VALIDATION_ERROR"),
           request.headers.get("origin"),

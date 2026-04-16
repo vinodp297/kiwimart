@@ -1,7 +1,7 @@
 // src/app/api/v1/messages/route.ts
 // ─── Messages API ────────────────────────────────────────────────────────────
 
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { messageService } from "@/modules/messaging/message.service";
 import { threadsQuerySchema } from "@/modules/messaging/message.schema";
 import { sendMessageSchema } from "@/server/validators";
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     try {
       query = threadsQuerySchema.parse(Object.fromEntries(searchParams));
     } catch (err) {
-      if (err instanceof z.ZodError) {
+      if (err instanceof ZodError) {
         return withCors(
           apiError("Validation failed", 400, "VALIDATION_ERROR"),
           request.headers.get("origin"),
