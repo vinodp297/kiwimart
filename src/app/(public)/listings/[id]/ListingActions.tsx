@@ -20,6 +20,7 @@ import { addToCart } from "@/server/actions/cart";
 import { toggleWatch } from "@/server/actions/listings";
 import { createOffer } from "@/server/actions/offers";
 import EmailVerificationModal from "@/components/EmailVerificationModal";
+import { SafePickupCard } from "@/components/listings/SafePickupCard";
 
 interface Props {
   listing: ListingDetail;
@@ -212,10 +213,11 @@ export default function ListingActions({
             <circle cx="18.5" cy="18.5" r="2.5" />
           </svg>
           {listing.shippingOption === "pickup" ? (
-            <span>
-              Pickup only ·{" "}
-              {listing.pickupAddress ?? `${listing.suburb}, ${listing.region}`}
-            </span>
+            <SafePickupCard
+              pickupAddress={listing.pickupAddress ?? null}
+              region={listing.region}
+              suburb={listing.suburb ?? null}
+            />
           ) : shipping === 0 || shipping === null ? (
             <span className="text-emerald-600 font-semibold">
               Free shipping

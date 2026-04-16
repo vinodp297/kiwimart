@@ -40,6 +40,44 @@ import { useOrderActions } from "../hooks/useOrderActions";
 import { CancellationCountdown } from "@/components/orders/CancellationCountdown";
 import type { CancellationStatus } from "@/modules/orders/order-cancel.service";
 
+// ── Pickup safety reminder — shown for pickup orders awaiting meetup ──────────
+function PickupSafetyReminder() {
+  return (
+    <div
+      className="rounded-2xl border border-amber-200 bg-amber-50 p-4 mb-6
+        flex items-start gap-3"
+    >
+      <svg
+        aria-hidden="true"
+        className="shrink-0 mt-0.5 text-amber-600"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z" />
+        <circle cx="12" cy="10" r="3" />
+      </svg>
+      <div>
+        <p className="text-[13.5px] font-semibold text-amber-800 mb-0.5">
+          Safe pickup tips
+        </p>
+        <ul className="text-[12px] text-amber-700 space-y-0.5 leading-relaxed list-disc list-inside">
+          <li>
+            Meet in a busy public place — a mall, library, or police station
+          </li>
+          <li>Bring a friend and meet during daylight hours</li>
+          <li>Inspect the item before completing the transaction</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   orderId: string;
   initialOrder: OrderDetailData;
@@ -108,6 +146,9 @@ export default function OrderPageClient({
             error={actions.error}
           />
           <OrderStatusCard order={order} timelineEvents={timelineEvents} />
+          {order.fulfillmentType === "PICKUP" &&
+            (order.status === "payment_held" ||
+              order.status === "awaiting_pickup") && <PickupSafetyReminder />}
           {initialCancellationStatus &&
             initialCancellationStatus.windowType !== "na" && (
               <div className="mt-3 flex justify-center">
