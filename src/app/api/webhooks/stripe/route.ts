@@ -3,6 +3,14 @@
 // Thin route handler — all business logic delegated to WebhookService.
 // Only responsibilities: verify signature, check idempotency, delegate to
 // service, mark as processed, return status.
+//
+// Idempotency design (single authoritative Redis layer):
+//   Key format : webhook:stripe:{eventId}
+//   TTL        : 259 200 s (72 h) — matches Stripe's full retry window
+//   Ground truth: DB unique constraint in WebhookService.markEventProcessed()
+//
+// The former service-level fast-path (webhook:seen:{id}, 24 h TTL) has been
+// removed; this route is the sole Redis idempotency layer.
 
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
@@ -16,8 +24,12 @@ import { env } from "@/env";
 // Stripe retries for up to 72 hours — keep keys for the full window.
 const WEBHOOK_IDEMPOTENCY_TTL = 259_200; // seconds (72 hours)
 
-function webhookRedisKey(eventId: string): string {
-  return `stripe:webhook:processed:${eventId}`;
+/**
+ * Canonical Redis key for webhook idempotency.
+ * Single format used by both the read check (step 2) and the write (step 4).
+ */
+export function webhookRedisKey(eventId: string): string {
+  return `webhook:stripe:${eventId}`;
 }
 
 export async function POST(request: Request): Promise<NextResponse> {

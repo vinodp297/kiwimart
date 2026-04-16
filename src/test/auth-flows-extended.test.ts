@@ -152,12 +152,17 @@ describe("Session management — version-based invalidation", () => {
     expect(mockRedisExpire).toHaveBeenCalled();
   });
 
-  it("getSessionVersion returns 0 when Redis is unavailable (fail-open)", async () => {
+  it("getSessionVersion returns Infinity (fail-closed) when Redis is unavailable and no cache", async () => {
+    // Use a fresh userId with no cache entry to confirm fail-closed behaviour.
+    const { _sessionVersionCache } = await import("@/server/lib/sessionStore");
+    _sessionVersionCache.delete("user-no-cache-auth");
+
     mockRedisGet.mockRejectedValue(new Error("ECONNREFUSED"));
 
-    const version = await getSessionVersion("user-1");
+    const version = await getSessionVersion("user-no-cache-auth");
 
-    expect(version).toBe(0);
+    // Infinity causes every JWT version check to fail → all sessions invalidated
+    expect(version).toBe(Infinity);
   });
 
   it("invalidateAllSessions returns 0 when Redis is unavailable", async () => {

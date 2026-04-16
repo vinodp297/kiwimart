@@ -128,9 +128,9 @@ describe("Stripe webhook — Redis idempotency", () => {
     // Business logic was called
     expect(mockProcessEvent).toHaveBeenCalledTimes(1);
 
-    // Redis key was set after processing
+    // Redis key was set after processing using the consolidated key format
     expect(mockRedisSet).toHaveBeenCalledWith(
-      "stripe:webhook:processed:evt_test_001",
+      "webhook:stripe:evt_test_001",
       expect.any(String),
       { ex: 259_200 },
     );
@@ -164,10 +164,8 @@ describe("Stripe webhook — Redis idempotency", () => {
 
     await POST(makeRequest());
 
-    // Check that get was called with the exact key pattern
-    expect(mockRedisGet).toHaveBeenCalledWith(
-      "stripe:webhook:processed:evt_unique_xyz",
-    );
+    // Check that get was called with the consolidated key format
+    expect(mockRedisGet).toHaveBeenCalledWith("webhook:stripe:evt_unique_xyz");
   });
 
   // ── Test 4 ────────────────────────────────────────────────────────────────
@@ -180,7 +178,7 @@ describe("Stripe webhook — Redis idempotency", () => {
     await POST(makeRequest());
 
     expect(mockRedisSet).toHaveBeenCalledWith(
-      "stripe:webhook:processed:evt_meta_001",
+      "webhook:stripe:evt_meta_001",
       expect.any(String),
       { ex: 259_200 },
     );
