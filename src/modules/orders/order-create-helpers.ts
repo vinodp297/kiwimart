@@ -4,6 +4,7 @@
 // Not exported from the barrel — consumed only by order-create.service.ts.
 
 import { audit } from "@/server/lib/audit";
+import { logger } from "@/shared/logger";
 import { formatCentsAsNzd } from "@/lib/currency";
 import { createNotification } from "@/modules/notifications/notification.service";
 import { sendOrderConfirmationEmail } from "@/server/email";
@@ -20,13 +21,13 @@ import { getRequestContext } from "@/lib/request-context";
 
 // ── handleCashOnPickup ────────────────────────────────────────────────────────
 
-export function handleCashOnPickup(
+export async function handleCashOnPickup(
   orderId: string,
   userId: string,
   listing: { id: string; title: string; sellerId: string },
   totalNzd: number,
   ip: string,
-) {
+): Promise<void> {
   audit({
     userId,
     action: "ORDER_CREATED",
@@ -40,18 +41,27 @@ export function handleCashOnPickup(
     ip,
   });
 
-  orderEventService.recordEvent({
-    orderId,
-    type: ORDER_EVENT_TYPES.ORDER_CREATED,
-    actorId: userId,
-    actorRole: ACTOR_ROLES.BUYER,
-    summary: `Cash-on-pickup order placed for "${listing.title}" — ${formatCentsAsNzd(totalNzd)}`,
-    metadata: {
-      listingId: listing.id,
-      totalNzd,
-      fulfillmentType: "CASH_ON_PICKUP",
-    },
-  });
+  // Awaited so the audit event is written before control returns.
+  // Errors are caught and logged — a failed write never blocks order creation.
+  try {
+    await orderEventService.recordEvent({
+      orderId,
+      type: ORDER_EVENT_TYPES.ORDER_CREATED,
+      actorId: userId,
+      actorRole: ACTOR_ROLES.BUYER,
+      summary: `Cash-on-pickup order placed for "${listing.title}" — ${formatCentsAsNzd(totalNzd)}`,
+      metadata: {
+        listingId: listing.id,
+        totalNzd,
+        fulfillmentType: "CASH_ON_PICKUP",
+      },
+    });
+  } catch (err: unknown) {
+    logger.error("order.cash_pickup.event_write_failed", {
+      orderId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   fireAndForget(
     createNotification({

@@ -15,33 +15,42 @@
 
 import { redactEmail } from "@/server/email/transport";
 
-// Exact-match key names that are always PII.
-// Email/phone key patterns are handled separately with format-aware masking.
-const PII_KEYS = new Set([
+// Pattern-based PII key detection — substring match, case-insensitive.
+// Any field whose name contains one of these substrings is treated as PII.
+// This catches compound names like "buyerEmail", "shippingAddress",
+// "sellerFirstName", etc. without needing exact-match entries for every variant.
+// Email/phone patterns are also listed here for completeness, but format-aware
+// masking (partial redaction) is applied by isEmailKey/isPhoneKey first.
+const PII_PATTERNS: readonly string[] = [
+  "email",
+  "phone",
   "password",
   "token",
   "secret",
-  "accessToken",
-  "refreshToken",
-  "apiKey",
-  "cardNumber",
-  "irdNumber",
-  "bankAccount",
-  "dateOfBirth",
+  "key",
   "address",
   "firstName",
   "lastName",
   "fullName",
   "name",
+  "cardNumber",
+  "irdNumber",
+  "bankAccount",
+  "dateOfBirth",
   // Stripe identifiers — treated as PII under the Privacy Act
   "stripeCustomerId",
   "stripeAccountId",
   "paymentIntentId",
-  "stripePaymentIntentId",
   "chargeId",
   "transferId",
   "payoutId",
-]);
+];
+
+/** Returns true if the field name contains any known PII pattern (case-insensitive). */
+function isPiiKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return PII_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
+}
 
 function isEmailKey(key: string): boolean {
   return (
@@ -88,7 +97,7 @@ export function sanitiseLogContext(
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(ctx)) {
-    if (isEmailKey(key) || isPhoneKey(key) || PII_KEYS.has(key)) {
+    if (isEmailKey(key) || isPhoneKey(key) || isPiiKey(key)) {
       result[key] = redactValue(key, value);
     } else if (
       value !== null &&

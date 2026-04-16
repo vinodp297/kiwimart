@@ -7,7 +7,9 @@
 //   • All IDs: cuid2 (collision-resistant, URL-safe, no timestamp leakage)
 //   • All timestamps: UTC, stored as DateTime
 //   • Soft deletes: deletedAt nullable field (never hard-delete listings/orders)
-//   • Row-level security enforced via Prisma middleware in Sprint 4 (not in schema)
+//   • Access control is enforced at the service layer via requireUser() and
+//     requireAdmin() checks on every mutation. Row-level filtering is applied
+//     in repository queries (e.g. where: { userId }) rather than at the DB level.
 //   • Money: stored as INTEGER cents (NZD) — never floating point
 //   • Ratings: stored as INTEGER 1–50 (represents 0.1–5.0 with 1 decimal)
 

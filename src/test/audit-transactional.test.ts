@@ -126,8 +126,8 @@ describe("orderEventService.recordEvent() — transactional support", () => {
     vi.clearAllMocks();
   });
 
-  // Test 5: recordEvent with no tx → fire-and-forget (returns void)
-  it("without tx: returns void and writes via fire-and-forget", () => {
+  // Test 5: recordEvent with no tx → returns Promise<void> (awaitable fire-and-forget)
+  it("without tx: returns a Promise and writes via fire-and-forget", async () => {
     const result = orderEventService.recordEvent({
       orderId: "order-1",
       type: ORDER_EVENT_TYPES.COMPLETED,
@@ -136,10 +136,13 @@ describe("orderEventService.recordEvent() — transactional support", () => {
       summary: "Test event",
     });
 
-    // No tx → returns void
-    expect(result).toBeUndefined();
+    // No tx → now returns a Promise<void> so callers can optionally await it
+    expect(result).toBeInstanceOf(Promise);
 
-    // DB write was called via the singleton (fire-and-forget)
+    // Await the promise to ensure the DB write is triggered
+    await result;
+
+    // DB write was called via the singleton
     expect(db.orderEvent.create).toHaveBeenCalledTimes(1);
   });
 

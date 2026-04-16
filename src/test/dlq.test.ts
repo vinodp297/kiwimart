@@ -349,3 +349,116 @@ describe("DLQ — Sentry alert", () => {
     expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 });
+
+// ─── Fix 2: Recursive DLQ job sanitisation ──────────────────────────────────
+// Verifies that sanitiseJobData() redacts PII nested inside objects,
+// not just at the top level.
+
+describe("DLQ — recursive job data sanitisation (Fix 2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequirePermission.mockResolvedValue({
+      id: "admin-1",
+      email: "admin@test.com",
+      isAdmin: true,
+      adminRole: "SUPER_ADMIN",
+    });
+    mockGetFailedCount.mockResolvedValue(1);
+  });
+
+  it("redacts email nested inside a user object", async () => {
+    mockGetFailed.mockResolvedValue([
+      makeFailedJob({
+        data: {
+          orderId: "order-abc",
+          user: { email: "alice@example.com", role: "buyer" },
+        },
+      }),
+    ]);
+
+    const res = await getFailedJobs();
+    const body = await res.json();
+    const job = body.data.queues.email.jobs[0];
+
+    expect(job.data.orderId).toBe("order-abc");
+    const user = job.data.user as Record<string, unknown>;
+    expect(user.email).toBe("[REDACTED]");
+    expect(user.role).toBe("buyer");
+  });
+
+  it("redacts token 3 levels deep", async () => {
+    mockGetFailed.mockResolvedValue([
+      makeFailedJob({
+        data: {
+          a: { b: { c: { token: "super-secret-token" } } },
+        },
+      }),
+    ]);
+
+    const res = await getFailedJobs();
+    const body = await res.json();
+    const job = body.data.queues.email.jobs[0];
+
+    const c = (
+      (job.data.a as Record<string, unknown>).b as Record<string, unknown>
+    ).c as Record<string, unknown>;
+    expect(c.token).toBe("[REDACTED]");
+  });
+
+  it("orderId (non-sensitive) passes through at any depth", async () => {
+    mockGetFailed.mockResolvedValue([
+      makeFailedJob({
+        data: {
+          nested: { deep: { orderId: "ord-123" } },
+        },
+      }),
+    ]);
+
+    const res = await getFailedJobs();
+    const body = await res.json();
+    const job = body.data.queues.email.jobs[0];
+
+    const deep = (job.data.nested as Record<string, unknown>).deep as Record<
+      string,
+      unknown
+    >;
+    expect(deep.orderId).toBe("ord-123");
+  });
+
+  it("returns data as-is when depth exceeds 5 (no infinite recursion)", async () => {
+    // Build a 7-level deep nesting — levels 6 and 7 should be returned unchanged
+    const deepData = {
+      l1: { l2: { l3: { l4: { l5: { l6: { password: "leaked?" } } } } } },
+    };
+    mockGetFailed.mockResolvedValue([makeFailedJob({ data: deepData })]);
+
+    // Should not throw and should return a result (depth guard fires at level 5)
+    const res = await getFailedJobs();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toBeDefined();
+  });
+
+  it("sanitises arrays of objects — redacts sensitive fields in each element", async () => {
+    mockGetFailed.mockResolvedValue([
+      makeFailedJob({
+        data: {
+          recipients: [
+            { email: "alice@test.com", role: "buyer" },
+            { email: "bob@test.com", role: "seller" },
+          ],
+        },
+      }),
+    ]);
+
+    const res = await getFailedJobs();
+    const body = await res.json();
+    const job = body.data.queues.email.jobs[0];
+    const recipients = job.data.recipients as Array<Record<string, unknown>>;
+
+    expect(recipients[0].email).toBe("[REDACTED]");
+    expect(recipients[0].role).toBe("buyer");
+    expect(recipients[1].email).toBe("[REDACTED]");
+    expect(recipients[1].role).toBe("seller");
+  });
+});

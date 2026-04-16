@@ -114,13 +114,18 @@ export class OrderEventService {
         .then(() => undefined);
     }
 
-    orderRepository.createEvent(eventData).catch((err) => {
-      logger.error("order-event.write.failed", {
-        error: err instanceof Error ? err.message : String(err),
-        orderId: input.orderId,
-        type: input.type,
+    // Return the promise so callers that choose to await it actually wait for
+    // the DB write to complete. Callers that don't await are still fire-and-forget.
+    return orderRepository
+      .createEvent(eventData)
+      .then(() => undefined)
+      .catch((err) => {
+        logger.error("order-event.write.failed", {
+          error: err instanceof Error ? err.message : String(err),
+          orderId: input.orderId,
+          type: input.type,
+        });
       });
-    });
   }
 
   /**

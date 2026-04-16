@@ -17,26 +17,42 @@ export const dynamic = "force-dynamic";
 // Maximum failed jobs returned per queue — keeps the response size manageable.
 const MAX_FAILED_PER_QUEUE = 50;
 
-// Fields that must never appear in API responses (defence-in-depth).
-const SENSITIVE_FIELDS = new Set([
+// Patterns that identify sensitive field names — substring match, case-insensitive.
+// Nested objects are recursed into so no PII escapes through a wrapper object.
+const SENSITIVE_PATTERNS: readonly string[] = [
+  "email",
+  "phone",
   "password",
   "token",
   "secret",
+  "key",
+  "address",
+  "name",
   "connectionString",
-  "apiKey",
   "stripeAccountId",
-]);
+  "stripeCustomerId",
+  "paymentIntentId",
+  "cardNumber",
+];
 
-/** Strip known-sensitive fields from job data before returning to the client. */
-function sanitiseJobData(
-  data: Record<string, unknown>,
-): Record<string, unknown> {
+/**
+ * Recursively strips sensitive fields from job data before returning to the
+ * client. Handles nested objects to depth 5 to prevent runaway recursion.
+ */
+function sanitiseJobData(data: unknown, depth = 0): unknown {
+  if (depth > 5 || data === null || typeof data !== "object") {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitiseJobData(item, depth + 1));
+  }
   const clean: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(data)) {
-    if (SENSITIVE_FIELDS.has(key)) {
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    const lower = key.toLowerCase();
+    if (SENSITIVE_PATTERNS.some((p) => lower.includes(p.toLowerCase()))) {
       clean[key] = "[REDACTED]";
     } else {
-      clean[key] = value;
+      clean[key] = sanitiseJobData(value, depth + 1);
     }
   }
   return clean;
@@ -85,7 +101,7 @@ export async function GET() {
           jobs: failedJobs.map((job) => ({
             id: job.id,
             name: job.name,
-            data: sanitiseJobData((job.data as Record<string, unknown>) ?? {}),
+            data: sanitiseJobData(job.data ?? {}) as Record<string, unknown>,
             failedReason: job.failedReason ?? "Unknown",
             attemptsMade: job.attemptsMade,
             correlationId: (job.data as Record<string, unknown>)
