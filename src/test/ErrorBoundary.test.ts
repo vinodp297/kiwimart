@@ -41,7 +41,14 @@ describe("ErrorBoundary class component", () => {
     const instance = new ErrorBoundary({
       children: React.createElement("div"),
     });
-    const setStateSpy = vi.spyOn(instance, "setState");
+    // Stub the implementation (don't call through) — the instance is not
+    // mounted into a fiber, so invoking the real setState would trigger
+    // React's "Can't call setState on a component that is not yet mounted"
+    // warning. We only care that resetBoundary delegates to setState with
+    // the right argument; no actual state transition is needed.
+    const setStateSpy = vi
+      .spyOn(instance, "setState")
+      .mockImplementation(() => {});
     instance.resetBoundary();
     expect(setStateSpy).toHaveBeenCalledWith({ hasError: false, error: null });
   });

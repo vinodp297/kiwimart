@@ -135,14 +135,14 @@ describe("proxy — auth guard", () => {
   // ── Test 6: Stripe webhook → not matched by proxy ────────────────────
   // The Stripe webhook is at /api/webhooks/stripe (NOT /api/v1/), so
   // the proxy's API checks never intercept it. Verify via config.matcher.
-  it("config.matcher does not exclude Stripe webhook (it is simply not an API v1 route)", () => {
+  it("config.matcher does not exclude Stripe webhook (it is simply not an API v1 route)", async () => {
     // The webhook path /api/webhooks/stripe is NOT under /api/v1/ so it
     // naturally passes through the proxy without hitting the API auth checks.
     // The catch-all matcher includes it, but the proxy handler only gates /api/v1/* and /api/admin/*.
     const res = proxy(makeReq("/api/webhooks/stripe"));
     // It should pass through (no 401, no redirect) — the response is the
     // standard pass-through with security headers
-    expect(res).resolves.not.toBeNull();
+    await expect(res).resolves.not.toBeNull();
   });
 
   // ── Test 7: Public GET /api/v1/listings → passes through ─────────────

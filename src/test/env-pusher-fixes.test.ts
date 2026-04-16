@@ -20,18 +20,31 @@ describe("Fix 1 — Twilio env schema uses TWILIO_FROM_NUMBER", () => {
   });
 
   it("no production source file references TWILIO_PHONE_NUMBER", async () => {
-    // sms.service.ts and all callers must use TWILIO_FROM_NUMBER
-    const { execSync } = await import("child_process");
-    let output = "";
-    try {
-      output = execSync(
-        'grep -rn "TWILIO_PHONE_NUMBER" src/ --include="*.ts" --exclude-dir=test',
-        { cwd: process.cwd(), encoding: "utf8" },
-      );
-    } catch {
-      // grep exits with code 1 when no matches found — that is the desired result
+    // sms.service.ts and all callers must use TWILIO_FROM_NUMBER.
+    // Cross-platform walk of src/ in pure Node (grep is not available on Windows).
+    const fs = await import("fs");
+    const path = await import("path");
+
+    const matches: string[] = [];
+    function walk(dir: string): void {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          // Skip the test directory — mirrors --exclude-dir=test
+          if (entry.name === "test") continue;
+          walk(full);
+        } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+          const content = fs.readFileSync(full, "utf8");
+          if (content.includes("TWILIO_PHONE_NUMBER")) {
+            matches.push(full);
+          }
+        }
+      }
     }
-    expect(output.trim()).toBe("");
+    walk("src");
+
+    expect(matches).toEqual([]);
   });
 
   it("sms.service.ts uses TWILIO_FROM_NUMBER to read the from-number", async () => {
