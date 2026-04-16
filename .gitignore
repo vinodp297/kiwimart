@@ -51,9 +51,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.claude/settings.local.json
+# Claude Code
+.claude/
 
 # Temp files
+*.log
+tmp-*.cjs
 C*UsersvinodAppDataLocalTemp*
 
 *.pdf
