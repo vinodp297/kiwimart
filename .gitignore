@@ -60,3 +60,8 @@ C*UsersvinodAppDataLocalTemp*
 fix-*.js
 generate_*.py
 *_Credentials*
+
+test-results.txt
+test-summary.txt
+build-results.txt
+lint-results.txt
