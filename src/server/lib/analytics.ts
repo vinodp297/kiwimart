@@ -9,8 +9,9 @@
 //   • Disabled in development unless POSTHOG_KEY is set
 
 import { PostHog } from "posthog-node";
+import { env } from "@/env";
 
-const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+const POSTHOG_KEY = env.NEXT_PUBLIC_POSTHOG_KEY;
 
 // Only use PostHog when a real project key is present — placeholder values
 // ('phc_placeholder', etc.) cause 401/404 errors on every analytics call.
@@ -28,7 +29,7 @@ function getPostHog(): PostHog | null {
 
   if (!posthogClient) {
     posthogClient = new PostHog(POSTHOG_KEY!, {
-      host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      host: env.NEXT_PUBLIC_POSTHOG_HOST,
       // Batch events — flush every 30 seconds or 20 events
       flushAt: 20,
       flushInterval: 30000,

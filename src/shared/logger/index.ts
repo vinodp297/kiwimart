@@ -32,11 +32,12 @@
 
 import { getRequestContext } from "@/lib/request-context";
 import { sanitiseLogContext } from "@/lib/log-sanitiser";
+import { env } from "@/env";
 
 // ��─ BetterStack (Logtail) log shipping ────────────────────────────────────────
 // Fire-and-forget; never throws. Silently skipped when token is absent.
 function shipToBetterStack(entry: object): void {
-  const token = process.env.LOGTAIL_SOURCE_TOKEN;
+  const token = env.LOGTAIL_SOURCE_TOKEN;
   if (!token) return;
   fetch("https://in.logtail.com", {
     method: "POST",
@@ -76,7 +77,7 @@ function log(level: LogLevel, event: string, context?: LogContext): void {
     ...enrichedContext,
   };
 
-  const isDev = process.env.NODE_ENV !== "production";
+  const isDev = env.NODE_ENV !== "production";
 
   if (!isDev) {
     // Ship every log line to BetterStack (no-op when token absent).

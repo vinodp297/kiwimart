@@ -143,6 +143,82 @@ export const envSchema = z.object({
     .positive()
     .default(4)
     .optional(),
+
+  // ── Redis (BullMQ — TCP native) ─────────────────────────────────────────────
+  // Separate from UPSTASH_REDIS_REST_URL — BullMQ requires a native TCP
+  // connection, not the Upstash REST API. In dev, set to a placeholder value
+  // (e.g. "redis://PLACEHOLDER") and the queue client will fall back to
+  // localhost:6379.
+  REDIS_URL: z.string().min(1, "REDIS_URL is required"),
+
+  // ── Cron job authentication ──────────────────────────────────────────────────
+  // Bearer secret verified by verifyCronSecret(). Fail-closed — returns 503
+  // if unset so cron endpoints are unreachable rather than open.
+  CRON_SECRET: z.string().min(1, "CRON_SECRET is required"),
+
+  // ── Worker process ───────────────────────────────────────────────────────────
+  // PORT is used by the Render.com worker health server (default: 3001).
+  PORT: z.coerce.number().int().positive().default(3001),
+  // Bearer secret for /api/workers/health — falls back to admin session auth.
+  WORKER_SECRET: z.string().optional(),
+
+  // ── Admin notifications ─────────────────────────────────────────────────────
+  // Email address for admin alerts (e.g. ID verification submissions).
+  // When unset, admin notification emails are silently skipped.
+  ADMIN_EMAIL: z.string().optional(),
+
+  // ── Analytics (PostHog) ─────────────────────────────────────────────────────
+  NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
+  NEXT_PUBLIC_POSTHOG_HOST: z
+    .string()
+    .url()
+    .default("https://us.i.posthog.com"),
+
+  // ── Log shipping (BetterStack / Logtail) ─────────────────────────────────────
+  // When absent, log shipping is silently skipped — logger is fully functional.
+  LOGTAIL_SOURCE_TOKEN: z.string().optional(),
+
+  // ── CDN (secondary image delivery fallback) ──────────────────────────────────
+  // Secondary fallback after NEXT_PUBLIC_R2_PUBLIC_URL. Optional.
+  NEXT_PUBLIC_CDN_URL: z.string().optional(),
+
+  // ── App branding ────────────────────────────────────────────────────────────
+  NEXT_PUBLIC_APP_NAME: z.string().default("Buyzi"),
+  NEXT_PUBLIC_SUPPORT_EMAIL: z.string().default("support@buyzi.co.nz"),
+
+  // ── Cloudflare Turnstile (alternative key names) ─────────────────────────────
+  // Both the CLOUDFLARE_TURNSTILE_* and TURNSTILE_* names are accepted for
+  // backwards compatibility — callers try the Cloudflare-prefixed name first,
+  // then fall back to the shorter TURNSTILE_* name that is already in the schema.
+  CLOUDFLARE_TURNSTILE_SECRET_KEY: z.string().optional(),
+  CLOUDFLARE_TURNSTILE_SITE_KEY: z.string().optional(),
+
+  // ── Transactional email defaults ─────────────────────────────────────────────
+  EMAIL_FROM: z.string().default("Buyzi <onboarding@resend.dev>"),
+  NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY: z.string().default("$3,000"),
+  COMPANY_LEGAL_NAME: z.string().default("Buyzi Limited"),
+  COMPANY_ADDRESS: z.string().default("Auckland, New Zealand"),
+  LISTING_POLICY_PATH: z.string().default("/policies/listing-guidelines"),
+
+  // ── Business config (used in email templates) ────────────────────────────────
+  // Coerced from string to number at startup — process.env values are always
+  // strings. Override per-environment without a code change.
+  OFFER_EXPIRY_HOURS: z.coerce.number().int().positive().default(72),
+  OFFER_PURCHASE_WINDOW_HOURS: z.coerce.number().int().positive().default(24),
+  REFUND_PROCESSING_DAYS_MIN: z.coerce.number().int().positive().default(5),
+  REFUND_PROCESSING_DAYS_MAX: z.coerce.number().int().positive().default(10),
+  PAYOUT_PROCESSING_DAYS_MIN: z.coerce.number().int().positive().default(2),
+  PAYOUT_PROCESSING_DAYS_MAX: z.coerce.number().int().positive().default(3),
+  RETURN_SHIPPING_WINDOW_DAYS: z.coerce.number().int().positive().default(7),
+
+  // ── Admin health check SLO thresholds ────────────────────────────────────────
+  HEALTH_PENDING_PAYOUTS_THRESHOLD: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(100),
+  HEALTH_FAILED_JOBS_THRESHOLD: z.coerce.number().int().positive().default(20),
+  HEALTH_OLDEST_PAYOUT_HOURS: z.coerce.number().int().positive().default(48),
 });
 
 export type Env = z.infer<typeof envSchema>;

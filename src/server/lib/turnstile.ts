@@ -15,6 +15,7 @@
 // Non-production always returns true — no real bot challenges in dev/test.
 
 import { logger } from "@/shared/logger";
+import { env } from "@/env";
 
 /**
  * Verify a Cloudflare Turnstile challenge token server-side.
@@ -34,14 +35,13 @@ export async function verifyTurnstile(
   // Turnstile enforcement is opt-in via TURNSTILE_ENFORCED. Replaces the prior
   // NODE_ENV !== "production" check which silently bypassed verification on
   // staging environments using NODE_ENV=staging or =preview.
-  const enforced = process.env.TURNSTILE_ENFORCED === "true";
+  const enforced = env.TURNSTILE_ENFORCED; // boolean — transformed by env.ts schema
   if (!enforced) {
     return true;
   }
 
   const secretKey =
-    process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ??
-    process.env.TURNSTILE_SECRET_KEY;
+    env.CLOUDFLARE_TURNSTILE_SECRET_KEY ?? env.TURNSTILE_SECRET_KEY;
 
   // Fail closed in production when key is missing
   if (!secretKey) {

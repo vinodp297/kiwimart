@@ -5,9 +5,10 @@
 //   const authError = verifyCronSecret(request)
 //   if (authError) return authError
 
-import { NextResponse } from 'next/server'
-import { logger } from '@/shared/logger'
-import { verifyBearerSecret } from './verifyBearerSecret'
+import { NextResponse } from "next/server";
+import { logger } from "@/shared/logger";
+import { verifyBearerSecret } from "./verifyBearerSecret";
+import { env } from "@/env";
 
 /**
  * Verifies the Authorization header matches the CRON_SECRET env var.
@@ -15,29 +16,18 @@ import { verifyBearerSecret } from './verifyBearerSecret'
  * Returns a NextResponse error if unauthorized, or null if authorized.
  */
 export function verifyCronSecret(request: Request): NextResponse | null {
-  const cronSecret = process.env.CRON_SECRET
+  const cronSecret = env.CRON_SECRET;
 
-  if (!cronSecret) {
-    logger.error('cron.auth: CRON_SECRET env var not set — blocking request')
-    return NextResponse.json(
-      { error: 'Service unavailable' },
-      { status: 503 }
-    )
-  }
-
-  const authHeader = request.headers.get('authorization')
-  const isValid = verifyBearerSecret(authHeader, cronSecret, 'cron')
+  const authHeader = request.headers.get("authorization");
+  const isValid = verifyBearerSecret(authHeader, cronSecret, "cron");
 
   if (!isValid) {
-    logger.warn('cron.auth: unauthorized request', {
+    logger.warn("cron.auth: unauthorized request", {
       path: request.url,
-      ip: request.headers.get('x-real-ip') ?? 'unknown',
-    })
-    return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
-    )
+      ip: request.headers.get("x-real-ip") ?? "unknown",
+    });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return null // Authorized — proceed
+  return null; // Authorized — proceed
 }

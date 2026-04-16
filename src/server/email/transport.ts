@@ -8,6 +8,7 @@
 
 import { getEmailClient } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
+import { env } from "@/env";
 
 /**
  * Redacts an email address for safe logging.
@@ -35,10 +36,10 @@ export async function sendTransactionalEmail({
 
   // Always read from env fresh — never rely on a module-level constant
   // that could have been captured before the env var was available.
-  const from = process.env.EMAIL_FROM ?? "Buyzi <onboarding@resend.dev>";
+  const from = env.EMAIL_FROM;
 
   if (!client) {
-    if (process.env.NODE_ENV === "production") {
+    if (env.NODE_ENV === "production") {
       // Hard failure in production — RESEND_API_KEY is not configured.
       throw new Error(
         "Email client not initialised: RESEND_API_KEY is missing or set to a placeholder value",

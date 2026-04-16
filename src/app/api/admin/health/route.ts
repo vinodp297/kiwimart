@@ -19,6 +19,7 @@ import { stripe } from "@/infrastructure/stripe/client";
 import { logger } from "@/shared/logger";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { apiError } from "@/app/api/v1/_helpers/response";
+import { env } from "@/env";
 
 export const dynamic = "force-dynamic";
 
@@ -31,15 +32,9 @@ interface ServiceCheck {
 
 // ── SLO thresholds ───────────────────────────────────────────────────────────
 // Breaching any threshold moves the admin health status from "ok" to "degraded".
-const PENDING_PAYOUTS_WARNING = Number(
-  process.env.HEALTH_PENDING_PAYOUTS_THRESHOLD ?? 100,
-);
-const FAILED_JOBS_WARNING = Number(
-  process.env.HEALTH_FAILED_JOBS_THRESHOLD ?? 20,
-);
-const OLDEST_PAYOUT_WARNING_HOURS = Number(
-  process.env.HEALTH_OLDEST_PAYOUT_HOURS ?? 48,
-);
+const PENDING_PAYOUTS_WARNING = env.HEALTH_PENDING_PAYOUTS_THRESHOLD;
+const FAILED_JOBS_WARNING = env.HEALTH_FAILED_JOBS_THRESHOLD;
+const OLDEST_PAYOUT_WARNING_HOURS = env.HEALTH_OLDEST_PAYOUT_HOURS;
 
 const BUSINESS_METRICS_CACHE_KEY = "health:business:metrics";
 const BUSINESS_METRICS_CACHE_TTL_SECONDS = 60;

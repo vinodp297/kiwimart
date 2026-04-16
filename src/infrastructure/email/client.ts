@@ -8,6 +8,7 @@
 // callers should log to console in dev mode when null is returned.
 
 import { Resend } from "resend";
+import { env } from "@/env";
 
 const PLACEHOLDER_VALUES = new Set([
   "re_placeholder",
@@ -21,7 +22,7 @@ const PLACEHOLDER_VALUES = new Set([
  * In production, callers should treat null as a hard error.
  */
 export function getEmailClient(): Resend | null {
-  const key = process.env.RESEND_API_KEY;
+  const key = env.RESEND_API_KEY;
   if (
     !key ||
     PLACEHOLDER_VALUES.has(key) ||
@@ -32,5 +33,4 @@ export function getEmailClient(): Resend | null {
   return new Resend(key); // always fresh — no stale-singleton risk
 }
 
-export const EMAIL_FROM =
-  process.env.EMAIL_FROM ?? "Buyzi <onboarding@resend.dev>";
+export const EMAIL_FROM = env.EMAIL_FROM;

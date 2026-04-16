@@ -17,11 +17,12 @@ import { startPayoutWorker } from "./payoutWorker";
 import { startPickupWorker } from "./pickupWorker";
 import { startHealthServer } from "./health-server";
 import { emailQueue, imageQueue, payoutQueue, pickupQueue } from "@/lib/queue";
+import { env } from "@/env";
 
 async function startAllWorkers() {
   logger.info("workers.starting", {
     workers: ["email", "image", "payout", "pickup"],
-    environment: process.env.NODE_ENV,
+    environment: env.NODE_ENV,
   });
 
   const emailWorker = startEmailWorker();
@@ -34,7 +35,7 @@ async function startAllWorkers() {
   });
 
   // Start health check server so Render.com can verify the process is alive
-  const port = process.env.PORT ? Number(process.env.PORT) : 3001;
+  const port = env.PORT; // number — coerced and defaulted to 3001 by env.ts
   const workerEntries = [
     emailWorker && { name: "email", worker: emailWorker },
     imageWorker && { name: "image", worker: imageWorker },

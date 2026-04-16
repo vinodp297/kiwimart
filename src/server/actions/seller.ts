@@ -13,6 +13,7 @@ import { rateLimit, getClientIp } from "@/server/lib/rateLimit";
 import { logger } from "@/shared/logger";
 import { enqueueEmail } from "@/lib/email-queue";
 import { createNotification } from "@/modules/notifications/notification.service";
+import { env } from "@/env";
 import { fireAndForget } from "@/lib/fire-and-forget";
 import type { ActionResult } from "@/types";
 import {
@@ -131,7 +132,7 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
   });
 
   // 7. Notify admin by email — queued asynchronously
-  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminEmail = env.ADMIN_EMAIL;
   if (adminEmail) {
     // Email queued — delivered asynchronously (non-blocking)
     await enqueueEmail({
@@ -140,7 +141,7 @@ export async function submitIdVerification(): Promise<ActionResult<void>> {
       userId: user.id,
       userEmail: user.email,
       submittedAt: now.toISOString(),
-      adminUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/admin`,
+      adminUrl: `${env.NEXT_PUBLIC_APP_URL}/admin`,
     }).catch((err: unknown) => {
       logger.error("seller.submitIdVerification.email.failed", {
         error: err instanceof Error ? err.message : String(err),
@@ -229,7 +230,7 @@ export async function approveIdVerification(
     userId: target.id,
     userEmail: target.email,
     submittedAt: new Date().toISOString(),
-    adminUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/seller/onboarding`,
+    adminUrl: `${env.NEXT_PUBLIC_APP_URL}/seller/onboarding`,
   }).catch((err: unknown) => {
     logger.error("seller.approveIdVerification.email.failed", {
       error: err instanceof Error ? err.message : String(err),

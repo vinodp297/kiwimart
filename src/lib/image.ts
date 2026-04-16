@@ -3,6 +3,8 @@
 // Single source of truth for converting R2 keys → public image URLs.
 // All pages / services must use this instead of constructing URLs inline.
 
+import { env } from "@/env";
+
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=480&h=480&fit=crop";
 
@@ -21,10 +23,7 @@ export function getImageUrl(r2Key: string | null | undefined): string {
   // Already a full URL (Unsplash seed images, legacy absolute references)
   if (r2Key.startsWith("http")) return r2Key;
 
-  const base =
-    process.env.NEXT_PUBLIC_R2_PUBLIC_URL ??
-    process.env.NEXT_PUBLIC_CDN_URL ??
-    "";
+  const base = env.NEXT_PUBLIC_R2_PUBLIC_URL ?? env.NEXT_PUBLIC_CDN_URL ?? "";
 
   // The R2 S3 API endpoint (*.r2.cloudflarestorage.com) requires AWS4 auth
   // headers and is NOT publicly accessible. If set as the "public" URL,

@@ -6,33 +6,24 @@
 import { sendTransactionalEmail } from "./transport";
 import { formatCentsAsNzd } from "@/lib/currency";
 import { logger } from "@/shared/logger";
+import { env } from "@/env";
 
 // ── Email configuration from environment ─────────────────────────────────────
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
-const COMPANY_LEGAL_NAME_CFG =
-  process.env.COMPANY_LEGAL_NAME ?? "Buyzi Limited";
-const COMPANY_ADDRESS_CFG =
-  process.env.COMPANY_ADDRESS ?? "Auckland, New Zealand";
-const _SUPPORT_EMAIL_CFG =
-  process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz";
-const BUYER_PROTECTION_DISPLAY =
-  process.env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY ?? "$3,000";
-const OFFER_EXPIRY_HOURS_CFG = process.env.OFFER_EXPIRY_HOURS ?? "72";
-const OFFER_PURCHASE_WINDOW_CFG =
-  process.env.OFFER_PURCHASE_WINDOW_HOURS ?? "24";
-const REFUND_DAYS_MIN = process.env.REFUND_PROCESSING_DAYS_MIN ?? "5";
-const REFUND_DAYS_MAX = process.env.REFUND_PROCESSING_DAYS_MAX ?? "10";
-const PAYOUT_DAYS_MIN = process.env.PAYOUT_PROCESSING_DAYS_MIN ?? "2";
-const PAYOUT_DAYS_MAX = process.env.PAYOUT_PROCESSING_DAYS_MAX ?? "3";
-const RETURN_SHIP_DAYS = process.env.RETURN_SHIPPING_WINDOW_DAYS ?? "7";
-const LISTING_POLICY_PATH_CFG =
-  process.env.LISTING_POLICY_PATH ?? "/policies/listing-guidelines";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
-if (!process.env.NEXT_PUBLIC_APP_URL) {
-  logger.error("email.config.app_url_missing", {
-    error: "NEXT_PUBLIC_APP_URL is not set — email links will be broken",
-  });
-}
+// All vars validated and defaulted by env.ts — no ?? fallbacks needed here.
+const APP_NAME = env.NEXT_PUBLIC_APP_NAME;
+const COMPANY_LEGAL_NAME_CFG = env.COMPANY_LEGAL_NAME;
+const COMPANY_ADDRESS_CFG = env.COMPANY_ADDRESS;
+const BUYER_PROTECTION_DISPLAY = env.NEXT_PUBLIC_BUYER_PROTECTION_DISPLAY;
+const OFFER_EXPIRY_HOURS_CFG = env.OFFER_EXPIRY_HOURS;
+const OFFER_PURCHASE_WINDOW_CFG = env.OFFER_PURCHASE_WINDOW_HOURS;
+const REFUND_DAYS_MIN = env.REFUND_PROCESSING_DAYS_MIN;
+const REFUND_DAYS_MAX = env.REFUND_PROCESSING_DAYS_MAX;
+const PAYOUT_DAYS_MIN = env.PAYOUT_PROCESSING_DAYS_MIN;
+const PAYOUT_DAYS_MAX = env.PAYOUT_PROCESSING_DAYS_MAX;
+const RETURN_SHIP_DAYS = env.RETURN_SHIPPING_WINDOW_DAYS;
+const LISTING_POLICY_PATH_CFG = env.LISTING_POLICY_PATH;
+// NEXT_PUBLIC_APP_URL is validated as a required URL by env.ts — never empty.
+const APP_URL = env.NEXT_PUBLIC_APP_URL;
 
 // ── Helper: HTML-escape ───────────────────────────────────────────────────────
 
@@ -976,7 +967,7 @@ export async function sendAdminIdVerificationEmail(params: {
   submittedAt: string;
   adminUrl: string;
 }): Promise<void> {
-  const appName = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
+  const appName = env.NEXT_PUBLIC_APP_NAME;
   const html = baseTemplate(
     `<h1>New ID Verification Request</h1>
     <p>A seller has submitted their ID for verification.</p>

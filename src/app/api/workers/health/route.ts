@@ -13,6 +13,7 @@ import { getQueueConnection } from "@/infrastructure/queue/client";
 import { verifyBearerSecret } from "@/server/lib/verifyBearerSecret";
 import { requirePermission } from "@/shared/auth/requirePermission";
 import { logger } from "@/shared/logger";
+import { env } from "@/env";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   const hasWorkerSecret = verifyBearerSecret(
     authHeader,
-    process.env.WORKER_SECRET,
+    env.WORKER_SECRET,
     "workers/health",
   );
 

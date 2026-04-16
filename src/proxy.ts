@@ -19,6 +19,7 @@ import { auth } from "@/lib/auth";
 import { logger } from "@/shared/logger";
 import { getSessionVersion } from "@/server/lib/sessionStore";
 import { runWithRequestContext } from "@/lib/request-context";
+import { env } from "@/env";
 
 /** Generate a cryptographically random nonce for CSP per-request. */
 const generateNonce = () => crypto.randomBytes(16).toString("base64");
@@ -125,7 +126,7 @@ export const proxy = auth(async function proxyHandler(
       // as a fallback for older browsers that don't understand 'strict-dynamic'.
       // Turnstile, Stripe, and PostHog are listed explicitly so they work in both
       // nonce-aware and legacy browsers.
-      `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
+      `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://js.stripe.com https://us-assets.i.posthog.com https://app.posthog.com${env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
       `style-src 'self' 'nonce-${nonce}'`,
       "img-src 'self' data: blob: https://images.unsplash.com https://*.cloudflare.com https://*.cloudflarestorage.com https://*.r2.dev https://r2.buyzi.co.nz https://*.stripe.com",
       "font-src 'self'",
@@ -153,7 +154,7 @@ export const proxy = auth(async function proxyHandler(
       "camera=(), microphone=(), geolocation=(), payment=(self)",
     );
 
-    if (process.env.NODE_ENV === "production") {
+    if (env.NODE_ENV === "production") {
       response.headers.set(
         "Strict-Transport-Security",
         "max-age=31536000; includeSubDomains; preload",
@@ -235,7 +236,7 @@ export const proxy = auth(async function proxyHandler(
         // set in Vercel, silently disabling this bfcache defence for all users.
         const jwtToken = await getToken({
           req: request,
-          secret: process.env.NEXTAUTH_SECRET,
+          secret: env.NEXTAUTH_SECRET,
         });
         if (jwtToken && typeof jwtToken.sessionVersion === "number") {
           const currentVersion = await getSessionVersion(

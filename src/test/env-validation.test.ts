@@ -37,6 +37,8 @@ const VALID_ENV = {
   // 64-char hex — satisfies min(32) + /^[0-9a-fA-F]+$/ requirements
   MOBILE_JWT_SECRET:
     "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  REDIS_URL: "redis://localhost:6379",
+  CRON_SECRET: "test-cron-secret-value",
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

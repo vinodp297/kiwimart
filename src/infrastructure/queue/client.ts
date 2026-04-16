@@ -5,6 +5,7 @@
 
 import IORedis from "ioredis";
 import { logger } from "@/shared/logger";
+import { env } from "@/env";
 
 let _connection: IORedis | null = null;
 
@@ -31,14 +32,10 @@ export function queueRetryStrategy(times: number): number {
 export function getQueueConnection(): IORedis {
   if (_connection) return _connection;
 
-  const redisUrl = process.env.REDIS_URL;
+  const redisUrl = env.REDIS_URL;
 
-  if (
-    !redisUrl ||
-    redisUrl.includes("PLACEHOLDER") ||
-    redisUrl.includes("placeholder")
-  ) {
-    if (process.env.NODE_ENV === "production") {
+  if (redisUrl.includes("PLACEHOLDER") || redisUrl.includes("placeholder")) {
+    if (env.NODE_ENV === "production") {
       throw new Error(
         "REDIS_URL is required in production. " +
           "Configure a real Upstash Redis URL.",
@@ -65,7 +62,7 @@ export function getQueueConnection(): IORedis {
   _connection.on("error", (err) => {
     logger.error("queue:connection-error", {
       error: err.message,
-      stack: process.env.NODE_ENV !== "production" ? err.stack : undefined,
+      stack: env.NODE_ENV !== "production" ? err.stack : undefined,
     });
   });
 
