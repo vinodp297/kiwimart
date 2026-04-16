@@ -37,7 +37,7 @@
     "@aws-sdk/client-s3": "^3.1014.0",
     "@aws-sdk/s3-request-presigner": "^3.1014.0",
     "@prisma/adapter-pg": "^7.5.0",
-    "@prisma/client": "7.5.0",
+    "@prisma/client": "^7.6.0",
     "@sentry/nextjs": "^10.45.0",
     "@stripe/react-stripe-js": "^5.6.1",
     "@stripe/stripe-js": "^8.11.0",

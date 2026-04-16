@@ -194,6 +194,20 @@ const pushTokenLimiter = () =>
   });
 
 /**
+ * 20 Pusher auth requests per minute per user.
+ * Keyed by user ID — not IP — so connections from different tabs/devices share
+ * the same budget. High enough for normal reconnect behaviour; low enough to
+ * prevent channel-enumeration or connection-exhaustion attacks.
+ */
+const pusherAuthLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(20, "1 m"),
+    prefix: "km:rl:pusher-auth",
+    analytics: true,
+  });
+
+/**
  * 5 account deletion attempts per hour per user.
  * Keyed by user ID — not IP — so multiple requests from the same user across
  * different IPs are counted together. Stricter than most endpoints because
@@ -296,6 +310,7 @@ export type RateLimitKey =
   | "accountUpdate"
   | "accountDelete"
   | "pushToken"
+  | "pusherAuth"
   // Public read — IP-based, fail-open when Redis is unavailable
   | "publicRead"
   | "publicSearch"
@@ -365,6 +380,7 @@ export async function rateLimit(
     accountUpdate: accountUpdateLimiter,
     accountDelete: accountDeleteLimiter,
     pushToken: pushTokenLimiter,
+    pusherAuth: pusherAuthLimiter,
     publicRead: publicReadLimiter,
     publicSearch: publicSearchLimiter,
     adminIdVerify: adminIdVerifyLimiter,

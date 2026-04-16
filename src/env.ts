@@ -97,7 +97,8 @@ export const envSchema = z.object({
   // ── Twilio (optional — SMS notifications) ───────────────────────────────────
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_PHONE_NUMBER: z.string().optional(),
+  // Named TWILIO_FROM_NUMBER to match the Vercel env var set during initial provisioning.
+  TWILIO_FROM_NUMBER: z.string().optional(),
 
   // ── Sentry (optional — error reporting) ─────────────────────────────────────
   SENTRY_DSN: z.string().optional(),
