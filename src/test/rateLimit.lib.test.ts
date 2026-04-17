@@ -209,32 +209,35 @@ describe("getClientIp", () => {
     expect(getClientIp(headers)).toBe("192.0.2.9");
   });
 
-  it("returns unique unknown-{uuid} when no IP header present", () => {
+  it("returns stable anon-{hex16} fingerprint when no IP header present but user-agent set", () => {
     const headers = new Headers({ "user-agent": "TestAgent/1.0" });
 
     const ip = getClientIp(headers);
 
-    expect(ip).toMatch(/^unknown-[0-9a-f-]{36}$/);
+    // Stable fingerprint — not a random UUID
+    expect(ip).toMatch(/^anon-[0-9a-f]{16}$/);
   });
 
-  it("each IP-less request returns a distinct fallback id (no shared bucket)", () => {
-    const headers = new Headers();
+  it("same headers always return the same fingerprint (deterministic, not random)", () => {
+    const make = () => new Headers({ "user-agent": "TestAgent/1.0" });
 
-    const a = getClientIp(headers);
-    const b = getClientIp(headers);
+    const a = getClientIp(make());
+    const b = getClientIp(make());
 
-    expect(a).not.toBe(b);
+    // Deterministic — same metadata must produce the same bucket
+    expect(a).toBe(b);
+    expect(a).toMatch(/^anon-[0-9a-f]{16}$/);
   });
 
-  it("ignores x-forwarded-for (spoofable) and falls through to fallback", () => {
+  it("ignores x-forwarded-for (spoofable) and falls through to anon- fallback", () => {
     const headers = new Headers({
       "x-forwarded-for": "evil-spoofed-ip",
     });
 
     const ip = getClientIp(headers);
 
-    // Must NOT return the spoofed value
+    // Must NOT return the spoofed value; falls back to anon- fingerprint
     expect(ip).not.toBe("evil-spoofed-ip");
-    expect(ip).toMatch(/^unknown-/);
+    expect(ip).toMatch(/^anon-/);
   });
 });

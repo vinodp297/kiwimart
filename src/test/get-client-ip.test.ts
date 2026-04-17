@@ -1,10 +1,12 @@
 // src/test/get-client-ip.test.ts
-// ─── Tests: FIX 5 — getClientIp unknown-{uuid} fallback ──────────────────────
+// ─── Tests: getClientIp — stable fingerprint fallback ────────────────────────
 //
 //   1. Valid IP returned as-is
-//   2. No IP header → returns unknown-{uuid} format
-//   3. Two requests with no IP get different bucket IDs
-//   4. logger.warn called with user-agent when IP is unknown
+//   2. Missing IP headers, user-agent present → stable anon-{hex16} fingerprint
+//   3. Same headers always return the same fingerprint (deterministic)
+//   4. Different browser metadata → different fingerprints
+//   5. Missing ALL headers → 'anon-unknown' (fail-closed shared bucket)
+//   6. logger.warn emitted with 'rate.limit.ip.missing' key + fallback field
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./setup";
@@ -19,7 +21,7 @@ vi.mock("@/server/lib/rateLimit", async (importOriginal) => {
 import { getClientIp } from "@/server/lib/rateLimit";
 import { logger } from "@/shared/logger";
 
-describe("FIX 5 — getClientIp unknown-uuid fallback", () => {
+describe("getClientIp — stable fingerprint fallback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -31,38 +33,69 @@ describe("FIX 5 — getClientIp unknown-uuid fallback", () => {
     expect(getClientIp(headers)).toBe("203.0.113.42");
   });
 
-  // ── 2. No IP → unknown-{uuid} format ──────────────────────────────────────
+  // ── 2. Missing IP, user-agent present → stable anon- fingerprint ──────────
 
-  it("returns unknown-{uuid} when no IP headers are present", () => {
-    const headers = new Headers();
+  it("returns a stable anon-{hex16} fingerprint when no IP header is present but user-agent is set", () => {
+    const headers = new Headers({
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0)",
+      "accept-language": "en-NZ,en;q=0.9",
+    });
     const result = getClientIp(headers);
-    expect(result).toMatch(
-      /^unknown-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    );
+    expect(result).toMatch(/^anon-[0-9a-f]{16}$/);
   });
 
-  // ── 3. Two no-IP requests get different bucket IDs ─────────────────────────
+  // ── 3. Same headers → same fingerprint (deterministic) ────────────────────
 
-  it("generates a unique bucket ID for each request with no IP (no shared bucket)", () => {
-    const id1 = getClientIp(new Headers());
-    const id2 = getClientIp(new Headers());
-    expect(id1).not.toBe(id2);
-    expect(id1.startsWith("unknown-")).toBe(true);
-    expect(id2.startsWith("unknown-")).toBe(true);
+  it("returns the same fingerprint for identical headers on every call", () => {
+    const make = () =>
+      new Headers({
+        "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)",
+        "accept-language": "en-NZ",
+      });
+    const first = getClientIp(make());
+    const second = getClientIp(make());
+    expect(first).toBe(second);
+    expect(first).toMatch(/^anon-[0-9a-f]{16}$/);
   });
 
-  // ── 4. logger.warn called with user-agent ─────────────────────────────────
+  // ── 4. Different metadata → different fingerprints ─────────────────────────
 
-  it("logs warn with user-agent when IP cannot be determined", () => {
+  it("returns different fingerprints for different user-agent strings", () => {
+    const iphone = new Headers({
+      "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)",
+    });
+    const android = new Headers({
+      "user-agent": "Mozilla/5.0 (Linux; Android 14)",
+    });
+    expect(getClientIp(iphone)).not.toBe(getClientIp(android));
+  });
+
+  // ── 5. No headers at all → 'anon-unknown' (fail-closed) ───────────────────
+
+  it("returns 'anon-unknown' when no headers are present at all", () => {
+    expect(getClientIp(new Headers())).toBe("anon-unknown");
+  });
+
+  // ── 6a. logger.warn emitted with fingerprint fallback ─────────────────────
+
+  it("logs rate.limit.ip.missing with fallback:fingerprint when user-agent is set", () => {
     const headers = new Headers({
       "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)",
     });
     getClientIp(headers);
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
-      "rate_limit.ip_unknown",
-      expect.objectContaining({
-        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)",
-      }),
+      "rate.limit.ip.missing",
+      expect.objectContaining({ fallback: "fingerprint" }),
+    );
+  });
+
+  // ── 6b. logger.warn emitted with anon-unknown fallback ────────────────────
+
+  it("logs rate.limit.ip.missing with fallback:anon-unknown when no headers are present", () => {
+    getClientIp(new Headers());
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      "rate.limit.ip.missing",
+      expect.objectContaining({ fallback: "anon-unknown" }),
     );
   });
 });

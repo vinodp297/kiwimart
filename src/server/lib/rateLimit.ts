@@ -9,6 +9,8 @@
 // Limits are keyed by IP address extracted from Next.js request headers.
 // In Sprint 4 — authenticated endpoints will additionally key by userId.
 
+import { createHash } from "crypto";
+
 import { Ratelimit } from "@upstash/ratelimit";
 import { getRedisClient } from "@/infrastructure/redis/client";
 import { logger } from "@/shared/logger";
@@ -436,10 +438,19 @@ export async function rateLimit(
  * clients can inject arbitrary values. On Vercel and Cloudflare, the
  * platform-specific headers are always set and trustworthy.
  *
- * SECURITY: When no IP can be determined, we return a unique random identifier
- * (unknown-{uuid}) instead of the string "unknown". Using a shared "unknown"
- * bucket would allow any client without an IP header to exhaust the rate limit
- * for ALL other clients in the same situation.
+ * FALLBACK BEHAVIOUR (proxy misconfiguration / header loss):
+ *   When no trusted IP header is present we build a stable fingerprint from
+ *   available browser metadata (user-agent + accept-language) rather than
+ *   issuing a random UUID per request. A random UUID created a fresh isolated
+ *   bucket on every call — effectively disabling rate limiting for any client
+ *   whose IP headers were lost in transit (brute-force bypass).
+ *
+ *   Fingerprint is 'anon-' + first 16 hex chars of SHA-256(ua + lang).
+ *   When no metadata is available at all, 'anon-unknown' is returned as a
+ *   single shared bucket — fail-closed (rate limits apply) not fail-open.
+ *
+ *   A logger.warn is emitted whenever the fallback path is taken so ops can
+ *   detect proxy misconfiguration early.
  */
 export function getClientIp(headers: Headers): string {
   const ip =
@@ -449,13 +460,24 @@ export function getClientIp(headers: Headers): string {
 
   if (ip) return ip;
 
-  // No IP header present — return a unique ID so this request is rate-limited
-  // in its own isolated bucket rather than sharing the "unknown" bucket with
-  // every other IP-less request.
-  const fallbackId = `unknown-${crypto.randomUUID()}`;
-  logger.warn("rate_limit.ip_unknown", {
-    userAgent: headers.get("user-agent") ?? undefined,
-    fallbackId,
-  });
-  return fallbackId;
+  // No trusted IP header — build a stable fingerprint from browser metadata.
+  const userAgent = headers.get("user-agent") ?? "";
+  const acceptLanguage = headers.get("accept-language") ?? "";
+
+  if (!userAgent && !acceptLanguage) {
+    // Truly empty request — no metadata to fingerprint.
+    // Use a single shared bucket so rate limits still apply (fail-closed).
+    logger.warn("rate.limit.ip.missing", { fallback: "anon-unknown" });
+    return "anon-unknown";
+  }
+
+  // Hash available client metadata to produce a stable, opaque fingerprint.
+  // 'anon-' prefix distinguishes these from real IPs in logs and Redis keys.
+  const fingerprint = createHash("sha256")
+    .update(userAgent + acceptLanguage)
+    .digest("hex")
+    .slice(0, 16);
+
+  logger.warn("rate.limit.ip.missing", { fallback: "fingerprint" });
+  return `anon-${fingerprint}`;
 }
