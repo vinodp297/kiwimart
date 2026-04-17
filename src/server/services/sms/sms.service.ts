@@ -13,6 +13,7 @@ import "server-only";
 //   const { sendSms, formatNzPhoneE164 } = await import("@/server/services/sms/sms.service")
 //   await sendSms({ to: formatNzPhoneE164(phone), body: "Your code is 123456" })
 
+import { env } from "@/env";
 import { logger } from "@/shared/logger";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -73,9 +74,9 @@ export function isValidNzPhone(phone: string): boolean {
 export async function sendSms(params: SmsParams): Promise<void> {
   const { to, body } = params;
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_FROM_NUMBER;
+  const accountSid = env.TWILIO_ACCOUNT_SID;
+  const authToken = env.TWILIO_AUTH_TOKEN;
+  const fromNumber = env.TWILIO_FROM_NUMBER;
 
   const isConfigured =
     accountSid &&

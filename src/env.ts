@@ -94,11 +94,19 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().min(1, "GOOGLE_CLIENT_ID is required"),
   GOOGLE_CLIENT_SECRET: z.string().min(1, "GOOGLE_CLIENT_SECRET is required"),
 
-  // ── Twilio (optional — SMS notifications) ───────────────────────────────────
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_AUTH_TOKEN: z.string().optional(),
+  // ── Twilio (OTP and pickup confirmation SMS) ─────────────────────────────────
+  // All three must be set — the app fails loudly at startup when any are absent.
+  // Obtain credentials from console.twilio.com; test credentials start with AC.
+  TWILIO_ACCOUNT_SID: z.string().min(1, "TWILIO_ACCOUNT_SID is required"),
+  TWILIO_AUTH_TOKEN: z.string().min(1, "TWILIO_AUTH_TOKEN is required"),
+  // Must be the sending number in E.164 format, e.g. +64211234567.
   // Named TWILIO_FROM_NUMBER to match the Vercel env var set during initial provisioning.
-  TWILIO_FROM_NUMBER: z.string().optional(),
+  TWILIO_FROM_NUMBER: z
+    .string()
+    .regex(
+      /^\+[1-9]\d{1,14}$/,
+      "TWILIO_FROM_NUMBER must be in E.164 format (e.g. +64211234567)",
+    ),
 
   // ── Sentry (optional — error reporting) ─────────────────────────────────────
   SENTRY_DSN: z.string().optional(),

@@ -39,6 +39,10 @@ const VALID_ENV = {
     "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
   REDIS_URL: "redis://localhost:6379",
   CRON_SECRET: "test-cron-secret-value",
+  // Twilio — required in production; E.164 format enforced on FROM number
+  TWILIO_ACCOUNT_SID: "ACtest1234567890abcdef1234567890ab",
+  TWILIO_AUTH_TOKEN: "authtoken1234567890abcdef12345678",
+  TWILIO_FROM_NUMBER: "+64211234567",
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
