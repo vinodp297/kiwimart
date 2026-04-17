@@ -202,12 +202,11 @@ export const sellerRepository = {
   ): Promise<{ status: string; _count: { id: number } }[]> {
     // Prisma groupBy has overly-complex generic constraints that can't be satisfied
     // by a plain object literal in strict mode — cast via unknown to the known shape.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (db.order as any).groupBy({
+    return db.order.groupBy({
       by: ["status"],
       where: { sellerId },
       _count: { id: true },
-    }) as Promise<{ status: string; _count: { id: number } }[]>;
+    }) as unknown as Promise<{ status: string; _count: { id: number } }[]>;
   },
 
   /** Aggregate approved buyer reviews for a seller (average rating + count). */

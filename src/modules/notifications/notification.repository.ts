@@ -176,8 +176,7 @@ export const notificationRepository = {
     deviceId?: string,
   ): Promise<PushTokenRow> {
     const tokenHash = hashPushToken(token);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (db.pushToken as any).upsert({
+    return db.pushToken.upsert({
       where: { tokenHash },
       update: {
         userId,
@@ -206,8 +205,7 @@ export const notificationRepository = {
    */
   async deactivatePushToken(token: string): Promise<void> {
     const tokenHash = hashPushToken(token);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db.pushToken as any).updateMany({
+    await db.pushToken.updateMany({
       where: { tokenHash },
       data: { isActive: false },
     });
