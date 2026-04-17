@@ -2,10 +2,11 @@
 // ─── BullMQ Job Queues ───────────────────────────────────────────────────────
 // Connects to Upstash Redis via ioredis for background job processing.
 // Queues:
-//   • emailQueue     — non-blocking email sending (retry 3×, exponential backoff)
-//   • imageQueue     — scan + resize pipeline (download → scan → resize → re-upload)
-//   • payoutQueue    — payout processing (3 business days after delivery)
-//   • notificationQueue — push notifications (Sprint 5)
+//   • emailQueue        — non-blocking email sending (5 retries, jitter backoff)
+//   • imageQueue        — scan + resize pipeline (3 retries, jitter backoff)
+//   • payoutQueue       — payout processing (5 retries, long delays + jitter)
+//   • notificationQueue — push notifications (3 retries, fast + jitter)
+//   • pickupQueue       — OTP pickup confirmation (3 retries, jitter backoff)
 //
 // All jobs are idempotent — safe to run twice without side effects.
 
@@ -14,18 +15,157 @@ import { getQueueConnection } from "@/infrastructure/queue/client";
 
 export { getQueueConnection };
 
-// ── Lazy queue factory ───────────────────────────────────────────────────────
-// Queue instances are created on first method access, not at module evaluation
-// time. This prevents `getQueueConnection()` (which throws when REDIS_URL is
-// absent) from running during Next.js build-time static page generation.
-//
-// The Proxy forwards every property access to the real Queue instance, which is
-// created exactly once per export. The exported API (`emailQueue.add(...)` etc.)
-// is identical to a plain Queue — callers need no changes.
+// ── Jitter backoff factory ───────────────────────────────────────────────────
 
-// ── Default job options ──────────────────────────────────────────────────────
+/**
+ * Creates a BullMQ custom backoff strategy function that applies exponential
+ * delay with random jitter to prevent retry storms during partial provider
+ * outages (e.g. Resend, Stripe, or R2 experiencing elevated error rates).
+ *
+ * Formula: baseDelayMs × 2^attemptsMade + random(0, jitterMs)
+ *
+ * Pass the returned function to the Worker that processes this queue:
+ *   new Worker(name, processor, {
+ *     settings: { backoffStrategy: config.backoffStrategy }
+ *   })
+ *
+ * The queue's defaultJobOptions must set backoff.type = 'custom' for BullMQ
+ * to invoke this function instead of its built-in exponential algorithm.
+ *
+ * @param baseDelayMs — initial delay in milliseconds (doubled on each retry)
+ * @param jitterMs    — upper bound of the random jitter added per retry
+ */
+function makeBackoffStrategy(
+  baseDelayMs: number,
+  jitterMs: number,
+): (attemptsMade: number) => number {
+  return (attemptsMade: number): number =>
+    baseDelayMs * Math.pow(2, attemptsMade) + Math.random() * jitterMs;
+}
+
+// ── Queue config type ────────────────────────────────────────────────────────
+
+/**
+ * Per-queue configuration: BullMQ defaultJobOptions combined with the
+ * corresponding custom backoff strategy for the Worker.
+ *
+ * Exported so worker files and tests can reference queue-specific settings
+ * without reaching into the queue module internals.
+ */
+export interface QueueConfig {
+  /** Passed directly to Queue({ defaultJobOptions }). */
+  jobOptions: {
+    attempts: number;
+    backoff: { type: string; delay?: number };
+    removeOnComplete: { count: number };
+    removeOnFail: boolean;
+  };
+  /**
+   * Custom backoff strategy for Worker settings.
+   *
+   * @example
+   *   new Worker(name, processor, {
+   *     settings: { backoffStrategy: config.backoffStrategy }
+   *   })
+   *
+   * Returns the delay in milliseconds before the next retry attempt.
+   * @param attemptsMade — number of prior attempts (zero-indexed)
+   */
+  backoffStrategy: (attemptsMade: number) => number;
+}
+
+// ── Per-queue configs ────────────────────────────────────────────────────────
+
+/**
+ * Email queue — non-critical timing; Resend may be slow under load.
+ * 5 retries allow several hours of provider downtime before permanent failure.
+ * Jitter spread: 0–1,000 ms per retry.
+ */
+export const EMAIL_QUEUE_CONFIG: QueueConfig = {
+  jobOptions: {
+    attempts: 5,
+    backoff: { type: "custom" },
+    removeOnComplete: { count: 100 },
+    removeOnFail: false,
+  },
+  backoffStrategy: makeBackoffStrategy(2000, 1000),
+};
+
+/**
+ * Image queue — idempotent R2 uploads; safe to retry without side effects.
+ * Longer base delay accounts for R2 propagation latency after a partial write.
+ * Jitter spread: 0–1,500 ms per retry.
+ */
+export const IMAGE_QUEUE_CONFIG: QueueConfig = {
+  jobOptions: {
+    attempts: 3,
+    backoff: { type: "custom" },
+    removeOnComplete: { count: 50 },
+    removeOnFail: false,
+  },
+  backoffStrategy: makeBackoffStrategy(3000, 1500),
+};
+
+/**
+ * Payout queue — financial and critical. Long base delay reduces the risk of
+ * double-payout during transient Stripe errors; 5 retries cover multi-hour
+ * Stripe Connect incidents. High removeOnComplete count supports audit trails.
+ * Jitter spread: 0–2,000 ms per retry.
+ */
+export const PAYOUT_QUEUE_CONFIG: QueueConfig = {
+  jobOptions: {
+    attempts: 5,
+    backoff: { type: "custom" },
+    removeOnComplete: { count: 500 },
+    removeOnFail: false,
+  },
+  backoffStrategy: makeBackoffStrategy(10000, 2000),
+};
+
+/**
+ * Notification queue — best-effort delivery; fast turnaround matters more than
+ * exhaustive retrying. Short base delay keeps push notifications timely.
+ * Jitter spread: 0–500 ms per retry.
+ */
+export const NOTIFICATION_QUEUE_CONFIG: QueueConfig = {
+  jobOptions: {
+    attempts: 3,
+    backoff: { type: "custom" },
+    removeOnComplete: { count: 200 },
+    removeOnFail: false,
+  },
+  backoffStrategy: makeBackoffStrategy(1000, 500),
+};
+
+/**
+ * Pickup queue — time-sensitive OTP confirmation flows.
+ * Short delays keep the in-person handover experience responsive; 3 attempts
+ * is sufficient for transient Redis blips without stalling the buyer handover.
+ * Jitter spread: 0–500 ms per retry.
+ */
+export const PICKUP_QUEUE_CONFIG: QueueConfig = {
+  jobOptions: {
+    attempts: 3,
+    backoff: { type: "custom" },
+    removeOnComplete: { count: 100 },
+    removeOnFail: false,
+  },
+  backoffStrategy: makeBackoffStrategy(2000, 500),
+};
+
+// ── Deprecated default job options ───────────────────────────────────────────
 // removeOnFail: false keeps ALL failed jobs in the "failed" set, forming a
 // dead-letter queue. Operators can inspect and retry them via the admin API.
+
+/**
+ * @deprecated Use the per-queue config constants instead:
+ *   EMAIL_QUEUE_CONFIG, IMAGE_QUEUE_CONFIG, PAYOUT_QUEUE_CONFIG,
+ *   NOTIFICATION_QUEUE_CONFIG, PICKUP_QUEUE_CONFIG.
+ *
+ * Retained for backward compatibility — callers that reference
+ * DEFAULT_JOB_OPTIONS directly (e.g. dlq tests) will continue to compile and
+ * run without changes. New queues must use per-queue configs.
+ */
 const DEFAULT_JOB_OPTIONS = {
   attempts: 3,
   backoff: { type: "exponential" as const, delay: 5000 },
@@ -33,7 +173,20 @@ const DEFAULT_JOB_OPTIONS = {
   removeOnFail: false,
 };
 
-function lazyQueue(name: string): Queue {
+// ── Lazy queue factory ───────────────────────────────────────────────────────
+// Queue instances are created on first method access, not at module evaluation
+// time. This prevents getQueueConnection() (which throws when REDIS_URL is
+// absent) from running during Next.js build-time static page generation.
+//
+// The Proxy forwards every property access to the real Queue instance, which is
+// created exactly once per export. The exported API (emailQueue.add(...) etc.)
+// is identical to a plain Queue — callers need no changes.
+//
+// When a per-queue config is provided, its jobOptions are used as
+// defaultJobOptions. Otherwise the deprecated DEFAULT_JOB_OPTIONS apply as a
+// safe fallback for any callers that do not yet supply a config.
+
+function lazyQueue(name: string, config?: QueueConfig): Queue {
   let instance: Queue | null = null;
   const getInstance = (): Queue => {
     if (!instance) {
@@ -43,7 +196,7 @@ function lazyQueue(name: string): Queue {
         // cast bridges the type mismatch.
         connection:
           getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
-        defaultJobOptions: DEFAULT_JOB_OPTIONS,
+        defaultJobOptions: config?.jobOptions ?? DEFAULT_JOB_OPTIONS,
       });
     }
     return instance;
@@ -61,11 +214,14 @@ function lazyQueue(name: string): Queue {
 
 // ── Queue instances ──────────────────────────────────────────────────────────
 
-export const emailQueue = lazyQueue("email");
-export const imageQueue = lazyQueue("image");
-export const payoutQueue = lazyQueue("payout");
-export const notificationQueue = lazyQueue("notification");
-export const pickupQueue = lazyQueue("pickup");
+export const emailQueue = lazyQueue("email", EMAIL_QUEUE_CONFIG);
+export const imageQueue = lazyQueue("image", IMAGE_QUEUE_CONFIG);
+export const payoutQueue = lazyQueue("payout", PAYOUT_QUEUE_CONFIG);
+export const notificationQueue = lazyQueue(
+  "notification",
+  NOTIFICATION_QUEUE_CONFIG,
+);
+export const pickupQueue = lazyQueue("pickup", PICKUP_QUEUE_CONFIG);
 
 // ── Queue name map ───────────────────────────────────────────────────────────
 // Used by admin endpoints to look up a queue by its short name.
