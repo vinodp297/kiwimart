@@ -22,8 +22,8 @@ const LINKS = {
   Legal: [
     { label: "Terms of service", href: "/terms" },
     { label: "Privacy policy", href: "/privacy" },
+    { label: "Seller agreement", href: "/seller-agreement" },
     { label: "Fees", href: "/fees" },
-    { label: "NZ Consumer law", href: "/consumer-law" },
   ],
 };
 
