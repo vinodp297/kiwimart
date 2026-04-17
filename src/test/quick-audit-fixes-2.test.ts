@@ -343,6 +343,7 @@ describe("account erasure — messages anonymised not deleted", () => {
     vi.mocked(db.message.deleteMany).mockResolvedValue({ count: 0 });
     vi.mocked(db.watchlistItem.deleteMany).mockResolvedValue({ count: 0 });
     vi.mocked(db.review.updateMany).mockResolvedValue({ count: 0 });
+    vi.mocked(db.order.findMany).mockResolvedValue([] as never);
     vi.mocked(db.order.updateMany).mockResolvedValue({ count: 0 });
     vi.mocked(db.offer.updateMany).mockResolvedValue({ count: 0 });
     vi.mocked(db.erasureLog.create).mockResolvedValue({
@@ -372,6 +373,65 @@ describe("account erasure — messages anonymised not deleted", () => {
         data: expect.objectContaining({ senderId: null }),
       }),
     );
+  });
+
+  it("cancels AWAITING_PAYMENT orders via per-order transitionOrder (one call per order, emits OrderEvent via state machine)", async () => {
+    // Return two pending orders so we can assert the loop fires transitionOrder
+    // per row rather than a single bulk status write.
+    vi.mocked(db.order.findMany).mockResolvedValue([
+      { id: "ord-pending-1" },
+      { id: "ord-pending-2" },
+    ] as never);
+
+    const { transitionOrder } =
+      await import("@/modules/orders/order.transitions");
+
+    await performAccountErasure({
+      userId: "user-001",
+      operatorId: "self-service",
+    });
+
+    // Must scope the lookup to the user's AWAITING_PAYMENT orders only
+    expect(db.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "AWAITING_PAYMENT",
+          OR: expect.arrayContaining([
+            { buyerId: "user-001" },
+            { sellerId: "user-001" },
+          ]),
+        }),
+        select: { id: true },
+      }),
+    );
+
+    // One transitionOrder call per order — proving per-order OrderEvents are emitted
+    expect(vi.mocked(transitionOrder)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(transitionOrder)).toHaveBeenCalledWith(
+      "ord-pending-1",
+      "CANCELLED",
+      expect.objectContaining({
+        cancelledBy: "SYSTEM",
+        cancelReason: "Account deleted by user",
+        cancelledAt: expect.any(Date),
+      }),
+      expect.objectContaining({ fromStatus: "AWAITING_PAYMENT" }),
+    );
+    expect(vi.mocked(transitionOrder)).toHaveBeenCalledWith(
+      "ord-pending-2",
+      "CANCELLED",
+      expect.anything(),
+      expect.objectContaining({ fromStatus: "AWAITING_PAYMENT" }),
+    );
+
+    // And the bulk bypass must not be used for cancellations
+    const cancelledBulk = vi
+      .mocked(db.order.updateMany)
+      .mock.calls.filter(
+        ([arg]) =>
+          (arg as { data?: { status?: string } })?.data?.status === "CANCELLED",
+      );
+    expect(cancelledBulk).toHaveLength(0);
   });
 });
 

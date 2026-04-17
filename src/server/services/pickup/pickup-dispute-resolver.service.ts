@@ -20,6 +20,7 @@ import {
   resolveDispute as resolveDisputeRecord,
 } from "@/server/services/dispute/dispute.service";
 import { orderRepository } from "@/modules/orders/order.repository";
+import { transitionOrder } from "@/modules/orders/order.transitions";
 import { listingRepository } from "@/modules/listings/listing.repository";
 import { adminRepository } from "@/modules/admin/admin.repository";
 import { fireAndForget } from "@/lib/fire-and-forget";
@@ -149,10 +150,11 @@ async function executeAutoRefund(
   // 2. Update order status + resolve dispute record
   const dispute = await getDisputeByOrderId(order.id);
   await withTransaction(async (tx) => {
-    await orderRepository.updatePickupFields(
+    await transitionOrder(
       order.id,
-      { status: "REFUNDED" },
-      tx,
+      "REFUNDED",
+      {},
+      { tx, fromStatus: "DISPUTED" },
     );
     if (dispute) {
       await resolveDisputeRecord({

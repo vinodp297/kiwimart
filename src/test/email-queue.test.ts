@@ -264,6 +264,11 @@ describe("performAccountErasure — queues erasureConfirmation email", () => {
       email: "original@buyzi.test",
       displayName: "Original User",
     } as unknown as Awaited<ReturnType<typeof db.user.findUnique>>);
+
+    // Erasure now loops over AWAITING_PAYMENT orders via findMany +
+    // transitionOrder (per-order OrderEvent emission). Default to an empty
+    // list so the loop is a no-op for email-focused tests.
+    vi.mocked(db.order.findMany).mockResolvedValue([] as never);
   });
 
   it("calls enqueueEmail with erasureConfirmation template after erasure", async () => {

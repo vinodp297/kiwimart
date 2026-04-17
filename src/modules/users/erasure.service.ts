@@ -7,6 +7,7 @@
 
 import { userRepository } from "./user.repository";
 import { orderRepository } from "@/modules/orders/order.repository";
+import { transitionOrder } from "@/modules/orders/order.transitions";
 import { logger } from "@/shared/logger";
 import { invalidateAllSessions } from "@/server/lib/sessionStore";
 import { revokeAllMobileTokens } from "@/lib/mobile-auth";
@@ -109,19 +110,29 @@ export async function performAccountErasure(
       data: { authorId: null },
     });
 
-    // 5. Cancel PENDING orders (no payment captured yet)
-    await tx.order.updateMany({
+    // 5. Cancel PENDING orders (no payment captured yet).
+    //    Route through transitionOrder() per order so each cancellation emits
+    //    an OrderEvent — preserves the GDPR-/NZ Privacy Act-friendly audit
+    //    trail and keeps the state machine invariants intact.
+    const ordersToCancel = await tx.order.findMany({
       where: {
         OR: [{ buyerId: userId }, { sellerId: userId }],
         status: "AWAITING_PAYMENT",
       },
-      data: {
-        status: "CANCELLED",
-        cancelledBy: "SYSTEM",
-        cancelReason: "Account deleted by user",
-        cancelledAt: new Date(),
-      },
+      select: { id: true },
     });
+    for (const order of ordersToCancel) {
+      await transitionOrder(
+        order.id,
+        "CANCELLED",
+        {
+          cancelledBy: "SYSTEM",
+          cancelReason: "Account deleted by user",
+          cancelledAt: new Date(),
+        },
+        { tx, fromStatus: "AWAITING_PAYMENT" },
+      );
+    }
 
     await tx.offer.updateMany({
       where: { buyerId: userId, status: "PENDING" },

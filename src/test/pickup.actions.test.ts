@@ -197,6 +197,7 @@ const mockOrderForReject = {
   sellerId: "user_seller",
   buyerId: "user_buyer",
   fulfillmentType: "ONLINE_PAYMENT_PICKUP",
+  status: "AWAITING_PICKUP",
   pickupStatus: "OTP_INITIATED",
   otpJobId: "otp-job-1",
 };
@@ -576,5 +577,39 @@ describe("rejectItemAtPickup", () => {
         evidenceKeys: ["disputes/user_buyer/photo1.jpg"],
       }),
     );
+  });
+
+  it("routes AWAITING_PICKUP → DISPUTED through transitionOrder (not a raw update)", async () => {
+    // Capture the tx client handed to the transaction callback so we can prove
+    // no direct tx.order.update() was used to flip status.
+    const txOrderUpdate = vi.fn().mockResolvedValue({});
+    mockOrderRepositoryTransaction.mockImplementation(
+      async (fn: (tx: unknown) => unknown) =>
+        fn({ order: { update: txOrderUpdate } }),
+    );
+
+    await rejectItemAtPickup("order_1", {
+      reason: "ITEM_DAMAGED",
+    });
+
+    // The state flip must go through the state machine, carrying the pickup
+    // fields + OTP cleanup in the transition payload.
+    expect(mockTransitionOrder).toHaveBeenCalledWith(
+      "order_1",
+      "DISPUTED",
+      expect.objectContaining({
+        pickupStatus: "REJECTED_AT_PICKUP",
+        pickupRejectedAt: expect.any(Date),
+        otpCodeHash: null,
+        otpExpiresAt: null,
+      }),
+      expect.objectContaining({
+        fromStatus: "AWAITING_PICKUP",
+        tx: expect.anything(),
+      }),
+    );
+
+    // And the bypass path must not be used.
+    expect(txOrderUpdate).not.toHaveBeenCalled();
   });
 });

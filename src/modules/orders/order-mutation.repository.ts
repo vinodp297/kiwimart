@@ -149,7 +149,12 @@ export const orderMutationRepository = {
 
   async updatePickupFields(
     id: string,
-    data: Prisma.OrderUncheckedUpdateInput,
+    // Narrowed: pickup field updates must not touch the main `status` column.
+    // Order-state transitions must go through transitionOrder() so that the
+    // state machine, optimistic locking and OrderEvent audit trail are
+    // preserved. `pickupStatus` is still allowed — it is a pickup sub-state,
+    // not governed by the main state machine.
+    data: Omit<Prisma.OrderUncheckedUpdateInput, "status">,
     tx?: DbClient,
   ): Promise<void> {
     const client = getClient(tx);

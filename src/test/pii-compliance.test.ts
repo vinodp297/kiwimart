@@ -373,8 +373,10 @@ describe("account erasure", () => {
       operatorId: "self-service",
     });
 
-    // Verify order.deleteMany was never called — orders are preserved
-    expect(vi.mocked(db.order.updateMany)).toHaveBeenCalledWith(
+    // AWAITING_PAYMENT orders are now cancelled via findMany + per-order
+    // transitionOrder (so each cancellation emits an OrderEvent). The scoping
+    // query itself is the evidence that we touched — not deleted — those rows.
+    expect(vi.mocked(db.order.findMany)).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: "AWAITING_PAYMENT" }),
       }),

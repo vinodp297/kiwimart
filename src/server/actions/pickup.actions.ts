@@ -459,17 +459,18 @@ export async function rejectItemAtPickup(
 
     // Update order in transaction + create Dispute record
     await orderRepository.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
+      await transitionOrder(
+        orderId,
+        "DISPUTED",
+        {
           pickupStatus: "REJECTED_AT_PICKUP",
           pickupRejectedAt: new Date(),
-          status: "DISPUTED",
           // Clear OTP fields
           otpCodeHash: null,
           otpExpiresAt: null,
         },
-      });
+        { tx, fromStatus: order.status },
+      );
 
       await createDispute({
         orderId,
