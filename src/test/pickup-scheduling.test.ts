@@ -71,6 +71,19 @@ vi.mock("@/server/services/sms/sms.service", () => ({
   formatNzPhoneE164: vi.fn().mockImplementation((phone: string) => phone),
 }));
 
+// Prevent verifyOTP / generateAndSendOTP from trying to open a real Redis
+// connection. Default happy-path: not locked (get → null), first attempt
+// (incr → 1), all write ops succeed.
+vi.mock("@/infrastructure/redis/client", () => ({
+  getRedisClient: vi.fn().mockReturnValue({
+    get: vi.fn().mockResolvedValue(null),
+    incr: vi.fn().mockResolvedValue(1),
+    expire: vi.fn().mockResolvedValue(1),
+    set: vi.fn().mockResolvedValue("OK"),
+    del: vi.fn().mockResolvedValue(1),
+  }),
+}));
+
 // ─── Patch db with missing model (pickupRescheduleRequest not in setup.ts) ────
 
 const mockPickupRescheduleRequest = {
