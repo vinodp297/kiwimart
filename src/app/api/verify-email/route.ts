@@ -8,13 +8,14 @@ import { userRepository } from "@/modules/users/user.repository";
 import { getEmailClient, EMAIL_FROM } from "@/infrastructure/email/client";
 import { logger } from "@/shared/logger";
 import { fireAndForget } from "@/lib/fire-and-forget";
+import { env } from "@/env";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
     const token = request.nextUrl.searchParams.get("token");
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    const appUrl = env.NEXT_PUBLIC_APP_URL;
 
     if (!token) {
       return NextResponse.redirect(
@@ -95,7 +96,7 @@ function buildWelcomeEmail({ name, appUrl }: { name: string; appUrl: string }) {
     </div>
   </div>
   <div style="background:#FAFAF8;padding:16px 32px;border-top:1px solid #E3E0D9;text-align:center">
-    <p style="margin:0;color:#C9C5BC;font-size:11px">Questions? Email us at ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}</p>
+    <p style="margin:0;color:#C9C5BC;font-size:11px">Questions? Email us at ${env.NEXT_PUBLIC_SUPPORT_EMAIL}</p>
   </div>
 </div>
 </body>

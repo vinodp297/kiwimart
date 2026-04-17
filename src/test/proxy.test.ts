@@ -74,7 +74,7 @@ function makeReq(
     method: opts.method ?? "GET",
     headers: new Headers({ "user-agent": "test-agent" }),
     auth: opts.auth ?? null,
-  } as Parameters<typeof proxy>[0];
+  } as unknown as Parameters<typeof proxy>[0];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ describe("proxy — auth guard", () => {
 
   // ── Test 1: Unauthenticated page → redirect to /login ────────────────
   it("redirects unauthenticated /dashboard request to /login", async () => {
-    const res = await proxy(makeReq("/dashboard"));
+    const res = await proxy(makeReq("/dashboard"), {} as never);
     expect(res?.status).toBe(307);
     const location = res?.headers.get("location") ?? "";
     expect(location).toContain("/login");
@@ -95,7 +95,7 @@ describe("proxy — auth guard", () => {
 
   // ── Test 2: Unauthenticated API → 401 JSON ──────────────────────────
   it("returns 401 JSON for unauthenticated /api/v1/orders", async () => {
-    const res = await proxy(makeReq("/api/v1/orders"));
+    const res = await proxy(makeReq("/api/v1/orders"), {} as never);
     expect(res?.status).toBe(401);
     const body = await res?.json();
     expect(body.code).toBe("AUTH_REQUIRED");
@@ -106,6 +106,7 @@ describe("proxy — auth guard", () => {
   it("redirects authenticated non-admin from /admin to /dashboard/buyer", async () => {
     const res = await proxy(
       makeReq("/admin/users", { auth: { user: REGULAR_USER } }),
+      {} as never,
     );
     expect(res?.status).toBe(307);
     expect(res?.headers.get("location")).toContain("/dashboard/buyer");
@@ -115,6 +116,7 @@ describe("proxy — auth guard", () => {
   it("allows authenticated admin through to /admin", async () => {
     const res = await proxy(
       makeReq("/admin/users", { auth: { user: ADMIN_USER } }),
+      {} as never,
     );
     // Pass-through response (not a redirect or 401)
     expect(res?.status).not.toBe(307);
@@ -125,6 +127,7 @@ describe("proxy — auth guard", () => {
   it("redirects MFA-pending session to /mfa-verify for protected pages", async () => {
     const res = await proxy(
       makeReq("/dashboard", { auth: { user: MFA_PENDING_USER } }),
+      {} as never,
     );
     expect(res?.status).toBe(307);
     const location = res?.headers.get("location") ?? "";
@@ -139,7 +142,7 @@ describe("proxy — auth guard", () => {
     // The webhook path /api/webhooks/stripe is NOT under /api/v1/ so it
     // naturally passes through the proxy without hitting the API auth checks.
     // The catch-all matcher includes it, but the proxy handler only gates /api/v1/* and /api/admin/*.
-    const res = proxy(makeReq("/api/webhooks/stripe"));
+    const res = proxy(makeReq("/api/webhooks/stripe"), {} as never);
     // It should pass through (no 401, no redirect) — the response is the
     // standard pass-through with security headers
     await expect(res).resolves.not.toBeNull();
@@ -147,7 +150,7 @@ describe("proxy — auth guard", () => {
 
   // ── Test 7: Public GET /api/v1/listings → passes through ─────────────
   it("allows GET /api/v1/listings through without auth", async () => {
-    const res = await proxy(makeReq("/api/v1/listings"));
+    const res = await proxy(makeReq("/api/v1/listings"), {} as never);
     // No 401, no redirect — passes through
     expect(res?.status).not.toBe(401);
     expect(res?.status).not.toBe(307);
@@ -166,6 +169,7 @@ describe("proxy — auth guard", () => {
   it("returns 401 MFA_REQUIRED for MFA-pending API request", async () => {
     const res = await proxy(
       makeReq("/api/v1/orders", { auth: { user: MFA_PENDING_USER } }),
+      {} as never,
     );
     expect(res?.status).toBe(401);
     const body = await res?.json();
@@ -174,13 +178,19 @@ describe("proxy — auth guard", () => {
 
   // ── Additional: POST /api/v1/auth/token → passes through (public) ────
   it("allows POST /api/v1/auth/token through without auth (mobile login)", async () => {
-    const res = await proxy(makeReq("/api/v1/auth/token", { method: "POST" }));
+    const res = await proxy(
+      makeReq("/api/v1/auth/token", { method: "POST" }),
+      {} as never,
+    );
     expect(res?.status).not.toBe(401);
   });
 
   // ── Additional: POST /api/v1/listings requires auth ───────────────────
   it("blocks POST /api/v1/listings without auth (not a public GET)", async () => {
-    const res = await proxy(makeReq("/api/v1/listings", { method: "POST" }));
+    const res = await proxy(
+      makeReq("/api/v1/listings", { method: "POST" }),
+      {} as never,
+    );
     expect(res?.status).toBe(401);
     const body = await res?.json();
     expect(body.code).toBe("AUTH_REQUIRED");
@@ -202,6 +212,7 @@ describe("proxy — correlation ID", () => {
   it("sets x-correlation-id on pass-through responses", async () => {
     const res = await proxy(
       makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+      {} as never,
     );
     expect(res?.headers.get("x-correlation-id")).toBe("test-uuid-1");
   });
@@ -210,9 +221,11 @@ describe("proxy — correlation ID", () => {
   it("generates a unique correlation ID per request", async () => {
     const res1 = await proxy(
       makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+      {} as never,
     );
     const res2 = await proxy(
       makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+      {} as never,
     );
     const id1 = res1?.headers.get("x-correlation-id");
     const id2 = res2?.headers.get("x-correlation-id");
@@ -227,6 +240,7 @@ describe("proxy — correlation ID", () => {
   it("x-correlation-id equals x-request-id on the same response", async () => {
     const res = await proxy(
       makeReq("/dashboard", { auth: { user: REGULAR_USER } }),
+      {} as never,
     );
     expect(res?.headers.get("x-correlation-id")).toBe(
       res?.headers.get("x-request-id"),

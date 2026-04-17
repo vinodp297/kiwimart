@@ -107,15 +107,15 @@ describe("cancelOrder — atomic transaction (Fix 2)", () => {
       },
     );
 
-    vi.mocked(db.order.updateMany).mockImplementation(async () => {
+    vi.mocked(db.order.updateMany).mockImplementation((async () => {
       callOrder.push("order.updateMany");
       return { count: 1 };
-    });
+    }) as never);
 
-    vi.mocked(db.listing.updateMany).mockImplementation(async () => {
+    vi.mocked(db.listing.updateMany).mockImplementation((async () => {
       callOrder.push("listing.updateMany");
       return { count: 1 };
-    });
+    }) as never);
 
     await cancelOrder(ORDER_ID, BUYER_ID);
 

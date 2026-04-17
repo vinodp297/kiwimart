@@ -51,11 +51,11 @@ function makeReq(path: string) {
     method: "GET",
     headers: new Headers({ "user-agent": "zap-test" }),
     auth: null,
-  } as Parameters<typeof proxy>[0];
+  } as unknown as Parameters<typeof proxy>[0];
 }
 
 async function getSecurityHeaders(urlPath: string) {
-  const res = await proxy(makeReq(urlPath));
+  const res = await proxy(makeReq(urlPath), {} as never);
   return res!.headers;
 }
 

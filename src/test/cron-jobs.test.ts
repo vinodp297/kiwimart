@@ -113,7 +113,7 @@ vi.mock("@/infrastructure/stripe/client", () => ({
 
 // ── Patch missing Prisma models onto the mocked db ────────────────────────────
 
-const _db = db as Record<string, unknown>;
+const _db = db as unknown as Record<string, unknown>;
 
 if (!_db.orderEvent) {
   _db.orderEvent = {
@@ -136,7 +136,7 @@ if (!_db.orderInteraction) {
 }
 
 // watchlistItem.update is not included in setup.ts
-(db.watchlistItem as Record<string, unknown>).update = vi
+(db.watchlistItem as unknown as Record<string, unknown>).update = vi
   .fn()
   .mockResolvedValue({});
 
@@ -261,7 +261,7 @@ describe("Cron Jobs", () => {
       undefined,
     );
     vi.mocked(autoResolutionService.queueAutoResolution).mockResolvedValue(
-      undefined,
+      undefined as never,
     );
     vi.mocked(autoResolutionService.evaluateDispute).mockResolvedValue({
       decision: "AUTO_REFUND",
@@ -291,17 +291,17 @@ describe("Cron Jobs", () => {
 
     // Reset patched model mocks to their defaults
     const oe = _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>;
-    oe.findMany.mockResolvedValue([]);
-    oe.update.mockResolvedValue({});
+    oe.findMany!.mockResolvedValue([]);
+    oe.update!.mockResolvedValue({});
 
     const notif = _db.notification as Record<string, ReturnType<typeof vi.fn>>;
-    notif.findMany.mockResolvedValue([]);
+    notif.findMany!.mockResolvedValue([]);
 
     const oi = _db.orderInteraction as Record<string, ReturnType<typeof vi.fn>>;
-    oi.findMany.mockResolvedValue([]);
-    oi.updateMany.mockResolvedValue({ count: 0 });
+    oi.findMany!.mockResolvedValue([]);
+    oi.updateMany!.mockResolvedValue({ count: 0 });
 
-    (db.watchlistItem as Record<string, unknown>).update = vi
+    (db.watchlistItem as unknown as Record<string, unknown>).update = vi
       .fn()
       .mockResolvedValue({});
   });
@@ -318,7 +318,7 @@ describe("Cron Jobs", () => {
       // DISPATCHED event says estimatedDelivery was 4 days ago; no reminder sent yet
       (
         _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([makeDispatchEvent("order-1", 4)] as never);
+      ).findMany!.mockResolvedValue([makeDispatchEvent("order-1", 4)] as never);
 
       const result = await processDeliveryReminders();
 
@@ -338,7 +338,7 @@ describe("Cron Jobs", () => {
       // Both a DISPATCHED event and a DELIVERY_REMINDER_SENT event exist
       (
         _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([
+      ).findMany!.mockResolvedValue([
         makeDispatchEvent("order-1", 4),
         makeReminderEvent("order-1"),
       ] as never);
@@ -356,7 +356,7 @@ describe("Cron Jobs", () => {
       // DISPATCHED event has no estimatedDeliveryDate in metadata
       (
         _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([
+      ).findMany!.mockResolvedValue([
         {
           id: "evt-1",
           orderId: "order-1",
@@ -381,7 +381,7 @@ describe("Cron Jobs", () => {
       // All three have DISPATCHED events 4 days ago, none have reminder events
       (
         _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([
+      ).findMany!.mockResolvedValue([
         makeDispatchEvent("order-1", 4),
         makeDispatchEvent("order-2", 4),
         makeDispatchEvent("order-3", 4),
@@ -731,7 +731,7 @@ describe("Cron Jobs", () => {
       // No existing notifications — not yet notified
       (
         _db.notification as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([] as never);
+      ).findMany!.mockResolvedValue([] as never);
 
       const result = await sendDispatchReminders();
 
@@ -758,7 +758,7 @@ describe("Cron Jobs", () => {
       // Existing notification already sent for this order
       (
         _db.notification as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([{ orderId: "order-1" }] as never);
+      ).findMany!.mockResolvedValue([{ orderId: "order-1" }] as never);
 
       const result = await sendDispatchReminders();
 
@@ -779,7 +779,7 @@ describe("Cron Jobs", () => {
       ] as never);
       (
         _db.notification as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([] as never);
+      ).findMany!.mockResolvedValue([] as never);
 
       const result = await sendDispatchReminders();
 
@@ -806,7 +806,7 @@ describe("Cron Jobs", () => {
       ] as never);
       (
         _db.notification as Record<string, ReturnType<typeof vi.fn>>
-      ).findMany.mockResolvedValue([] as never);
+      ).findMany!.mockResolvedValue([] as never);
 
       const result = await sendDispatchReminders();
 
@@ -822,8 +822,7 @@ describe("Cron Jobs", () => {
     it("queues auto-resolution for unresponsive dispute (seller no response after threshold)", async () => {
       // Part 1 (cooling): no queued events
       const oe = _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>;
-      oe.findMany
-        .mockResolvedValueOnce([]) // queued AUTO_RESOLVED events (Part 1)
+      oe.findMany!.mockResolvedValueOnce([]) // queued AUTO_RESOLVED events (Part 1)
         .mockResolvedValueOnce([]); // already-queued check (Part 2)
 
       // Part 2 (unresponsive): one unresponsive dispute
@@ -842,8 +841,9 @@ describe("Cron Jobs", () => {
     it("executes cooling-period decision when no counter-evidence has been submitted", async () => {
       const oe = _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>;
       // Call sequence: 1st=queued events, 2nd=DISPUTE_RESPONDED (empty=no counter-evidence), 3rd=Part2 already-queued
-      oe.findMany
-        .mockResolvedValueOnce([makeQueuedAutoResolveEvent("order-1", true)]) // 1st: queued events
+      oe.findMany!.mockResolvedValueOnce([
+        makeQueuedAutoResolveEvent("order-1", true),
+      ]) // 1st: queued events
         .mockResolvedValueOnce([]) // 2nd: DISPUTE_RESPONDED — none filed
         .mockResolvedValueOnce([]); // 3rd: Part 2 already-queued
 
@@ -863,8 +863,9 @@ describe("Cron Jobs", () => {
     it("does not execute resolution before the cooling period expires", async () => {
       const oe = _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>;
       // executeAt is in the future — cooling period not yet elapsed
-      oe.findMany
-        .mockResolvedValueOnce([makeQueuedAutoResolveEvent("order-1", false)]) // executeAt in future
+      oe.findMany!.mockResolvedValueOnce([
+        makeQueuedAutoResolveEvent("order-1", false),
+      ]) // executeAt in future
         .mockResolvedValueOnce([]); // no unresponsive
 
       vi.mocked(db.order.findMany)
@@ -887,8 +888,7 @@ describe("Cron Jobs", () => {
       //     db.order.findMany  → bulk order statuses (1st db.order.findMany call)
       //     2nd oe.findMany    → DISPUTE_RESPONDED counter-evidence events
       //   3rd oe.findMany (Part 2) → already-queued AUTO_RESOLVED check
-      oe.findMany
-        .mockResolvedValueOnce([queuedEvent]) // 1st: queued AUTO_RESOLVED events
+      oe.findMany!.mockResolvedValueOnce([queuedEvent]) // 1st: queued AUTO_RESOLVED events
         .mockResolvedValueOnce([
           {
             orderId: "order-1",
@@ -923,8 +923,7 @@ describe("Cron Jobs", () => {
     it("escalates expired OrderInteraction and records an order event", async () => {
       // Parts 1 & 2 return nothing to process
       const oe = _db.orderEvent as Record<string, ReturnType<typeof vi.fn>>;
-      oe.findMany
-        .mockResolvedValueOnce([]) // Part 1
+      oe.findMany!.mockResolvedValueOnce([]) // Part 1
         .mockResolvedValueOnce([]); // Part 2 already-queued
 
       vi.mocked(db.order.findMany).mockResolvedValue([] as never);
@@ -934,7 +933,7 @@ describe("Cron Jobs", () => {
         string,
         ReturnType<typeof vi.fn>
       >;
-      oi.findMany.mockResolvedValue([
+      oi.findMany!.mockResolvedValue([
         {
           id: "interaction-1",
           orderId: "order-1",

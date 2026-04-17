@@ -118,7 +118,9 @@ describe("requirePermission", () => {
   it("returns admin when hasPermission is true", async () => {
     mockHasPermission.mockReturnValueOnce(true);
 
-    const result = await requirePermission("admin.listings.moderate");
+    const result = await requirePermission(
+      "admin.listings.moderate" as import("@/lib/permissions").Permission,
+    );
 
     expect(result.id).toBe(ADMIN_USER.id);
     expect(mockHasPermission).toHaveBeenCalledWith(
@@ -130,15 +132,19 @@ describe("requirePermission", () => {
   it("throws AppError (UNAUTHORISED) when permission denied", async () => {
     mockHasPermission.mockReturnValueOnce(false);
 
-    await expect(requirePermission("admin.users.ban")).rejects.toThrow(
-      /permission/i,
-    );
+    await expect(
+      requirePermission(
+        "admin.users.ban" as import("@/lib/permissions").Permission,
+      ),
+    ).rejects.toThrow(/permission/i);
   });
 
   it("forwards the admin role to hasPermission", async () => {
     mockHasPermission.mockReturnValueOnce(true);
 
-    await requirePermission("admin.config.update");
+    await requirePermission(
+      "admin.config.update" as import("@/lib/permissions").Permission,
+    );
 
     expect(mockHasPermission).toHaveBeenCalledWith(
       "SUPPORT",
@@ -150,7 +156,9 @@ describe("requirePermission", () => {
     vi.mocked(auth).mockResolvedValueOnce(null as never);
 
     await expect(
-      requirePermission("admin.listings.moderate"),
+      requirePermission(
+        "admin.listings.moderate" as import("@/lib/permissions").Permission,
+      ),
     ).rejects.toThrow();
   });
 });
@@ -170,8 +178,8 @@ describe("requireAnyPermission", () => {
     mockHasAnyPermission.mockReturnValueOnce(true);
 
     const result = await requireAnyPermission([
-      "admin.listings.moderate",
-      "admin.users.ban",
+      "admin.listings.moderate" as import("@/lib/permissions").Permission,
+      "admin.users.ban" as import("@/lib/permissions").Permission,
     ]);
 
     expect(result.id).toBe(ADMIN_USER.id);
@@ -185,7 +193,9 @@ describe("requireAnyPermission", () => {
     mockHasAnyPermission.mockReturnValueOnce(false);
 
     await expect(
-      requireAnyPermission(["admin.listings.moderate"]),
+      requireAnyPermission([
+        "admin.listings.moderate" as import("@/lib/permissions").Permission,
+      ]),
     ).rejects.toThrow(/permission/i);
   });
 });

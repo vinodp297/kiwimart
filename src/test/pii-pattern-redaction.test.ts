@@ -3,7 +3,7 @@
 // Verifies that compound key names (e.g. "buyerEmail", "shippingAddress")
 // are redacted via substring pattern matching, not just exact key matches.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { sanitiseLogContext } from "@/lib/log-sanitiser";
 
 vi.mock("server-only", () => ({}));

@@ -4,6 +4,7 @@ import { logger } from "@/shared/logger";
 import { runWithRequestContext } from "@/lib/request-context";
 import { acquireLock, releaseLock } from "@/server/lib/distributedLock";
 import { adminRepository } from "@/modules/admin/admin.repository";
+import { env } from "@/env";
 
 const LOCK_KEY = "cron:daily-digest";
 const LOCK_TTL_SECONDS = 300;
@@ -58,11 +59,11 @@ export async function sendDailyDigest() {
           await resend.emails.send({
             from: EMAIL_FROM,
             to: admin.email ?? "",
-            subject: `${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Daily Summary — ${date}`,
+            subject: `${env.NEXT_PUBLIC_APP_NAME} Daily Summary — ${date}`,
             html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
           <div style="background:#141414;padding:20px;border-radius:12px;margin-bottom:24px;">
-            <h1 style="color:#D4A843;margin:0;font-size:20px;">🥝 ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Daily Summary</h1>
+            <h1 style="color:#D4A843;margin:0;font-size:20px;">🥝 ${env.NEXT_PUBLIC_APP_NAME} Daily Summary</h1>
             <p style="color:#888;margin:4px 0 0;font-size:13px;">${date}</p>
           </div>
 
@@ -103,14 +104,14 @@ export async function sendDailyDigest() {
           </table>
 
           <div style="margin-top:24px;text-align:center;">
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/admin"
+            <a href="${env.NEXT_PUBLIC_APP_URL}/admin"
               style="background:#D4A843;color:#141414;padding:12px 28px;border-radius:50px;text-decoration:none;font-weight:600;font-size:14px;">
               View Full Dashboard →
             </a>
           </div>
 
           <p style="color:#C9C5BC;font-size:11px;margin-top:24px;text-align:center;">
-            This is an automated daily summary sent to ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Super Admins.
+            This is an automated daily summary sent to ${env.NEXT_PUBLIC_APP_NAME} Super Admins.
           </p>
         </div>
       `,

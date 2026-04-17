@@ -203,6 +203,7 @@ describe("registerUser", () => {
       id: "user-1",
       email: "john@example.com",
       displayName: "John Doe",
+      username: "testuser",
     });
     vi.mocked(isPasswordBreached).mockResolvedValue(false);
     vi.mocked(hashPassword).mockResolvedValue("$argon2id$v=19$hashed");
@@ -355,6 +356,7 @@ describe("registerUser", () => {
         id: "user-1",
         email: data.email as string,
         displayName: "John Doe",
+        username: "testuser",
       };
     });
 

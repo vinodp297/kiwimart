@@ -3,7 +3,7 @@
 // Verifies that sanitiseLogContext() recursively redacts PII at every nesting
 // level — not just top-level keys.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { sanitiseLogContext } from "@/lib/log-sanitiser";
 
 vi.mock("server-only", () => ({}));
@@ -97,11 +97,11 @@ describe("deep sanitiser — arrays", () => {
     });
 
     const recipients = result.recipients as Array<Record<string, unknown>>;
-    expect(recipients[0].email).toBe("a***@example.com");
-    expect(recipients[1].email).toBe("b***@example.com");
+    expect(recipients[0]!.email).toBe("a***@example.com");
+    expect(recipients[1]!.email).toBe("b***@example.com");
     // name is also in PII_KEYS
-    expect(recipients[0].name).toBe("[redacted]");
-    expect(recipients[1].name).toBe("[redacted]");
+    expect(recipients[0]!.name).toBe("[redacted]");
+    expect(recipients[1]!.name).toBe("[redacted]");
   });
 
   // ── 7. Array of primitives passes through unchanged ────────────────────────

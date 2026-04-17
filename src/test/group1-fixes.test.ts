@@ -55,9 +55,9 @@ describe("Fix 1 — X-XSS-Protection header", () => {
           mfaPending: false,
         },
       },
-    } as Parameters<typeof proxy>[0];
+    } as unknown as Parameters<typeof proxy>[0];
 
-    const res = await proxy(request);
+    const res = await proxy(request, {} as never);
     // Pass-through response (authenticated user on /dashboard passes through)
     expect(res?.headers.get("X-XSS-Protection")).toBe("0");
   });

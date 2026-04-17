@@ -365,12 +365,12 @@ describe("confirmImageUpload", () => {
       validInput.imageId,
       validInput.r2Key,
     );
-    process.env.NODE_ENV = originalEnv;
+    (process.env as Record<string, string>).NODE_ENV = originalEnv;
   });
 
   it("storage error in production returns user-facing failure (never marks safe)", async () => {
     const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "production";
+    (process.env as Record<string, string>).NODE_ENV = "production";
 
     mockProcessImage.mockRejectedValueOnce(new Error("ENOTFOUND r2.example"));
 
@@ -382,7 +382,7 @@ describe("confirmImageUpload", () => {
     }
     expect(mockMarkSafe).not.toHaveBeenCalled();
 
-    process.env.NODE_ENV = originalEnv;
+    (process.env as Record<string, string>).NODE_ENV = originalEnv;
   });
 
   it("generic processing error is propagated with original message", async () => {

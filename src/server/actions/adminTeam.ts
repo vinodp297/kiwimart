@@ -13,6 +13,7 @@ import { getRoleDisplayName } from "@/lib/permissions";
 import crypto from "crypto";
 import type { AdminRole } from "@prisma/client";
 import type { ActionResult } from "@/types";
+import { env } from "@/env";
 
 export async function inviteAdmin(
   email: string,
@@ -143,17 +144,17 @@ async function sendInvitationEmail(params: {
   const resend = getEmailClient();
   if (!resend) return;
 
-  const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/admin/accept-invite?token=${params.token}`;
+  const inviteUrl = `${env.NEXT_PUBLIC_APP_URL}/admin/accept-invite?token=${params.token}`;
 
   await resend.emails.send({
     from: EMAIL_FROM,
     to: params.to,
-    subject: `You have been invited to join ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} as ${getRoleDisplayName(params.role)}`,
+    subject: `You have been invited to join ${env.NEXT_PUBLIC_APP_NAME} as ${getRoleDisplayName(params.role)}`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-        <h2 style="color:#141414;">${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} Team Invitation</h2>
+        <h2 style="color:#141414;">${env.NEXT_PUBLIC_APP_NAME} Team Invitation</h2>
         <p style="color:#73706A;">
-          ${params.inviterName} has invited you to join the ${process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi"} admin team as
+          ${params.inviterName} has invited you to join the ${env.NEXT_PUBLIC_APP_NAME} admin team as
           <strong>${getRoleDisplayName(params.role)}</strong>.
         </p>
         <div style="background:#FFF9EC;border-radius:12px;padding:20px;margin:20px 0;border-left:4px solid #D4A843;">

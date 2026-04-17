@@ -11,6 +11,7 @@ import { AppError } from "@/shared/errors";
 import { MS_PER_MINUTE } from "@/lib/time";
 import crypto from "crypto";
 import type { UpdateProfileInput, ChangePasswordInput } from "./user.types";
+import { env } from "@/env";
 
 /** Encrypt a phone number. Throws if ENCRYPTION_KEY is missing (defence in depth). */
 function encryptPhone(phone: string): string {
@@ -123,7 +124,7 @@ export class UserService {
 
     const { sendSms, formatNzPhoneE164 } =
       await import("@/server/services/sms/sms.service");
-    const appName = process.env.NEXT_PUBLIC_APP_NAME ?? "Buyzi";
+    const appName = env.NEXT_PUBLIC_APP_NAME;
     await sendSms({
       to: formatNzPhoneE164(phoneClean),
       body:

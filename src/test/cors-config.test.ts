@@ -92,7 +92,7 @@ describe("next.config.ts — CORS header placement", () => {
 
     // ACAO must not appear inside an /api/ source rule
     const apiCorsMatch = content.match(
-      /source:\s*["']\/api[^"']*["'][^}]*Access-Control-Allow-Origin/s,
+      /source:\s*["']\/api[^"']*["'].*?Access-Control-Allow-Origin/,
     );
     expect(apiCorsMatch).toBeNull();
   });

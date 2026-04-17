@@ -61,7 +61,10 @@ import { healthService } from "@/server/services/health.service";
 
 // Import routes AFTER all mocks
 const { GET: publicGET } = await import("@/app/api/health/route");
-const { GET: adminGET } = await import("@/app/api/admin/health/route");
+const { GET: adminGETRaw } = await import("@/app/api/admin/health/route");
+// Admin health GET takes 0 args in source but tests call it with a Request for
+// structural consistency — cast to allow the optional request parameter.
+const adminGET = adminGETRaw as unknown as (req: Request) => Promise<Response>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

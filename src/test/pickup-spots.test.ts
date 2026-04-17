@@ -90,7 +90,9 @@ describe("OI-007 — PICKUP_SPOTS static data", () => {
       "West Coast",
     ];
     for (const region of expectedRegions) {
-      expect(coveredRegions.has(region)).toBe(true);
+      expect(coveredRegions.has(region as import("@/types").NZRegion)).toBe(
+        true,
+      );
     }
   });
 });

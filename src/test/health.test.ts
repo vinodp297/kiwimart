@@ -89,7 +89,9 @@ describe("/api/health", () => {
     vi.useFakeTimers();
 
     // Never resolves — simulates a completely stalled database
-    vi.mocked(db.$queryRaw).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(db.$queryRaw).mockImplementation(
+      () => new Promise(() => {}) as never,
+    );
 
     const responsePromise = GET(makeRequest());
     await vi.advanceTimersByTimeAsync(3500);

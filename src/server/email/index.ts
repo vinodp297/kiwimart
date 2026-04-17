@@ -5,7 +5,6 @@
 
 import { sendTransactionalEmail } from "./transport";
 import { formatCentsAsNzd } from "@/lib/currency";
-import { logger } from "@/shared/logger";
 import { env } from "@/env";
 
 // ── Email configuration from environment ─────────────────────────────────────

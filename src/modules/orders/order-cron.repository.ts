@@ -168,6 +168,9 @@ export const orderCronRepository = {
         buyer: { select: { email: true, displayName: true } },
         trackingNumber: true,
       },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: 500,
     });
   },
 

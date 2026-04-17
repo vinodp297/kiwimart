@@ -39,8 +39,14 @@ vi.mock("@/lib/queue", () => ({
 import db from "@/lib/db";
 
 // Import AFTER all mocks are registered
-const { GET: readyGET } = await import("@/app/api/ready/route");
-const { GET: healthGET } = await import("@/app/api/health/route");
+const { GET: readyGETRaw } = await import("@/app/api/ready/route");
+const { GET: healthGETRaw } = await import("@/app/api/health/route");
+// Both GET handlers take 0 args in source but tests call them with a Request
+// for structural consistency — cast to allow the optional request parameter.
+const readyGET = readyGETRaw as unknown as (req: Request) => Promise<Response>;
+const healthGET = healthGETRaw as unknown as (
+  req: Request,
+) => Promise<Response>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

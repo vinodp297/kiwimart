@@ -3,6 +3,8 @@
 // AppError carries structured information (code, statusCode, context) so errors
 // can be handled programmatically rather than by string matching.
 
+import { env } from "@/env";
+
 export type ErrorCode =
   | "UNAUTHENTICATED"
   | "UNAUTHORISED"
@@ -74,7 +76,7 @@ export class AppError extends Error {
   static banned(): AppError {
     return new AppError(
       "BANNED",
-      `Your account has been suspended. Contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"} for help.`,
+      `Your account has been suspended. Contact ${env.NEXT_PUBLIC_SUPPORT_EMAIL} for help.`,
       403,
     );
   }
@@ -94,7 +96,7 @@ export class AppError extends Error {
   static missingPaymentIntent(): AppError {
     return new AppError(
       "MISSING_PAYMENT_INTENT",
-      `Payment reference missing. Contact ${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "support@buyzi.co.nz"}`,
+      `Payment reference missing. Contact ${env.NEXT_PUBLIC_SUPPORT_EMAIL}`,
       400,
     );
   }

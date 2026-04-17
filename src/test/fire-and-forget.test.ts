@@ -13,13 +13,13 @@ vi.mock("@/lib/request-context", () => ({
 
 // vi.mock factories are hoisted — mock functions must use vi.fn() directly here.
 // After the module loads, we re-type via MockLogger to enforce fixture shape.
-const mockLoggerError = vi.fn();
+const mockLoggerError = vi.hoisted(() => vi.fn());
 vi.mock("@/shared/logger", () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
-    error: (...args: unknown[]) => mockLoggerError(...args),
+    error: mockLoggerError,
     fatal: vi.fn(),
   } satisfies MockLogger,
 }));

@@ -357,7 +357,7 @@ describe("getOrderTimeline", () => {
         summary: "Order placed",
         createdAt: "2026-04-01T10:00:00.000Z",
       });
-      expect(result.data[0].actor?.username).toBe("buyeruser");
+      expect(result.data[0]!.actor?.username).toBe("buyeruser");
     }
   });
 
@@ -378,7 +378,7 @@ describe("getOrderTimeline", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data[0].actor).toBeNull();
+      expect(result.data[0]!.actor).toBeNull();
     }
   });
 

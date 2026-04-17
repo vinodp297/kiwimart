@@ -65,6 +65,9 @@ export const adminDisputesRepository = {
       },
       orderBy: { createdAt: "desc" },
       select: { orderId: true, metadata: true },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: 500,
     });
   },
 
@@ -98,6 +101,9 @@ export const adminDisputesRepository = {
     return db.order.findMany({
       where: { status: "DISPUTED" },
       select: { id: true },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: 500,
     });
   },
 
@@ -140,6 +146,9 @@ export const adminDisputesRepository = {
       where: { status: "DISPUTED" },
       select: DISPUTE_QUEUE_SELECT,
       orderBy: [{ dispute: { openedAt: "asc" } }, { updatedAt: "asc" }],
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: 50,
     });
   },
 

@@ -14,7 +14,7 @@ import db from "@/lib/db";
 // ── Patch missing Prisma models onto the mocked db ──────────────────────────
 // The global setup.ts mocks core models but doesn't include orderEvent,
 // platformConfig, listingSnapshot, or notification. Add them here.
-const _db = db as Record<string, unknown>;
+const _db = db as unknown as Record<string, unknown>;
 if (!_db.orderEvent) {
   _db.orderEvent = { create: vi.fn().mockResolvedValue({ id: "evt-1" }) };
 }

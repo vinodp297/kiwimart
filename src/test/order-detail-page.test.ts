@@ -229,6 +229,7 @@ describe("buildSyntheticEvents", () => {
       pickupWindowExpiresAt: null,
       otpExpiresAt: null,
       rescheduleCount: 0,
+      payout: null,
       ...overrides,
     };
   }

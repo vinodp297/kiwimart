@@ -115,6 +115,7 @@ describe("registerUser", () => {
       id: "user-1",
       email: "john@example.com",
       displayName: "John Doe",
+      username: "testuser",
     });
     mockIsPasswordBreached.mockResolvedValue(false);
     mockHashPassword.mockResolvedValue("$argon2id$v=19$hashed");

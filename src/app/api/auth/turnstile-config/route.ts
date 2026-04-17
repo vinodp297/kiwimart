@@ -8,6 +8,7 @@
 // The SECRET key is never exposed here.
 
 import { NextResponse } from "next/server";
+import { env } from "@/env";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function GET() {
   // protection on staging environments running with NODE_ENV=staging or
   // NODE_ENV=preview, leaving accounts wide open to credential stuffing on
   // staging hostnames that share the production user table.
-  const enforced = process.env.TURNSTILE_ENFORCED === "true";
+  const enforced = env.TURNSTILE_ENFORCED; // boolean — transformed by env.ts schema
   if (!enforced) {
     return NextResponse.json({ siteKey: null, active: false });
   }
@@ -25,8 +26,8 @@ export async function GET() {
   // Read from the non-NEXT_PUBLIC server env var (available at runtime)
   // Fall back to NEXT_PUBLIC_ in case only that one is set
   const siteKey =
-    process.env.CLOUDFLARE_TURNSTILE_SITE_KEY ??
-    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ??
+    env.CLOUDFLARE_TURNSTILE_SITE_KEY ??
+    env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ??
     "";
 
   const isActive =

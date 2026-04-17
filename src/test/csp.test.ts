@@ -32,7 +32,7 @@ function makeReq(path = "/") {
     method: "GET",
     headers: new Headers({ "user-agent": "test-agent" }),
     auth: null,
-  } as Parameters<typeof proxy>[0];
+  } as unknown as Parameters<typeof proxy>[0];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -45,8 +45,8 @@ describe("CSP nonce generation", () => {
   // ── Test 1: Two requests produce different nonces ─────────────────────────
   it("generates a unique nonce per request", async () => {
     const [res1, res2] = await Promise.all([
-      proxy(makeReq("/")),
-      proxy(makeReq("/")),
+      proxy(makeReq("/"), {} as never),
+      proxy(makeReq("/"), {} as never),
     ]);
 
     const csp1 = res1?.headers.get("content-security-policy") ?? "";
@@ -63,7 +63,7 @@ describe("CSP nonce generation", () => {
 
   // ── Test 2: CSP header contains nonce-{value} in script-src ──────────────
   it("CSP header contains nonce-{value} in script-src directive", async () => {
-    const res = await proxy(makeReq("/"));
+    const res = await proxy(makeReq("/"), {} as never);
     const csp = res?.headers.get("content-security-policy") ?? "";
 
     // The script-src directive must carry the per-request nonce
@@ -74,7 +74,7 @@ describe("CSP nonce generation", () => {
 
   // ── Test 3: CSP script-src does NOT contain unsafe-inline ────────────────
   it("CSP script-src does not contain 'unsafe-inline'", async () => {
-    const res = await proxy(makeReq("/"));
+    const res = await proxy(makeReq("/"), {} as never);
     const csp = res?.headers.get("content-security-policy") ?? "";
 
     const scriptSrc =
@@ -87,7 +87,7 @@ describe("CSP nonce generation", () => {
   // proxy.ts only adds 'unsafe-eval' when NODE_ENV === 'development'.
   it("CSP script-src does not contain 'unsafe-eval' in non-development environment", async () => {
     // NODE_ENV is "test" in vitest — unsafe-eval must be absent
-    const res = await proxy(makeReq("/"));
+    const res = await proxy(makeReq("/"), {} as never);
     const csp = res?.headers.get("content-security-policy") ?? "";
 
     const scriptSrc =
@@ -99,7 +99,7 @@ describe("CSP nonce generation", () => {
   // The proxy forwards the nonce to layout.tsx via the x-nonce response header,
   // which Next.js passes back as a request header to RSC renders.
   it("sets x-nonce header so server components can read the nonce", async () => {
-    const res = await proxy(makeReq("/"));
+    const res = await proxy(makeReq("/"), {} as never);
     const xNonce = res?.headers.get("x-nonce");
 
     expect(xNonce).toBeTruthy();
@@ -111,7 +111,7 @@ describe("CSP nonce generation", () => {
   // Proves the nonce written into the CSP is the same value forwarded to
   // layout.tsx — a mismatch would mean inline scripts are blocked.
   it("nonce embedded in CSP header matches x-nonce header value", async () => {
-    const res = await proxy(makeReq("/"));
+    const res = await proxy(makeReq("/"), {} as never);
     const csp = res?.headers.get("content-security-policy") ?? "";
     const xNonce = res?.headers.get("x-nonce") ?? "";
 

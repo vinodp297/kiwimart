@@ -150,7 +150,9 @@ describe("Seller Onboarding", () => {
       const result = await acceptSellerTerms();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not enabled");
+      expect((result as { success: false; error: string }).error).toContain(
+        "not enabled",
+      );
     });
 
     it("returns error when not authenticated", async () => {
@@ -191,7 +193,9 @@ describe("Seller Onboarding", () => {
       const result = await submitIdVerification();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("already verified");
+      expect((result as { success: false; error: string }).error).toContain(
+        "already verified",
+      );
     });
 
     it("fails if already submitted and pending", async () => {
@@ -203,7 +207,9 @@ describe("Seller Onboarding", () => {
       const result = await submitIdVerification();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("already pending");
+      expect((result as { success: false; error: string }).error).toContain(
+        "already pending",
+      );
     });
 
     it("fails if seller access not enabled", async () => {
@@ -212,7 +218,9 @@ describe("Seller Onboarding", () => {
       const result = await submitIdVerification();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not enabled");
+      expect((result as { success: false; error: string }).error).toContain(
+        "not enabled",
+      );
     });
 
     it("sends admin notification email on submission", async () => {
@@ -310,7 +318,9 @@ describe("Seller Onboarding", () => {
       const result = await approveIdVerification("user-1");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("already ID-verified");
+      expect((result as { success: false; error: string }).error).toContain(
+        "already ID-verified",
+      );
     });
 
     it("rejects if no submission pending", async () => {
@@ -324,7 +334,9 @@ describe("Seller Onboarding", () => {
       const result = await approveIdVerification("user-1");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not submitted");
+      expect((result as { success: false; error: string }).error).toContain(
+        "not submitted",
+      );
     });
 
     it("rejects if user not found", async () => {
@@ -333,7 +345,9 @@ describe("Seller Onboarding", () => {
       const result = await approveIdVerification("nonexistent");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not found");
+      expect((result as { success: false; error: string }).error).toContain(
+        "not found",
+      );
     });
 
     it("fails if admin check fails", async () => {
@@ -342,7 +356,9 @@ describe("Seller Onboarding", () => {
       const result = await approveIdVerification("user-1");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Not an admin");
+      expect((result as { success: false; error: string }).error).toContain(
+        "Not an admin",
+      );
     });
   });
 
@@ -411,7 +427,9 @@ describe("Seller Onboarding", () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("already ID verified");
+      expect((result as { success: false; error: string }).error).toContain(
+        "already ID verified",
+      );
     });
 
     it("rejects if user not found", async () => {
@@ -424,7 +442,9 @@ describe("Seller Onboarding", () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not found");
+      expect((result as { success: false; error: string }).error).toContain(
+        "not found",
+      );
     });
   });
 
@@ -484,7 +504,7 @@ describe("Seller Onboarding", () => {
       const result = await getOnboardingStatus();
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(
+      expect((result as { success: true; data: unknown }).data).toEqual(
         expect.objectContaining({
           isOnboardingCompleted: false,
           displayName: "Test User",
@@ -500,7 +520,9 @@ describe("Seller Onboarding", () => {
       const result = await getOnboardingStatus();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("not found");
+      expect((result as { success: false; error: string }).error).toContain(
+        "not found",
+      );
     });
 
     it("returns error when not authenticated", async () => {

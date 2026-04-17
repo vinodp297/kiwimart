@@ -38,7 +38,12 @@ describe("DisputeService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(disputeRepository.transaction).mockImplementation(
-      async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+      async (
+        fn: (
+          tx: import("@prisma/client").Prisma.TransactionClient,
+        ) => Promise<unknown>,
+      ) =>
+        fn({} as unknown as import("@prisma/client").Prisma.TransactionClient),
     );
   });
 

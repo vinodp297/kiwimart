@@ -38,7 +38,7 @@ function makeConfigMap(
 describe("calculateShipping — input validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap());
+    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap() as never);
   });
 
   it("empty fromRegion → returns error", async () => {
@@ -69,7 +69,7 @@ describe("calculateShipping — input validation", () => {
 describe("calculateShipping — same region", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap());
+    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap() as never);
   });
 
   it("Auckland → Auckland → same region rate 600 cents, 1–2 days", async () => {
@@ -104,7 +104,7 @@ describe("calculateShipping — same region", () => {
 describe("calculateShipping — same island", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap());
+    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap() as never);
   });
 
   it("Auckland → Wellington (North→North) → 800 cents, 2–3 days", async () => {
@@ -139,7 +139,7 @@ describe("calculateShipping — same island", () => {
 describe("calculateShipping — inter-island", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap());
+    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap() as never);
   });
 
   it("Auckland → Canterbury (North→South) → 1200 cents, 3–5 days", async () => {
@@ -173,7 +173,7 @@ describe("calculateShipping — inter-island", () => {
 describe("calculateShipping — rural surcharge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap());
+    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap() as never);
   });
 
   it("toRegion is Northland (rural) → adds 400 surcharge + isRural: true", async () => {
@@ -237,7 +237,7 @@ describe("calculateShipping — rural surcharge", () => {
 describe("calculateShipping — unknown regions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap());
+    vi.mocked(getConfigMany).mockResolvedValue(makeConfigMap() as never);
   });
 
   it("unknown fromRegion and toRegion → fallback rate (800 cents)", async () => {
@@ -255,7 +255,7 @@ describe("calculateShipping — unknown regions", () => {
 
   it("config values override defaults when provided", async () => {
     vi.mocked(getConfigMany).mockResolvedValue(
-      makeConfigMap({ "financial.shipping.same_region_cents": "500" }),
+      makeConfigMap({ "financial.shipping.same_region_cents": "500" }) as never,
     );
 
     const result = await calculateShipping({

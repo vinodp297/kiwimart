@@ -79,7 +79,7 @@ const mockPickupRescheduleRequest = {
   update: vi.fn(),
   updateMany: vi.fn().mockResolvedValue({ count: 0 }),
 };
-(db as Record<string, unknown>).pickupRescheduleRequest =
+(db as unknown as Record<string, unknown>).pickupRescheduleRequest =
   mockPickupRescheduleRequest;
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ function setupPickupConfig() {
       ["PICKUP_WINDOW_MINUTES", "30"],
       ["PICKUP_RESCHEDULE_RESPONSE_HOURS", "12"],
       ["PICKUP_RESCHEDULE_LIMIT", "3"],
-    ]),
+    ]) as never,
   );
   vi.mocked(getConfigInt).mockResolvedValue(15);
 }
@@ -166,7 +166,7 @@ describe("Pickup Scheduling State Machine", () => {
     // Re-apply implementations cleared by clearAllMocks
     vi.mocked(createNotification).mockResolvedValue(undefined);
     vi.mocked(pickupQueue.add).mockResolvedValue({} as never);
-    vi.mocked(pickupQueue.remove).mockResolvedValue(undefined);
+    vi.mocked(pickupQueue.remove).mockResolvedValue(undefined as never);
     vi.mocked(transitionOrder).mockResolvedValue(undefined as never);
     vi.mocked(paymentService.refundPayment).mockResolvedValue({
       id: "re_mock",

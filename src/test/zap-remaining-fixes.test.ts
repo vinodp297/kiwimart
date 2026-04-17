@@ -62,7 +62,7 @@ function makeReq(
     method: "GET",
     headers: new Headers({ "user-agent": "zap2-test" }),
     auth: opts.auth ?? null,
-  } as Parameters<typeof proxy>[0];
+  } as unknown as Parameters<typeof proxy>[0];
 }
 
 /** Call the proxy and return the full response (including redirects). */
@@ -70,7 +70,7 @@ async function callProxy(
   urlPath: string,
   opts?: { auth?: { user: { id: string } } | null },
 ) {
-  return proxy(makeReq(urlPath, opts));
+  return proxy(makeReq(urlPath, opts), {} as never);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ describe("ZAP remaining fixes — Fix 1: X-Content-Type-Options on redirects", (
   // ── Test 2: X-Content-Type-Options on already-authed login redirect ───────
   it("proxy redirect for authenticated user hitting /login includes X-Content-Type-Options: nosniff", async () => {
     const res = await callProxy("/login", {
-      auth: { user: { id: "user-1" } } as Parameters<typeof proxy>[0]["auth"],
+      auth: { user: { id: "user-1" } } as unknown as null,
     });
 
     expect(res!.status).toBeGreaterThanOrEqual(300);
@@ -119,7 +119,7 @@ describe("ZAP remaining fixes — Fix 2: Redirects are proxy-early (middleware)"
   // ── Test 4: Login redirect for authenticated user is 307 ─────────────────
   it("auth-path redirect for authenticated user is 307", async () => {
     const res = await callProxy("/login", {
-      auth: { user: { id: "user-1" } } as Parameters<typeof proxy>[0]["auth"],
+      auth: { user: { id: "user-1" } } as unknown as null,
     });
 
     expect(res!.status).toBe(307);

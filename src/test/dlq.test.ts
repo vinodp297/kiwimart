@@ -456,9 +456,9 @@ describe("DLQ — recursive job data sanitisation (Fix 2)", () => {
     const job = body.data.queues.email.jobs[0];
     const recipients = job.data.recipients as Array<Record<string, unknown>>;
 
-    expect(recipients[0].email).toBe("[REDACTED]");
-    expect(recipients[0].role).toBe("buyer");
-    expect(recipients[1].email).toBe("[REDACTED]");
-    expect(recipients[1].role).toBe("seller");
+    expect(recipients[0]!.email).toBe("[REDACTED]");
+    expect(recipients[0]!.role).toBe("buyer");
+    expect(recipients[1]!.email).toBe("[REDACTED]");
+    expect(recipients[1]!.role).toBe("seller");
   });
 });

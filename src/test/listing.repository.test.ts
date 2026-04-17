@@ -27,7 +27,7 @@ const mockListingPriceHistoryCreate = vi
 const mockTrustMetricsFindUnique = vi.fn().mockResolvedValue(null);
 const mockCategoryFindUnique = vi.fn().mockResolvedValue(null);
 
-const _db = db as Record<string, unknown>;
+const _db = db as unknown as Record<string, unknown>;
 (_db.listing as { groupBy?: unknown }).groupBy = mockListingGroupBy;
 if (!_db.listingImage) {
   _db.listingImage = {
@@ -272,7 +272,7 @@ describe("listingMutationRepository.addWatch / removeWatch", () => {
     expect(db.$transaction).toHaveBeenCalledTimes(1);
     // $transaction was called with an array of two prisma promises — we just
     // verify the shape (Array) because the individual promises are already set up.
-    expect(db.$transaction.mock.calls[0]?.[0]).toBeInstanceOf(Array);
+    expect(vi.mocked(db.$transaction).mock.calls[0]?.[0]).toBeInstanceOf(Array);
   });
 
   it("removeWatch: deletes watchlistItem and decrements watcherCount in one txn", async () => {
@@ -281,7 +281,7 @@ describe("listingMutationRepository.addWatch / removeWatch", () => {
     await listingRepository.removeWatch("user_1", "l_1");
 
     expect(db.$transaction).toHaveBeenCalledTimes(1);
-    expect(db.$transaction.mock.calls[0]?.[0]).toBeInstanceOf(Array);
+    expect(vi.mocked(db.$transaction).mock.calls[0]?.[0]).toBeInstanceOf(Array);
   });
 });
 
@@ -587,7 +587,9 @@ describe("listingQueryRepository.searchByVector / countByVector", () => {
   });
 
   it("countByVector coerces BigInt count to number", async () => {
-    vi.mocked(db.$queryRaw).mockResolvedValueOnce([{ count: 42n }] as never);
+    vi.mocked(db.$queryRaw).mockResolvedValueOnce([
+      { count: BigInt(42) },
+    ] as never);
 
     const count = await listingRepository.countByVector("chairs");
 

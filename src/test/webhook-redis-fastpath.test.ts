@@ -127,8 +127,11 @@ describe("WebhookService.processEvent — handler + DB idempotency (no service R
   it("handler throws: markEventProcessed is NOT called and error is re-thrown", async () => {
     const { userRepository } = await import("@/modules/users/user.repository");
     vi.mocked(
-      (userRepository as { updateByStripeAccountId: ReturnType<typeof vi.fn> })
-        .updateByStripeAccountId,
+      (
+        userRepository as unknown as {
+          updateByStripeAccountId: ReturnType<typeof vi.fn>;
+        }
+      ).updateByStripeAccountId,
     ).mockRejectedValueOnce(new Error("DB error"));
 
     const event = makeEvent("evt_handler_fail");
@@ -141,8 +144,11 @@ describe("WebhookService.processEvent — handler + DB idempotency (no service R
   it("handler failure is logged as stripe.webhook.handler_failed", async () => {
     const { userRepository } = await import("@/modules/users/user.repository");
     vi.mocked(
-      (userRepository as { updateByStripeAccountId: ReturnType<typeof vi.fn> })
-        .updateByStripeAccountId,
+      (
+        userRepository as unknown as {
+          updateByStripeAccountId: ReturnType<typeof vi.fn>;
+        }
+      ).updateByStripeAccountId,
     ).mockRejectedValueOnce(new Error("upstream failure"));
 
     const event = makeEvent("evt_fail_log");

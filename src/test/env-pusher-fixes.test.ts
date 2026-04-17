@@ -136,20 +136,32 @@ describe("Fix 2 — Pusher auth: rate limiting", () => {
       retryAfter: 30,
     });
 
-    const res = await POST(makeFormRequest({ userId: "user-abc" }));
+    const res = await POST(
+      makeFormRequest({
+        userId: "user-abc",
+      }) as unknown as import("next/server").NextRequest,
+    );
 
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("30");
   });
 
   it("rate limit uses 'pusherAuth' bucket keyed by userId", async () => {
-    await POST(makeFormRequest({ userId: "user-abc" }));
+    await POST(
+      makeFormRequest({
+        userId: "user-abc",
+      }) as unknown as import("next/server").NextRequest,
+    );
 
     expect(mockRateLimit).toHaveBeenCalledWith("pusherAuth", "user-abc");
   });
 
   it("valid request within limit → 200 and Pusher token returned", async () => {
-    const res = await POST(makeFormRequest({ userId: "user-abc" }));
+    const res = await POST(
+      makeFormRequest({
+        userId: "user-abc",
+      }) as unknown as import("next/server").NextRequest,
+    );
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { auth: string };
@@ -159,7 +171,9 @@ describe("Fix 2 — Pusher auth: rate limiting", () => {
   it("unauthenticated request → 403 (no rate limit call)", async () => {
     mockAuth.mockResolvedValue(null);
 
-    const res = await POST(makeFormRequest());
+    const res = await POST(
+      makeFormRequest() as unknown as import("next/server").NextRequest,
+    );
 
     expect(res.status).toBe(403);
     // Rate limit must NOT be called before session check
@@ -182,7 +196,11 @@ describe("Fix 2 — Pusher auth: rate limiting", () => {
       };
     });
 
-    await POST(makeFormRequest({ userId: "user-abc" }));
+    await POST(
+      makeFormRequest({
+        userId: "user-abc",
+      }) as unknown as import("next/server").NextRequest,
+    );
 
     expect(callOrder.indexOf("auth")).toBeLessThan(
       callOrder.indexOf("rateLimit"),
@@ -209,7 +227,10 @@ describe("Fix 2 — Pusher auth: origin check", () => {
 
   it("request from allowed origin → proceeds normally (200)", async () => {
     const res = await POST(
-      makeFormRequest({ userId: "user-abc", origin: "http://localhost:3001" }),
+      makeFormRequest({
+        userId: "user-abc",
+        origin: "http://localhost:3001",
+      }) as unknown as import("next/server").NextRequest,
     );
     expect(res.status).toBe(200);
   });
@@ -219,7 +240,7 @@ describe("Fix 2 — Pusher auth: origin check", () => {
       makeFormRequest({
         userId: "user-abc",
         origin: "https://evil-attacker.com",
-      }),
+      }) as unknown as import("next/server").NextRequest,
     );
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error: string };
@@ -232,7 +253,7 @@ describe("Fix 2 — Pusher auth: origin check", () => {
       makeFormRequest({
         userId: "user-abc",
         origin: "https://different-site.com",
-      }),
+      }) as unknown as import("next/server").NextRequest,
     );
     expect(res.status).toBe(403);
     // Auth mock should not have been needed — origin rejected first
@@ -250,7 +271,7 @@ describe("Fix 2 — Pusher auth: origin check", () => {
       // No origin header
     });
 
-    const res = await POST(req);
+    const res = await POST(req as unknown as import("next/server").NextRequest);
     // Should proceed — no origin means same-origin or server-to-server
     expect(res.status).toBe(200);
   });

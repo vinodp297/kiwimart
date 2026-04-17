@@ -826,7 +826,7 @@ describe("getOrderInteractions", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].id).toBe("int_1");
+      expect(result.data[0]!.id).toBe("int_1");
     }
     expect(mockGetOrderInteractions).toHaveBeenCalledWith(
       "order_1",

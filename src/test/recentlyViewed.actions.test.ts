@@ -161,7 +161,7 @@ describe("getRecentlyViewedFromDB", () => {
         condition: "new",
         viewedAt: "2026-04-15T10:00:00.000Z",
       });
-      expect(result.data[0].thumbnailUrl).toBeTruthy();
+      expect(result.data[0]!.thumbnailUrl).toBeTruthy();
     }
   });
 
@@ -225,7 +225,7 @@ describe("getRecentlyViewedFromDB", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data[0].thumbnailUrl).toBeTruthy();
+      expect(result.data[0]!.thumbnailUrl).toBeTruthy();
     }
   });
 

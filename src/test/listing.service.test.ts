@@ -67,7 +67,7 @@ const mockListingImageUpdateMany = vi.fn().mockResolvedValue({ count: 0 });
 const mockTrustMetricsFindUnique = vi.fn().mockResolvedValue(null);
 const mockListingPriceHistoryCreate = vi.fn().mockResolvedValue({ id: "ph-1" });
 
-const _db = db as Record<string, unknown>;
+const _db = db as unknown as Record<string, unknown>;
 if (!_db.category) _db.category = { findUnique: mockCategoryFindUnique };
 if (!_db.listingImage) {
   _db.listingImage = {

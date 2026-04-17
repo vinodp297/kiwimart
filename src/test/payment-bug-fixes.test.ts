@@ -384,10 +384,10 @@ describe("Bug 3 — AUTO_DISMISS capture before transition", () => {
     mockCapturePayment.mockImplementation(async () => {
       callOrder.push("capture");
     });
-    vi.mocked(db.order.updateMany).mockImplementation(async () => {
+    vi.mocked(db.order.updateMany).mockImplementation((async () => {
       callOrder.push("transition");
       return { count: 1 };
-    });
+    }) as never);
 
     await autoResService.executeDecision("order-1", autoDismissEvaluation());
 

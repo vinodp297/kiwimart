@@ -1,5 +1,6 @@
 import { db, getClient } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { logger } from "@/shared/logger";
 
 // ---------------------------------------------------------------------------
 // Admin repository — data access only, no business logic.
@@ -432,6 +433,9 @@ export const adminRepository = {
         createdAt: true,
       },
       orderBy: { createdAt: "asc" },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: 50,
     });
   },
 
@@ -558,6 +562,9 @@ export const adminRepository = {
       where: { idSubmittedAt: { not: null }, idVerified: false },
       select: { id: true, displayName: true, email: true, idSubmittedAt: true },
       orderBy: { idSubmittedAt: "asc" },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: 50,
     });
   },
 
@@ -565,20 +572,42 @@ export const adminRepository = {
   async findCompletedOrdersSince(
     since: Date,
   ): Promise<{ completedAt: Date | null; totalNzd: number }[]> {
-    return db.order.findMany({
+    const CAP = 10000;
+    const rows = await db.order.findMany({
       where: { status: "COMPLETED", completedAt: { gte: since } },
       select: { completedAt: true, totalNzd: true },
       orderBy: { completedAt: "asc" },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: CAP,
     });
+    if (rows.length === CAP) {
+      logger.warn("admin.findCompletedOrdersSince.cap_hit", {
+        since: since.toISOString(),
+        cap: CAP,
+      });
+    }
+    return rows;
   },
 
   /** Orders created since a date (for volume chart). */
   async findOrdersCreatedSince(since: Date): Promise<{ createdAt: Date }[]> {
-    return db.order.findMany({
+    const CAP = 10000;
+    const rows = await db.order.findMany({
       where: { createdAt: { gte: since } },
       select: { createdAt: true },
       orderBy: { createdAt: "asc" },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: CAP,
     });
+    if (rows.length === CAP) {
+      logger.warn("admin.findOrdersCreatedSince.cap_hit", {
+        since: since.toISOString(),
+        cap: CAP,
+      });
+    }
+    return rows;
   },
 
   /** Active listing counts grouped by category. */
@@ -628,6 +657,9 @@ export const adminRepository = {
         isPhoneVerified: true,
       },
       orderBy: { idSubmittedAt: "asc" },
+      // Safety cap — prevents runaway query if table grows large.
+      // Cursor pagination wired to UI is deferred to the UI redesign sprint.
+      take: 50,
     });
   },
 

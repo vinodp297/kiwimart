@@ -102,7 +102,12 @@ describe("CartService", () => {
     vi.clearAllMocks();
     // Default: $transaction executes callback
     vi.mocked(cartRepository.$transaction).mockImplementation(
-      async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+      async (
+        fn: (
+          tx: import("@prisma/client").Prisma.TransactionClient,
+        ) => Promise<unknown>,
+      ) =>
+        fn({} as unknown as import("@prisma/client").Prisma.TransactionClient),
     );
   });
 
@@ -338,7 +343,7 @@ describe("CartService", () => {
       expect(result!.subtotalNzd).toBe(5000);
       expect(result!.shippingNzd).toBe(500);
       expect(result!.totalNzd).toBe(5500);
-      expect(result!.items[0].isAvailable).toBe(true);
+      expect(result!.items[0]!.isAvailable).toBe(true);
     });
 
     it("returns null if no cart exists", async () => {
@@ -392,7 +397,7 @@ describe("CartService", () => {
 
       const result = await cartService.getCart("buyer-1");
 
-      expect(result!.items[0].isAvailable).toBe(false);
+      expect(result!.items[0]!.isAvailable).toBe(false);
     });
   });
 
@@ -540,9 +545,9 @@ describe("CartService", () => {
         ...checkoutCartData,
         items: [
           {
-            ...checkoutCartData.items[0],
+            ...checkoutCartData.items[0]!,
             listing: {
-              ...checkoutCartData.items[0].listing,
+              ...checkoutCartData.items[0]!.listing,
               status: "SOLD",
             },
           },
@@ -563,13 +568,13 @@ describe("CartService", () => {
       vi.mocked(cartRepository.findByUserForCheckout).mockResolvedValue({
         ...checkoutCartData,
         items: [
-          checkoutCartData.items[0],
+          checkoutCartData.items[0]!,
           {
-            ...checkoutCartData.items[0],
+            ...checkoutCartData.items[0]!,
             id: "item-2",
             listingId: "listing-2",
             listing: {
-              ...checkoutCartData.items[0].listing,
+              ...checkoutCartData.items[0]!.listing,
               id: "listing-2",
               sellerId: "other-seller",
             },
@@ -827,10 +832,10 @@ describe("CartService", () => {
         ...checkoutDataWithSnapshot,
         items: [
           {
-            ...checkoutDataWithSnapshot.items[0],
+            ...checkoutDataWithSnapshot.items[0]!,
             snapshotPriceNzd: 5000,
             listing: {
-              ...checkoutDataWithSnapshot.items[0].listing,
+              ...checkoutDataWithSnapshot.items[0]!.listing,
               priceNzd: 6000, // price increased from 5000 to 6000
             },
           },
@@ -868,10 +873,10 @@ describe("CartService", () => {
         ...checkoutDataWithSnapshot,
         items: [
           {
-            ...checkoutDataWithSnapshot.items[0],
+            ...checkoutDataWithSnapshot.items[0]!,
             snapshotPriceNzd: 5000,
             listing: {
-              ...checkoutDataWithSnapshot.items[0].listing,
+              ...checkoutDataWithSnapshot.items[0]!.listing,
               priceNzd: 3000, // price decreased from 5000 to 3000
             },
           },
@@ -887,7 +892,7 @@ describe("CartService", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.requiresPriceConfirmation).toBe(true);
-        expect(result.driftedItems![0].differenceNzd).toBe(-2000);
+        expect(result.driftedItems![0]!.differenceNzd).toBe(-2000);
       }
     });
 
@@ -898,11 +903,11 @@ describe("CartService", () => {
         ...checkoutDataWithSnapshot,
         items: [
           {
-            ...checkoutDataWithSnapshot.items[0],
+            ...checkoutDataWithSnapshot.items[0]!,
             snapshotPriceNzd: 6000,
             priceNzd: 6000,
             listing: {
-              ...checkoutDataWithSnapshot.items[0].listing,
+              ...checkoutDataWithSnapshot.items[0]!.listing,
               priceNzd: 6000,
             },
           },
@@ -929,10 +934,10 @@ describe("CartService", () => {
         ...checkoutDataWithSnapshot,
         items: [
           {
-            ...checkoutDataWithSnapshot.items[0],
+            ...checkoutDataWithSnapshot.items[0]!,
             snapshotPriceNzd: 6000, // updated to 6000 from previous drift
             listing: {
-              ...checkoutDataWithSnapshot.items[0].listing,
+              ...checkoutDataWithSnapshot.items[0]!.listing,
               priceNzd: 7500, // seller changed price again
             },
           },
