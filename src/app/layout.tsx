@@ -19,9 +19,15 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { auth } from "@/lib/auth";
 import "./globals.css";
 
+// preload:false — fonts are still bundled by Next.js at build time and served
+// from our own infrastructure, but no <link rel="preload"> is emitted.
+// This removes the hard build-time dependency on Google's CDN: if the network
+// is unavailable during a build the compiler falls back to the system font
+// stack rather than failing the build.
 const playfair = Playfair_Display({
   subsets: ["latin"],
   display: "swap",
+  preload: false,
   variable: "--font-playfair",
   weight: ["400", "500", "600", "700"],
 });
@@ -29,6 +35,7 @@ const playfair = Playfair_Display({
 const dmSans = DM_Sans({
   subsets: ["latin"],
   display: "swap",
+  preload: false,
   variable: "--font-dm-sans",
 });
 
