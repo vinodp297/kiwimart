@@ -116,13 +116,14 @@ export const envSchema = z.object({
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: z.string().optional(),
 
   // ── Turnstile enforcement flag ──────────────────────────────────────────────
-  // Explicit opt-in. Replaces the previous NODE_ENV !== "production" check
-  // which silently disabled bot protection on staging environments running
-  // with NODE_ENV=staging or NODE_ENV=preview.
+  // Secure-by-default: enforced in production unless explicitly opted out.
+  // In every other environment (development, test, staging, preview) the
+  // default is off so local and CI runs do not hit real Cloudflare
+  // challenges. Set TURNSTILE_ENFORCED=true/false to override per deploy.
   TURNSTILE_ENFORCED: z
     .enum(["true", "false"])
     .optional()
-    .default("false")
+    .default(process.env.NODE_ENV === "production" ? "true" : "false")
     .transform((val) => val === "true"),
 
   // ── Mobile API JWT ──────────────────────────────────────────────────────────
@@ -139,10 +140,21 @@ export const envSchema = z.object({
   // ── Mobile API CORS ─────────────────────────────────────────────────────────
   // Comma-separated list of allowed origins for the /api/v1 mobile endpoints.
   // Example: "https://app.buyzi.co.nz,https://staging.buyzi.co.nz"
-  ALLOWED_ORIGINS: z
-    .string()
-    .min(1, "ALLOWED_ORIGINS must contain at least one origin")
-    .optional(),
+  // Required in production — fail-fast at startup rather than at the first
+  // cross-origin request. Optional everywhere else so local/dev runs do not
+  // need the variable set.
+  ALLOWED_ORIGINS:
+    process.env.NODE_ENV === "production"
+      ? z
+          .string()
+          .min(
+            1,
+            "ALLOWED_ORIGINS is required in production and must contain at least one origin",
+          )
+      : z
+          .string()
+          .min(1, "ALLOWED_ORIGINS must contain at least one origin")
+          .optional(),
 
   // ── Dispute evidence upload limit (optional override) ───────────────────────
   DISPUTE_EVIDENCE_MAX_FILES: z.coerce

@@ -1,28 +1,24 @@
 // src/app/api/v1/_helpers/cors.ts
 // ─── CORS Headers for Mobile API ─────────────────────────────────────────────
-// getCorsHeaders() is intentionally NOT called at module level — it must
-// only run inside request handlers so that missing env vars throw at
-// request time (not at build/bundle evaluation time on Vercel).
-//
 // Origin reflection: we never use wildcard (*). For each request we check the
 // incoming Origin header against the ALLOWED_ORIGINS allowlist and reflect it
 // back only if it matches. Non-matching origins receive no CORS headers.
+//
+// ALLOWED_ORIGINS is validated by the env schema at startup — required in
+// production, optional elsewhere — so a missing value in production fails
+// fast at boot rather than at the first cross-origin request.
 //
 // Vary: Origin is always included when CORS headers are set so CDNs cache
 // responses separately per origin and do not serve one origin's CORS response
 // to a different origin (cache-poisoning prevention).
 
+import { env } from "@/env";
+
 function getAllowedOrigins(): string[] {
-  const origins = process.env.ALLOWED_ORIGINS;
-  if (!origins) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error(
-        "ALLOWED_ORIGINS env var is required in production. Set it to a comma-separated list of allowed origins.",
-      );
-    }
-    // Fail closed in non-production too — no ALLOWED_ORIGINS means no CORS.
-    return [];
-  }
+  const origins = env.ALLOWED_ORIGINS;
+  // Absent only outside production (schema enforces presence in production).
+  // Fail closed — no ALLOWED_ORIGINS means no CORS headers are reflected.
+  if (!origins) return [];
   return origins
     .split(",")
     .map((o) => o.trim())
