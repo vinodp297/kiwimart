@@ -268,7 +268,7 @@ describe("processAutoReleases — cash pickup orders", () => {
       expect.objectContaining({
         orderId: "cash-order-1",
         type: ORDER_EVENT_TYPES.COMPLETED,
-        summary: expect.stringContaining("Cash pickup payout finalized"),
+        summary: expect.stringContaining("Cash pickup payout finalised"),
       }),
     );
   });

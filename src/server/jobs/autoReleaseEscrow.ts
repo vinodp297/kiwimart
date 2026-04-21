@@ -127,7 +127,7 @@ export async function processAutoReleases(): Promise<{
             reason: "missing_payment_intent",
             requiresManualReview: true,
           });
-          audit({
+          await audit({
             userId: null,
             action: "ORDER_STATUS_CHANGED",
             entityType: "Order",
@@ -170,7 +170,7 @@ export async function processAutoReleases(): Promise<{
                   : String(captureErr),
               requiresManualReview: true,
             });
-            audit({
+            await audit({
               userId: null,
               action: "ORDER_STATUS_CHANGED",
               entityType: "Order",
@@ -209,8 +209,8 @@ export async function processAutoReleases(): Promise<{
                 newStatus: "COMPLETED",
                 previousStatus: "DISPATCHED",
                 trigger: "AUTO_RELEASE",
-                buyerEmail: order.buyer.email,
-                sellerEmail: order.seller.email,
+                buyerId: order.buyerId, // ID only — resolve display data at read-time
+                sellerId: order.sellerId, // ID only — resolve display data at read-time
               },
               tx,
             });
@@ -324,31 +324,39 @@ export async function processAutoReleases(): Promise<{
             }
 
             try {
-              await payoutRepository.markPaidByOrderIdIfPending(
-                order.id,
-                new Date(),
-              );
+              // Wrap all three writes in a transaction so they succeed or roll
+              // back together — a partial write (payout marked PAID but audit or
+              // event missing) would leave the record in an inconsistent state.
+              await withTransaction(async (tx) => {
+                await payoutRepository.markPaidByOrderIdIfPending(
+                  order.id,
+                  new Date(),
+                  tx,
+                );
 
-              audit({
-                userId: null,
-                action: "PAYOUT_INITIATED",
-                entityType: "Payout",
-                entityId: order.payout?.id ?? order.id,
-                metadata: {
+                await audit({
+                  userId: null,
+                  action: "PAYOUT_INITIATED",
+                  entityType: "Payout",
+                  entityId: order.payout?.id ?? order.id,
+                  metadata: {
+                    orderId: order.id,
+                    newStatus: "PAID",
+                    trigger: "CASH_ESCROW_RELEASE",
+                  },
+                  tx,
+                });
+
+                await orderEventService.recordEvent({
                   orderId: order.id,
-                  newStatus: "PAID",
-                  trigger: "CASH_ESCROW_RELEASE",
-                },
-              });
-
-              orderEventService.recordEvent({
-                orderId: order.id,
-                type: ORDER_EVENT_TYPES.COMPLETED,
-                actorId: null,
-                actorRole: ACTOR_ROLES.SYSTEM,
-                summary:
-                  "Cash pickup payout finalized — escrow hold period elapsed",
-                metadata: { trigger: "CASH_ESCROW_RELEASE" },
+                  type: ORDER_EVENT_TYPES.COMPLETED,
+                  actorId: null,
+                  actorRole: ACTOR_ROLES.SYSTEM,
+                  summary:
+                    "Cash pickup payout finalised — escrow hold period elapsed",
+                  metadata: { trigger: "CASH_ESCROW_RELEASE" },
+                  tx,
+                });
               });
 
               logger.info("escrow.cash_release.payout_finalized", {
