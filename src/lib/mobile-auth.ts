@@ -74,8 +74,11 @@ export async function signMobileToken(
     await redis.sadd(sessionSetKey(user.id), jti);
     await redis.expire(sessionSetKey(user.id), SESSION_SET_TTL_SECONDS);
   } catch {
-    // Redis unavailable — token still issued; revocation will be best-effort.
-    // (acceptable: token expiry is the fallback)
+    // Redis unavailable — token is still issued because the JWT signature
+    // is the primary auth mechanism. Redis is only needed for revocation.
+    // If Redis is down, tokens cannot be revoked until Redis recovers, but
+    // they will expire naturally after 7 days. This is an acceptable
+    // trade-off — fail-open on issue, fail-closed on verify (see below).
   }
 
   return { token, expiresAt: expiresAt.toISOString() };
@@ -91,9 +94,13 @@ export async function verifyMobileToken(
     if (!payload.sub || !payload.email || !payload.jti) return null;
 
     // Check Redis — if the jti key is gone the token has been revoked.
-    // Fail-closed: if Redis is down we MUST NOT accept the token, because a
-    // compromised token that has been revoked would otherwise be accepted until
-    // it expires (up to 7 days). Return 503 so the client knows to retry.
+    // Fail-closed on Redis unavailability: we MUST NOT accept a token
+    // whose revocation status cannot be confirmed. A compromised token
+    // that was revoked (e.g. after password change) must not be accepted
+    // for up to 7 days just because Redis is temporarily unavailable.
+    // This is the intentional asymmetry with signMobileToken() which
+    // fails open — issue is best-effort, verify is strict.
+    // Returns 503 so the mobile client knows to retry, not re-login.
     try {
       const redis = getRedisClient();
       const stored = await redis.get(tokenKey(payload.sub, payload.jti));
