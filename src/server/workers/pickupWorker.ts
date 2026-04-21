@@ -8,7 +8,7 @@
 // All jobs are idempotent — check order/request status before processing.
 
 import { Worker } from "bullmq";
-import { getQueueConnection } from "@/lib/queue";
+import { getQueueConnection, PICKUP_QUEUE_CONFIG } from "@/lib/queue";
 import type { PickupJobData } from "@/lib/queue";
 import { audit } from "@/server/lib/audit";
 import { logger } from "@/shared/logger";
@@ -67,6 +67,10 @@ export function startPickupWorker() {
       connection:
         getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 2,
+      // Wire the custom jitter backoff — matching the queue's
+      // defaultJobOptions.backoff.type = "custom" so BullMQ invokes this
+      // strategy instead of its built-in exponential algorithm.
+      settings: { backoffStrategy: PICKUP_QUEUE_CONFIG.backoffStrategy },
     },
   );
 

@@ -29,6 +29,11 @@ vi.mock("@/lib/queue", () => ({
   getQueueConnection: vi.fn().mockReturnValue({}),
   payoutQueue: { add: vi.fn() },
   emailQueue: { add: vi.fn() },
+  // Stub per-queue configs — workers import the backoffStrategy at construction.
+  EMAIL_QUEUE_CONFIG: { backoffStrategy: () => 0 },
+  IMAGE_QUEUE_CONFIG: { backoffStrategy: () => 0 },
+  PAYOUT_QUEUE_CONFIG: { backoffStrategy: () => 0 },
+  PICKUP_QUEUE_CONFIG: { backoffStrategy: () => 0 },
 }));
 
 // ── Mock Stripe client ────────────────────────────────────────────────────────

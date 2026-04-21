@@ -10,7 +10,7 @@
 // set (removeOnFail: false).
 
 import { Worker } from "bullmq";
-import { getQueueConnection } from "@/lib/queue";
+import { getQueueConnection, EMAIL_QUEUE_CONFIG } from "@/lib/queue";
 import type { EmailJobData } from "@/lib/queue";
 import {
   sendVerificationEmail,
@@ -220,6 +220,10 @@ export function startEmailWorker() {
         getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 5,
       limiter: { max: 10, duration: 1000 }, // 10 emails/sec (Resend limit)
+      // Wire the custom jitter backoff — matching the queue's
+      // defaultJobOptions.backoff.type = "custom" so BullMQ invokes this
+      // strategy instead of its built-in exponential algorithm.
+      settings: { backoffStrategy: EMAIL_QUEUE_CONFIG.backoffStrategy },
     },
   );
 

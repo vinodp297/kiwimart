@@ -16,7 +16,7 @@
 // All jobs are idempotent — re-processing overwrites the same R2 keys.
 
 import { Worker } from "bullmq";
-import { getQueueConnection } from "@/lib/queue";
+import { getQueueConnection, IMAGE_QUEUE_CONFIG } from "@/lib/queue";
 import type { ImageJobData } from "@/lib/queue";
 import { processImage } from "@/server/actions/imageProcessor";
 import { audit } from "@/server/lib/audit";
@@ -65,6 +65,10 @@ export function startImageWorker() {
       connection:
         getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 3, // Process 3 images at a time (memory-intensive)
+      // Wire the custom jitter backoff — matching the queue's
+      // defaultJobOptions.backoff.type = "custom" so BullMQ invokes this
+      // strategy instead of its built-in exponential algorithm.
+      settings: { backoffStrategy: IMAGE_QUEUE_CONFIG.backoffStrategy },
     },
   );
 

@@ -20,7 +20,7 @@
 // All jobs check payout.status before proceeding — PENDING only.
 
 import { Worker } from "bullmq";
-import { getQueueConnection } from "@/lib/queue";
+import { getQueueConnection, PAYOUT_QUEUE_CONFIG } from "@/lib/queue";
 import type { PayoutJobData } from "@/lib/queue";
 import { audit } from "@/server/lib/audit";
 import { stripe } from "@/infrastructure/stripe/client";
@@ -263,6 +263,12 @@ export function startPayoutWorker() {
       connection:
         getQueueConnection() as unknown as import("bullmq").ConnectionOptions,
       concurrency: 2,
+      // Wire the custom jitter backoff — matching the queue's
+      // defaultJobOptions.backoff.type = "custom" so BullMQ invokes this
+      // strategy instead of its built-in exponential algorithm. Payouts use
+      // the longest base delay (10s) to reduce pressure on Stripe Connect
+      // during partial outages.
+      settings: { backoffStrategy: PAYOUT_QUEUE_CONFIG.backoffStrategy },
     },
   );
 

@@ -245,6 +245,11 @@ vi.mock("@/lib/queue", () => ({
     getFailedCount: (...a: unknown[]) => mockEmailGetFailedCount(...a),
   },
   getQueueConnection: vi.fn().mockReturnValue({}),
+  // Stub per-queue configs — workers import the backoffStrategy at construction.
+  EMAIL_QUEUE_CONFIG: { backoffStrategy: () => 0 },
+  IMAGE_QUEUE_CONFIG: { backoffStrategy: () => 0 },
+  PAYOUT_QUEUE_CONFIG: { backoffStrategy: () => 0 },
+  PICKUP_QUEUE_CONFIG: { backoffStrategy: () => 0 },
 }));
 
 const { GET } = await import("@/app/api/health/route");
