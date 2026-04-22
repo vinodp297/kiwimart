@@ -15,6 +15,18 @@ vi.mock("@/shared/logger", () => ({
   },
 }));
 
+// Transparent pass-through so fake-timer tests work correctly.
+// withStripeTimeout now wraps its logic inside withStripeCircuitBreaker; mocking
+// it here as a direct fn() call ensures the setTimeout inside withStripeTimeout
+// is registered synchronously (before vi.advanceTimersByTime is called).
+// Circuit-breaker behaviour is tested separately in stripe-circuit-breaker.test.ts.
+vi.mock("@/infrastructure/stripe/circuit-breaker", () => ({
+  withStripeCircuitBreaker: <T>(
+    fn: () => Promise<T>,
+    _operationName: string,
+  ): Promise<T> => fn(),
+}));
+
 const { withStripeTimeout } =
   await import("@/infrastructure/stripe/with-timeout");
 const { logger } = await import("@/shared/logger");
