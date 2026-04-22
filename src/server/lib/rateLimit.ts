@@ -35,6 +35,15 @@ const registerLimiter = () =>
     analytics: true,
   });
 
+/** 3 resend-verification requests per hour per IP */
+const resendVerificationLimiter = () =>
+  new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(3, "1 h"),
+    prefix: "km:rl:resend-verification",
+    analytics: true,
+  });
+
 /** 20 messages per minute — prevent spam */
 const messageLimiter = () =>
   new Ratelimit({
@@ -297,6 +306,7 @@ const clientErrorsLimiter = () =>
 export type RateLimitKey =
   | "auth"
   | "register"
+  | "resendVerification"
   | "message"
   | "listing"
   | "offer"
@@ -367,6 +377,7 @@ export async function rateLimit(
   const limiterFactories: Record<RateLimitKey, () => Ratelimit> = {
     auth: authLimiter,
     register: registerLimiter,
+    resendVerification: resendVerificationLimiter,
     message: messageLimiter,
     listing: listingLimiter,
     offer: offerLimiter,

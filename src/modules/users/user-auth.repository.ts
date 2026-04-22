@@ -147,6 +147,20 @@ export const userAuthRepository = {
     });
   },
 
+  async updateVerificationToken(
+    id: string,
+    token: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    await db.user.update({
+      where: { id },
+      data: {
+        emailVerifyToken: token,
+        emailVerifyExpires: expiresAt,
+      },
+    });
+  },
+
   async upsertBlock(blockerId: string, blockedId: string): Promise<void> {
     await db.blockedUser.upsert({
       where: { blockerId_blockedId: { blockerId, blockedId } },
