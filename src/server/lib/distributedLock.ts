@@ -272,6 +272,17 @@ export async function withLockAndHeartbeat<T>(
         const current = await redis.get(key);
         if (current === lockValue) {
           await redis.expire(key, ttlSeconds);
+        } else {
+          // Lock value mismatch — the lock is no longer ours.
+          // This indicates the lock was lost to another worker and the current
+          // operation may have been duplicated. Manual review recommended.
+          logger.warn("distributedLock.heartbeat_lock_lost", {
+            resource,
+            message:
+              "Lock value mismatch during heartbeat — lock was lost and " +
+              "re-acquired by another worker. Operation may have been " +
+              "duplicated. Manual review recommended.",
+          });
         }
       } catch {
         // Non-fatal — let the TTL expire naturally if Redis is unreachable.

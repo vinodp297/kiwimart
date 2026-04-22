@@ -10,6 +10,7 @@
 //
 // All jobs are idempotent — safe to run twice without side effects.
 
+import { randomInt } from "crypto";
 import { Queue } from "bullmq";
 import { getQueueConnection } from "@/infrastructure/queue/client";
 
@@ -19,10 +20,14 @@ export { getQueueConnection };
 
 /**
  * Creates a BullMQ custom backoff strategy function that applies exponential
- * delay with random jitter to prevent retry storms during partial provider
- * outages (e.g. Resend, Stripe, or R2 experiencing elevated error rates).
+ * delay with cryptographically-random jitter to prevent retry storms and
+ * thundering herd during partial provider outages (e.g. Resend, Stripe, or
+ * R2 experiencing elevated error rates).
  *
- * Formula: baseDelayMs × 2^attemptsMade + random(0, jitterMs)
+ * Formula: baseDelayMs × 2^attemptsMade + crypto.randomInt(0, jitterMs)
+ *
+ * Uses crypto.randomInt instead of Math.random() to ensure workers in the same
+ * isolate do not pick correlated jitter values on cold start.
  *
  * Pass the returned function to the Worker that processes this queue:
  *   new Worker(name, processor, {
@@ -33,14 +38,14 @@ export { getQueueConnection };
  * to invoke this function instead of its built-in exponential algorithm.
  *
  * @param baseDelayMs — initial delay in milliseconds (doubled on each retry)
- * @param jitterMs    — upper bound of the random jitter added per retry
+ * @param jitterMs    — upper bound of the random jitter added per retry (milliseconds)
  */
 function makeBackoffStrategy(
   baseDelayMs: number,
   jitterMs: number,
 ): (attemptsMade: number) => number {
   return (attemptsMade: number): number =>
-    baseDelayMs * Math.pow(2, attemptsMade) + Math.random() * jitterMs;
+    baseDelayMs * Math.pow(2, attemptsMade) + randomInt(0, jitterMs + 1);
 }
 
 // ── Queue config type ────────────────────────────────────────────────────────

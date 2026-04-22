@@ -7,6 +7,9 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 
+// Mock for controlling crypto.randomInt in tests
+let mockRandomIntValue: number | null = null;
+
 // Prevent the Queue constructor from trying to open a real Redis connection.
 vi.mock("bullmq", () => ({
   Queue: class MockQueue {
@@ -20,6 +23,21 @@ vi.mock("bullmq", () => ({
 vi.mock("@/infrastructure/queue/client", () => ({
   getQueueConnection: vi.fn().mockReturnValue({}),
 }));
+
+// Mock crypto.randomInt to allow deterministic jitter testing
+vi.mock("crypto", async () => {
+  const actualCrypto = await vi.importActual<typeof import("crypto")>("crypto");
+  return {
+    ...actualCrypto,
+    randomInt: vi.fn((min: number, max: number) => {
+      if (mockRandomIntValue !== null) {
+        return mockRandomIntValue;
+      }
+      // Default to real randomInt if not mocked
+      return actualCrypto.randomInt(min, max);
+    }),
+  };
+});
 
 // The global setup.ts mocks @/lib/queue as a thin object that strips all config
 // constants. Override it here with importOriginal so the real per-queue config
@@ -109,11 +127,12 @@ describe("all per-queue configs — shared invariants", () => {
   it.each(ALL_CONFIGS)(
     "$name backoffStrategy returns a larger delay for attempt 1 than attempt 0 (exponential growth)",
     ({ config }) => {
-      // Pin Math.random() = 0 so jitter does not obscure the exponential comparison.
-      vi.spyOn(Math, "random").mockReturnValue(0);
+      // Pin crypto.randomInt to return 0 so jitter does not obscure the exponential comparison.
+      mockRandomIntValue = 0;
       const delay0 = config.backoffStrategy(0);
       const delay1 = config.backoffStrategy(1);
       expect(delay1).toBeGreaterThan(delay0);
+      mockRandomIntValue = null;
     },
   );
 });
@@ -131,17 +150,19 @@ describe("EMAIL_QUEUE_CONFIG", () => {
     });
   });
 
-  it("backoffStrategy starts at ≥2,000 ms (base delay) with zero jitter", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
+  it("backoffStrategy starts at 2,000 ms (base delay) with zero jitter", () => {
+    mockRandomIntValue = 0;
     expect(EMAIL_QUEUE_CONFIG.backoffStrategy(0)).toBe(2000);
+    mockRandomIntValue = null;
   });
 
-  it("backoffStrategy for attempt 0 stays within [2000, 3000) with full jitter", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.9999);
+  it("backoffStrategy for attempt 0 stays within [2000, 3000] with max jitter", () => {
+    mockRandomIntValue = 1000; // Max jitter for EMAIL is 1000
     const delay = EMAIL_QUEUE_CONFIG.backoffStrategy(0);
-    // base = 2000 * 2^0 = 2000, jitter upper = 1000 → max ≈ 3000
+    // base = 2000 * 2^0 = 2000, max jitter = 1000 → max = 3000
     expect(delay).toBeGreaterThanOrEqual(2000);
-    expect(delay).toBeLessThan(3001);
+    expect(delay).toBeLessThanOrEqual(3000);
+    mockRandomIntValue = null;
   });
 });
 
@@ -159,8 +180,9 @@ describe("IMAGE_QUEUE_CONFIG", () => {
   });
 
   it("backoffStrategy starts at 3,000 ms with zero jitter (longer than email)", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockRandomIntValue = 0;
     expect(IMAGE_QUEUE_CONFIG.backoffStrategy(0)).toBe(3000);
+    mockRandomIntValue = null;
   });
 });
 
@@ -178,17 +200,19 @@ describe("PAYOUT_QUEUE_CONFIG", () => {
   });
 
   it("backoffStrategy starts at 10,000 ms with zero jitter — longest base delay", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockRandomIntValue = 0;
     expect(PAYOUT_QUEUE_CONFIG.backoffStrategy(0)).toBe(10000);
+    mockRandomIntValue = null;
   });
 
   it("backoffStrategy base delay exceeds EMAIL and IMAGE configs (financial safety)", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockRandomIntValue = 0;
     const payoutDelay = PAYOUT_QUEUE_CONFIG.backoffStrategy(0);
     const emailDelay = EMAIL_QUEUE_CONFIG.backoffStrategy(0);
     const imageDelay = IMAGE_QUEUE_CONFIG.backoffStrategy(0);
     expect(payoutDelay).toBeGreaterThan(emailDelay);
     expect(payoutDelay).toBeGreaterThan(imageDelay);
+    mockRandomIntValue = null;
   });
 });
 
@@ -206,8 +230,9 @@ describe("NOTIFICATION_QUEUE_CONFIG", () => {
   });
 
   it("backoffStrategy starts at 1,000 ms with zero jitter — fastest base delay", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockRandomIntValue = 0;
     expect(NOTIFICATION_QUEUE_CONFIG.backoffStrategy(0)).toBe(1000);
+    mockRandomIntValue = null;
   });
 });
 
@@ -225,8 +250,9 @@ describe("PICKUP_QUEUE_CONFIG", () => {
   });
 
   it("backoffStrategy starts at 2,000 ms with zero jitter", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0);
+    mockRandomIntValue = 0;
     expect(PICKUP_QUEUE_CONFIG.backoffStrategy(0)).toBe(2000);
+    mockRandomIntValue = null;
   });
 });
 
