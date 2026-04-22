@@ -47,6 +47,7 @@ const {
   verifyMobileToken,
   revokeMobileToken,
   revokeAllMobileTokens,
+  pruneExpiredSessions,
 } = await import("@/lib/mobile-auth");
 
 // ── Helper: sign a JWT manually with the test secret ─────────────────────────
@@ -80,6 +81,9 @@ describe("signMobileToken", () => {
     mockSet.mockResolvedValue("OK");
     mockSadd.mockResolvedValue(1);
     mockExpire.mockResolvedValue(1);
+    // pruneExpiredSessions is called fire-and-forget after each sign.
+    // Return an empty set so it short-circuits before touching get/srem.
+    mockSmembers.mockResolvedValue([]);
   });
 
   it("returns a JWT token and expiresAt", async () => {
@@ -351,5 +355,140 @@ describe("revokeAllMobileTokens", () => {
     mockSmembers.mockRejectedValueOnce(new Error("Redis down"));
 
     await expect(revokeAllMobileTokens("user-fail")).resolves.toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("pruneExpiredSessions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetRedisClient.mockReturnValue(mockRedis);
+    mockSmembers.mockResolvedValue([]);
+    mockGet.mockResolvedValue(null);
+    mockSrem.mockResolvedValue(1);
+  });
+
+  it("removes jtis whose token keys are no longer present (expired)", async () => {
+    // 6 jtis in the set — 3 have expired (no token key), 3 are still active
+    mockSmembers.mockResolvedValue([
+      "jti-alive-1",
+      "jti-alive-2",
+      "jti-alive-3",
+      "jti-stale-1",
+      "jti-stale-2",
+      "jti-stale-3",
+    ]);
+    // alive jtis: token key exists; stale jtis: token key is null
+    mockGet.mockImplementation(async (key: string) => {
+      if (key.includes("jti-alive")) {
+        return JSON.stringify({ issuedAt: "2026-01-01T00:00:00Z" });
+      }
+      return null;
+    });
+
+    await pruneExpiredSessions("user-1");
+
+    expect(mockSrem).toHaveBeenCalledWith(
+      "mobile:sessions:user-1",
+      "jti-stale-1",
+      "jti-stale-2",
+      "jti-stale-3",
+    );
+  });
+
+  it("does NOT remove jtis whose token keys still exist (active sessions)", async () => {
+    // 6 jtis in the set — all still alive
+    mockSmembers.mockResolvedValue([
+      "jti-1",
+      "jti-2",
+      "jti-3",
+      "jti-4",
+      "jti-5",
+      "jti-6",
+    ]);
+    // All token keys present
+    mockGet.mockResolvedValue(
+      JSON.stringify({ issuedAt: "2026-01-01T00:00:00Z" }),
+    );
+
+    await pruneExpiredSessions("user-1");
+
+    // No stale jtis → srem must not be called
+    expect(mockSrem).not.toHaveBeenCalled();
+  });
+
+  it("skips pruning when set has 5 or fewer members (below overhead threshold)", async () => {
+    mockSmembers.mockResolvedValue([
+      "jti-a",
+      "jti-b",
+      "jti-c",
+      "jti-d",
+      "jti-e",
+    ]);
+
+    await pruneExpiredSessions("user-1");
+
+    // get should not have been called — function returned early
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockSrem).not.toHaveBeenCalled();
+  });
+
+  it("skips pruning when set is empty", async () => {
+    mockSmembers.mockResolvedValue([]);
+
+    await pruneExpiredSessions("user-1");
+
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(mockSrem).not.toHaveBeenCalled();
+  });
+
+  it("is called during signMobileToken (fire-and-forget after token stored)", async () => {
+    // Arrange a set with more than 5 members so pruning is not skipped
+    mockSmembers.mockResolvedValue([
+      "old-1",
+      "old-2",
+      "old-3",
+      "old-4",
+      "old-5",
+      "old-6",
+    ]);
+    mockGet.mockResolvedValue(null); // all expired
+    mockSet.mockResolvedValue("OK");
+    mockSadd.mockResolvedValue(1);
+    mockExpire.mockResolvedValue(1);
+
+    await signMobileToken({
+      id: "user-prune",
+      email: "prune@example.com",
+      role: "user",
+    });
+
+    // Allow the fire-and-forget microtask to settle
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    // smembers must have been called for pruning (after sadd/expire)
+    expect(mockSmembers).toHaveBeenCalledWith("mobile:sessions:user-prune");
+  });
+
+  it("failure during pruning does not block token issuance", async () => {
+    // smembers throws — pruning errors must be swallowed
+    mockSmembers.mockRejectedValue(new Error("Redis blip"));
+    mockSet.mockResolvedValue("OK");
+    mockSadd.mockResolvedValue(1);
+    mockExpire.mockResolvedValue(1);
+
+    const result = await signMobileToken({
+      id: "user-prune-fail",
+      email: "fail@example.com",
+      role: "user",
+    });
+
+    // Allow the fire-and-forget microtask to settle
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    // Token issuance succeeded despite pruning failure
+    expect(result.token).toBeDefined();
+    expect(result.token.split(".")).toHaveLength(3);
   });
 });

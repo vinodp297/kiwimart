@@ -44,6 +44,47 @@ export interface MobileTokenPayload extends JWTPayload {
   jti: string;
 }
 
+// ── pruneExpiredSessions ──────────────────────────────────────────────────────
+// Removes stale jtis from the session index set after their token keys have
+// expired naturally (via Redis TTL). Called best-effort from signMobileToken —
+// never throws, never blocks token issuance.
+//
+// Only runs when the session set has more than 5 members to avoid overhead for
+// normal users who have a small number of active sessions.
+
+export async function pruneExpiredSessions(userId: string): Promise<void> {
+  try {
+    const redis = getRedisClient();
+    const setKey = sessionSetKey(userId);
+    const jtis = await redis.smembers(setKey);
+
+    // Skip pruning for small sets — overhead not worth it for normal users.
+    if (jtis.length <= 5) return;
+
+    // Check which jtis have expired (token key no longer present in Redis).
+    const checks = await Promise.all(
+      jtis.map(async (jti: string) => ({
+        jti,
+        exists: (await redis.get(tokenKey(userId, jti))) !== null,
+      })),
+    );
+
+    const stale = checks.filter((c) => !c.exists).map((c) => c.jti);
+
+    if (stale.length === 0) return;
+
+    // Atomically remove all stale jtis from the session set.
+    await redis.srem(setKey, ...(stale as [string, ...string[]]));
+
+    logger.info("mobile.session.pruned", {
+      userId,
+      pruned: stale.length,
+    });
+  } catch {
+    // Best-effort — pruning failure must never block token issuance.
+  }
+}
+
 // ── signMobileToken ───────────────────────────────────────────────────────────
 
 export async function signMobileToken(
@@ -80,6 +121,10 @@ export async function signMobileToken(
     // they will expire naturally after 7 days. This is an acceptable
     // trade-off — fail-open on issue, fail-closed on verify (see below).
   }
+
+  // Best-effort pruning of expired session set entries. Runs after the new
+  // token is stored — never blocks issuance.
+  void pruneExpiredSessions(user.id).catch(() => {});
 
   return { token, expiresAt: expiresAt.toISOString() };
 }
