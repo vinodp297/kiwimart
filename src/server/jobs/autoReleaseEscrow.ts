@@ -27,6 +27,11 @@ const BATCH_SIZE_MAX = 500;
 const BATCH_SIZE_DEFAULT = 100;
 const BACKLOG_ALERT_THRESHOLD = 200;
 
+// Wall-clock deadline — stop processing if the run exceeds this duration.
+// Vercel Cron max execution time is 5 minutes on Pro plan; we stop at 4
+// minutes to leave headroom for the final logging and cleanup.
+export const MAX_RUN_DURATION_MS = 4 * 60 * 1_000; // 4 minutes
+
 /**
  * Add N business days (Mon–Fri) to a date.
  * E.g. Friday + 4 business days = Thursday of the following week.
@@ -52,6 +57,7 @@ export async function processAutoReleases(): Promise<{
       let processed = 0;
       let errors = 0;
       const startMs = Date.now();
+      const deadlineMs = startMs + MAX_RUN_DURATION_MS;
       const escrowDays = await getConfigInt(
         CONFIG_KEYS.ESCROW_RELEASE_BUSINESS_DAYS,
       );
@@ -247,6 +253,22 @@ export async function processAutoReleases(): Promise<{
       }
 
       for (let i = 0; i < eligibleOrders.length; i += BATCH_SIZE) {
+        // Stop if we are approaching the wall-clock deadline — defer
+        // remaining orders to the next cron run rather than risking overlap.
+        if (Date.now() >= deadlineMs) {
+          const deferred = eligibleOrders.length - i;
+          logger.warn("escrow.auto_release.deadline_reached", {
+            processed,
+            errors,
+            deferred,
+            durationMs: Date.now() - startMs,
+            message:
+              "Wall-clock deadline reached — deferring remaining orders " +
+              "to next cron run to prevent schedule overlap.",
+          });
+          break;
+        }
+
         const batch = eligibleOrders.slice(i, i + BATCH_SIZE);
 
         const results = await Promise.allSettled(
@@ -304,6 +326,20 @@ export async function processAutoReleases(): Promise<{
       });
 
       for (let i = 0; i < eligibleCashOrders.length; i += BATCH_SIZE) {
+        if (Date.now() >= deadlineMs) {
+          const deferred = eligibleCashOrders.length - i;
+          logger.warn("escrow.cash_release.deadline_reached", {
+            processed,
+            errors,
+            deferred,
+            durationMs: Date.now() - startMs,
+            message:
+              "Wall-clock deadline reached — deferring remaining cash " +
+              "payouts to next cron run.",
+          });
+          break;
+        }
+
         const batch = eligibleCashOrders.slice(i, i + BATCH_SIZE);
 
         const results = await Promise.allSettled(
@@ -399,6 +435,8 @@ export async function processAutoReleases(): Promise<{
         batchSize,
         remainingEstimate,
         durationMs,
+        deadlineMs: MAX_RUN_DURATION_MS,
+        withinDeadline: durationMs < MAX_RUN_DURATION_MS,
       });
       return { processed, errors };
     }, // end runWithRequestContext fn

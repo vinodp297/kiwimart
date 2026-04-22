@@ -6,9 +6,11 @@ import {
   addBusinessDays,
   processAutoReleases,
   getAutoReleaseCountdown,
+  MAX_RUN_DURATION_MS,
 } from "@/server/jobs/autoReleaseEscrow";
 import db from "@/lib/db";
 import { audit } from "@/server/lib/audit";
+import { logger } from "@/shared/logger";
 import { mockStripeCapture } from "./setup";
 
 // ─── Mock order-event.service for cash release tests ────────────────────────
@@ -322,5 +324,135 @@ describe("processAutoReleases — cash pickup orders", () => {
     const result = await processAutoReleases();
     expect(result.errors).toBe(1);
     expect(result.processed).toBe(0);
+  });
+});
+
+// ── Wall-clock deadline enforcement ──────────────────────────────────────────
+// These tests do NOT use vi.useFakeTimers() — instead they spy on Date.now()
+// directly. Orders use dispatchedAt/completedAt far in the past so they are
+// always eligible with the real clock, and Date.now() is mocked to simulate
+// deadline conditions.
+
+describe("processAutoReleases — wall-clock deadline", () => {
+  // Epoch anchor chosen to be well clear of any real dates used elsewhere.
+  const T0 = 1_700_000_000_000; // Nov 2023 — arbitrary fixed start instant
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.order.count).mockResolvedValue(0 as never);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("processes all orders normally when deadline is not reached", async () => {
+    // Single eligible order far in the past — will process in well under 4 min
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([
+        makeOrder({
+          id: "order-ok",
+          dispatchedAt: new Date("2020-01-01T00:00:00Z"),
+        }),
+      ] as never)
+      .mockResolvedValueOnce([] as never);
+    vi.mocked(db.$transaction).mockResolvedValue([] as never);
+
+    await processAutoReleases();
+
+    // Deadline warn must NOT have fired
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalledWith(
+      "escrow.auto_release.deadline_reached",
+      expect.anything(),
+    );
+
+    // Final log must report withinDeadline: true
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      "escrow.auto_release.completed",
+      expect.objectContaining({ withinDeadline: true }),
+    );
+  });
+
+  it("stops Stripe processing and logs deferred count when deadline is reached", async () => {
+    // Three orders → all eligible; with fake Date.now() past deadline on first
+    // check, all three are deferred and none are processed.
+    const orders = [0, 1, 2].map((n) =>
+      makeOrder({
+        id: `order-${n}`,
+        dispatchedAt: new Date("2020-01-01T00:00:00Z"),
+      }),
+    );
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce(orders as never)
+      .mockResolvedValueOnce([] as never);
+
+    vi.spyOn(Date, "now")
+      .mockReturnValueOnce(T0) // correlationId template literal
+      .mockReturnValueOnce(T0) // const startMs = Date.now()
+      .mockReturnValue(T0 + MAX_RUN_DURATION_MS + 1_000); // all subsequent: past deadline
+
+    await processAutoReleases();
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      "escrow.auto_release.deadline_reached",
+      expect.objectContaining({
+        deferred: 3,
+        processed: 0,
+      }),
+    );
+
+    // No Stripe captures should have been attempted
+    expect(mockStripeCapture).not.toHaveBeenCalled();
+  });
+
+  it("stops cash processing and logs deferred count when deadline is reached", async () => {
+    // No dispatched orders — Stripe loop does not execute.
+    // Three cash orders → all deferred when deadline is reached on first cash check.
+    const cashOrders = [0, 1, 2].map((n) =>
+      makeCashOrder({
+        id: `cash-order-${n}`,
+        completedAt: new Date("2020-01-01T00:00:00Z"),
+      }),
+    );
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([] as never) // dispatched: none
+      .mockResolvedValueOnce(cashOrders as never);
+
+    vi.spyOn(Date, "now")
+      .mockReturnValueOnce(T0) // correlationId
+      .mockReturnValueOnce(T0) // startMs
+      .mockReturnValue(T0 + MAX_RUN_DURATION_MS + 1_000); // past deadline from first cash check
+
+    await processAutoReleases();
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      "escrow.cash_release.deadline_reached",
+      expect.objectContaining({
+        deferred: 3,
+      }),
+    );
+  });
+
+  it("reports withinDeadline: false in the completion log when deadline was exceeded", async () => {
+    vi.mocked(db.order.findMany)
+      .mockResolvedValueOnce([
+        makeOrder({
+          id: "order-late",
+          dispatchedAt: new Date("2020-01-01T00:00:00Z"),
+        }),
+      ] as never)
+      .mockResolvedValueOnce([] as never);
+
+    vi.spyOn(Date, "now")
+      .mockReturnValueOnce(T0)
+      .mockReturnValueOnce(T0)
+      .mockReturnValue(T0 + MAX_RUN_DURATION_MS + 1_000);
+
+    await processAutoReleases();
+
+    expect(vi.mocked(logger.info)).toHaveBeenCalledWith(
+      "escrow.auto_release.completed",
+      expect.objectContaining({ withinDeadline: false }),
+    );
   });
 });
