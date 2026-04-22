@@ -30,7 +30,10 @@ import { enqueueEmail } from "@/lib/email-queue";
 import { fireAndForget } from "@/lib/fire-and-forget";
 import { runWithRequestContext } from "@/lib/request-context";
 import { withLockAndHeartbeat } from "@/server/lib/distributedLock";
-import { calculateFees } from "@/modules/payments/fee-calculator";
+import {
+  calculateFees,
+  calculateFeesFromBps,
+} from "@/modules/payments/fee-calculator";
 import type { PerformanceTier } from "@/lib/seller-tiers";
 import { payoutRepository } from "@/modules/payments/payout.repository";
 import { userRepository } from "@/modules/users/user.repository";
@@ -103,9 +106,26 @@ export function startPayoutWorker() {
 
             // ── Fee calculation ─────────────────────────────────────────────
             // payout.amountNzd is the gross order amount stored by the webhook.
-            // calculateFees() returns the seller's net payout after Stripe fee
-            // and platform fee (both deducted from seller's side).
-            const fees = await calculateFees(payout.amountNzd, sellerTier);
+            //
+            // Rate-snapshot logic (first-pickup-wins):
+            //   • First pickup (effectiveFeeRateBps === 0): read the live
+            //     PlatformConfig via calculateFees(), then persist the rate
+            //     in basis points on the Payout row BEFORE the Stripe
+            //     transfer. Persisting before the transfer means a crash
+            //     mid-transfer still leaves a consistent snapshot for the
+            //     BullMQ retry to reuse.
+            //   • Retry (effectiveFeeRateBps > 0): reproduce the identical
+            //     fee breakdown from the stored rate, bypassing the live
+            //     config entirely. This closes the rate-drift window across
+            //     the 3-business-day interval between webhook and transfer.
+            const isFirstPickup = payout.effectiveFeeRateBps === 0;
+            const fees = isFirstPickup
+              ? await calculateFees(payout.amountNzd, sellerTier)
+              : calculateFeesFromBps(
+                  payout.amountNzd,
+                  payout.effectiveFeeRateBps,
+                  sellerTier,
+                );
 
             logger.info("payout.worker.fees_calculated", {
               payoutId: payout.id,
@@ -115,7 +135,27 @@ export function startPayoutWorker() {
               platformFee: fees.platformFee,
               sellerPayout: fees.sellerPayout,
               tier: fees.tier,
+              rateSource: isFirstPickup ? "live_config" : "snapshot",
+              effectiveFeeRateBps: isFirstPickup
+                ? Math.round(fees.platformFeeRate * 10_000)
+                : payout.effectiveFeeRateBps,
             });
+
+            // Persist the snapshot on first pickup. Must happen BEFORE the
+            // Stripe transfer so retries after a partial failure reproduce
+            // the same fees. Only write when requiresManualReview is false —
+            // a manual-review payout will be reprocessed by an admin after
+            // config adjustment, so capturing the current rate would block
+            // that workflow.
+            if (isFirstPickup && !fees.requiresManualReview) {
+              const effectiveFeeRateBps = Math.round(
+                fees.platformFeeRate * 10_000,
+              );
+              await payoutRepository.snapshotFeeRate(
+                orderId,
+                effectiveFeeRateBps,
+              );
+            }
 
             // ── Manual review guard ─────────────────────────────────────────
             // If fees would exceed the seller's payout, flag for manual review

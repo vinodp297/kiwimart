@@ -27,6 +27,7 @@ vi.mock("@/lib/platform-config", () => ({
 import {
   calculateFeesSync,
   calculateFees,
+  calculateFeesFromBps,
 } from "@/modules/payments/fee-calculator";
 
 // ── calculateFeesSync ────────────────────────────────────────────────────────
@@ -193,5 +194,78 @@ describe("calculateFees", () => {
     const result = await calculateFees(500, null);
     // Raw: round(500 * 0.035) = 18, but min is 100
     expect(result.platformFee).toBe(100);
+  });
+});
+
+// ── calculateFeesFromBps (snapshot replay) ───────────────────────────────────
+
+describe("calculateFeesFromBps", () => {
+  it("returns correct breakdown for 350 bps (3.5%) on $100", () => {
+    const result = calculateFeesFromBps(10000, 350, null);
+
+    // Platform: round(10000 * 0.035) = 350
+    expect(result.platformFee).toBe(350);
+    expect(result.platformFeeRate).toBe(0.035);
+    // Stripe fee uses contractual defaults: 1.9% + 30c
+    expect(result.stripeFee).toBe(220);
+    expect(result.totalFees).toBe(570);
+    expect(result.sellerPayout).toBe(9430);
+  });
+
+  it("produces identical output to calculateFeesSync for the default rate", () => {
+    const snapshot = calculateFeesFromBps(10000, 350, null);
+    const live = calculateFeesSync(10000, null);
+
+    expect(snapshot.platformFee).toBe(live.platformFee);
+    expect(snapshot.stripeFee).toBe(live.stripeFee);
+    expect(snapshot.sellerPayout).toBe(live.sellerPayout);
+    expect(snapshot.totalFees).toBe(live.totalFees);
+  });
+
+  it("uses the snapshotted rate regardless of seller tier", () => {
+    // Snapshot was taken at 2.5% (GOLD tier at snapshot time).
+    // Even if we pass a different tier now, the stored rate wins —
+    // that's the whole point of snapshotting.
+    const asGold = calculateFeesFromBps(10000, 250, "GOLD");
+    const asSilver = calculateFeesFromBps(10000, 250, "SILVER");
+    const asStandard = calculateFeesFromBps(10000, 250, null);
+
+    expect(asGold.platformFee).toBe(250);
+    expect(asSilver.platformFee).toBe(250);
+    expect(asStandard.platformFee).toBe(250);
+  });
+
+  it("respects the minimum fee clamp (50 cents)", () => {
+    // $5 gross at 3.5% = 18 cents → clamped up to 50
+    const result = calculateFeesFromBps(500, 350, null);
+    expect(result.platformFee).toBe(50);
+  });
+
+  it("respects the maximum fee clamp (5000 cents / $50)", () => {
+    // $5000 gross at 3.5% = 17500 cents → clamped down to 5000
+    const result = calculateFeesFromBps(500000, 350, null);
+    expect(result.platformFee).toBe(5000);
+  });
+
+  it("uses integer math — all fee amounts are whole numbers", () => {
+    const result = calculateFeesFromBps(9999, 325, "SILVER");
+    expect(Number.isInteger(result.stripeFee)).toBe(true);
+    expect(Number.isInteger(result.platformFee)).toBe(true);
+    expect(Number.isInteger(result.totalFees)).toBe(true);
+    expect(Number.isInteger(result.sellerPayout)).toBe(true);
+  });
+
+  it("flags requiresManualReview when fees exceed seller payout", () => {
+    // $1 gross at 3.5% — stripe fee alone is 49c, platform min 50c,
+    // total 99c > gross 100c → seller would receive 1c, sub-minimum
+    const result = calculateFeesFromBps(100, 350, null);
+    expect(result.requiresManualReview).toBe(true);
+    expect(result.sellerPayout).toBe(0);
+  });
+
+  it("round-trip: basis points → decimal rate preserves the value", () => {
+    // 350 bps → 0.035 decimal → same fee as hardcoded 3.5%
+    const result = calculateFeesFromBps(10000, 350, null);
+    expect(result.platformFeeRate).toBe(0.035);
   });
 });

@@ -119,6 +119,44 @@ export async function calculateFees(
   });
 }
 
+// ── Snapshot replay (uses a stored rate in basis points) ────────────────────
+
+/**
+ * Calculate fees using a rate that was snapshotted at an earlier moment
+ * (e.g. stored on the Payout row at first worker pickup). This guarantees
+ * retries of the same payout reproduce the exact same seller payout even
+ * if the admin has edited PlatformConfig since the snapshot was taken.
+ *
+ * The Stripe fee rate and min/max clamp values are NOT snapshotted — they
+ * come from hardcoded defaults. Stripe's rate is contractual and does not
+ * drift; the clamp values are stable policy knobs. This is an accepted
+ * simplification in exchange for a single-field snapshot.
+ *
+ * @param grossAmountCents — the same grossAmount used at snapshot time
+ * @param platformFeeRateBps — basis points (350 = 3.5%), as stored on Payout
+ */
+export function calculateFeesFromBps(
+  grossAmountCents: number,
+  platformFeeRateBps: number,
+  sellerTier: PerformanceTier = null,
+): FeeBreakdown {
+  // Convert basis points back to a decimal (350 → 0.035).
+  const snapshotRate = platformFeeRateBps / 10_000;
+
+  // Use the snapshotted platform rate for all tiers — the tier-to-rate
+  // mapping was already resolved when the snapshot was written, so we
+  // route every tier to the same stored rate here.
+  return computeFees(grossAmountCents, sellerTier, {
+    standardRate: snapshotRate,
+    silverRate: snapshotRate,
+    goldRate: snapshotRate,
+    minCents: 50,
+    maxCents: 5000,
+    stripeRate: DEFAULT_STRIPE_FEE_RATE,
+    stripeFixedCents: DEFAULT_STRIPE_FIXED_CENTS,
+  });
+}
+
 // ── Internal computation ─────────────────────────────────────────────────────
 
 interface FeeConfig {

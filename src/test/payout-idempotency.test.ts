@@ -72,9 +72,12 @@ vi.mock("@/server/email", () => ({
 // ── Mock fee calculator ──────────────────────────────────────────────────────
 
 const mockCalculateFees = vi.fn();
+const mockCalculateFeesFromBps = vi.fn();
 
 vi.mock("@/modules/payments/fee-calculator", () => ({
   calculateFees: (...args: unknown[]) => mockCalculateFees(...args),
+  calculateFeesFromBps: (...args: unknown[]) =>
+    mockCalculateFeesFromBps(...args),
   calculateFeesSync: vi.fn(),
 }));
 
@@ -145,6 +148,9 @@ beforeEach(() => {
     id: "payout-123",
     status: "PENDING",
     amountNzd: 10000,
+    // Default: 0 = no snapshot yet, worker will compute via live config
+    // and snapshot the rate. Individual tests override to simulate a retry.
+    effectiveFeeRateBps: 0,
   });
   payoutMock.update.mockResolvedValue({ id: "payout-123" });
 
@@ -294,11 +300,134 @@ describe("payout worker — idempotency status check", () => {
       id: "payout-123",
       status: "PROCESSING",
       amountNzd: 10000,
+      effectiveFeeRateBps: 0,
     });
 
     const result = await processorRef.fn!(makeJob());
 
     expect(mockTransferCreate).not.toHaveBeenCalled();
     expect(result).toMatchObject({ skipped: true });
+  });
+});
+
+// ─── Fee-rate snapshot (D1) ───────────────────────────────────────────────────
+// Verifies that the platform-fee rate is pinned at first worker pickup so
+// subsequent retries reproduce the identical fees, even if an admin has
+// edited PlatformConfig in the intervening 3-business-day window.
+
+describe("payout worker — fee rate snapshot", () => {
+  it("first pickup reads live config and persists the rate", async () => {
+    // effectiveFeeRateBps === 0 (default mock) → first pickup branch
+    await processorRef.fn!(makeJob());
+
+    // calculateFees (live config) must be called on first pickup
+    expect(mockCalculateFees).toHaveBeenCalledTimes(1);
+    expect(mockCalculateFeesFromBps).not.toHaveBeenCalled();
+
+    // Snapshot must be written BEFORE the Stripe transfer.
+    // 0.035 → round(0.035 * 10_000) = 350
+    expect(payoutMock.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { orderId: "order-abc" },
+        data: { effectiveFeeRateBps: 350 },
+      }),
+    );
+
+    const snapshotOrder = payoutMock.update.mock.invocationCallOrder.find(
+      (_order, idx) =>
+        (payoutMock.update.mock.calls[idx]?.[0] as { data?: unknown })?.data &&
+        "effectiveFeeRateBps" in
+          (payoutMock.update.mock.calls[idx]?.[0] as { data: object }).data,
+    );
+    const transferOrder = mockTransferCreate.mock.invocationCallOrder[0];
+    expect(snapshotOrder).toBeDefined();
+    expect(transferOrder).toBeDefined();
+    expect(snapshotOrder!).toBeLessThan(transferOrder!);
+  });
+
+  it("retry pickup uses snapshot and skips calculateFees", async () => {
+    // Simulate a retry: snapshot already exists on the Payout row.
+    payoutMock.findUnique.mockResolvedValue({
+      id: "payout-123",
+      status: "PENDING",
+      amountNzd: 10000,
+      effectiveFeeRateBps: 350, // 3.5% snapshotted on a previous run
+    });
+    mockCalculateFeesFromBps.mockReturnValue(DEFAULT_FEES);
+
+    await processorRef.fn!(makeJob());
+
+    // Retry path MUST NOT touch live config — this is the whole point of the snapshot
+    expect(mockCalculateFees).not.toHaveBeenCalled();
+    expect(mockCalculateFeesFromBps).toHaveBeenCalledWith(10000, 350, null);
+
+    // No second snapshot write on retry — the existing snapshot stays intact
+    const snapshotCalls = payoutMock.update.mock.calls.filter(
+      (call) =>
+        (call[0] as { data?: { effectiveFeeRateBps?: unknown } }).data
+          ?.effectiveFeeRateBps !== undefined,
+    );
+    expect(snapshotCalls).toHaveLength(0);
+  });
+
+  it("retry reproduces identical fees after admin rate change", async () => {
+    // Snapshot captured 3.5% on first pickup.
+    payoutMock.findUnique.mockResolvedValue({
+      id: "payout-123",
+      status: "PENDING",
+      amountNzd: 10000,
+      effectiveFeeRateBps: 350,
+    });
+
+    // Admin has since raised standard rate to 4.0% — live config would
+    // compute platformFee = 400. But the snapshot must win.
+    mockCalculateFees.mockResolvedValue({
+      ...DEFAULT_FEES,
+      platformFee: 400,
+      platformFeeRate: 0.04,
+      totalFees: 620,
+      sellerPayout: 9380,
+    });
+    mockCalculateFeesFromBps.mockReturnValue(DEFAULT_FEES);
+
+    await processorRef.fn!(makeJob());
+
+    // Transfer amount = snapshot's sellerPayout (9430), not the post-change
+    // live-config value (9380). Seller is reimbursed at the original rate.
+    expect(mockTransferCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 9430 }),
+      expect.anything(),
+    );
+  });
+
+  it("does not snapshot when payout requires manual review", async () => {
+    // A payout with sub-minimum seller payout must flag MANUAL_REVIEW and
+    // NOT snapshot the rate — admins may need to adjust config before
+    // the payout is reprocessed.
+    mockCalculateFees.mockResolvedValue({
+      grossAmountCents: 100,
+      stripeFee: 32,
+      platformFee: 50,
+      platformFeeRate: 0.035,
+      totalFees: 82,
+      sellerPayout: 0,
+      tier: "STANDARD" as const,
+      requiresManualReview: true,
+      manualReviewReason:
+        "Fees (82¢) exceed or reduce seller payout below minimum (50¢) — manual review required before transfer.",
+    });
+
+    await processorRef.fn!(makeJob());
+
+    // No snapshot written for manual-review payouts
+    const snapshotCalls = payoutMock.update.mock.calls.filter(
+      (call) =>
+        (call[0] as { data?: { effectiveFeeRateBps?: unknown } }).data
+          ?.effectiveFeeRateBps !== undefined,
+    );
+    expect(snapshotCalls).toHaveLength(0);
+
+    // No Stripe transfer attempted
+    expect(mockTransferCreate).not.toHaveBeenCalled();
   });
 });

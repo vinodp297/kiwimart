@@ -12,15 +12,49 @@ export const payoutRepository = {
   /**
    * Look up a payout by orderId — used by the payout worker for the
    * idempotency check before issuing a Stripe transfer.
+   *
+   * Returns `effectiveFeeRateBps` so the worker can decide whether to
+   * snapshot a fresh rate (value === 0) or reproduce fees from the
+   * previously-stored snapshot (value > 0).
    */
   async findByOrderId(
     orderId: string,
     tx?: DbClient,
-  ): Promise<{ id: string; status: string; amountNzd: number } | null> {
+  ): Promise<{
+    id: string;
+    status: string;
+    amountNzd: number;
+    effectiveFeeRateBps: number;
+  } | null> {
     const client = getClient(tx);
     return client.payout.findUnique({
       where: { orderId },
-      select: { id: true, status: true, amountNzd: true },
+      select: {
+        id: true,
+        status: true,
+        amountNzd: true,
+        effectiveFeeRateBps: true,
+      },
+    });
+  },
+
+  /**
+   * Persist the platform fee rate that was in effect when the worker first
+   * calculated fees for this payout. Called from the payout worker on first
+   * pickup, before the Stripe transfer is initiated. Subsequent retries of
+   * the same payout read this value back via findByOrderId and reproduce
+   * the identical fee breakdown — the seller is therefore reimbursed at
+   * the rate agreed when the order was processed, not the current config.
+   */
+  async snapshotFeeRate(
+    orderId: string,
+    effectiveFeeRateBps: number,
+    tx?: DbClient,
+  ): Promise<void> {
+    const client = getClient(tx);
+    await client.payout.update({
+      where: { orderId },
+      data: { effectiveFeeRateBps },
     });
   },
 
