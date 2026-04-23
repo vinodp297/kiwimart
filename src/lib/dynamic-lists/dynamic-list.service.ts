@@ -1,11 +1,20 @@
 // src/lib/dynamic-lists/dynamic-list.service.ts
 // ─── Dynamic List Service (Cached) ─────────────────────────────────────────
 // Reads admin-editable content lists from the DynamicListItem table with a
-// 5-minute in-memory cache. Same pattern as config.service.ts.
+// three-tier cache hierarchy:
+//   1. In-memory Map (60s TTL) — per-instance, fastest
+//   2. Redis (300s TTL) — shared across all serverless instances
+//   3. Database — ground truth
+//
+// This prevents multi-instance cache drift: admin changes propagate to all
+// instances via Redis within 5 minutes instead of having different instances
+// enforce different lists simultaneously.
 
 import db from "@/lib/db";
 import type { DynamicListType } from "@prisma/client";
 import { MS_PER_MINUTE } from "@/lib/time";
+import { logger } from "@/shared/logger";
+import { getRedisClient } from "@/infrastructure/redis/client";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -24,12 +33,32 @@ export interface DynamicListOption {
 
 // ── Cache ───────────────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 5 * MS_PER_MINUTE;
+const REDIS_TTL_SECONDS = 300; // 5 minutes — shared cache TTL
+const LOCAL_CACHE_TTL_MS = 60 * MS_PER_MINUTE; // 60 seconds — in-memory fallback
 
-const cache = new Map<
+const localCache = new Map<
   string,
   { items: DynamicListItem[]; expiresAt: number }
 >();
+
+// All possible DynamicListType values — used for invalidation when
+// KEYS pattern scanning is unavailable (Upstash limitation)
+const ALL_LIST_TYPES: DynamicListType[] = [
+  "BANNED_KEYWORDS",
+  "RISK_KEYWORDS",
+  "NZ_REGIONS",
+  "COURIERS",
+  "DISPUTE_REASONS",
+  "LISTING_CONDITIONS",
+  "REVIEW_TAGS",
+  "REPORT_REASONS",
+  "SELLER_RESCHEDULE_REASONS",
+  "BUYER_RESCHEDULE_REASONS",
+  "PICKUP_REJECT_REASONS",
+  "DELIVERY_ISSUE_TYPES",
+  "PROBLEM_TYPES",
+  "QUICK_FILTER_CHIPS",
+];
 
 // ── Core reader ─────────────────────────────────────────────────────────────
 
@@ -37,9 +66,33 @@ export async function getList(
   listType: DynamicListType,
 ): Promise<DynamicListItem[]> {
   const now = Date.now();
-  const cached = cache.get(listType);
-  if (cached && cached.expiresAt > now) return cached.items;
 
+  // ── Tier 1: In-memory local cache ────────────────────────────────────────
+  const localCached = localCache.get(listType);
+  if (localCached && localCached.expiresAt > now) {
+    return localCached.items;
+  }
+
+  // ── Tier 2: Redis (shared across serverless instances) ───────────────────
+  const redisKey = `dynamic-list:${listType}`;
+  let items: DynamicListItem[] | null = null;
+
+  try {
+    const redis = await getRedisClient();
+    const cached = await redis.get(redisKey);
+    if (cached && typeof cached === "string") {
+      items = JSON.parse(cached) as DynamicListItem[];
+      // Repopulate local cache from Redis hit (60s fallback TTL)
+      localCache.set(listType, { items, expiresAt: now + LOCAL_CACHE_TTL_MS });
+      return items;
+    }
+  } catch (error) {
+    logger.warn(
+      `Redis GET failed for ${redisKey}: ${error instanceof Error ? error.message : String(error)}. Falling back to local cache / DB.`,
+    );
+  }
+
+  // ── Tier 3: Database (ground truth) ──────────────────────────────────────
   const rows = await db.dynamicListItem.findMany({
     where: { listType, isActive: true },
     orderBy: { sortOrder: "asc" },
@@ -52,7 +105,7 @@ export async function getList(
     },
   });
 
-  const items: DynamicListItem[] = rows.map((r) => ({
+  items = rows.map((r) => ({
     value: r.value,
     label: r.label,
     description: r.description,
@@ -60,7 +113,18 @@ export async function getList(
     sortOrder: r.sortOrder,
   }));
 
-  cache.set(listType, { items, expiresAt: now + CACHE_TTL_MS });
+  // ── Populate both cache tiers on DB hit ──────────────────────────────────
+  localCache.set(listType, { items, expiresAt: now + LOCAL_CACHE_TTL_MS });
+
+  try {
+    const redis = await getRedisClient();
+    await redis.setex(redisKey, REDIS_TTL_SECONDS, JSON.stringify(items));
+  } catch (error) {
+    logger.warn(
+      `Redis SET failed for ${redisKey}: ${error instanceof Error ? error.message : String(error)}. Local cache will serve fallback.`,
+    );
+  }
+
   return items;
 }
 
@@ -113,9 +177,54 @@ export async function getRegionsWithCoords(): Promise<
 // ── Cache invalidation ──────────────────────────────────────────────────────
 
 export function invalidateList(listType: DynamicListType): void {
-  cache.delete(listType);
+  // Clear local cache immediately
+  localCache.delete(listType);
+
+  // Clear Redis key asynchronously (don't block on Redis failure)
+  const redisKey = `dynamic-list:${listType}`;
+  (async () => {
+    try {
+      const redis = await getRedisClient();
+      await redis.del(redisKey);
+    } catch (error) {
+      logger.warn(
+        `Redis DEL failed for ${redisKey}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  })().catch(() => {
+    // Swallow async errors — invalidation is best-effort
+  });
 }
 
 export function invalidateAllLists(): void {
-  cache.clear();
+  // Clear local cache immediately
+  localCache.clear();
+
+  // Clear all Redis keys asynchronously
+  (async () => {
+    try {
+      const redis = await getRedisClient();
+      // Delete each list type individually (Upstash doesn't support KEYS pattern scanning)
+      await Promise.all(
+        ALL_LIST_TYPES.map((listType) =>
+          redis.del(`dynamic-list:${listType}`).catch((error) => {
+            logger.warn(
+              `Redis DEL failed for dynamic-list:${listType}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }),
+        ),
+      );
+    } catch (error) {
+      logger.warn(
+        `Redis connection failed during invalidateAllLists: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  })().catch(() => {
+    // Swallow async errors — invalidation is best-effort
+  });
+}
+
+/** Clears the in-memory local cache — used in tests to force DB/Redis refresh */
+export function clearLocalCache(): void {
+  localCache.clear();
 }
