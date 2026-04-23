@@ -43,6 +43,7 @@ const SHIP_TIMEOUT_MS = 5000; // 5s timeout per batch HTTP call
 
 const logBuffer: object[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let droppedLogCount = 0;
 
 /** Enqueue a log entry for batched shipping to BetterStack. */
 function enqueueForShipping(entry: object): void {
@@ -52,6 +53,14 @@ function enqueueForShipping(entry: object): void {
   // Backpressure: drop oldest entry when buffer is full to prevent unbounded memory growth
   if (logBuffer.length >= MAX_BUFFER_SIZE) {
     logBuffer.shift(); // Drop oldest entry
+    droppedLogCount++;
+    // Use console.error directly — calling logger here would cause infinite recursion
+    // since logger calls enqueueForShipping.
+    console.error(
+      `[logger] Log buffer overflow — dropped oldest entry. ` +
+        `Total dropped: ${droppedLogCount}. ` +
+        `Consider increasing MAX_BUFFER_SIZE or reducing log volume.`,
+    );
   }
   logBuffer.push(entry);
 
@@ -75,13 +84,28 @@ function enqueueForShipping(entry: object): void {
 /** Flush all buffered log entries to BetterStack in a single batched request. */
 export async function flushLogs(): Promise<void> {
   flushTimer = null;
-  if (logBuffer.length === 0) return;
 
   const token = env.LOGTAIL_SOURCE_TOKEN;
   if (!token) {
     logBuffer.length = 0; // Clear buffer without sending
+    droppedLogCount = 0; // Also reset drop counter
     return;
   }
+
+  // Prepend drop summary entry if any logs were dropped since last flush
+  if (droppedLogCount > 0) {
+    const dropSummary = {
+      level: "error",
+      event: "logger.buffer.overflow",
+      droppedCount: droppedLogCount,
+      timestamp: new Date().toISOString(),
+      message: "Log entries were dropped due to buffer overflow",
+    };
+    logBuffer.unshift(dropSummary);
+    droppedLogCount = 0;
+  }
+
+  if (logBuffer.length === 0) return;
 
   // Drain the buffer atomically to prevent race conditions
   const batch = logBuffer.splice(0, logBuffer.length);
@@ -109,6 +133,16 @@ export async function flushLogs(): Promise<void> {
 /** Returns the current buffer depth for observability. */
 export function getBufferDepth(): number {
   return logBuffer.length;
+}
+
+/** Returns the number of log entries dropped due to buffer overflow. */
+export function getDroppedLogCount(): number {
+  return droppedLogCount;
+}
+
+/** Resets the dropped log count to zero. Primarily for testing. */
+export function resetDroppedLogCount(): void {
+  droppedLogCount = 0;
 }
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal";

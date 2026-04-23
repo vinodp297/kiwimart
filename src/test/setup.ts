@@ -193,6 +193,8 @@ vi.mock("@/shared/logger", () => ({
   logger: createMockLogger(),
   flushLogs: vi.fn().mockResolvedValue(undefined),
   getBufferDepth: vi.fn().mockReturnValue(0),
+  getDroppedLogCount: vi.fn().mockReturnValue(0),
+  resetDroppedLogCount: vi.fn(),
 }));
 
 // ── Mock Pusher ──────────────────────────────────────────────────────────────
