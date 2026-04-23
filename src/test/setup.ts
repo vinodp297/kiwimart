@@ -191,6 +191,8 @@ vi.mock("@/server/lib/rateLimit", () => ({
 // ── Mock shared logger ───────────────────────────────────────────────────────
 vi.mock("@/shared/logger", () => ({
   logger: createMockLogger(),
+  flushLogs: vi.fn().mockResolvedValue(undefined),
+  getBufferDepth: vi.fn().mockReturnValue(0),
 }));
 
 // ── Mock Pusher ──────────────────────────────────────────────────────────────

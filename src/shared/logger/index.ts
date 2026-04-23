@@ -36,19 +36,79 @@ import { env } from "@/env";
 
 // ��─ BetterStack (Logtail) log shipping ────────────────────────────────────────
 // Fire-and-forget; never throws. Silently skipped when token is absent.
-function shipToBetterStack(entry: object): void {
+const BATCH_SIZE = 50; // Flush when buffer reaches 50 entries
+const FLUSH_INTERVAL_MS = 2000; // Flush every 2 seconds regardless of size
+const MAX_BUFFER_SIZE = 200; // Drop oldest entries if buffer exceeds this (backpressure)
+const SHIP_TIMEOUT_MS = 5000; // 5s timeout per batch HTTP call
+
+const logBuffer: object[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Enqueue a log entry for batched shipping to BetterStack. */
+function enqueueForShipping(entry: object): void {
   const token = env.LOGTAIL_SOURCE_TOKEN;
   if (!token) return;
-  fetch("https://in.logtail.com", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(entry),
-  }).catch(() => {
+
+  // Backpressure: drop oldest entry when buffer is full to prevent unbounded memory growth
+  if (logBuffer.length >= MAX_BUFFER_SIZE) {
+    logBuffer.shift(); // Drop oldest entry
+  }
+  logBuffer.push(entry);
+
+  // Schedule flush if not already scheduled
+  if (!flushTimer) {
+    flushTimer = setTimeout(() => {
+      void flushLogs();
+    }, FLUSH_INTERVAL_MS);
+  }
+
+  // Immediate flush if batch size reached (preempts timer)
+  if (logBuffer.length >= BATCH_SIZE) {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    void flushLogs();
+  }
+}
+
+/** Flush all buffered log entries to BetterStack in a single batched request. */
+export async function flushLogs(): Promise<void> {
+  flushTimer = null;
+  if (logBuffer.length === 0) return;
+
+  const token = env.LOGTAIL_SOURCE_TOKEN;
+  if (!token) {
+    logBuffer.length = 0; // Clear buffer without sending
+    return;
+  }
+
+  // Drain the buffer atomically to prevent race conditions
+  const batch = logBuffer.splice(0, logBuffer.length);
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SHIP_TIMEOUT_MS);
+    await fetch("https://in.logtail.com", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      // BetterStack accepts a JSON array of log entries
+      body: JSON.stringify(batch),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch {
     // Shipping failure must never propagate — the app keeps running.
-  });
+    // Dropped logs are acceptable; availability is critical.
+  }
+}
+
+/** Returns the current buffer depth for observability. */
+export function getBufferDepth(): number {
+  return logBuffer.length;
 }
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal";
@@ -80,8 +140,8 @@ function log(level: LogLevel, event: string, context?: LogContext): void {
   const isDev = env.NODE_ENV !== "production";
 
   if (!isDev) {
-    // Ship every log line to BetterStack (no-op when token absent).
-    shipToBetterStack(entry);
+    // Enqueue log entry for batched shipping to BetterStack (no-op when token absent).
+    enqueueForShipping(entry);
   }
 
   if (isDev) {
