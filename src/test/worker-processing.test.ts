@@ -114,8 +114,10 @@ vi.mock("@/infrastructure/stripe/client", () => ({
 // calculateFees reads from PlatformConfig; mock it here so payout tests are
 // deterministic and don't depend on the config mock's return values.
 const mockCalculateFees = vi.fn();
+const mockCalculateFeesFromBps = vi.fn();
 vi.mock("@/modules/payments/fee-calculator", () => ({
   calculateFees: (...a: unknown[]) => mockCalculateFees(...a),
+  calculateFeesFromBps: (...a: unknown[]) => mockCalculateFeesFromBps(...a),
   calculateFeesSync: vi.fn(),
 }));
 
@@ -338,6 +340,7 @@ describe("payoutWorker", () => {
       id: "payout-1",
       status: "PENDING",
       amountNzd: 5000,
+      effectiveFeeRateBps: 0,
     });
     mockStripeTransfersCreate.mockResolvedValue({ id: "tr_123" });
     payoutMock.update.mockResolvedValue({});
@@ -398,6 +401,7 @@ describe("payoutWorker", () => {
       id: "payout-1",
       status: "PENDING",
       amountNzd: 5000,
+      effectiveFeeRateBps: 0,
     });
     mockStripeTransfersCreate.mockResolvedValue({ id: "tr_456" });
     payoutMock.update.mockResolvedValue({});

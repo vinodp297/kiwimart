@@ -131,6 +131,16 @@ vi.mock("@/modules/payments/fee-calculator", () => ({
     grossAmountCents: 5000,
     stripeFee: 125,
     platformFee: 175,
+    platformFeeRate: 0.035,
+    sellerPayout: 4700,
+    tier: "STANDARD",
+    requiresManualReview: false,
+  }),
+  calculateFeesFromBps: vi.fn().mockReturnValue({
+    grossAmountCents: 5000,
+    stripeFee: 125,
+    platformFee: 175,
+    platformFeeRate: 0.035,
     sellerPayout: 4700,
     tier: "STANDARD",
     requiresManualReview: false,
@@ -144,9 +154,11 @@ vi.mock("@/modules/payments/payout.repository", () => ({
       id: "payout-1",
       status: "PENDING",
       amountNzd: 5000,
+      effectiveFeeRateBps: 0,
     }),
     markProcessingWithTransfer: vi.fn().mockResolvedValue(undefined),
     markManualReview: vi.fn().mockResolvedValue(undefined),
+    snapshotFeeRate: vi.fn().mockResolvedValue(undefined),
   },
 }));
 

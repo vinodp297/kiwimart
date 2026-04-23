@@ -1,6 +1,6 @@
 // src/app/api/docs/route.ts
 // ─── OpenAPI 3.0 Spec for Buyzi API ─────────────────────────────────────────
-// Serves the OpenAPI spec as JSON. Protected in production (admin only).
+// Serves the OpenAPI spec as JSON. Requires admin authentication in all environments.
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
@@ -1937,15 +1937,13 @@ const openApiSpec = {
 };
 
 export async function GET() {
-  // In production, require admin auth
-  if (process.env.NODE_ENV === "production") {
-    const session = await auth();
-    if (!session?.user?.isAdmin) {
-      return apiError("Not found", 404);
-    }
+  // Require admin authentication in all environments
+  const session = await auth();
+  if (!session?.user?.isAdmin) {
+    return apiError("Not found", 404);
   }
 
   return NextResponse.json(openApiSpec, {
-    headers: { "Cache-Control": "public, max-age=3600" },
+    headers: { "Cache-Control": "no-store" },
   });
 }

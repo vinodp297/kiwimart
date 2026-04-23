@@ -164,6 +164,7 @@ describe("payout worker — manual review guard", () => {
       id: "payout-123",
       status: "PENDING",
       amountNzd: 100,
+      effectiveFeeRateBps: 0,
     });
     payoutMock.update.mockResolvedValue({ id: "payout-123" });
 
@@ -205,6 +206,7 @@ describe("payout worker — manual review guard", () => {
       id: "payout-456",
       status: "PENDING",
       amountNzd: 10000,
+      effectiveFeeRateBps: 0,
     });
 
     await processorRef.fn!(makeJob());

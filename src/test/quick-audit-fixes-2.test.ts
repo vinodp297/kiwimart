@@ -168,6 +168,7 @@ vi.mock("@/modules/payments/payout.repository", () => ({
     findByOrderId: (...args: unknown[]) => mockFindByOrderId(...args),
     markManualReview: (...args: unknown[]) => mockMarkManualReview(...args),
     markProcessingWithTransfer: vi.fn().mockResolvedValue(undefined),
+    snapshotFeeRate: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -176,6 +177,16 @@ vi.mock("@/modules/payments/fee-calculator", () => ({
     grossAmountCents: 10000,
     stripeFee: 220,
     platformFee: 350,
+    platformFeeRate: 0.035,
+    sellerPayout: 9430,
+    tier: "STANDARD",
+    requiresManualReview: false,
+  }),
+  calculateFeesFromBps: vi.fn().mockReturnValue({
+    grossAmountCents: 10000,
+    stripeFee: 220,
+    platformFee: 350,
+    platformFeeRate: 0.035,
     sellerPayout: 9430,
     tier: "STANDARD",
     requiresManualReview: false,
@@ -452,6 +463,7 @@ describe("payout worker — seller account validation", () => {
       id: "payout-abc",
       status: "PENDING",
       amountNzd: 10000,
+      effectiveFeeRateBps: 0,
     });
     mockMarkManualReview.mockResolvedValue(undefined);
     mockStripeTransfersCreate.mockResolvedValue({
